@@ -115,7 +115,7 @@ if (Bun.argv[2] === "validate") {
   const paths = [...new Bun.Glob("*").scanSync("artifacts")]
     .filter((name) => name !== "SHA256SUMS")
     .sort();
-  for (const arch of ["arm64", "x64"]) {
+  for (const arch of ["arm64"]) {
     if (!paths.includes(`Tofu-${version}-macos-${arch}.dmg`)) {
       throw new Error(`Installateur ${arch} manquant`);
     }

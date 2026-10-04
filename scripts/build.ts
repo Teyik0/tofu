@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { version } from "../package.json";
 
@@ -47,9 +47,9 @@ if (Bun.argv[2] === "desktop" || release) {
     if (installers.length !== 1 || !installers[0]) {
       throw new Error("Un unique installateur DMG est attendu dans artifacts");
     }
-    await Bun.write(
-      join(directory, `Tofu-${version}-macos-${process.arch}.dmg`),
-      Bun.file(join(directory, installers[0]))
+    await rename(
+      join(directory, installers[0]),
+      join(directory, `Tofu-${version}-macos-${process.arch}.dmg`)
     );
   }
 }

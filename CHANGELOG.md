@@ -12,5 +12,5 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 - Source plugins, AniList subscriptions, discovery, and download automations.
 - macOS menu-bar icon and optional background mode that releases the native window and WebView while keeping transfers and automations running.
 - Authenticated private GitHub release checks, native notifications and installer downloads.
-- macOS Apple Silicon and Intel release pipeline with optional Apple signing and notarization.
+- macOS Apple Silicon release pipeline with optional Apple signing and notarization.
 - MIT license, contribution and security policies, repository templates and Git hooks.

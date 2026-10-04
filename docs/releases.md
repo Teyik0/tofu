@@ -17,8 +17,8 @@ Après téléchargement, choisir **Quitter Tofu**, ouvrir le DMG et remplacer l�
 ## Pipeline GitHub Actions
 
 - **Checks** vérifie les types, le lint, les tests avec de vrais pairs et la compilation bureau à chaque push sur main ou pull request.
-- **Release** compile et teste séparément sur macOS Apple Silicon et Intel. Un tag `vX.Y.Z` correspondant exactement à `package.json` publie les DMG, archives et métadonnées Electrobun ainsi que `SHA256SUMS` dans les releases du dépôt privé. La version native provient du même package.json.
-- Un lancement manuel de **Release** teste les deux builds et conserve les artefacts pendant sept jours, sans publier de release. Les tests d’interface native se lancent localement sur un Mac disposant d’une session graphique.
+- **Release** compile et teste sur macOS Apple Silicon. Un tag `vX.Y.Z` correspondant exactement à `package.json` publie le DMG, les archives et métadonnées Electrobun ainsi que `SHA256SUMS` dans les releases du dépôt privé. La version native provient du même package.json. Electrobun 2.0.2 et Hutch ne distribuent pas de runtime macOS Intel ; cette architecture nécessite un support en amont avant d’ajouter un runner x64.
+- Un lancement manuel de **Release** teste le build et conserve les artefacts pendant sept jours, sans publier de release. Les tests d’interface native se lancent localement sur un Mac disposant d’une session graphique.
 
 Pour préparer une version : modifier la version dans package.json, exécuter `bun run tscheck`, `bun run fix`, `bun run test`, `bun run build:desktop`, `bun run test:native` et `bun run test:background`, puis committer et pousser le tag correspondant. Respecter les hooks Git du projet avant commit et push. `bun run build:release` produit également le DMG localement.
 
