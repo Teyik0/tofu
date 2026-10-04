@@ -35,6 +35,7 @@
     "@elysia/eden": "2.0.0-beta.5"
   },
   "dependencies": {
+    "@base-ui/react": "1.8.0",
     "@elysia/eden": "2.0.0-beta.5",
     "@fontsource-variable/manrope": "5.2.8",
     "@fontsource/ibm-plex-mono": "5.2.7",
@@ -43,10 +44,8 @@
     "class-variance-authority": "0.7.1",
     "cn": "^0.4.0",
     "elysia": "2.0.0-beta.21",
-    "fast-xml-parser": "5.11.2",
     "lucide-react": "1.52.0",
     "parse-torrent": "11.0.24",
-    "radix-ui": "1.6.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "tailwindcss": "4.3.1",

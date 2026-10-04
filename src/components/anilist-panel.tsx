@@ -17,7 +17,7 @@ import { AniListThreads } from "./anilist-threads";
 import { request } from "./api";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
+import { Button, buttonVariants } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
@@ -144,11 +144,14 @@ function AniListConnection({
           Connecter AniList
         </Button>
         {authorizationUrl !== null && (
-          <Button asChild variant="outline">
-            <a href={authorizationUrl} rel="noopener noreferrer" target="_blank">
-              Autoriser dans le navigateur
-            </a>
-          </Button>
+          <a
+            className={buttonVariants({ variant: "outline" })}
+            href={authorizationUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Autoriser dans le navigateur
+          </a>
         )}
       </div>
       <p className="automation-caption">

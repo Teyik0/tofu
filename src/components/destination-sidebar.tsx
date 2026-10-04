@@ -57,11 +57,13 @@ export const DestinationSidebar = memo(
           <SidebarGroup>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={active === null} tooltip="Tous les torrents">
-                  <Link resetScroll={false} to="/library/all">
-                    <LayoutGridIcon />
-                    <span>Tous les torrents</span>
-                  </Link>
+                <SidebarMenuButton
+                  isActive={active === null}
+                  render={<Link resetScroll={false} to="/library/all" />}
+                  tooltip="Tous les torrents"
+                >
+                  <LayoutGridIcon />
+                  <span>Tous les torrents</span>
                 </SidebarMenuButton>
                 <SidebarMenuBadge>{data?.torrents.length ?? 0}</SidebarMenuBadge>
               </SidebarMenuItem>
@@ -82,19 +84,19 @@ export const DestinationSidebar = memo(
               {data?.destinations.map((destination) => (
                 <SidebarMenuItem key={destination.id}>
                   <SidebarMenuButton
-                    asChild
                     isActive={active === destination.id}
+                    render={
+                      <Link
+                        params={{ id: destination.id }}
+                        resetScroll={false}
+                        to="/library/destinations/:id"
+                      />
+                    }
                     title={destination.downloadPath}
                     tooltip={destination.name}
                   >
-                    <Link
-                      params={{ id: destination.id }}
-                      resetScroll={false}
-                      to="/library/destinations/:id"
-                    >
-                      <FolderIcon />
-                      <span>{destination.name}</span>
-                    </Link>
+                    <FolderIcon />
+                    <span>{destination.name}</span>
                   </SidebarMenuButton>
                   <SidebarMenuBadge>
                     {

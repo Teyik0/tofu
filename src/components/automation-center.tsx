@@ -319,13 +319,18 @@ function RuleFields({
         <Field>
           <FieldLabel htmlFor="automation-matcher">Matching</FieldLabel>
           <Select
+            items={[
+              { label: "Nom exact du titre", value: "exact" },
+              { label: "Pattern sur le nom de sortie", value: "pattern" },
+              { label: "Jev + secours exact", value: "jev" },
+            ]}
             onValueChange={(value) => set("matchMode", value as AutomationDraft["matchMode"])}
             value={draft.matchMode}
           >
             <SelectTrigger className="w-full" id="automation-matcher">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent position="popper">
+            <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
                 <SelectItem value="exact">Nom exact du titre</SelectItem>
                 <SelectItem value="pattern">Pattern sur le nom de sortie</SelectItem>
@@ -730,15 +735,13 @@ export function AutomationCenter({
                         <FieldGroup className="discovery-sources">
                           <Field orientation="horizontal">
                             <Checkbox
-                              checked={
-                                selectedSources.length === activeSources.length
-                                  ? true
-                                  : selectedSources.length
-                                    ? "indeterminate"
-                                    : false
-                              }
+                              checked={selectedSources.length === activeSources.length}
                               disabled={busy}
                               id="discovery-all-sources"
+                              indeterminate={
+                                selectedSources.length > 0 &&
+                                selectedSources.length < activeSources.length
+                              }
                               onCheckedChange={(checked) => {
                                 setExcludedSources(
                                   checked === true ? [] : activeSources.map((plugin) => plugin.id)
@@ -1176,11 +1179,22 @@ function DestinationField({
   return (
     <Field className="automation-target">
       <FieldLabel htmlFor="automation-destination">Thread de destination</FieldLabel>
-      <Select onValueChange={onChange} value={value}>
+      <Select
+        items={data.destinations.map((destination) => ({
+          label: destination.name,
+          value: destination.id,
+        }))}
+        onValueChange={(next) => {
+          if (next !== null) {
+            onChange(next);
+          }
+        }}
+        value={value}
+      >
         <SelectTrigger className="w-full" id="automation-destination">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent position="popper">
+        <SelectContent alignItemWithTrigger={false}>
           <SelectGroup>
             {data.destinations.map((destination) => (
               <SelectItem key={destination.id} value={destination.id}>

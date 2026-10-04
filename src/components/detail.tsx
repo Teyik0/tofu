@@ -319,6 +319,11 @@ export const Detail = memo(function DetailView({
                         <td>
                           <Select
                             disabled={busy}
+                            items={[
+                              { label: "Ignorer", value: "skip" },
+                              { label: "Normale", value: "normal" },
+                              { label: "Haute", value: "high" },
+                            ]}
                             onValueChange={(value) =>
                               void act(`${base}/files/${file.index}`, "PUT", {
                                 priority: value as FilePriority,
@@ -329,7 +334,7 @@ export const Detail = memo(function DetailView({
                             <SelectTrigger aria-label={`Priorité de ${file.name}`} size="sm">
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent position="popper">
+                            <SelectContent alignItemWithTrigger={false}>
                               <SelectGroup>
                                 <SelectItem value="skip">Ignorer</SelectItem>
                                 <SelectItem value="normal">Normale</SelectItem>

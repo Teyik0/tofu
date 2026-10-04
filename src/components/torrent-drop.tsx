@@ -42,9 +42,7 @@ export function TorrentDrop() {
   useEffect(() => {
     const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files");
     const modalOpen = () =>
-      document.querySelector(
-        '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]'
-      );
+      document.querySelector('[role="dialog"][data-open], [role="alertdialog"][data-open]');
     const enter = (event: DragEvent) => {
       if (hasFiles(event) && !modalOpen()) {
         event.preventDefault();

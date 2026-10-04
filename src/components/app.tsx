@@ -197,11 +197,19 @@ export function App({
                 </InputGroupAddon>
               )}
             </InputGroup>
-            <Select onValueChange={(value) => setFilter(value as Filter)} value={filter}>
+            <Select
+              items={filters.map((item) => ({ label: item.label, value: item.id }))}
+              onValueChange={(value) => {
+                if (value !== null) {
+                  setFilter(value);
+                }
+              }}
+              value={filter}
+            >
               <SelectTrigger aria-label="Filtrer les torrents par état" size="sm">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent align="end" position="popper">
+              <SelectContent align="end" alignItemWithTrigger={false}>
                 <SelectGroup>
                   {filters.map((item) => (
                     <SelectItem key={item.id} value={item.id}>
@@ -245,11 +253,23 @@ export function App({
                 <Icon name="play" size={17} />
               </Button>
             </ActionTooltip>
-            <Select onValueChange={(value) => setSort(value as typeof sort)} value={sort}>
+            <Select
+              items={[
+                { label: "Plus récents", value: "added" },
+                { label: "Nom", value: "name" },
+                { label: "Progression", value: "progress" },
+              ]}
+              onValueChange={(value) => {
+                if (value !== null) {
+                  setSort(value as typeof sort);
+                }
+              }}
+              value={sort}
+            >
               <SelectTrigger aria-label="Trier les torrents" size="sm">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent align="end" position="popper">
+              <SelectContent align="end" alignItemWithTrigger={false}>
                 <SelectGroup>
                   <SelectItem value="added">Plus récents</SelectItem>
                   <SelectItem value="name">Nom</SelectItem>

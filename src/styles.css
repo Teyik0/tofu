@@ -1660,7 +1660,7 @@ input[type="file"]::file-selector-button {
   border-color: transparent;
 }
 .toolbar-controls > [data-slot="select-trigger"]:hover,
-.toolbar-controls > [data-slot="select-trigger"][data-state="open"] {
+.toolbar-controls > [data-slot="select-trigger"][data-popup-open] {
   background: var(--accent);
 }
 .row-progress [data-slot="progress"] {

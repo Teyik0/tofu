@@ -1,4 +1,3 @@
-import { XMLParser, XMLValidator } from "fast-xml-parser";
 import type { FeedRelease, SourcePluginId } from "../../types";
 
 const feedExpression1 = /^([\d.]+)\s*(Bytes|B|KiB|MiB|GiB|TiB|KB|MB|GB)$/i;
@@ -33,23 +32,23 @@ const feedExpression28 = /<[^>]*>/g;
 const feedExpression29 = /href=["']([^"']*\/download\/\d+\.torrent)["']/;
 
 interface XmlAttribute {
-  "@_name"?: string;
-  "@_value"?: string | number;
+  "@name"?: string;
+  "@value"?: string;
 }
 interface RssItem {
-  enclosure?: { "@_url"?: string; "@_length"?: string | number };
+  enclosure?: { "@url"?: string; "@length"?: string };
   guid?: string | { "#text"?: string };
   link?: string;
   "nyaa:infoHash"?: string;
   "nyaa:seeders"?: number | string;
   "nyaa:size"?: string;
   pubDate?: string;
-  size?: number;
+  size?: string;
   title?: string;
   "torznab:attr"?: XmlAttribute | XmlAttribute[];
 }
 interface RssDocument {
-  rss?: { channel?: { item?: RssItem | RssItem[] } };
+  rss?: { channel?: { item?: RssItem | RssItem[] } | "" };
 }
 interface TsundereEntry {
   codec?: string;
@@ -124,26 +123,30 @@ function date(value: string | undefined) {
 }
 
 export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] {
-  if (body.length > 8 * 1024 * 1024 || XMLValidator.validate(body) !== true) {
+  if (body.length > 8 * 1024 * 1024) {
     throw new Error("Flux RSS invalide");
   }
-  const document = new XMLParser({
-    ignoreAttributes: false,
-    parseTagValue: false,
-    processEntities: true,
-  }).parse(body) as RssDocument;
-  if (!document.rss?.channel) {
+  let document: RssDocument;
+  try {
+    document = Bun.XML.parse(body) as RssDocument;
+  } catch (cause) {
+    throw new Error("Flux RSS invalide", { cause });
+  }
+  if (document.rss?.channel === undefined) {
     throw new Error("Flux RSS absent");
+  }
+  if (document.rss.channel === "") {
+    return [];
   }
   const items = document.rss.channel.item;
   return asArray(items).flatMap((item) => {
-    const downloadUrl = item.enclosure?.["@_url"] ?? item.link;
+    const downloadUrl = item.enclosure?.["@url"] ?? item.link;
     if (typeof item.title !== "string" || !validDownload(downloadUrl)) {
       return [];
     }
     const attributes = asArray(item["torznab:attr"]);
     const attribute = (name: string) =>
-      attributes.find((entry) => entry["@_name"] === name)?.["@_value"];
+      attributes.find((entry) => entry["@name"] === name)?.["@value"];
     const guid = typeof item.guid === "string" ? item.guid : item.guid?.["#text"];
     return [
       {
@@ -157,8 +160,7 @@ export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] 
         pageUrl: guid?.startsWith("http") ? guid : null,
         publishedAt: date(item.pubDate),
         seeders: numberOrNull(item["nyaa:seeders"] ?? attribute("seeders")),
-        size:
-          numberOrNull(item.size ?? item.enclosure?.["@_length"]) ?? fileSize(item["nyaa:size"]),
+        size: numberOrNull(item.size ?? item.enclosure?.["@length"]) ?? fileSize(item["nyaa:size"]),
         sourceId,
         title: item.title,
       },

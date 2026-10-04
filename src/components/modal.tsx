@@ -322,11 +322,26 @@ export function Modal({
               </FieldDescription>
               <Field>
                 <FieldLabel htmlFor="drop-destination">Onglet de destination</FieldLabel>
-                <Select disabled={busy} onValueChange={setDestinationId} value={destinationId}>
+                <Select
+                  disabled={busy}
+                  items={[
+                    ...data.destinations.map((destination) => ({
+                      label: destination.name,
+                      value: destination.id,
+                    })),
+                    { label: "Créer un nouvel onglet…", value: "new" },
+                  ]}
+                  onValueChange={(value) => {
+                    if (value !== null) {
+                      setDestinationId(value);
+                    }
+                  }}
+                  value={destinationId}
+                >
                   <SelectTrigger className="w-full" id="drop-destination">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent position="popper">
+                  <SelectContent alignItemWithTrigger={false}>
                     <SelectGroup>
                       {data.destinations.map((destination) => (
                         <SelectItem key={destination.id} value={destination.id}>
@@ -381,11 +396,23 @@ export function Modal({
               </Field>
               <Field>
                 <FieldLabel htmlFor="torrent-destination">Onglet de destination</FieldLabel>
-                <Select disabled={busy} onValueChange={setDestinationId} value={destinationId}>
+                <Select
+                  disabled={busy}
+                  items={data.destinations.map((destination) => ({
+                    label: destination.name,
+                    value: destination.id,
+                  }))}
+                  onValueChange={(value) => {
+                    if (value !== null) {
+                      setDestinationId(value);
+                    }
+                  }}
+                  value={destinationId}
+                >
                   <SelectTrigger className="w-full" id="torrent-destination">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent position="popper">
+                  <SelectContent alignItemWithTrigger={false}>
                     <SelectGroup>
                       {data.destinations.map((destination) => (
                         <SelectItem key={destination.id} value={destination.id}>

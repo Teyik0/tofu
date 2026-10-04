@@ -4,6 +4,12 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated shadcn components from Radix UI to Base UI, including keyboard interactions and native smoke checks.
+- Replaced the external XML parser with Bun's native XML parser for RSS and Torznab feeds.
+- Shortened the README, translated it into English, and moved detailed documentation into separate guides.
+
 ### Added
 
 - Torrent downloads under Bun/WebTorrent with real transfer, peer and tracker statistics.
