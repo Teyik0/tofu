@@ -106,7 +106,7 @@ if (Bun.argv[2] === "validate") {
 } else if (Bun.argv[2] === "publish") {
   const tag = process.env.GITHUB_REF_NAME;
   const repository = process.env.GITHUB_REPOSITORY;
-  if (tag !== `v${version}` || repository !== "Teyik0/Tofu") {
+  if (tag !== `v${version}` || repository?.toLowerCase() !== "teyik0/tofu") {
     throw new Error("Incorrect publication tag or repository");
   }
   await mkdir("artifacts", { recursive: true });
