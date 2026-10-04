@@ -1,0 +1,7 @@
+# Proposition essaim
+
+Image : `tofu-swarm-proposal.png`, générée avec imagegen intégré. Version retenue pour l’icône native de Tofu.
+
+Prompt :
+
+> Generate ONE distinctive native macOS application icon proposal for Tofu, a minimal BitTorrent downloader. Different direction from a download arrow: an elegant peer-to-peer swarm emblem. A large central warm-ivory file tile with a gently folded upper-right corner, its lower-left area assembled from three sage square pieces with narrow clean gaps, suggesting a torrent file being assembled. Three small rounded-square sage peer nodes surround the file at upper left, lower left and right, connected to it with three short thick simple ivory or sage links. Only three peer nodes, generous negative space, no complex network mesh. Center the cohesive emblem on a muted deep olive rounded-square macOS icon tile. Extremely clear geometric silhouette at small Dock sizes, refined nearly flat design with subtle sculptural depth, soft studio lighting and restrained shadows. Calm, premium and minimal. Palette deep olive #526442, warm ivory #f5f4e9, sage #a6b995. Square composition with the app icon tile occupying 86 percent of the canvas, equal outer margins, genuinely transparent outside the rounded-square tile. No download arrow, no receiving tray, no magnets, no letters, no words, no tofu or food, no mockup, no multiple variants. Deliver only the single finished app icon.

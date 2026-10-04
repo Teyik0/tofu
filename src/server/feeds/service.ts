@@ -1,0 +1,1062 @@
+import { Database } from "bun:sqlite";
+import { chmod, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import parseTorrent from "parse-torrent";
+import type {
+  AutomationDecision,
+  AutomationDraft,
+  AutomationRule,
+  AutomationState,
+  DiscoveryResult,
+  FeedRelease,
+  PluginId,
+  PluginState,
+  SourcePluginId,
+} from "../../types";
+import { type TorrentEngine, UserError } from "../engine";
+import { parseNyaaHtml, parseRss, parseTsundere } from "../plugins/feeds";
+import {
+  interpretationQuestions,
+  type JevQuestions,
+  type JevResult,
+  matchQuestions,
+  parseJevResponse,
+  safeReleaseState,
+} from "../plugins/jev";
+import { type PluginEndpoints, plugins } from "../plugins/registry";
+import { AniListService } from "./anilist";
+import {
+  classicDiscovery,
+  DiscoveryResolver,
+  matchesClassicDiscovery,
+  matchesDiscovery,
+  parseDiscovery,
+} from "./discovery";
+import {
+  compareQuality,
+  compareReleases,
+  contentKey,
+  interpretLocally,
+  localMatch,
+  preferred,
+} from "./rules";
+
+const feedExpression1 = /^(Source indisponible|Flux)/;
+
+export interface AutomationOptions {
+  dataDir: string;
+  endpoints: PluginEndpoints;
+  engine: () => TorrentEngine;
+  now: () => number;
+}
+interface StoredPlugin extends PluginState {
+  apiKey: string;
+  callsDay: string;
+}
+
+export class AutomationService {
+  private readonly db: Database;
+  private readonly plugins = new Map<PluginId, StoredPlugin>();
+  private closed = false;
+  private isClosed(): boolean {
+    return this.closed;
+  }
+  private isEnabled(id: PluginId): boolean {
+    return this.plugins.get(id)?.enabled === true;
+  }
+  private readonly requests = new Map<PluginId, Set<AbortController>>();
+  private readonly rules = new Map<string, AutomationRule>();
+  private readonly decisions = new Map<string, AutomationDecision>();
+  private readonly runs = new Map<string, Promise<AutomationState>>();
+  private readonly replacements = new Map<string, Promise<void>>();
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly startupState: { started: boolean } = { started: false };
+  private readonly releases = new Map<string, FeedRelease>();
+  private readonly additions = new Map<string, Promise<{ id: string }>>();
+  private c411Queue: Promise<void> = Promise.resolve();
+  private c411NextAt = 0;
+  private readonly discoveryResolver = new DiscoveryResolver();
+
+  readonly options: AutomationOptions;
+  readonly anilist: AniListService;
+  private constructor(options: AutomationOptions) {
+    this.options = options;
+    this.db = new Database(join(options.dataDir, "feeds.sqlite"), { create: true, strict: true });
+    this.db.exec(
+      "PRAGMA journal_mode = WAL; CREATE TABLE IF NOT EXISTS plugins (id TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    );
+    this.db.exec(
+      "CREATE TABLE IF NOT EXISTS automations (id TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    );
+    this.db.exec(
+      "CREATE TABLE IF NOT EXISTS judgements (id TEXT PRIMARY KEY, value TEXT NOT NULL, createdAt INTEGER NOT NULL)"
+    );
+    this.db.exec("CREATE TABLE IF NOT EXISTS releases (id TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    for (const plugin of plugins) {
+      const row = this.db
+        .query<{ value: string }, [string]>("SELECT value FROM plugins WHERE id = ?")
+        .get(plugin.id);
+      this.plugins.set(plugin.id, {
+        ...plugin,
+        apiKey: "",
+        callsDay: "",
+        callsToday: 0,
+        checkedAt: null,
+        dailyLimit: 1000,
+        enabled: false,
+        error: null,
+        hasApiKey: false,
+        ...(row ? (JSON.parse(row.value) as Partial<StoredPlugin>) : {}),
+      });
+    }
+    for (const row of this.db.query<{ value: string }, []>("SELECT value FROM automations").all()) {
+      const rule = JSON.parse(row.value) as AutomationRule;
+      this.rules.set(rule.id, rule);
+    }
+    for (const row of this.db.query<{ value: string }, []>("SELECT value FROM decisions").all()) {
+      const decision = JSON.parse(row.value) as AutomationDecision;
+      this.decisions.set(decision.id, decision);
+    }
+    for (const row of this.db.query<{ value: string }, []>("SELECT value FROM releases").all()) {
+      const release = JSON.parse(row.value) as FeedRelease;
+      this.releases.set(`${release.sourceId}:${release.id}`, release);
+    }
+    this.anilist = new AniListService(this.db, {
+      destinationExists: (id) =>
+        options
+          .engine()
+          .snapshot(null, false)
+          .destinations.some((destination) => destination.id === id),
+      destinations: () => options.engine().snapshot(null, false).destinations,
+      enabled: () => this.isEnabled("anilist"),
+      enableRule: (id, enabled) => {
+        const rule = this.rules.get(id);
+        if (rule) {
+          this.persistRule({ ...rule, enabled, nextRunAt: this.options.now() });
+        }
+      },
+      endpoint: options.endpoints.anilist ?? "https://graphql.anilist.co",
+      now: options.now,
+      rule: (id) => this.rules.get(id),
+      run: (id) => this.run(id),
+      save: (id, draft) => this.save(id, draft),
+      saveDestination: (input) => options.engine().saveDestination(null, input),
+      setToken: (apiKey) => {
+        this.configure("anilist", { apiKey, enabled: true });
+      },
+      token: () => this.plugins.get("anilist")?.apiKey ?? "",
+      tokenEndpoint: options.endpoints.anilistToken ?? "https://anilist.co/api/v2/oauth/token",
+    });
+  }
+  static async open(options: AutomationOptions) {
+    await mkdir(options.dataDir, { mode: 0o700, recursive: true });
+    const service = new AutomationService(options);
+    await chmod(join(options.dataDir, "feeds.sqlite"), 0o600);
+    return service;
+  }
+  private ruleStatus(rule: AutomationRule): AutomationRule["status"] {
+    if (!rule.enabled) {
+      return "paused";
+    }
+    if (!rule.sources.some((id) => this.isEnabled(id))) {
+      return "source-disabled";
+    }
+    if (this.runs.has(rule.id)) {
+      return "running";
+    }
+    if (rule.error) {
+      return "error";
+    }
+    return "active";
+  }
+  snapshot(): AutomationState {
+    return {
+      automations: Array.from(this.rules.values(), (rule) => ({
+        ...rule,
+        status: this.ruleStatus(rule),
+      })),
+      decisions: Array.from(this.decisions.values())
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 300)
+        .map((decision) => ({
+          ...decision,
+          release: this.publicRelease(decision.release),
+          supersedes: decision.supersedes
+            ? { ...decision.supersedes, release: this.publicRelease(decision.supersedes.release) }
+            : null,
+        })),
+      plugins: Array.from(this.plugins.values(), ({ apiKey, callsDay, ...plugin }) => ({
+        ...plugin,
+        callsToday:
+          callsDay === new Date(this.options.now()).toISOString().slice(0, 10)
+            ? plugin.callsToday
+            : 0,
+        hasApiKey: Boolean(apiKey),
+      })),
+      updatedAt: this.options.now(),
+    };
+  }
+  private publicRelease(release: FeedRelease) {
+    return release.sourceId === "c411"
+      ? {
+          ...release,
+          downloadUrl: `private:c411:${release.id}`,
+          pageUrl: release.pageUrl?.includes("apikey=") ? null : release.pageUrl,
+        }
+      : release;
+  }
+  configure(id: string, input: { enabled: boolean; apiKey?: string; dailyLimit?: number }) {
+    const plugin = this.plugins.get(id as PluginId);
+    if (!plugin) {
+      throw new UserError("Plugin inconnu", { status: 404 });
+    }
+    const next = {
+      ...plugin,
+      ...input,
+      apiKey: input.apiKey === undefined ? plugin.apiKey : input.apiKey.trim(),
+      error: null,
+    };
+    if (next.enabled && (id === "c411" || id === "jev") && !next.apiKey) {
+      throw new UserError("Ajoutez votre clé API avant d’activer ce plugin", { status: 400 });
+    }
+    this.plugins.set(next.id, next);
+    if (!next.enabled) {
+      for (const controller of this.requests.get(next.id) ?? []) {
+        controller.abort();
+      }
+      if (next.id === "anilist") {
+        this.anilist.suspend();
+      }
+    }
+    this.db
+      .query("INSERT OR REPLACE INTO plugins VALUES (?, ?)")
+      .run(next.id, JSON.stringify(next));
+    return this.snapshot();
+  }
+  async testPlugin(id: string) {
+    if (id === "anilist") {
+      await this.anilist.list();
+    } else if (id === "jev") {
+      await this.askJev(
+        { message: "connection test" },
+        { connected: { instructions: "Does the message say connection test?", type: "noul" } }
+      );
+    } else if (id === "nyaa" || id === "tsundere" || id === "c411") {
+      await this.fetchSource(id, "");
+    } else {
+      throw new UserError("Plugin inconnu", { status: 404 });
+    }
+    return this.snapshot();
+  }
+  private reserveC411(controller: AbortController) {
+    const reservation = this.c411Queue.then(async () => {
+      controller.signal.throwIfAborted();
+      const delay = Math.max(0, this.c411NextAt - Date.now());
+      if (delay > 0) {
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            clearTimeout(timer);
+            reject(controller.signal.reason);
+          };
+          const timer = setTimeout(() => {
+            controller.signal.removeEventListener("abort", abort);
+            resolve();
+          }, delay);
+          controller.signal.addEventListener("abort", abort, { once: true });
+        });
+      }
+      controller.signal.throwIfAborted();
+      this.c411NextAt = Date.now() + 4100;
+    });
+    this.c411Queue = reservation.catch(() => undefined);
+    return reservation;
+  }
+  private async fetchSource(sourceId: SourcePluginId, query: string) {
+    const plugin = this.plugins.get(sourceId);
+    if (!plugin?.enabled) {
+      return [];
+    }
+    const url = new URL(this.options.endpoints[sourceId]);
+    if (sourceId === "nyaa") {
+      url.searchParams.set("page", "rss");
+      url.searchParams.set("q", query);
+    }
+    if (sourceId === "tsundere") {
+      url.searchParams.set("limit", "250");
+      url.searchParams.set("provider", "nyaa.si");
+    }
+    if (sourceId === "c411") {
+      url.searchParams.set("t", "search");
+      url.searchParams.set("q", query);
+      url.searchParams.set("apikey", plugin.apiKey);
+      url.searchParams.set("limit", "100");
+    }
+    const controller = new AbortController();
+    const active = this.requests.get(sourceId) ?? new Set<AbortController>();
+    active.add(controller);
+    this.requests.set(sourceId, active);
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      if (sourceId === "c411") {
+        await this.reserveC411(controller);
+      }
+      timeout = setTimeout(() => controller.abort(), 12_000);
+      const response = await fetch(url, { signal: controller.signal });
+      let releases: FeedRelease[];
+      if (sourceId === "nyaa" && !response.ok) {
+        url.searchParams.delete("page");
+        const fallback = await fetch(url, { signal: controller.signal });
+        if (!fallback.ok) {
+          throw new Error(`Source indisponible (HTTP ${fallback.status})`);
+        }
+        releases = parseNyaaHtml(await fallback.text(), url.href);
+      } else {
+        if (!response.ok) {
+          throw new Error(`Source indisponible (HTTP ${response.status})`);
+        }
+        const text = await response.text();
+        releases = sourceId === "tsundere" ? parseTsundere(text) : parseRss(text, sourceId);
+      }
+      if (!this.plugins.get(sourceId)?.enabled || this.isClosed()) {
+        return [];
+      }
+      plugin.error = null;
+      plugin.checkedAt = this.options.now();
+      return releases;
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      active.delete(controller);
+    }
+  }
+  private async discovery(query: string, sources: SourcePluginId[]): Promise<DiscoveryResult> {
+    const result: DiscoveryResult = { errors: [], releases: [] };
+    await Promise.all(
+      [...new Set(sources)].map(async (sourceId) => {
+        try {
+          result.releases.push(...(await this.fetchSource(sourceId, query)));
+        } catch (cause) {
+          if (!this.plugins.get(sourceId)?.enabled || this.isClosed()) {
+            return;
+          }
+          const message =
+            cause instanceof Error && feedExpression1.test(cause.message)
+              ? cause.message
+              : "Connexion à la source impossible";
+          result.errors.push({ message, sourceId });
+          const plugin = this.plugins.get(sourceId);
+          if (plugin) {
+            plugin.error = message;
+            plugin.checkedAt = this.options.now();
+          }
+        }
+      })
+    );
+    if (this.isClosed()) {
+      return { errors: [], releases: [] };
+    }
+    for (const release of result.releases) {
+      const key = `${release.sourceId}:${release.id}`;
+      this.releases.set(key, release);
+      this.db
+        .query("INSERT OR REPLACE INTO releases VALUES (?, ?)")
+        .run(key, JSON.stringify(release));
+    }
+    return result;
+  }
+  async discover(query: string, sources: SourcePluginId[] | undefined) {
+    const selected: SourcePluginId[] = sources ?? ["nyaa", "tsundere", "c411"];
+    const active = [...new Set(selected)].filter((id) => this.isEnabled(id));
+    const jev = this.plugins.get("jev");
+    if (!(jev?.enabled && jev.apiKey)) {
+      const search = classicDiscovery(query);
+      if (!(search.title && active.length) || this.isClosed()) {
+        return { errors: [], releases: [], search };
+      }
+      const result = await this.discovery(query, active);
+      return {
+        ...result,
+        releases: result.releases
+          .filter(
+            (release) => release.sourceId !== "tsundere" || matchesClassicDiscovery(query, release)
+          )
+          .map((release) => this.publicRelease(release)),
+        search,
+      };
+    }
+    const search = parseDiscovery(query);
+    if (!(search.title && active.length) || this.isClosed()) {
+      return { errors: [], releases: [], search };
+    }
+    await this.discoveryResolver.resolve(
+      search,
+      this.options.endpoints.anilist ?? "https://graphql.anilist.co"
+    );
+    if (!search.queries.length) {
+      search.queries = [search.title];
+    }
+    const releases = new Map<string, FeedRelease>();
+    const errors = new Map<SourcePluginId, DiscoveryResult["errors"][number]>();
+    await Promise.all(
+      active.map(async (sourceId) => {
+        // Tsundere exposes a recent feed, not a search endpoint: fetch it once and filter locally.
+        const queries = sourceId === "tsundere" ? [search.title] : search.queries;
+        for (const variant of queries) {
+          if (this.isClosed() || !this.isEnabled(sourceId)) {
+            break;
+          }
+          // biome-ignore lint/performance/noAwaitInLoops: bound each provider's requests and preserve C411 rate limiting.
+          const result = await this.discovery(variant, [sourceId]);
+          for (const release of result.releases) {
+            if (matchesDiscovery(search, release)) {
+              releases.set(`${release.sourceId}:${release.id}`, release);
+            }
+          }
+          const [error] = result.errors;
+          if (error) {
+            errors.set(sourceId, error);
+            break;
+          }
+        }
+      })
+    );
+    return {
+      errors: [...errors.values()],
+      releases: [...releases.values()]
+        .filter((release) => !this.isClosed() && this.isEnabled(release.sourceId))
+        .map((release) => this.publicRelease(release)),
+      search,
+    };
+  }
+  async addRelease(
+    sourceId: SourcePluginId,
+    id: string,
+    destinationId: string,
+    paused: boolean,
+    allowed?: () => boolean
+  ) {
+    const release = this.releases.get(`${sourceId}:${id}`);
+    if (!release) {
+      throw new UserError("Recherchez cette sortie avant de l’ajouter", { status: 404 });
+    }
+    const key = release.infoHash ?? `${sourceId}:${id}`;
+    const pending = this.additions.get(key);
+    if (pending) {
+      return pending;
+    }
+    const task = this.downloadRelease(release, destinationId, paused, allowed);
+    this.additions.set(key, task);
+    try {
+      return await task;
+    } finally {
+      this.additions.delete(key);
+    }
+  }
+  private async downloadRelease(
+    release: FeedRelease,
+    destinationId: string,
+    paused: boolean,
+    allowed: (() => boolean) | undefined
+  ) {
+    if (!this.isEnabled(release.sourceId) || this.isClosed()) {
+      throw new UserError("Plugin désactivé", { status: 409 });
+    }
+    let input: string | Uint8Array = release.downloadUrl;
+    if (!input.startsWith("magnet:")) {
+      const controller = new AbortController();
+      const active = this.requests.get(release.sourceId) ?? new Set<AbortController>();
+      active.add(controller);
+      this.requests.set(release.sourceId, active);
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+      try {
+        const response = await fetch(input, { signal: controller.signal });
+        if (!response.ok) {
+          throw new UserError(`Fichier torrent indisponible (HTTP ${response.status})`, {
+            status: 502,
+          });
+        }
+        input = new Uint8Array(await response.arrayBuffer());
+        if (input.byteLength > 8 * 1024 * 1024) {
+          throw new UserError("Fichier torrent trop volumineux", { status: 400 });
+        }
+      } finally {
+        clearTimeout(timeout);
+        active.delete(controller);
+      }
+    }
+    const parsed = await parseTorrent(input);
+    if (this.isClosed() || !this.isEnabled(release.sourceId)) {
+      throw new UserError("Plugin désactivé", { status: 409 });
+    }
+    if (allowed && !allowed()) {
+      throw new UserError("Automatisation modifiée ou sortie ignorée", { status: 409 });
+    }
+    const existing = this.options
+      .engine()
+      .snapshot(null, false)
+      .torrents.find((torrent) => torrent.id === parsed.infoHash);
+    if (existing) {
+      return { id: existing.id };
+    }
+    return this.options.engine().add(input, { destinationId, paused });
+  }
+  private async askJev(state: object, questions: JevQuestions) {
+    const plugin = this.plugins.get("jev");
+    if (!(plugin?.enabled && plugin.apiKey)) {
+      return null;
+    }
+    const key = Bun.SHA256.hash(JSON.stringify({ model: "jev-latest", questions, state }), "hex");
+    const cached = this.db
+      .query<{ value: string; createdAt: number }, [string]>(
+        "SELECT value, createdAt FROM judgements WHERE id = ?"
+      )
+      .get(key);
+    if (cached && cached.createdAt > this.options.now() - 86_400_000) {
+      return JSON.parse(cached.value) as JevResult;
+    }
+    const day = new Date(this.options.now()).toISOString().slice(0, 10);
+    if (plugin.callsDay !== day) {
+      plugin.callsDay = day;
+      plugin.callsToday = 0;
+    }
+    if (plugin.callsToday >= plugin.dailyLimit) {
+      throw new UserError("Plafond quotidien Jev atteint", { status: 429 });
+    }
+    plugin.callsToday += 1;
+    this.db
+      .query("INSERT OR REPLACE INTO plugins VALUES (?, ?)")
+      .run(plugin.id, JSON.stringify(plugin));
+    const controller = new AbortController();
+    const active = this.requests.get("jev") ?? new Set<AbortController>();
+    active.add(controller);
+    this.requests.set("jev", active);
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const response = await fetch(this.options.endpoints.jev, {
+        body: JSON.stringify({ model: "jev-latest", questions, state }),
+        headers: { authorization: `Bearer ${plugin.apiKey}`, "content-type": "application/json" },
+        method: "POST",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new UserError(`Jev indisponible (HTTP ${response.status})`, { status: 503 });
+      }
+      const result = parseJevResponse(await response.json(), questions);
+      if (this.isClosed() || !this.isEnabled("jev")) {
+        throw new UserError("Plugin Jev désactivé", { status: 409 });
+      }
+      plugin.error = null;
+      plugin.checkedAt = this.options.now();
+      this.db
+        .query("INSERT OR REPLACE INTO judgements VALUES (?, ?, ?)")
+        .run(key, JSON.stringify(result), this.options.now());
+      return result;
+    } catch (cause) {
+      if (plugin.enabled) {
+        plugin.error = "Évaluation Jev indisponible";
+      }
+      throw cause instanceof UserError
+        ? cause
+        : new UserError("Connexion à Jev impossible", { status: 503 });
+    } finally {
+      clearTimeout(timeout);
+      active.delete(controller);
+    }
+  }
+  async interpret(query: string, destinationId: string) {
+    const draft = interpretLocally(query, destinationId);
+    const interpretation = interpretationQuestions(draft);
+    const result = await this.askJev({ query }, interpretation.questions);
+    if (!result) {
+      return draft;
+    }
+    const read = <T>(id: string, values: T[], fallback: T) => {
+      const answer = result.answers[id];
+      return answer?.confidence !== undefined && answer.confidence >= 0.8
+        ? (values[Number(answer.choice)] ?? fallback)
+        : fallback;
+    };
+    return {
+      ...draft,
+      languages: read("languages", interpretation.languages, draft.languages),
+      matchMode: "jev" as const,
+      priority: read("priority", interpretation.priorities, draft.priority),
+      resolutions: read("resolutions", interpretation.resolutions, draft.resolutions),
+      sources: read("sources", interpretation.orders, draft.sources),
+      title: read("title", interpretation.titles, draft.title),
+    };
+  }
+  private async evaluate(draft: AutomationDraft, release: FeedRelease) {
+    const reason = localMatch(draft, release);
+    if (reason) {
+      return { probability: null, reason, uncertain: false };
+    }
+    if (draft.matchMode !== "jev") {
+      return { probability: null, reason: null, uncertain: false };
+    }
+    if (!this.isEnabled("jev")) {
+      const fallback = localMatch({ ...draft, matchMode: "exact" }, release);
+      return { probability: null, reason: fallback, uncertain: false };
+    }
+    const answer = await this.askJev(
+      { query: draft.query, release: safeReleaseState(release) },
+      matchQuestions()
+    );
+    const probability = Math.min(
+      answer?.answers.identity?.noul ?? 0.5,
+      answer?.answers.requirements?.noul ?? 0.5
+    );
+    return {
+      probability,
+      reason: probability <= 0.2 ? "La sortie ne correspond pas à la demande" : null,
+      uncertain: probability < 0.95,
+    };
+  }
+  private persistRule(rule: AutomationRule) {
+    this.rules.set(rule.id, rule);
+    this.db
+      .query("INSERT OR REPLACE INTO automations VALUES (?, ?)")
+      .run(rule.id, JSON.stringify(rule));
+  }
+  private persistDecision(decision: AutomationDecision) {
+    this.decisions.set(decision.id, decision);
+    this.db
+      .query("INSERT OR REPLACE INTO decisions VALUES (?, ?)")
+      .run(decision.id, JSON.stringify(decision));
+  }
+  private rule(id: string) {
+    const rule = this.rules.get(id);
+    if (!rule) {
+      throw new UserError("Automatisation inconnue", { status: 404 });
+    }
+    return rule;
+  }
+  async save(id: string | null, draft: AutomationDraft) {
+    if (
+      !this.options
+        .engine()
+        .snapshot(null, false)
+        .destinations.some((destination) => destination.id === draft.destinationId)
+    ) {
+      throw new UserError("Destination inconnue", { status: 400 });
+    }
+    if (draft.matchMode === "pattern") {
+      if (draft.title.length > 256) {
+        throw new UserError("Pattern trop long", { status: 400 });
+      }
+      try {
+        new RegExp(draft.title, "iu").test("");
+      } catch (cause) {
+        throw new UserError("Pattern invalide", { cause, status: 400 });
+      }
+    }
+    if (!(draft.title.trim() && draft.sources.length)) {
+      throw new UserError("Indiquez un titre et au moins une source", { status: 400 });
+    }
+    const previous = id ? this.rule(id) : null;
+    const rule: AutomationRule = {
+      ...draft,
+      createdAt: previous?.createdAt ?? this.options.now(),
+      deleteReplacedFiles: draft.deleteReplacedFiles === true,
+      error: null,
+      id: previous?.id ?? crypto.randomUUID(),
+      lastRunAt: previous?.lastRunAt ?? null,
+      nextRunAt: this.options.now(),
+      status: "active",
+    };
+    if (!(previous || draft.includeExisting)) {
+      const result = await this.discovery(draft.title, draft.sources);
+      for (const release of result.releases) {
+        // biome-ignore lint/performance/noAwaitInLoops: validate identity before recording a baseline; stop on provider failure.
+        const evaluation = await this.evaluate(draft, release);
+        if (!(evaluation.reason || evaluation.uncertain)) {
+          this.persistDecision({
+            automationId: rule.id,
+            contentKey: contentKey(release),
+            createdAt: this.options.now(),
+            deadline: null,
+            id: `${rule.id}:${contentKey(release)}`,
+            probability: null,
+            reason: "Présent avant l’activation de la règle",
+            release,
+            status: "ignored",
+            torrentId: null,
+          });
+        }
+      }
+    }
+    this.persistRule(rule);
+    return rule;
+  }
+  remove(id: string) {
+    this.rule(id);
+    this.rules.delete(id);
+    this.db.query("DELETE FROM automations WHERE id = ?").run(id);
+    return { ok: true };
+  }
+  async preview(draft: AutomationDraft) {
+    const result = await this.discovery(draft.title, draft.sources);
+    const candidates = await Promise.all(
+      result.releases.map(async (release) => ({
+        release,
+        ...(await this.evaluate(draft, release)),
+      }))
+    );
+    return {
+      ...result,
+      candidates: candidates
+        .sort((a, b) => compareReleases(draft, a.release, b.release))
+        .map((candidate) => ({ ...candidate, release: this.publicRelease(candidate.release) })),
+      releases: result.releases.map((release) => this.publicRelease(release)),
+    };
+  }
+  async run(id: string): Promise<AutomationState> {
+    const existing = this.runs.get(id);
+    if (existing) {
+      return existing;
+    }
+    const rule = this.rule(id);
+    const task = this.execute(rule).catch(() => {
+      if (!this.isClosed() && this.rules.get(id) === rule) {
+        rule.error = "Vérification interrompue ; nouvelle tentative planifiée";
+        rule.nextRunAt = this.options.now() + 60_000;
+        this.persistRule(rule);
+      }
+      return this.snapshot();
+    });
+    this.runs.set(id, task);
+    try {
+      return await task;
+    } finally {
+      this.runs.delete(id);
+    }
+  }
+  private async candidateGroups(rule: AutomationRule, releases: FeedRelease[]) {
+    const candidates = new Map(
+      releases.map((release) => [`${release.sourceId}:${release.id}`, release])
+    );
+    for (const decision of this.decisions.values()) {
+      if (
+        decision.automationId === rule.id &&
+        ["waiting", "adding", "error"].includes(decision.status) &&
+        this.isEnabled(decision.release.sourceId)
+      ) {
+        candidates.set(`${decision.release.sourceId}:${decision.release.id}`, decision.release);
+      }
+    }
+    const groups = new Map<string, FeedRelease[]>();
+    const evaluations = new Map<string, Awaited<ReturnType<AutomationService["evaluate"]>>>();
+    const handledHashes = new Set(
+      [...this.decisions.values()]
+        .filter((decision) => decision.status === "added")
+        .map((decision) => decision.torrentId)
+    );
+    const torrentIds = new Set(
+      this.options
+        .engine()
+        .snapshot(null, false)
+        .torrents.map((torrent) => torrent.id)
+    );
+    for (const [key, release] of candidates) {
+      const previous = this.decisions.get(`${rule.id}:${contentKey(release)}`);
+      const current = previous?.status === "added" ? previous : previous?.supersedes;
+      if (
+        (previous?.status === "added" && previous.supersedes) ||
+        previous?.status === "ignored" ||
+        (current &&
+          (!(current.torrentId && torrentIds.has(current.torrentId)) ||
+            preferred(rule, current.release) ||
+            compareQuality(rule, release, current.release) >= 0)) ||
+        (release.infoHash !== null && handledHashes.has(release.infoHash))
+      ) {
+        continue;
+      }
+      // biome-ignore lint/performance/noAwaitInLoops: charge the quota before evaluating each candidate; stop on provider failure.
+      const evaluation = await this.evaluate(rule, release);
+      if (evaluation.reason) {
+        continue;
+      }
+      evaluations.set(key, evaluation);
+      const group = groups.get(contentKey(release)) ?? [];
+      group.push(release);
+      groups.set(contentKey(release), group);
+    }
+    return { evaluations, groups };
+  }
+  private choose(
+    rule: AutomationRule,
+    key: string,
+    releases: FeedRelease[],
+    evaluations: Map<string, Awaited<ReturnType<AutomationService["evaluate"]>>>
+  ) {
+    const id = `${rule.id}:${key}`;
+    const previous = this.decisions.get(id);
+    const [release] = releases.sort((a, b) => compareReleases(rule, a, b));
+    if (
+      !release ||
+      previous?.status === "ignored" ||
+      this.isClosed() ||
+      this.rules.get(rule.id) !== rule ||
+      !this.isEnabled(release.sourceId)
+    ) {
+      return null;
+    }
+    const evaluation = evaluations.get(`${release.sourceId}:${release.id}`);
+    const deadline = previous?.deadline ?? this.options.now() + rule.waitMinutes * 60_000;
+    let status: AutomationDecision["status"] = "adding";
+    if (!rule.automatic || evaluation?.uncertain) {
+      status = "review";
+    } else if (!preferred(rule, release) && this.options.now() < deadline) {
+      status = "waiting";
+    }
+    return {
+      automationId: rule.id,
+      contentKey: key,
+      createdAt: previous?.createdAt ?? this.options.now(),
+      deadline,
+      id,
+      probability: evaluation?.probability ?? null,
+      reason: evaluation?.uncertain
+        ? "Correspondance Jev incertaine — à vérifier"
+        : "Titre et formats acceptés · classement selon les priorités",
+      release,
+      status,
+      supersedes:
+        previous?.status === "added" && previous.torrentId
+          ? { release: previous.release, torrentId: previous.torrentId }
+          : (previous?.supersedes ?? null),
+      torrentId: null,
+    } satisfies AutomationDecision;
+  }
+  private async execute(rule: AutomationRule) {
+    if (!rule.enabled || this.isClosed()) {
+      return this.snapshot();
+    }
+    await this.completeReplacements(rule);
+    const result = await this.discovery(
+      rule.matchMode === "pattern" ? "" : rule.title,
+      rule.sources
+    );
+    if (this.isClosed() || this.rules.get(rule.id) !== rule) {
+      return this.snapshot();
+    }
+    const { groups, evaluations } = await this.candidateGroups(rule, result.releases);
+    for (const [key, releases] of groups) {
+      const decision = this.choose(rule, key, releases, evaluations);
+      if (!decision) {
+        continue;
+      }
+      this.persistDecision(decision);
+      if (decision.status === "adding") {
+        // biome-ignore lint/performance/noAwaitInLoops: serialize additions so persisted decisions agree with the torrent engine.
+        await this.addDecision(decision, rule);
+      }
+    }
+    if (!this.isClosed() && this.rules.get(rule.id) === rule) {
+      rule.lastRunAt = this.options.now();
+      rule.nextRunAt = rule.lastRunAt + rule.intervalMinutes * 60_000;
+      rule.error = result.errors.length
+        ? result.errors.map((error) => error.message).join(" · ")
+        : null;
+      this.persistRule(rule);
+    }
+    return this.snapshot();
+  }
+  private async completeReplacements(rule: AutomationRule) {
+    const existing = this.replacements.get(rule.id);
+    if (existing) {
+      return existing;
+    }
+    const task = this.finishReplacements(rule);
+    this.replacements.set(rule.id, task);
+    try {
+      await task;
+    } finally {
+      this.replacements.delete(rule.id);
+    }
+  }
+  private async finishReplacements(rule: AutomationRule) {
+    for (const decision of this.decisions.values()) {
+      if (
+        decision.automationId !== rule.id ||
+        decision.status !== "added" ||
+        !decision.supersedes ||
+        !rule.enabled ||
+        this.isClosed() ||
+        this.rules.get(rule.id) !== rule
+      ) {
+        continue;
+      }
+      const { torrents } = this.options.engine().snapshot(null, false);
+      const current = torrents.find((torrent) => torrent.id === decision.torrentId);
+      if (current?.progress !== 1 || current.error) {
+        continue;
+      }
+      const oldId = decision.supersedes.torrentId;
+      const shared = [...this.decisions.values()].some(
+        (other) =>
+          other !== decision && (other.torrentId === oldId || other.supersedes?.torrentId === oldId)
+      );
+      try {
+        if (
+          oldId !== decision.torrentId &&
+          !shared &&
+          torrents.some((torrent) => torrent.id === oldId)
+        ) {
+          // biome-ignore lint/performance/noAwaitInLoops: finish each persisted replacement before the next.
+          await this.options.engine().remove(oldId, rule.deleteReplacedFiles === true);
+        }
+        decision.supersedes = null;
+        if (shared) {
+          decision.reason =
+            "Meilleure version téléchargée · ancienne version utilisée par une autre règle";
+        } else {
+          decision.reason =
+            rule.deleteReplacedFiles === true
+              ? "Meilleure version téléchargée · anciens fichiers supprimés"
+              : "Meilleure version téléchargée · anciens fichiers conservés";
+        }
+      } catch {
+        decision.reason =
+          "Meilleure version téléchargée · retrait de l’ancienne version à réessayer";
+      }
+      if (!this.isClosed()) {
+        this.persistDecision(decision);
+      }
+    }
+  }
+  private async addDecision(decision: AutomationDecision, rule: AutomationRule) {
+    if (
+      this.isClosed() ||
+      !this.plugins.get(decision.release.sourceId)?.enabled ||
+      !rule.enabled ||
+      this.rules.get(rule.id) !== rule
+    ) {
+      return;
+    }
+    try {
+      const existing = this.options
+        .engine()
+        .snapshot(null, false)
+        .torrents.find((item) => item.id === decision.release.infoHash);
+      const torrent =
+        existing ??
+        (await this.addRelease(
+          decision.release.sourceId,
+          decision.release.id,
+          rule.destinationId,
+          rule.paused,
+          () =>
+            this.rules.get(rule.id) === rule &&
+            rule.enabled &&
+            this.decisions.get(decision.id) === decision &&
+            decision.status !== "ignored"
+        ));
+      decision.torrentId = torrent.id;
+      decision.status = "added";
+      if (existing) {
+        decision.reason = "Déjà présent dans la bibliothèque";
+      } else {
+        decision.reason = decision.supersedes
+          ? "Meilleure version ajoutée · ancienne version conservée jusqu’à la fin du téléchargement"
+          : "Ajouté dans le dossier du thread";
+      }
+    } catch {
+      if (decision.status === "ignored") {
+        return;
+      }
+      decision.status = "error";
+      decision.reason =
+        "Impossible d’ajouter le torrent ; nouvelle tentative à la prochaine vérification";
+    }
+    if (!this.isClosed() && this.decisions.get(decision.id) === decision) {
+      this.persistDecision(decision);
+    }
+  }
+  async approve(id: string) {
+    const decision = this.decisions.get(id);
+    if (!decision) {
+      throw new UserError("Sortie inconnue", { status: 404 });
+    }
+    if (decision.status === "added" || decision.status === "ignored") {
+      return this.snapshot();
+    }
+    await this.addDecision(decision, this.rule(decision.automationId));
+    return this.snapshot();
+  }
+  ignore(id: string) {
+    const decision = this.decisions.get(id);
+    if (!decision) {
+      throw new UserError("Sortie inconnue", { status: 404 });
+    }
+    decision.status = "ignored";
+    decision.reason = "Ignoré manuellement";
+    this.persistDecision(decision);
+    return this.snapshot();
+  }
+  async start() {
+    if (this.startupState.started || this.isClosed()) {
+      return;
+    }
+    this.startupState.started = true;
+    await this.anilist.tick(true);
+    await Promise.all(
+      [...this.rules.values()].filter((rule) => rule.enabled).map((rule) => this.run(rule.id))
+    );
+    if (!this.isClosed()) {
+      this.timer = setInterval(() => {
+        void this.tick();
+      }, 15_000);
+      this.timer.unref();
+    }
+  }
+  async tick() {
+    if (this.isClosed()) {
+      return;
+    }
+    await this.anilist.tick(false);
+    await Promise.all(
+      [...this.rules.values()]
+        .filter((rule) => rule.enabled && !this.runs.has(rule.id))
+        .map((rule) => this.completeReplacements(rule))
+    );
+    await Promise.all(
+      [...this.rules.values()]
+        .filter(
+          (rule) =>
+            rule.enabled &&
+            (rule.nextRunAt === null ||
+              rule.nextRunAt <= this.options.now() ||
+              [...this.decisions.values()].some(
+                (decision) =>
+                  decision.automationId === rule.id &&
+                  decision.status === "waiting" &&
+                  decision.deadline !== null &&
+                  decision.deadline <= this.options.now()
+              ))
+        )
+        .map((rule) => this.run(rule.id))
+    );
+  }
+  async close() {
+    this.discoveryResolver.close();
+    if (this.isClosed()) {
+      return;
+    }
+    this.closed = true;
+    await this.anilist.close();
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+    for (const requests of this.requests.values()) {
+      for (const controller of requests) {
+        controller.abort();
+      }
+    }
+    await Promise.allSettled(this.runs.values());
+    await Promise.allSettled(this.replacements.values());
+    await Promise.allSettled(this.additions.values());
+    this.db.close();
+  }
+}
