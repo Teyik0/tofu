@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_f87a4dd9e4ccb8::t_821be4e9faa8fc 15
+docs/releases.md
+  s_f87a4dd9e4ccb8::t_c5385c7c29c8bc 20-21
+scripts/build.ts
+  s_f87a4dd9e4ccb8::t_e41d51523ef408 1,50-52
+scripts/release.ts
+  s_f87a4dd9e4ccb8::t_2a8958ccdc363e 118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c58bcc5ba71a37ee53b15885d95d869513e0c643",
+  "prompts": {},
+  "sessions": {
+    "s_f87a4dd9e4ccb8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a107a8-f5f9-7872-bdd1-2eb9b387d98d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
