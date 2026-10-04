@@ -1,0 +1,81 @@
+CHANGELOG.md
+  s_d72cd8b2aa1f83::t_dab290bc108bf3 7-12
+README.md
+  s_d72cd8b2aa1f83::t_71d37b675fe34a 1,3,5,7,9-13,15,17,19,21,23,25,28-34,37,39,41,43,45-51,53,55,65,67,69
+bun.lock
+  s_d72cd8b2aa1f83::t_109f4b524eb7de 8,97-98,105-108,1097-1098,1275
+components.json
+  s_d72cd8b2aa1f83::t_9b9c7eda1a51f6 3
+docs/development.md
+  s_d72cd8b2aa1f83::t_384594148b790a 1-89
+docs/plugins.md
+  s_d72cd8b2aa1f83::t_ac16ab4d5e8350 1-48
+package.json
+  s_d72cd8b2aa1f83::t_ee205728b0a107 38
+scripts/native-smoke.ts
+  s_d72cd8b2aa1f83::t_01591c8de3bcbe 193-195,200-204,216-236,291-293,295-301,319,325,395,425,434,464,476,501,507,512,525-526,528,559,563,576-577,584,586,595,597,614,663-664,683,706,708,712,714,717-718,737,740,749,754,777,794,802,826,920-922,1065,1067-1068,1070,1085-1086,1102
+src/components/action-tooltip.tsx
+  s_d72cd8b2aa1f83::t_1123d69f63763a 7
+src/components/anilist-panel.tsx
+  s_d72cd8b2aa1f83::t_ece5e47862022b 20,147-154
+src/components/app.tsx
+  s_d72cd8b2aa1f83::t_13377232209b86 200-208,212,256-268,272
+src/components/automation-center.tsx
+  s_d72cd8b2aa1f83::t_f34a732ef225e6 322-326,333,738,741-744,1182-1193,1197
+src/components/destination-sidebar.tsx
+  s_d72cd8b2aa1f83::t_8a224a3f7f45a6 60-66,88-94,98-99
+src/components/detail.tsx
+  s_d72cd8b2aa1f83::t_5189d112a4d001 322-326,337
+src/components/modal.tsx
+  s_d72cd8b2aa1f83::t_5d7642f2cd8945 325-340,344,399-411,415
+src/components/torrent-drop.tsx
+  s_d72cd8b2aa1f83::t_2f3748f10ba132 45
+src/components/ui/alert-dialog.tsx
+  s_d72cd8b2aa1f83::t_4853467f003704 1-3,9,13,17,21,23,25,38,47,106,131-132,140,149-154
+src/components/ui/badge.tsx
+  s_d72cd8b2aa1f83::t_c7b7055568f1f5 1-2,29,31,35-48
+src/components/ui/button.tsx
+  s_d72cd8b2aa1f83::t_013e6e8863a8ab 1,47,55,60
+src/components/ui/checkbox.tsx
+  s_d72cd8b2aa1f83::t_d380663f458845 3,7
+src/components/ui/dialog.tsx
+  s_d72cd8b2aa1f83::t_dd14c26725b9ee 3,10,14,18,22,26,28,44,53,64-70,74,107,113,116,123
+src/components/ui/dropdown-menu.tsx
+  s_d72cd8b2aa1f83::t_3c7f2b43e4bfa3 1-3,8-9,12-13,16-17,22-25,27-28,32-40,42-43,45-47,49-59,63-84,92,100,113-117,120,122,126,128,132,136-137,141-146,148-174,177,180,183,187-188,194,199,201,203,206,210-214,216,219,223,225,229,231-241,245,247
+src/components/ui/label.tsx
+  s_d72cd8b2aa1f83::t_d82e37a91238bf 1-2,6,8,14,16-18
+src/components/ui/progress.tsx
+  s_d72cd8b2aa1f83::t_e4c378bb8a4c89 3,6,9,14-17,22-65
+src/components/ui/select.tsx
+  s_d72cd8b2aa1f83::t_70e41e1dfed81a 1-3,8,10,20-27,35,52-53,62-63,65-66,68-77,82-87,90,92-96,98,100-101,103-105,107-111,116,118,126,136-145,150,163,165,167,174,181,183,185,192
+src/components/ui/separator.tsx
+  s_d72cd8b2aa1f83::t_9db6a6f5085e6f 1-3,6,11
+src/components/ui/sheet.tsx
+  s_d72cd8b2aa1f83::t_8b3785e2d88fb4 3,10,14,18,22,26,28,30,45,58,60,70-76,80,105,108,115
+src/components/ui/sidebar.tsx
+  s_d72cd8b2aa1f83::t_da961e89004770 1-4,277,288,302,392,394-411,416,418-435,494,501-505,516-531,534,545,558,561-564,568-586,665,670-674,681-699
+src/components/ui/tabs.tsx
+  s_d72cd8b2aa1f83::t_2bb228c36c2d02 1-3,7,15,40,54,56,58,70,72
+src/components/ui/tooltip.tsx
+  s_d72cd8b2aa1f83::t_2910469dc7a80f 3,6-8,10,13,17,23,25-26,29-33,35-41,45-49,52-63
+src/server/plugins/feeds.ts
+  s_d72cd8b2aa1f83::t_d93184985570e6 35-36,39,46,51,126,129-135,138-140,143,149,163
+src/styles.css
+  s_d72cd8b2aa1f83::t_5317be3308f73f 1663
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2768c4b500b6fe5d4bc01c90ddd9f8d1c2f7b52",
+  "prompts": {},
+  "sessions": {
+    "s_d72cd8b2aa1f83": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a107e6-7cd1-7aa2-bf31-6e75ab2d5725",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
