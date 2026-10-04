@@ -1,0 +1,166 @@
+scripts/native-smoke.ts
+  s_e82ef220f655cf::t_eb216f1a07d9f6 39-43,74,127,465,470-474,478,488,497,503
+  s_e82ef220f655cf::t_8e310ae53d90b8 261
+  s_e82ef220f655cf::t_215cb26e9bf99c 499-501
+  s_e82ef220f655cf::t_3603b226c2cc0c 466-469,475-477,479-487,489-496,498,502
+  s_e82ef220f655cf::t_48c8a8689c34a7 203-211
+  s_e82ef220f655cf::t_03b7f0e7694d39 202,212-216
+tests/files.test.ts
+  s_e82ef220f655cf::t_11e0d44d88757d 4,8-13,15,17-48
+  s_e82ef220f655cf::t_f9f518cace99f7 14,16
+  s_e82ef220f655cf::t_b27e304712ed26 49
+tests/updates.test.ts
+  s_e82ef220f655cf::t_97d3f23b4098d0 11-30,34-44
+  s_e82ef220f655cf::t_4d2bef0e6871cf 31-33
+src/components/app.tsx
+  s_e82ef220f655cf::t_09a1ba9196ae60 103
+  s_e82ef220f655cf::t_965b2bb41189ab 3,57-61
+  s_e82ef220f655cf::t_6c4ca971a10c81 93
+src/server/runtime.ts
+  s_f87a4dd9e4ccb8::t_5419ebb7202afd 1
+  s_f87a4dd9e4ccb8::t_da6515a52d6fe9 12,21,26-29
+  s_f649b4527e18d7::t_9397e8e0b577ee 5-6,30-50
+package.json
+  s_f87a4dd9e4ccb8::t_3dd54c6df448f6 24,43
+  s_f87a4dd9e4ccb8::t_92d8528c900fee 31
+src/components/app-shell.tsx
+  s_e82ef220f655cf::t_09a1ba9196ae60 54-64
+src/server.ts
+  s_e82ef220f655cf::t_eab3194341f036 9,11,18,20,22,29,31,33,69,74-104,109,156,165
+  s_f87a4dd9e4ccb8::t_35c6205cd46aef 130-131,184,186,188,211-212
+  s_e82ef220f655cf::t_e5193c71a8e820 1,160-162,164
+scripts/build.ts
+  s_f87a4dd9e4ccb8::t_3dd54c6df448f6 18-19
+src/server/updates.ts
+  s_e82ef220f655cf::t_873a668a048009 90,154-165,199
+src/server/engine.ts
+  s_e82ef220f655cf::t_41f38d7d8d7354 934-937
+  s_e82ef220f655cf::t_00751a520d8c8f 4-10,12,572,575-590,748-752,754-761,763,765,770-771
+  s_e82ef220f655cf::t_6c4ca971a10c81 2,482,489,491,494,498-501,508,558-568,908,911-914,916-917
+  s_e82ef220f655cf::t_4f4f5b6ff25773 718-730,747,753
+  s_e82ef220f655cf::t_19e71f4af7eeb0 11
+scripts/demo.ts
+  s_f87a4dd9e4ccb8::t_35c6205cd46aef 7,9,12-14,18-21
+  s_f87a4dd9e4ccb8::t_3dd54c6df448f6 15
+  s_e82ef220f655cf::t_f15c0bae752043 16-17
+scripts/native-coexist.ts
+  s_e82ef220f655cf::t_4d2bef0e6871cf 27
+  s_f87a4dd9e4ccb8::t_e79a4cee7d63a0 15-18,29-38,43-61,82-92,95-99,101-108,112-116,119-123,134-137,147-158
+  s_f87a4dd9e4ccb8::t_0abc835d78aa82 139-145
+  s_f87a4dd9e4ccb8::t_92d8528c900fee 1-14,19-26,28,39-42,62-81,93-94,100,109-111,117-118,124-133,138,146,159-160
+src/server/instance.ts
+  s_e82ef220f655cf::t_4b0f4cd7a33b60 153-155,166-168,179-189,200-202,210-215
+  s_f87a4dd9e4ccb8::t_7fb9cdedade5a6 1-2,4,6-10,73-78,81,96-112
+  s_f87a4dd9e4ccb8::t_c03f544346a8a9 3,5,11-13,15-29,31-36,52-68,71-72,79-80,82-95,113-117,120-126,128-135,137-142,219
+  s_f87a4dd9e4ccb8::t_a0830097325155 14,30,37,46,50-51
+  s_f87a4dd9e4ccb8::t_84081f658b6feb 38-45,47-49
+  s_f87a4dd9e4ccb8::t_3dd54c6df448f6 69-70,118-119
+  s_f87a4dd9e4ccb8::t_379d81e027f70b 127,136,143-152,156-165,169-178,190-199,203-209,216-218
+docs/releases.md
+  s_f87a4dd9e4ccb8::t_b306c57307f4e0 3-4
+tests/automation.test.ts
+  s_e82ef220f655cf::t_bd6020bea641d1 19-22,35-45,51-54,68-69,73-75,89,94-100,111-115,117-122
+  s_e82ef220f655cf::t_3603b226c2cc0c 27-34,46-50,55-67,70-72,76-88,91-93
+  s_e82ef220f655cf::t_4d2bef0e6871cf 23-26,125
+  s_e82ef220f655cf::t_a9600e1ebd5e39 3,101-110,116,123-124,126-130
+  s_e82ef220f655cf::t_808bb85b90c725 90
+  s_f87a4dd9e4ccb8::t_4d4da8b5e47610 131
+src/server/api.ts
+  s_e82ef220f655cf::t_eab3194341f036 7,18
+electrobun.config.ts
+  s_f87a4dd9e4ccb8::t_8fa34913705f6d 4-5,7-9,11
+  s_f87a4dd9e4ccb8::t_c8668485db5223 10
+tests/instance.test.ts
+  s_f87a4dd9e4ccb8::t_0fbab4877ed941 219-227,229-233,237-239
+  s_f87a4dd9e4ccb8::t_61814353b2727a 245
+  s_f87a4dd9e4ccb8::t_7768aa99036dc8 159-160,166-174,179-189,243-244,246
+  s_f87a4dd9e4ccb8::t_84081f658b6feb 161-165,175-178
+  s_f87a4dd9e4ccb8::t_d96417cabec0c3 308-316,324-334,337
+  s_f87a4dd9e4ccb8::t_e79a4cee7d63a0 143-149
+  s_f87a4dd9e4ccb8::t_ee738846f3c353 17,124-142,150-154
+  s_f87a4dd9e4ccb8::t_9922c54a97e4ac 1-7,11-16,18-30,32-47,49-50,52-85,247-305,350-416
+  s_f87a4dd9e4ccb8::t_e0321cdb111182 86-99
+  s_f87a4dd9e4ccb8::t_ed34676a2a01b1 100-123,155-158
+  s_f87a4dd9e4ccb8::t_3dd54c6df448f6 31,48,51
+  s_f87a4dd9e4ccb8::t_6add7fafec7c84 306-307,317-323,335-336,338-349
+  s_f87a4dd9e4ccb8::t_1c575875eb6fa0 8-10,190-218,228,234-236,240-242
+src/server/feeds/service.ts
+  s_e82ef220f655cf::t_4d2bef0e6871cf 46-49,675,843
+  s_e82ef220f655cf::t_316513c03cf812 157-158
+CONTRIBUTING.md
+  s_f87a4dd9e4ccb8::t_0abc835d78aa82 36-37
+CHANGELOG.md
+  s_f87a4dd9e4ccb8::t_b306c57307f4e0 9
+src/server/request-guard.ts
+  s_e82ef220f655cf::t_84d748617e76f4 6,18
+  s_e82ef220f655cf::t_eab3194341f036 1-5,7-17,19
+tests/validation.test.ts
+  s_f87a4dd9e4ccb8::t_cff6a378f9b6cc 22-27
+  s_f87a4dd9e4ccb8::t_aaec54d72cd1ad 5-20,34-39
+  s_e82ef220f655cf::t_c839292f48f395 2,21,28-33
+tests/persistence.test.ts
+  s_e82ef220f655cf::t_4d2bef0e6871cf 17
+  s_e82ef220f655cf::t_b64b7cee63c209 8-16,18-46
+src/server/desktop.ts
+  s_f87a4dd9e4ccb8::t_5419ebb7202afd 3,22
+  s_f87a4dd9e4ccb8::t_8fa34913705f6d 21,31,36,40,45,105
+  s_f87a4dd9e4ccb8::t_35c6205cd46aef 13
+  s_f87a4dd9e4ccb8::t_3baae1618fe8e1 109-110
+docs/development.md
+  s_f87a4dd9e4ccb8::t_b306c57307f4e0 7,56-67,75-83,85,101-102,105
+  s_f87a4dd9e4ccb8::t_e27d609ff81645 87
+tests/storage.test.ts
+  s_e82ef220f655cf::t_b591613e47f0f1 41-84,86-87,92,102,108,112,114-115,118-119,124,126-127,131-134,136-137,158-160,163-166,168,170-171,175,177-179,181-182,184,186-187,189-193,195,197-198,201-202,208,210-211
+  s_e82ef220f655cf::t_70354cf6e29392 2,8-39
+  s_e82ef220f655cf::t_2c8bdd2126636d 40,85,88-91,93-101,103-107,109-111,113,116-117,120-123,125,128-130,135,138-157,161-162,167,169,172-174,176,180,183,185,188,194,196,199-200,203-207,209,212-214
+bun.lock
+  s_f87a4dd9e4ccb8::t_8ed1845f2194d9 12,247
+src/types.ts
+  s_e82ef220f655cf::t_9d3f9036d4f540 1-11
+src/pages/(app)/library/all.tsx
+  s_bc28065b22b690::t_1d1f03be452301 2-4,7,10
+src/pages/(app)/library/destinations/[id].tsx
+  s_bc28065b22b690::t_c69c60bdc55b3e 3-5,8,13
+src/pages/(app)/library/index.tsx
+  s_bc28065b22b690::t_78249b5ff501e2 2-4,7,12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f9c509d2933831abe69af8b973715a2b566ca9f5",
+  "prompts": {},
+  "sessions": {
+    "s_bc28065b22b690": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a107e4-b081-7063-87cc-88d872bc328d",
+        "model": "unknown"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_e82ef220f655cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a107fc-4f5b-7823-92fb-204746828109",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_f649b4527e18d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a107fb-ad46-72d0-86bf-d1e2e59783ea",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_f87a4dd9e4ccb8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a107a8-f5f9-7872-bdd1-2eb9b387d98d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
