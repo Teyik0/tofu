@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { BrowserWindow, Tray as NativeTray } from "electrobun/main";
-import type { DesktopState } from "../types";
+import type { DesktopState, InstanceProfile } from "../types";
 import { type TorrentEngine, UserError } from "./engine";
 
 export class DesktopController {
@@ -10,6 +10,7 @@ export class DesktopController {
   private readonly url: string;
   private readonly engine: () => TorrentEngine;
   private readonly smokeScript: string | null;
+  private readonly name: string;
   private quitting = false;
 
   constructor(options: {
@@ -17,6 +18,8 @@ export class DesktopController {
     url: string;
     engine: () => TorrentEngine;
     smokeScript: string | null;
+    name: string;
+    profile: InstanceProfile;
     checkUpdates: () => Promise<unknown>;
     shutdown: () => Promise<void>;
   }) {
@@ -25,19 +28,21 @@ export class DesktopController {
     this.url = options.url;
     this.engine = options.engine;
     this.smokeScript = options.smokeScript;
+    this.name = options.name;
     this.tray = new Tray({
       height: 18,
       image: join(import.meta.dir, "public/tray-template.png"),
       template: true,
+      title: options.profile === "dev" ? "DEV" : "",
       width: 18,
     });
     this.tray.setMenu([
-      { action: "open-native", label: "Ouvrir Tofu", type: "normal" },
+      { action: "open-native", label: `Ouvrir ${this.name}`, type: "normal" },
       { action: "open-web", label: "Ouvrir dans le navigateur", type: "normal" },
       { type: "divider" },
       { action: "check-updates", label: "Rechercher une mise à jour", type: "normal" },
       { type: "divider" },
-      { action: "quit", label: "Quitter Tofu", type: "normal" },
+      { action: "quit", label: `Quitter ${this.name}`, type: "normal" },
     ]);
     this.tray.on("tray-clicked", (event) => {
       const { action } = (event as { data: { action: string } }).data;
@@ -97,10 +102,12 @@ export class DesktopController {
       frame: { height: 940, width: 1400, x: 120, y: 80 },
       renderer: "native",
       sandbox: true,
-      title: "Tofu",
+      title: this.name,
       url: this.url,
     });
     this.window = window;
+    window.show();
+    window.activate();
     window.on("close", () => {
       this.window = null;
       if (!(this.engine().settings.runInBackground && this.tray.visible)) {

@@ -1,4 +1,4 @@
-import { homedir } from "node:os";
+import { rename } from "node:fs/promises";
 import { join } from "node:path";
 import { furin } from "@teyik0/furin";
 import { Elysia, t } from "elysia";
@@ -6,25 +6,31 @@ import { version } from "../package.json";
 import { createApi } from "./server/api";
 import { TorrentEngine, UserError } from "./server/engine";
 import { AutomationService } from "./server/feeds/service";
+import { acquireInstance } from "./server/instance";
 import { pluginEndpoints } from "./server/plugins/registry";
+import { createRequestGuard } from "./server/request-guard";
 import {
   dataDir,
   getAutomation,
   getDesktop,
   getEngine,
   getUpdates,
+  instance,
   runtime,
-  sync,
+  syncOptions,
 } from "./server/runtime";
+import { createTofuSync } from "./server/sync";
 import { UpdatesService } from "./server/updates";
 
 let { engine } = runtime;
 let closing = false;
 
 const app = new Elysia()
+  .use(createRequestGuard())
   .use(
-    createApi(getEngine, sync.options, getAutomation, { desktop: getDesktop, updates: getUpdates })
+    createApi(getEngine, syncOptions, getAutomation, { desktop: getDesktop, updates: getUpdates })
   )
+  .get("/api/instance", () => instance)
   .post(
     "/api/anilist/open",
     { body: t.Object({ url: t.String({ maxLength: 2000 }) }), sync: false },
@@ -60,18 +66,47 @@ const app = new Elysia()
     const { Utils } = await import("electrobun/main");
     return { opened: Utils.openPath(getEngine().get(params.id).detail.savePath) };
   })
-  .use(await furin({ pagesDir: "./src/pages", sync: sync.options }));
+  .use(await furin({ pagesDir: "./src/pages", sync: syncOptions }));
 
 export default app;
 
 export async function startServer() {
-  const desktop =
-    process.env.TOFU_MODE === "desktop" || process.execPath.includes(".app/Contents/MacOS/");
+  try {
+    return await launchServer();
+  } catch (error) {
+    await dispose();
+    throw error;
+  }
+}
+
+async function dispose() {
+  if (closing) {
+    return;
+  }
+  closing = true;
+  runtime.updates?.close();
+  clearInterval(runtime.timer);
+  app.server?.stop(true);
+  await runtime.publishing;
+  try {
+    await runtime.automation?.close();
+    await engine?.close();
+  } finally {
+    runtime.sync?.close();
+    await runtime.lease?.close();
+  }
+}
+
+async function launchServer() {
+  runtime.lease ??= await acquireInstance(instance);
+  runtime.sync ??= await createTofuSync(dataDir);
+  const { sync } = runtime;
+  const { desktop } = instance;
   engine =
     runtime.engine ??
     (await TorrentEngine.open({
       dataDir,
-      downloadPath: process.env.TOFU_DOWNLOAD_DIR ?? join(homedir(), "Downloads/Tofu"),
+      downloadPath: instance.downloadPath,
       network: { maxConns: 100, userAgent: `Tofu/${version}`, utp: false },
     }));
   runtime.engine = engine;
@@ -92,8 +127,8 @@ export async function startServer() {
         void import("electrobun/main")
           .then(({ Utils }) =>
             Utils.showNotification({
-              body: "Ouvrez Tofu pour télécharger la nouvelle version.",
-              title: `Tofu ${latest} est disponible`,
+              body: `Ouvrez ${instance.name} pour télécharger la nouvelle version.`,
+              title: `${instance.name} : Tofu ${latest} est disponible`,
             })
           )
           .catch(console.error);
@@ -118,27 +153,16 @@ export async function startServer() {
   app.listen({
     hostname: "127.0.0.1",
     maxRequestBodySize: 9 * 1024 * 1024,
-    port: Number(process.env.TOFU_PORT ?? (desktop ? "0" : "3030")),
+    port: instance.port,
   });
   const url = `http://127.0.0.1:${app.server?.port}`;
   await Bun.write(
-    join(dataDir, "server.json"),
-    JSON.stringify({ mode: engine.mode, pid: process.pid, url })
+    join(dataDir, "server.json.tmp"),
+    JSON.stringify({ mode: engine.mode, pid: process.pid, profile: instance.profile, url }),
+    { mode: 0o600 }
   );
-  console.log(`Tofu est prêt : ${url}`);
-  const dispose = async () => {
-    if (closing) {
-      return;
-    }
-    closing = true;
-    runtime.updates?.close();
-    clearInterval(runtime.timer);
-    app.server?.stop(true);
-    await runtime.publishing;
-    await runtime.automation?.close();
-    await engine?.close();
-    sync.close();
-  };
+  await rename(join(dataDir, "server.json.tmp"), join(dataDir, "server.json"));
+  console.log(`${instance.name} est prêt : ${url} (données : ${dataDir})`);
   const shutdown = async () => {
     await dispose();
     process.exit(0);
@@ -157,11 +181,11 @@ export async function startServer() {
   const { ApplicationMenu } = sdk;
   ApplicationMenu.setApplicationMenu([
     {
-      label: "Tofu",
+      label: instance.name,
       submenu: [
-        { label: "À propos de Tofu", role: "about" },
+        { label: `À propos de ${instance.name}`, role: "about" },
         { type: "divider" },
-        { accelerator: "CmdOrCtrl+Q", label: "Quitter Tofu", role: "quit" },
+        { accelerator: "CmdOrCtrl+Q", label: `Quitter ${instance.name}`, role: "quit" },
       ],
     },
     {
@@ -184,6 +208,8 @@ export async function startServer() {
   runtime.desktop ??= new DesktopController({
     checkUpdates: () => getUpdates().check(),
     engine: getEngine,
+    name: instance.name,
+    profile: instance.profile,
     sdk,
     shutdown: dispose,
     smokeScript,

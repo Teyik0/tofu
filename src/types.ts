@@ -1,3 +1,14 @@
+export type InstanceProfile = "dev" | "release";
+
+export interface InstanceConfig {
+  dataDir: string;
+  downloadPath: string;
+  identifier: string;
+  name: string;
+  port: number;
+  profile: InstanceProfile;
+}
+
 export type TorrentStatus =
   | "metadata"
   | "checking"

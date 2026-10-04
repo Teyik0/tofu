@@ -5,6 +5,45 @@ import { TorrentEngine } from "../src/server/engine";
 import type { DashboardState } from "../src/types";
 import { fixture, json, network, waitFor } from "./helpers";
 
+test("pausing immediately after an active restart preserves completed file progress and access", async () => {
+  const context = await fixture(65_536, []);
+  let reopened: TorrentEngine | undefined;
+  try {
+    const { id } = (await (
+      await context.request("/torrents", json({ paused: false, source: context.magnet }))
+    ).json()) as { id: string };
+    await waitFor(
+      async () => context.engine.detail(id),
+      (value) => value.progress === 1
+    );
+    await context.engine.close();
+    reopened = await TorrentEngine.open({
+      dataDir: join(context.directory, "state"),
+      downloadPath: join(context.directory, "downloads"),
+      network,
+    });
+    const app = createApi(() => reopened as TorrentEngine, context.sync.options);
+    const pause = await app.handle(
+      new Request(`http://localhost/api/torrents/${id}/pause`, json({}))
+    );
+    expect(pause.status).toBe(200);
+    const detail = (await (
+      await app.handle(new Request(`http://localhost/api/torrents/${id}`))
+    ).json()) as import("../src/types").TorrentDetail;
+    expect(detail.status).toBe("paused");
+    expect(detail.files[0]?.progress).toBe(1);
+    expect(detail.files[0]?.downloaded).toBe(context.bytes.length);
+    const file = await app.handle(
+      new Request(`http://localhost/api/torrents/${id}/files/0/content`)
+    );
+    expect(file.status).toBe(200);
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(new Uint8Array(context.bytes));
+  } finally {
+    await reopened?.close();
+    await context.close();
+  }
+});
+
 test("background preference survives restart and older settings requests preserve it", async () => {
   const context = await fixture(1024, []);
   let reopened: TorrentEngine | undefined;

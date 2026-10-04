@@ -1,15 +1,24 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: seed and register demo fixtures sequentially.
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { Server as Tracker } from "bittorrent-tracker";
 import WebTorrent, { type Torrent } from "webtorrent";
+import { currentInstanceConfig } from "../src/server/instance";
 
-const dataDir = process.env.TOFU_DATA_DIR ?? join(homedir(), "Library/Application Support/Tofu");
+const { dataDir, profile } = await currentInstanceConfig();
 const serverInfo = Bun.file(join(dataDir, "server.json"));
 const saved = (await serverInfo.exists()) ? ((await serverInfo.json()) as { url: string }) : null;
-const url = Bun.argv[2] ?? saved?.url ?? "http://127.0.0.1:3030";
+if (!saved) {
+  throw new Error("Démarrez l’instance de développement Tofu avant de lancer la démo");
+}
+const { url } = saved;
+const target = (await fetch(`${url}/api/instance`).then((response) => response.json())) as {
+  profile: string;
+};
+if (profile !== "dev" || target.profile !== "dev") {
+  throw new Error("La démo est réservée au profil de développement Tofu");
+}
 const directory = join(import.meta.dir, "../.cache/demo-source");
 await mkdir(directory, { recursive: true });
 const tracker = new Tracker({ http: true, stats: false, udp: false, ws: false });

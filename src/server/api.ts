@@ -4,6 +4,7 @@ import type { DesktopController } from "./desktop";
 import { type TorrentEngine, UserError } from "./engine";
 import { createAutomationApi } from "./feeds/api";
 import type { AutomationService } from "./feeds/service";
+import { createRequestGuard } from "./request-guard";
 import type { UpdatesService } from "./updates";
 import { createUpdatesApi } from "./updates-api";
 
@@ -14,6 +15,7 @@ export function createApi(
   services?: { updates: () => UpdatesService; desktop: () => DesktopController }
 ) {
   return new Elysia({ prefix: "/api" })
+    .use(createRequestGuard())
     .use(furinSync(sync))
     .guard({ sync: false })
     .error(({ error, set }) => {
@@ -22,13 +24,6 @@ export function createApi(
           ? error.status
           : 500;
       return { error: error instanceof Error ? error.message : "Erreur inattendue" };
-    })
-    .beforeHandle(({ request, set }) => {
-      const origin = request.headers.get("origin");
-      if (request.method !== "GET" && origin && origin !== new URL(request.url).origin) {
-        set.status = 403;
-        return { error: "Cette action doit provenir de l'interface Tofu" };
-      }
     })
     .use(
       createAutomationApi(

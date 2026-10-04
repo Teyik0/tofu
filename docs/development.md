@@ -4,7 +4,7 @@
 
 Use Bun for all commands. `bun run setup` prepares the Electrobun SDK through Hutch and installs the prebuilt WebTorrent native addon. No separate torrent service is required.
 
-`bun run build:desktop` creates `build/dev-macos-arm64/Tofu-dev.app` on Apple Silicon. Quit Tofu before replacing an installed development build. Settings and downloads live in your user folders.
+`bun run build:desktop` creates `build/dev-macos-arm64/Tofu-dev.app` on Apple Silicon. Quit that development build before replacing it. Development and the installed release use separate state, download folders and native app identities, so both can run together.
 
 For a compiled web server:
 
@@ -53,7 +53,18 @@ Unknown statistics remain `null` in the API and `—` in the UI. Tracker swarm c
 
 ## Data and configuration
 
-On macOS, state lives in `~/Library/Application Support/Tofu/`:
+On macOS, the profiles are separated automatically:
+
+| | Development | Release |
+| --- | --- | --- |
+| Application state | `~/Library/Application Support/Tofu-dev/` | `~/Library/Application Support/Tofu/` |
+| Initial downloads | `~/Downloads/Tofu-dev/` | `~/Downloads/Tofu/` |
+| Native identifier | `app.tofu.torrents.dev` | `app.tofu.torrents` |
+| Native title / menu bar | Tofu Dev / DEV | Tofu |
+| Web server port | 3030 | 3031 |
+| Native HTTP server | Available port selected by the OS | Available port selected by the OS |
+
+Each profile has its own files:
 
 | File | Contents |
 | --- | --- |
@@ -61,10 +72,19 @@ On macOS, state lives in `~/Library/Application Support/Tofu/`:
 | `feeds.sqlite` | Plugins, credentials, automation, and AniList tracking |
 | `sync.sqlite` | Furin Sync journal |
 | `server.json` | Address of the running instance |
+| `release-access.json` | Personal GitHub release access |
+| `instance.json` | Persistent ownership by dev or release |
+| `instance.lock` | OS lock held while this instance runs |
 
-Downloads initially use `~/Downloads/Tofu/`. Other systems store application state in `~/.local/share/Tofu`.
+The native profile comes from the packaged Electrobun channel, independently of `NODE_ENV` or terminal variables. `bun run dev` forces the development profile. Compiled web builds also use dev unless explicitly started with `TOFU_PROFILE=release bun run start`. Native releases ignore `TOFU_PROFILE` and stay on their packaged profile. On other systems the equivalent state roots are `~/.local/share/Tofu-dev` and `~/.local/share/Tofu`.
 
-Optional environment variables: `TOFU_DATA_DIR`, `TOFU_DOWNLOAD_DIR`, `TOFU_PORT`, `TOFU_MODE=server|desktop`, and `HUTCH_HOME`. Saved download preferences override the initial `TOFU_DOWNLOAD_DIR`. Hutch uses `.cache/hutch` unless configured otherwise.
+Existing data in `Tofu` is preserved for the release; development starts with independent empty state. No torrents, automations or credentials are automatically copied between profiles. Development refuses the production data directory and unclaimed existing databases. A persistent marker prevents switching a custom data directory between profiles, including through a symlink.
+
+Only one server can open a data directory. An exclusive OS lock is acquired before any SQLite database opens, released after shutdown and automatically released after a crash. The lock file stays in place intentionally. Furin build inspection does not open user databases. Stop old builds before first launching a new build with this protection. To use a native instance from a browser, choose the menu-bar action instead of starting another server with the same state.
+
+Optional environment variables: `TOFU_DATA_DIR`, `TOFU_DOWNLOAD_DIR`, `TOFU_PORT`, `TOFU_MODE=server|desktop`, `TOFU_PROFILE=dev|release` for source/web servers, and `HUTCH_HOME`. Custom data directories remain protected by profile ownership and locking. Saved download preferences override the initial `TOFU_DOWNLOAD_DIR`; manually selected download folders remain an explicit user choice. Hutch uses `.cache/hutch` unless configured otherwise. The development-only demo checks the target profile and cannot seed the release accidentally.
+
+Both compiled Furin bundles run in production mode, so `NODE_ENV` cannot distinguish the development app from a release. The packaged channel supplies that identity explicitly. The instance profile, state directory and initial server configuration are fixed for the lifetime of the process, alongside the torrent engine. Hot reload keeps them together. Restart the process after changing their environment variables; a hot reload cannot switch a live development engine to the release database.
 
 ## Validation
 
@@ -78,9 +98,11 @@ Additional native workflows:
 TOFU_NATIVE_WORKFLOW=anilist bun run test:native
 TOFU_NATIVE_WORKFLOW=destination bun run test:native
 bun run bench:ui furin-sync
+bun run build:release
+bun run test:coexist
 ```
 
-The benchmark measures selection latency during four local transfers and checks cached details with delayed API responses. Close the normal app before native tests and reopen it afterward with `bun run desktop`.
+The benchmark measures selection latency during four local transfers and checks cached details with delayed API responses. `test:coexist` launches the real dev and stable bundles simultaneously in temporary folders, checks their profiles despite contradictory terminal variables, downloads from a real peer and verifies that closing dev leaves the release available. Native tests use temporary state and OS-selected ports.
 
 ## Current limits
 

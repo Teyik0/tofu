@@ -51,7 +51,17 @@ export function AppShell({
         ? decodeURIComponent(path.slice("/library/destinations/".length))
         : "default";
   const router = useRouter();
-  const refresh = useCallback(() => router.refresh(), [router.refresh]);
+  const refresh = useCallback(async () => {
+    try {
+      await router.refresh();
+    } catch (cause) {
+      // A newer navigation or Sync refresh can supersede this request.
+      if (cause && typeof cause === "object" && "name" in cause && cause.name === "AbortError") {
+        return;
+      }
+      throw cause;
+    }
+  }, [router.refresh]);
   const [selected, setSelected] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalKind | null>(null);
   const visible = dashboard.torrents.filter(

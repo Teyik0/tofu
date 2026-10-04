@@ -1,6 +1,15 @@
 import { Database } from "bun:sqlite";
+import { lstatSync, realpathSync } from "node:fs";
 import { copyFile, link, lstat, mkdir, mkdtemp, rm, statfs } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve as resolvePath,
+  sep,
+} from "node:path";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
 import WebTorrent, { type Options, type Torrent } from "webtorrent";
 import type {
@@ -470,31 +479,33 @@ export class TorrentEngine {
       [...this.entries.values()]
         .filter((entry) => !entries.includes(entry) && entry.storageClaimed)
         .flatMap((entry) =>
-          entry.detail.files.map((file) => resolvePath(entry.detail.savePath, file.path))
+          entry.detail.files.map((file) => this.storageKey(entry.detail.savePath, file.path))
         )
     );
     const planned = entries.flatMap((entry) =>
       entry.detail.files.map((file) => ({
         file,
         source: this.storagePath(entry.detail.savePath, file.path),
+        sourceKey: this.storageKey(entry.detail.savePath, file.path),
         target: this.storagePath(downloadPath, file.path),
+        targetKey: this.storageKey(downloadPath, file.path),
       }))
     );
-    const sources = new Set(planned.map((item) => item.source));
+    const sources = new Set(planned.map((item) => item.sourceKey));
     const targets = new Set<string>();
     for (const item of planned) {
       if (
-        reserved.has(item.source) ||
-        reserved.has(item.target) ||
-        targets.has(item.target) ||
-        sources.has(item.target)
+        reserved.has(item.sourceKey) ||
+        reserved.has(item.targetKey) ||
+        targets.has(item.targetKey) ||
+        sources.has(item.targetKey)
       ) {
         throw new UserError(
           `Le fichier ${item.file.path} est déjà utilisé par un autre torrent. Choisissez un autre dossier.`,
           { status: 409 }
         );
       }
-      targets.add(item.target);
+      targets.add(item.targetKey);
     }
     const files = await Promise.all(
       planned.map(async ({ file, source, target }, index) => {
@@ -544,11 +555,38 @@ export class TorrentEngine {
     }
   }
 
+  private storageKey(savePath: string, filePath: string) {
+    try {
+      return resolvePath(realpathSync(savePath), filePath);
+    } catch (cause) {
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
+        return resolvePath(savePath, filePath);
+      }
+      throw cause;
+    }
+  }
+
   private storagePath(savePath: string, filePath: string) {
     const path = resolvePath(savePath, filePath);
     const within = relative(savePath, path);
-    if (!within || within.startsWith("..") || isAbsolute(within)) {
+    if (!within || within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within)) {
       throw new UserError("Chemin de fichier hors du dossier de téléchargement", { status: 400 });
+    }
+    let component = savePath;
+    for (const part of within.split(sep)) {
+      component = join(component, part);
+      try {
+        if (lstatSync(component).isSymbolicLink()) {
+          throw new UserError("Un lien symbolique est présent dans le chemin du fichier", {
+            status: 409,
+          });
+        }
+      } catch (cause) {
+        if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
+          break;
+        }
+        throw cause;
+      }
     }
     return path;
   }
@@ -677,6 +715,19 @@ export class TorrentEngine {
     return { id };
   }
 
+  private storageCollision(entry: Entry, torrent: Torrent) {
+    const reserved = new Set(
+      [...this.entries.values()]
+        .filter((other) => other !== entry && other.storageClaimed)
+        .flatMap((other) =>
+          other.detail.files.map((file) => this.storageKey(other.detail.savePath, file.path))
+        )
+    );
+    return torrent.files.find((file) =>
+      reserved.has(this.storageKey(entry.detail.savePath, file.path))
+    );
+  }
+
   private async start(entry: Entry) {
     const parsed = await parseTorrent(
       entry.metadata ? Buffer.from(entry.metadata, "base64") : entry.source
@@ -693,25 +744,31 @@ export class TorrentEngine {
     const { detail } = entry;
     torrent.on("metadata", () => {
       entry.metadata = Buffer.from(torrent.torrentFile).toString("base64");
-      const reserved = new Set(
-        [...this.entries.values()]
-          .filter((other) => other !== entry && other.storageClaimed)
-          .flatMap((other) =>
-            other.detail.files.map((file) => resolvePath(other.detail.savePath, file.path))
-          )
-      );
-      const collision = torrent.files.find((file) =>
-        reserved.has(resolvePath(detail.savePath, file.path))
-      );
+      let collision: Torrent["files"][number] | undefined;
+      try {
+        // This callback runs before WebTorrent verifies or writes its filesystem store.
+        for (const file of torrent.files) {
+          this.storagePath(detail.savePath, file.path);
+        }
+        collision = this.storageCollision(entry, torrent);
+      } catch (cause) {
+        detail.error = cause instanceof Error ? cause.message : "Chemin de fichier invalide";
+        entry.torrent = null;
+        entry.unwatch?.();
+        torrent.destroy({ destroyStore: false });
+        this.save(entry);
+        return;
+      }
       // Reserve the metadata paths before another torrent becomes ready.
+      const savedFiles = new Map(detail.files.map((file) => [file.path, file]));
       detail.files = torrent.files.map((file, index) => ({
-        downloaded: 0,
+        downloaded: savedFiles.get(file.path)?.downloaded ?? 0,
         index,
         length: file.length,
         name: file.name,
         path: file.path,
-        priority: detail.files.find((saved) => saved.path === file.path)?.priority ?? "normal",
-        progress: 0,
+        priority: savedFiles.get(file.path)?.priority ?? "normal",
+        progress: savedFiles.get(file.path)?.progress ?? 0,
       }));
       entry.storageClaimed = !collision;
       if (collision) {
@@ -848,19 +905,16 @@ export class TorrentEngine {
           [...this.entries.values()]
             .filter((other) => other !== entry && other.storageClaimed)
             .flatMap((other) =>
-              other.detail.files.map((file) => resolvePath(other.detail.savePath, file.path))
+              other.detail.files.map((file) => this.storageKey(other.detail.savePath, file.path))
             )
         );
+        const paths = entry.detail.files.map((file) => ({
+          key: this.storageKey(entry.detail.savePath, file.path),
+          path: this.storagePath(entry.detail.savePath, file.path),
+        }));
         await Promise.all(
-          entry.detail.files.map(async (file) => {
-            const path = resolvePath(entry.detail.savePath, file.path);
-            const within = relative(entry.detail.savePath, path);
-            if (!within || within.startsWith("..") || isAbsolute(within)) {
-              throw new UserError("Chemin de fichier hors du dossier de téléchargement", {
-                status: 400,
-              });
-            }
-            if (!shared.has(path)) {
+          paths.map(async ({ key, path }) => {
+            if (!shared.has(key)) {
               await rm(path, { force: true });
             }
           })
@@ -877,12 +931,15 @@ export class TorrentEngine {
     if (!torrent?.ready) {
       return;
     }
+    // A file's last piece may also contain the next file; finish deselection first.
+    for (const file of torrent.files) {
+      file.deselect();
+    }
     for (const file of entry.detail.files) {
       const runtime = torrent.files[file.index];
       if (!runtime) {
         continue;
       }
-      runtime.deselect();
       if (file.priority !== "skip") {
         runtime.select(file.priority === "high" ? 10 : 0);
       }

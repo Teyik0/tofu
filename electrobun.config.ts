@@ -1,8 +1,14 @@
 import type { ElectrobunConfig } from "electrobun";
 import { version } from "./package.json";
 
+const release = process.env.TOFU_RELEASE === "1";
+
 export default {
-  app: { identifier: "app.tofu.torrents", name: "Tofu", version },
+  app: {
+    identifier: release ? "app.tofu.torrents" : "app.tofu.torrents.dev",
+    name: "Tofu",
+    version,
+  },
   build: {
     bun: { entrypoint: ".furin/build/bun/server.js", external: ["webtorrent", "parse-torrent"] },
     copy: {

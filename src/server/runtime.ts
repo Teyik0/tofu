@@ -1,20 +1,15 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
+import type { FurinSyncOptions } from "@teyik0/furin/sync";
 import type { DesktopController } from "./desktop";
 import { type TorrentEngine, UserError } from "./engine";
 import type { AutomationService } from "./feeds/service";
-import { createTofuSync } from "./sync";
+import { type acquireInstance, currentInstanceConfig } from "./instance";
+import type { createTofuSync } from "./sync";
 import type { UpdatesService } from "./updates";
-
-const applicationDir =
-  process.platform === "darwin"
-    ? join(homedir(), "Library/Application Support/Tofu")
-    : join(homedir(), ".local/share/Tofu");
-export const dataDir = process.env.TOFU_DATA_DIR ?? applicationDir;
 
 // Bun hot reload replaces HTTP modules without restarting downloads or the journal.
 const host = globalThis as typeof globalThis & {
   tofuRuntime?: {
+    instance?: Awaited<ReturnType<typeof currentInstanceConfig>>;
     engine?: TorrentEngine;
     sync?: Awaited<ReturnType<typeof createTofuSync>>;
     shutdown?: () => Promise<void>;
@@ -23,12 +18,36 @@ const host = globalThis as typeof globalThis & {
     automation?: AutomationService;
     updates?: UpdatesService;
     desktop?: DesktopController;
+    lease?: Awaited<ReturnType<typeof acquireInstance>>;
   };
 };
 host.tofuRuntime ??= {};
 export const runtime = host.tofuRuntime;
-runtime.sync ??= await createTofuSync(dataDir);
-export const { sync } = runtime;
+// Keep the configuration with the engine: hot reload must never relabel a live database.
+runtime.instance ??= await currentInstanceConfig();
+export const { instance } = runtime;
+export const { dataDir } = instance;
+function syncAdapter() {
+  if (!runtime.sync) {
+    throw new UserError("Le journal démarre, veuillez patienter", { status: 503 });
+  }
+  return runtime.sync.options.adapter;
+}
+
+// Register routes without opening user databases during Furin's build/AOT inspection.
+// Only startServer opens the durable journal, after acquiring the instance lock.
+export const syncOptions: FurinSyncOptions = {
+  adapter: {
+    abortMutation: (input) => syncAdapter().abortMutation(input),
+    beginMutation: (input) => syncAdapter().beginMutation(input),
+    completeMutation: (input) => syncAdapter().completeMutation(input),
+    currentCursor: () => syncAdapter().currentCursor(),
+    readChanges: (input) => syncAdapter().readChanges(input),
+    renewMutation: (input) => syncAdapter().renewMutation(input),
+    scope: "host-local",
+  },
+  principal: () => "local",
+};
 
 export function getEngine() {
   if (!runtime.engine) {

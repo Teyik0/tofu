@@ -8,6 +8,40 @@ import { UpdatesService } from "../src/server/updates";
 import { createUpdatesApi } from "../src/server/updates-api";
 import { json, waitFor } from "./helpers";
 
+test("concurrent release access changes both succeed and persist the final setting", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "tofu-update-access-"));
+  const sync = await createTofuSync(join(folder, "sync"));
+  const options = {
+    apiOrigin: "http://127.0.0.1:1",
+    arch: "arm64",
+    dataDir: folder,
+    notify: (_version: string) => undefined,
+    platform: "darwin",
+    version: "0.1.0",
+  };
+  const updates = await UpdatesService.open(options);
+  let reopened: UpdatesService | undefined;
+  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  try {
+    const responses = await Promise.all([
+      app.handle(new Request("http://localhost/updates/access", json({ token: "test-access" }))),
+      app.handle(new Request("http://localhost/updates/access", json({ clearToken: true }))),
+    ]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const [added, cleared] = await Promise.all(responses.map((response) => response.json()));
+    expect(added.hasToken).toBe(true);
+    expect(cleared.hasToken).toBe(false);
+    expect(updates.snapshot().hasToken).toBe(false);
+    reopened = await UpdatesService.open(options);
+    expect(reopened.snapshot().hasToken).toBe(false);
+  } finally {
+    reopened?.close();
+    updates.close();
+    sync.close();
+    await rm(folder, { force: true, recursive: true });
+  }
+});
+
 test("a release check during an installer download keeps the original filename and payload", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-concurrent-"));
   const sync = await createTofuSync(join(folder, "sync"));

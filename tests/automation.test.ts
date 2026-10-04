@@ -1,5 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: exercise ordered public API mutations and real transfer lifecycle.
 import { afterAll, expect, test } from "bun:test";
+import { chmod, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createApi } from "../src/server/api";
 import { TorrentEngine } from "../src/server/engine";
@@ -14,6 +15,119 @@ const catalog = Bun.serve({
   port: 0,
 });
 afterAll(() => catalog.stop(true));
+
+test("pattern rules exclude existing releases and still download newly published episodes", async () => {
+  const context = await fixture(4096, []);
+  let publishNew = false;
+  const upstream = Bun.serve({
+    fetch(incoming) {
+      const url = new URL(incoming.url);
+      const published = publishNew ? [1, 2] : [1];
+      const episodes = url.searchParams.get("q") === "" ? published : [];
+      return new Response(
+        `<rss><channel>${episodes
+          .map(
+            (episode) =>
+              `<item><title>Example S01E0${episode} VF 1080p</title><link>${context.magnet.replaceAll("&", "&amp;")}</link><guid>episode-${episode}</guid></item>`
+          )
+          .join("")}</channel></rss>`
+      );
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  });
+  const base = upstream.url.href;
+  const service = await AutomationService.open({
+    dataDir: join(context.directory, "feeds"),
+    endpoints: { anilist: catalog.url.href, c411: base, jev: base, nyaa: base, tsundere: base },
+    engine: () => context.engine,
+    now: Date.now,
+  });
+  const api = createApi(
+    () => context.engine,
+    context.sync.options,
+    () => service
+  );
+  const request = (path: string, init: RequestInit | undefined) =>
+    api.handle(new Request(`http://localhost/api${path}`, init));
+  try {
+    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
+    const draft = await (
+      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
+    ).json();
+    const saved = await request(
+      "/automations",
+      json({
+        ...draft,
+        includeExisting: false,
+        matchMode: "pattern",
+        sources: ["nyaa"],
+        title: "Example\\s+S01E\\d+",
+      })
+    );
+    expect(saved.status).toBe(200);
+    const rule = (await saved.json()) as { id: string };
+    const before = (await (
+      await request(`/automations/${rule.id}/run`, json({}))
+    ).json()) as AutomationState;
+    expect(before.decisions[0]?.status).toBe("ignored");
+    expect(context.engine.snapshot(null).torrents).toHaveLength(0);
+    publishNew = true;
+    const after = (await (
+      await request(`/automations/${rule.id}/run`, json({}))
+    ).json()) as AutomationState;
+    expect(after.decisions.find((decision) => decision.release.episode === 1)?.status).toBe(
+      "ignored"
+    );
+    expect(after.decisions.find((decision) => decision.release.episode === 2)?.status).toBe(
+      "added"
+    );
+    await waitFor(
+      async () => context.engine.detail(context.seed.infoHash),
+      (detail) => detail.progress === 1
+    );
+    const content = await request(`/torrents/${context.seed.infoHash}/files/0/content`, undefined);
+    expect(content.status).toBe(200);
+    expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(
+      Bun.SHA256.hash(context.bytes, "hex")
+    );
+  } finally {
+    await service.close();
+    upstream.stop(true);
+    await context.close();
+  }
+});
+
+test("plugin credentials stay private when automation reuses an existing data directory", async () => {
+  const context = await fixture(1024, []);
+  const dataDir = join(context.directory, "state");
+  await chmod(dataDir, 0o755);
+  const service = await AutomationService.open({
+    dataDir,
+    endpoints: pluginEndpoints,
+    engine: () => context.engine,
+    now: Date.now,
+  });
+  const api = createApi(
+    () => context.engine,
+    context.sync.options,
+    () => service
+  );
+  try {
+    const configured = await api.handle(
+      new Request("http://localhost/api/plugins/c411", {
+        ...json({ apiKey: "test-private-key", enabled: true }),
+        method: "PUT",
+      })
+    );
+    expect(configured.status).toBe(200);
+    expect(await configured.text()).not.toContain("test-private-key");
+    expect((await stat(dataDir)).mode % 0o100).toBe(0);
+  } finally {
+    await service.close();
+    await context.close();
+  }
+});
 
 test("C411 downloads the enclosure server-side without exposing its API key", async () => {
   const context = await fixture(4096, []);

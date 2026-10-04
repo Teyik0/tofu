@@ -1,9 +1,216 @@
 import { expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
+import { chmod, mkdir, rename, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { Torrent } from "webtorrent";
 import type { DashboardState } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
+
+test("an inaccessible paused destination reports an error on new downloads and recovers after access returns", async () => {
+  const context = await fixture(16_384, []);
+  const other = await fixture(16_384, []);
+  const protectedDirectory = join(context.directory, "protected");
+  try {
+    const first = (await (
+      await context.request(
+        "/torrents",
+        json({
+          downloadPath: join(protectedDirectory, "files"),
+          paused: false,
+          source: context.magnet,
+        })
+      )
+    ).json()) as { id: string };
+    await waitFor(
+      async () => context.engine.detail(first.id),
+      (detail) => detail.progress === 1
+    );
+    await context.request(`/torrents/${first.id}/pause`, json({}));
+    await chmod(protectedDirectory, 0o000);
+    const second = (await (
+      await context.request("/torrents", json({ paused: false, source: other.magnet }))
+    ).json()) as { id: string };
+    const failed = await waitFor(
+      async () => context.engine.detail(second.id),
+      (detail) => detail.status === "error" || detail.status === "checking"
+    );
+    expect(failed.status).toBe("error");
+    expect(failed.error).toContain("EACCES");
+    expect((await context.request("/health", undefined)).status).toBe(200);
+    await chmod(protectedDirectory, 0o700);
+    await context.request(`/torrents/${second.id}/resume`, json({}));
+    await waitFor(
+      async () => context.engine.detail(second.id),
+      (detail) => detail.progress === 1
+    );
+    const content = await context.request(`/torrents/${second.id}/files/0/content`, undefined);
+    expect(content.status).toBe(200);
+    expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(
+      Bun.SHA256.hash(other.bytes, "hex")
+    );
+  } finally {
+    await chmod(protectedDirectory, 0o700);
+    await Promise.all([context.close(), other.close()]);
+  }
+});
+
+test("symbolic aliases of a destination cannot overwrite or delete another torrent's files", async () => {
+  const context = await fixture(16_384, []);
+  const other = await fixture(16_384, []);
+  try {
+    const first = (await (
+      await context.request("/torrents", json({ paused: false, source: context.magnet }))
+    ).json()) as { id: string };
+    await waitFor(
+      async () => context.engine.detail(first.id),
+      (detail) => detail.progress === 1
+    );
+    await context.request(`/torrents/${first.id}/pause`, json({}));
+    const alias = join(context.directory, "alias-downloads");
+    await symlink(join(context.directory, "downloads"), alias);
+    const second = (await (
+      await context.request(
+        "/torrents",
+        json({ downloadPath: alias, paused: false, source: other.magnet })
+      )
+    ).json()) as { id: string };
+    const collision = await waitFor(
+      async () => context.engine.detail(second.id),
+      (detail) => detail.status === "error" || detail.progress === 1
+    );
+    expect(collision.status).toBe("error");
+    expect(collision.error).toContain("déjà utilisé");
+    expect(
+      (
+        await context.request(`/torrents/${second.id}`, {
+          ...json({ deleteFiles: true }),
+          method: "DELETE",
+        })
+      ).status
+    ).toBe(200);
+    const content = await context.request(`/torrents/${first.id}/files/0/content`, undefined);
+    expect(content.status).toBe(200);
+    expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(
+      Bun.SHA256.hash(context.bytes, "hex")
+    );
+  } finally {
+    await Promise.all([context.close(), other.close()]);
+  }
+});
+
+test("a torrent refuses symbolic links below its destination before writing downloaded bytes", async () => {
+  const context = await fixture(16_384, []);
+  try {
+    const source = join(context.directory, "collection");
+    await Bun.write(join(source, "first.bin"), context.bytes);
+    const seed = await new Promise<Torrent>((resolve) =>
+      context.seeder.seed(source, { announce: [] }, resolve)
+    );
+    const outside = join(context.directory, "outside");
+    await mkdir(outside);
+    await symlink(outside, join(context.directory, "downloads/collection"));
+    const added = await context.request(
+      "/torrents",
+      json({
+        paused: false,
+        source: `${seed.magnetURI}&x.pe=127.0.0.1:${context.seeder.torrentPort}`,
+      })
+    );
+    expect(added.status).toBe(200);
+    const { id } = (await added.json()) as { id: string };
+    const detail = await waitFor(
+      async () => context.engine.detail(id),
+      (value) => value.status === "error" || value.progress === 1
+    );
+    expect(detail.status).toBe("error");
+    expect(detail.error).toContain("symbolique");
+    expect(await Bun.file(join(outside, "first.bin")).exists()).toBe(false);
+  } finally {
+    await context.close();
+  }
+});
+
+test("file reads, moves and deletion reject a directory replaced by a symbolic link", async () => {
+  const context = await fixture(16_384, []);
+  try {
+    const source = join(context.directory, "collection");
+    await Bun.write(join(source, "first.bin"), context.bytes);
+    const seed = await new Promise<Torrent>((resolve) =>
+      context.seeder.seed(source, { announce: [] }, resolve)
+    );
+    const { id } = (await (
+      await context.request(
+        "/torrents",
+        json({
+          paused: false,
+          source: `${seed.magnetURI}&x.pe=127.0.0.1:${context.seeder.torrentPort}`,
+        })
+      )
+    ).json()) as { id: string };
+    await waitFor(
+      async () => context.engine.detail(id),
+      (detail) => detail.progress === 1
+    );
+    await context.request(`/torrents/${id}/pause`, json({}));
+    const original = join(context.directory, "downloads/collection");
+    const outside = join(context.directory, "outside");
+    await rename(original, outside);
+    await symlink(outside, original);
+    const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
+    expect(content.status).toBe(409);
+    const move = await context.request("/destinations/default", {
+      ...json({ downloadPath: join(context.directory, "moved"), moveFiles: true, name: "Moved" }),
+      method: "PUT",
+    });
+    expect(move.status).toBe(409);
+    const removed = await context.request(`/torrents/${id}`, {
+      ...json({ deleteFiles: true }),
+      method: "DELETE",
+    });
+    expect(removed.status).toBe(409);
+    expect(context.engine.snapshot(null).torrents).toHaveLength(1);
+    expect(await Bun.file(join(outside, "first.bin")).bytes()).toEqual(
+      new Uint8Array(context.bytes)
+    );
+    expect(
+      (
+        await context.request(`/torrents/${id}`, {
+          ...json({ deleteFiles: false }),
+          method: "DELETE",
+        })
+      ).status
+    ).toBe(200);
+    expect(await Bun.file(join(outside, "first.bin")).exists()).toBe(true);
+  } finally {
+    await context.close();
+  }
+});
+
+test("filenames starting with two dots can be downloaded, read and explicitly deleted", async () => {
+  const context = await fixture(16_384, [], "..source.bin");
+  try {
+    const { id } = (await (
+      await context.request("/torrents", json({ paused: false, source: context.magnet }))
+    ).json()) as { id: string };
+    await waitFor(
+      async () => context.engine.detail(id),
+      (detail) => detail.progress === 1
+    );
+    const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
+    expect(content.status).toBe(200);
+    expect(new Uint8Array(await content.arrayBuffer())).toEqual(new Uint8Array(context.bytes));
+    expect(
+      (
+        await context.request(`/torrents/${id}`, {
+          ...json({ deleteFiles: true }),
+          method: "DELETE",
+        })
+      ).status
+    ).toBe(200);
+    expect(await Bun.file(join(context.directory, "downloads/..source.bin")).exists()).toBe(false);
+  } finally {
+    await context.close();
+  }
+});
 
 test("relocation keeps a multifile torrent intact on failure and moves only its own nested files", async () => {
   const context = await fixture(16_384, []);

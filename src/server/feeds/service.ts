@@ -43,6 +43,10 @@ import {
 
 const feedExpression1 = /^(Source indisponible|Flux)/;
 
+function automationQuery(rule: Pick<AutomationDraft, "matchMode" | "title">) {
+  return rule.matchMode === "pattern" ? "" : rule.title;
+}
+
 export interface AutomationOptions {
   dataDir: string;
   endpoints: PluginEndpoints;
@@ -150,6 +154,8 @@ export class AutomationService {
   }
   static async open(options: AutomationOptions) {
     await mkdir(options.dataDir, { mode: 0o700, recursive: true });
+    // mkdir's mode does not tighten an existing directory; SQLite WAL also contains credentials.
+    await chmod(options.dataDir, 0o700);
     const service = new AutomationService(options);
     await chmod(join(options.dataDir, "feeds.sqlite"), 0o600);
     return service;
@@ -666,7 +672,7 @@ export class AutomationService {
       status: "active",
     };
     if (!(previous || draft.includeExisting)) {
-      const result = await this.discovery(draft.title, draft.sources);
+      const result = await this.discovery(automationQuery(draft), draft.sources);
       for (const release of result.releases) {
         // biome-ignore lint/performance/noAwaitInLoops: validate identity before recording a baseline; stop on provider failure.
         const evaluation = await this.evaluate(draft, release);
@@ -834,10 +840,7 @@ export class AutomationService {
       return this.snapshot();
     }
     await this.completeReplacements(rule);
-    const result = await this.discovery(
-      rule.matchMode === "pattern" ? "" : rule.title,
-      rule.sources
-    );
+    const result = await this.discovery(automationQuery(rule), rule.sources);
     if (this.isClosed() || this.rules.get(rule.id) !== rule) {
       return this.snapshot();
     }

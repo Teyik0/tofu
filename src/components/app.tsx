@@ -1,6 +1,6 @@
 import { Await, useQuery } from "@teyik0/furin/client";
 import { AlertCircleIcon, DownloadIcon, PlusIcon, SearchIcon, XIcon, ZapIcon } from "lucide-react";
-import { Suspense, useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { version } from "../../package.json";
 import { api } from "../client";
 import type { TorrentDetail, TorrentSummary } from "../types";
@@ -54,6 +54,11 @@ export function App({
   initialDetail: Promise<TorrentDetail | null>;
   initialTorrentId: string | null;
 }) {
+  useEffect(() => {
+    // Live details can replace this deferred snapshot before navigation cancels its stream.
+    // Await still receives the original promise and displays errors when the snapshot is used.
+    void initialDetail.catch(() => undefined);
+  }, [initialDetail]);
   const {
     data,
     activeDestination,
@@ -85,7 +90,7 @@ export function App({
         ),
     [data, activeDestination, filter, search, sort]
   );
-  const selectedId = currentId ?? torrents[0]?.id;
+  const selectedId = torrents.find((torrent) => torrent.id === currentId)?.id ?? torrents[0]?.id;
   const destination = data.destinations.find((item) => item.id === activeDestination);
   const add = () => setModal({ destinationId: activeDestination ?? "default", type: "add" });
   const act = useCallback(
@@ -95,7 +100,7 @@ export function App({
       setError(null);
       try {
         await request(path, method, body);
-        void refresh();
+        await refresh();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Une erreur est survenue");
       } finally {

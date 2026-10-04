@@ -1,5 +1,41 @@
 import { expect, test } from "bun:test";
+import { Elysia } from "elysia";
 import { fixture, json } from "./helpers";
+
+test("the API rejects untrusted hosts even when their Origin matches", async () => {
+  const context = await fixture(16_384, []);
+  try {
+    const { id } = (await (
+      await context.request("/torrents", json({ paused: true, source: context.magnet }))
+    ).json()) as { id: string };
+    const read = await context.api.handle(new Request("http://attacker.example:3030/api/state"));
+    expect(read.status).toBe(403);
+    const remove = await context.api.handle(
+      new Request(`http://attacker.example:3030/api/torrents/${id}`, {
+        ...json({ deleteFiles: true }),
+        headers: { "content-type": "application/json", origin: "http://attacker.example:3030" },
+        method: "DELETE",
+      })
+    );
+    expect(remove.status).toBe(403);
+    const parent = new Elysia().use(context.api).post("/native", () => ({ ok: true }));
+    const native = await parent.handle(
+      new Request("http://localhost/native", {
+        headers: { origin: "https://another-site.example" },
+        method: "POST",
+      })
+    );
+    expect(native.status).toBe(403);
+    const nested = await context.request("/updates/access", {
+      ...json({ clearToken: true }),
+      headers: { "content-type": "application/json", origin: "https://another-site.example" },
+    });
+    expect(nested.status).toBe(403);
+    expect(context.engine.snapshot(null).torrents).toHaveLength(1);
+  } finally {
+    await context.close();
+  }
+});
 
 test("invalid input, duplicates and cross-origin mutations fail without changing the library", async () => {
   const context = await fixture(64 * 1024, []);

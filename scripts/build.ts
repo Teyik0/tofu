@@ -14,8 +14,9 @@ async function command(args: string[], cwd: string) {
     throw new Error(`La commande a échoué : ${args.join(" ")}`);
   }
 }
-await command(["node_modules/@teyik0/furin/src/cli/index.ts", "build", "--target", "bun"], root);
 const release = Bun.argv[2] === "release";
+process.env.TOFU_RELEASE = release ? "1" : "0";
+await command(["node_modules/@teyik0/furin/src/cli/index.ts", "build", "--target", "bun"], root);
 if (Bun.argv[2] === "desktop" || release) {
   await command(["--bun", "node_modules/electrobun/bin/electrobun.cjs", "prepare"], root);
   const runtime = join(root, "runtime");

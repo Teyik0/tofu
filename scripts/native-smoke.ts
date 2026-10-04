@@ -36,6 +36,11 @@ const seedClient = new WebTorrent({
 const seed = await new Promise<Torrent>((resolve) =>
   seedClient.seed(source, { announce: urls }, resolve)
 );
+const secondarySource = join(folder, "Second torrent Tofu.bin");
+await Bun.write(secondarySource, payload);
+const secondarySeed = await new Promise<Torrent>((resolve) =>
+  seedClient.seed(secondarySource, { announce: [] }, resolve)
+);
 const magnet = `${seed.magnetURI}&x.pe=${encodeURIComponent(`127.0.0.1:${seedClient.torrentPort}`)}`;
 let resolveReport: (value: string) => void = () => undefined;
 const reportPromise = new Promise<string>((resolve) => {
@@ -66,7 +71,7 @@ function smokeWorkflow(name: string | undefined) {
   return { reportName: "native-smoke", workflow: nativeWorkflow };
 }
 const { workflow, reportName } = smokeWorkflow(process.env.TOFU_NATIVE_WORKFLOW);
-const browserScript = `(${workflow.toString()})(${JSON.stringify({ expectedHash: createHash("sha256").update(payload).digest("hex"), magnet, reportUrl: `http://127.0.0.1:${collector.port}`, torrentBytes: Array.from(seed.torrentFile), urls })})`;
+const browserScript = `(${workflow.toString()})(${JSON.stringify({ expectedHash: createHash("sha256").update(payload).digest("hex"), magnet, reportUrl: `http://127.0.0.1:${collector.port}`, secondaryTorrentBytes: Array.from(secondarySeed.torrentFile), torrentBytes: Array.from(seed.torrentFile), urls })})`;
 const scriptPath = join(folder, "workflow.js");
 await Bun.write(scriptPath, browserScript);
 const native = Bun.spawn(
@@ -119,6 +124,7 @@ try {
 
 async function nativeWorkflow(config: {
   magnet: string;
+  secondaryTorrentBytes: number[];
   torrentBytes: number[];
   urls: string[];
   reportUrl: string;
@@ -193,7 +199,21 @@ async function nativeWorkflow(config: {
     await wait(
       () => !!document.querySelector('[data-slot="select-content"][data-open] [role="listbox"]')
     );
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      const deadline = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `La WebView ne produit pas de frame : ${JSON.stringify({ focused: document.hasFocus(), visibility: document.visibilityState })}`
+            )
+          ),
+        2000
+      );
+      requestAnimationFrame(() => {
+        clearTimeout(deadline);
+        resolve();
+      });
+    });
     trigger.dispatchEvent(
       new KeyboardEvent("keyup", { bubbles: true, cancelable: true, key: "ArrowDown" })
     );
@@ -238,6 +258,7 @@ async function nativeWorkflow(config: {
   };
   try {
     await wait(() => document.querySelector<HTMLButtonElement>(".add-button")?.disabled === false);
+    await fetch("/api/desktop/open", { method: "POST" });
     await document.fonts.ready;
     check(
       "React hydraté et moteur connecté",
@@ -441,6 +462,45 @@ async function nativeWorkflow(config: {
       "Téléchargement directement dans le dossier cible",
       (await state()).detail?.savePath === originalPath
     );
+    const secondForm = new FormData();
+    secondForm.set(
+      "file",
+      new File([new Uint8Array(config.secondaryTorrentBytes)], "second.torrent")
+    );
+    secondForm.set("paused", "true");
+    secondForm.set("destinationId", followedId);
+    const secondResponse = await fetch("/api/torrents/file", { body: secondForm, method: "POST" });
+    const second = (await secondResponse.json()) as { id: string };
+    await wait(() => document.querySelectorAll(".torrent-table tbody tr").length === 2);
+    const secondRow = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".torrent-select")
+    ).find((button) => button.textContent?.includes("Second torrent Tofu.bin"))!;
+    secondRow.click();
+    await wait(
+      () =>
+        document.querySelector(".detail-pane")?.textContent?.includes("Second torrent Tofu.bin") ===
+        true
+    );
+    set(
+      document.querySelector<HTMLInputElement>('[aria-label="Rechercher un torrent"]')!,
+      "Test réel"
+    );
+    await wait(() => document.querySelectorAll(".torrent-table tbody tr").length === 1);
+    await wait(
+      () =>
+        document.querySelector(".detail-pane")?.textContent?.includes("Test réel Tofu.bin") === true
+    );
+    check(
+      "La recherche sélectionne un torrent visible et conserve ses détails",
+      document.querySelector('.torrent-select[aria-pressed="true"]') !== null
+    );
+    set(document.querySelector<HTMLInputElement>('[aria-label="Rechercher un torrent"]')!, "");
+    await fetch(`/api/torrents/${second.id}`, {
+      body: JSON.stringify({ deleteFiles: false }),
+      headers: { "content-type": "application/json" },
+      method: "DELETE",
+    });
+    await wait(() => document.querySelectorAll(".torrent-table tbody tr").length === 1);
     await wait(() =>
       Array.from(document.querySelectorAll("button")).some(
         (button) => button.textContent?.trim() === "Trackers2"

@@ -87,6 +87,7 @@ export class UpdatesService {
   private readonly access: Access;
   private asset: ReleaseAsset | null = null;
   private pending: Promise<UpdateState> | null = null;
+  private mutations: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | undefined;
   private initial: ReturnType<typeof setTimeout> | undefined;
   private readonly state: UpdateState;
@@ -150,10 +151,18 @@ export class UpdatesService {
     await chmod(temporary, 0o600);
     await rename(temporary, this.path);
   }
-  async configure(input: { token?: string; clearToken?: boolean }) {
-    if (this.pending) {
-      await this.pending;
-    }
+  private serial<T>(action: () => Promise<T>): Promise<T> {
+    const next = this.mutations.then(action);
+    this.mutations = next.then(
+      () => undefined,
+      () => undefined
+    );
+    return next;
+  }
+  configure(input: { token?: string; clearToken?: boolean }) {
+    return this.serial(() => this.configureAccess(input));
+  }
+  private async configureAccess(input: { token?: string; clearToken?: boolean }) {
     if (input.clearToken) {
       this.access.token = "";
     } else if (input.token !== undefined) {
@@ -187,7 +196,7 @@ export class UpdatesService {
     });
   }
   check(): Promise<UpdateState> {
-    this.pending ??= this.readLatest().finally(() => {
+    this.pending ??= this.serial(() => this.readLatest()).finally(() => {
       this.pending = null;
     });
     return this.pending;

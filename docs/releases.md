@@ -1,5 +1,7 @@
 # Arrière-plan et distribution de Tofu
 
+La release et le développement peuvent tourner ensemble : le dev utilise `Tofu-dev` pour ses bases et téléchargements par défaut, un identifiant macOS distinct et un port indépendant. La release conserve les données existantes dans `Tofu`. Un verrou système et un marqueur de profil empêchent de partager accidentellement les bases. Voir [le guide de développement](development.md#data-and-configuration).
+
 Dans **Préférences**, activer **Tourner en arrière-plan**, puis enregistrer. Fermer la fenêtre, ou choisir **Passer en arrière-plan maintenant**, détruit la fenêtre native et sa WebView. Le processus Bun conserve le serveur HTTP, les torrents et les automatisations. L’icône Tofu de la barre de menus permet d’ouvrir l’application, d’ouvrir la même interface dans le navigateur, de rechercher une mise à jour ou de quitter complètement. Sans cette préférence, fermer la fenêtre quitte l’application.
 
 Cette architecture évite de garder une WebView masquée en mémoire. Elle réutilise le moteur et le serveur du mode web plutôt qu’un second service. Bun, les connexions BitTorrent et les tâches actives continuent de consommer des ressources. Elle ne démarre pas automatiquement à l’ouverture de session et ne maintient pas macOS éveillé.

@@ -1,0 +1,160 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { resolveInstanceConfig } from "../src/server/instance";
+import type { DashboardState, DesktopState, InstanceConfig } from "../src/types";
+import { fixture, json, waitFor } from "../tests/helpers";
+
+const root = join(import.meta.dir, "..");
+const context = await fixture(65_536, []);
+const instances: ReturnType<typeof launch>[] = [];
+const checks: string[] = [];
+
+function launch(config: InstanceConfig) {
+  const channel = config.profile === "dev" ? "dev" : "stable";
+  const appName = config.profile === "dev" ? "Tofu-dev" : "Tofu";
+  const launcher = join(
+    root,
+    `build/${channel}-macos-${process.arch}/${appName}.app/Contents/MacOS/launcher`
+  );
+  const environment = {
+    ...process.env,
+    TOFU_DATA_DIR: config.dataDir,
+    TOFU_DOWNLOAD_DIR: config.downloadPath,
+    TOFU_MODE: "desktop",
+    TOFU_PORT: "0",
+    // A terminal variable must never change the identity of an installed bundle.
+    TOFU_PROFILE: config.profile === "dev" ? "release" : "dev",
+    TOFU_SMOKE_SCRIPT: undefined,
+  };
+  const child = Bun.spawn([launcher], {
+    cwd: root,
+    env: environment,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const output = Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { child, config, output };
+}
+
+async function ready(instance: ReturnType<typeof launch>) {
+  const result = await waitFor(
+    async () => {
+      if (instance.child.exitCode !== null) {
+        throw new Error((await instance.output).join("\n"));
+      }
+      const file = Bun.file(join(instance.config.dataDir, "server.json"));
+      if (!(await file.exists())) {
+        return null;
+      }
+      const { url } = (await file.json()) as { url: string };
+      const response = await fetch(`${url}/api/desktop`);
+      if (!response.ok) {
+        return null;
+      }
+      const desktop = (await response.json()) as DesktopState;
+      return desktop.windows === 1 && desktop.webviews === 1 ? url : null;
+    },
+    (value) => value !== null
+  );
+  if (!result) {
+    throw new Error("La fenêtre native Tofu n’a pas démarré");
+  }
+  return result;
+}
+
+try {
+  const options = {
+    dataDir: undefined,
+    desktop: true,
+    downloadPath: undefined,
+    homeDir: context.directory,
+    platform: "darwin" as const,
+    port: "0",
+  };
+  const dev = launch(resolveInstanceConfig({ ...options, profile: "dev" }));
+  instances.push(dev);
+  const release = launch(resolveInstanceConfig({ ...options, profile: "release" }));
+  instances.push(release);
+  const [devUrl, releaseUrl] = await Promise.all([ready(dev), ready(release)]);
+  const [devInfo, releaseInfo] = await Promise.all(
+    [devUrl, releaseUrl].map(
+      async (url) => (await (await fetch(`${url}/api/instance`)).json()) as InstanceConfig
+    )
+  );
+  if (
+    devInfo?.profile !== "dev" ||
+    releaseInfo?.profile !== "release" ||
+    devInfo.identifier === releaseInfo.identifier ||
+    devUrl === releaseUrl
+  ) {
+    throw new Error("Les bundles natifs n’ont pas des profils, identités et ports distincts");
+  }
+  checks.push(
+    "Deux vrais bundles natifs ouverts ensemble, profils issus du bundle malgré un environnement contradictoire"
+  );
+  const read = async (url: string) =>
+    (await (await fetch(`${url}/api/state`)).json()) as DashboardState;
+  const before = await read(devUrl);
+  await fetch(`${devUrl}/api/settings`, {
+    ...json({ ...before.settings, runInBackground: true }),
+    method: "PUT",
+  });
+  const added = await fetch(
+    `${devUrl}/api/torrents`,
+    json({ paused: false, source: context.magnet })
+  );
+  if (!added.ok) {
+    throw new Error(await added.text());
+  }
+  const { id } = (await added.json()) as { id: string };
+  await waitFor(
+    () => read(devUrl),
+    (state) => state.torrents[0]?.status === "seeding"
+  );
+  const bytes = await (await fetch(`${devUrl}/api/torrents/${id}/files/0/content`)).arrayBuffer();
+  const stable = await read(releaseUrl);
+  if (
+    Bun.SHA256.hash(bytes, "hex") !== Bun.SHA256.hash(context.bytes, "hex") ||
+    stable.torrents.length !== 0 ||
+    stable.settings.runInBackground
+  ) {
+    throw new Error("Le téléchargement réel ou les préférences se mélangent entre les profils");
+  }
+  checks.push("Transfert réel SHA-256 exact et préférences isolées, release intacte");
+  dev.child.kill("SIGTERM");
+  await dev.child.exited;
+  if (!(await fetch(`${releaseUrl}/api/health`)).ok) {
+    throw new Error("Quitter le dev affecte la release");
+  }
+  checks.push("Quitter le bundle de développement laisse la release disponible");
+  await mkdir(join(root, ".cache"), { recursive: true });
+  await Bun.write(
+    join(root, ".cache/native-coexist-smoke.json"),
+    JSON.stringify({ checks, passed: true }, null, 2)
+  );
+  console.log(checks.join("\n"));
+} catch (error) {
+  await mkdir(join(root, ".cache"), { recursive: true });
+  await Bun.write(
+    join(root, ".cache/native-coexist-smoke.json"),
+    JSON.stringify({ checks, error: String(error), passed: false }, null, 2)
+  );
+  throw error;
+} finally {
+  await Promise.all(
+    instances.map(async ({ child }) => {
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+      }
+      await child.exited;
+    })
+  );
+  await Bun.write(
+    join(root, ".cache/native-coexist-smoke.log"),
+    (await Promise.all(instances.map(({ output }) => output))).flat().join("\n")
+  );
+  await context.close();
+}

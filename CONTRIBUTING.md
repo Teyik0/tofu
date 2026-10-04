@@ -33,6 +33,8 @@ bun run test:background
 
 Native tests require a graphical macOS session. Their injected workflow is explicitly enabled by `TOFU_SMOKE_SCRIPT`; never inject it by default. Transfer tests use real peers and temporary directories. Add tests through public APIs for changes to the engine or lifecycle, and verify a failing case before implementing the fix.
 
+For changes to development/release isolation, build both native channels with `bun run build:desktop` and `bun run build:release`, then run `bun run test:coexist`. The coexistence test opens both real bundles in temporary data directories and checks independent settings, transfers and shutdown. See [docs/development.md](docs/development.md#data-and-configuration) for the profile defaults and ownership rules.
+
 ## Changes and commits
 
 - Discuss substantial features in an issue before implementation. Explain the architecture and its alternative.
