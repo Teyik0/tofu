@@ -1,6 +1,6 @@
-# Proposition torrent
+# Torrent proposal
 
-Image : `tofu-torrent-proposal.png`, générée avec imagegen intégré. Variante proposée ; l’icône native actuelle reste configurée séparément.
+Image: `tofu-torrent-proposal.png`, generated with the built-in imagegen tool. Proposed variant; the current native icon remains configured separately.
 
 Prompt :
 

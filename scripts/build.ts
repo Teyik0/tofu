@@ -11,7 +11,7 @@ async function command(args: string[], cwd: string) {
     stdout: "inherit",
   });
   if ((await child.exited) !== 0) {
-    throw new Error(`La commande a échoué : ${args.join(" ")}`);
+    throw new Error(`Command failed : ${args.join(" ")}`);
   }
 }
 const release = Bun.argv[2] === "release";
@@ -46,7 +46,7 @@ if (Bun.argv[2] === "desktop" || release) {
     const directory = join(root, "artifacts");
     const installers = [...new Bun.Glob(`macos-${process.arch}-*.dmg`).scanSync(directory)];
     if (installers.length !== 1 || !installers[0]) {
-      throw new Error("Un unique installateur DMG est attendu dans artifacts");
+      throw new Error("Expected exactly one DMG installer in artifacts");
     }
     await rename(
       join(directory, installers[0]),

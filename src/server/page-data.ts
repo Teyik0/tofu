@@ -13,7 +13,7 @@ export async function loadTorrentPage(
     destinationId !== null &&
     !state.destinations.some((destination) => destination.id === destinationId)
   ) {
-    notFound({ message: "Cet onglet n’existe pas" });
+    notFound({ message: "This tab does not exist" });
   }
   const initialTorrentId =
     state.torrents.find(
@@ -25,7 +25,7 @@ export async function loadTorrentPage(
           .api.torrents({ id: initialTorrentId })
           .get();
         if (error || !data || !("id" in data)) {
-          throw new Error("Impossible de charger le torrent");
+          throw new Error("Unable to load the torrent");
         }
         return data;
       })()

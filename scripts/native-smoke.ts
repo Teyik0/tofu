@@ -9,7 +9,7 @@ import WebTorrent, { type Torrent } from "webtorrent";
 
 const root = join(import.meta.dir, "..");
 const folder = await mkdtemp(join(tmpdir(), "tofu-native-"));
-const source = join(folder, "Test réel Tofu.bin");
+const source = join(folder, "Real Tofu test.bin");
 const payload = randomBytes(256 * 1024);
 await Bun.write(source, payload);
 const trackers = [
@@ -22,7 +22,7 @@ for (const tracker of trackers) {
 const urls = trackers.map((tracker) => {
   const address = tracker.http.address();
   if (!address || typeof address === "string") {
-    throw new Error("Tracker non démarré");
+    throw new Error("Tracker not started");
   }
   return `http://127.0.0.1:${address.port}/announce`;
 });
@@ -52,7 +52,7 @@ const collector = Bun.serve({
     if (new URL(request.url).pathname === "/progress") {
       console.log(body);
     } else if (new URL(request.url).pathname === "/remove-downloaded") {
-      await rm(join(folder, "downloads/relocated/Test réel Tofu.bin"));
+      await rm(join(folder, "downloads/relocated/Real Tofu test.bin"));
     } else {
       resolveReport(body);
     }
@@ -93,7 +93,7 @@ const timeout = setTimeout(
   () =>
     resolveReport(
       JSON.stringify({
-        error: "La WebView n’a pas terminé le parcours en 90 secondes",
+        error: "The WebView did not complete the flow within 90 seconds",
         passed: false,
       })
     ),
@@ -156,14 +156,14 @@ async function nativeWorkflow(config: {
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error(`Délai dépassé : ${condition.toString()}`);
+    throw new Error(`Timed out : ${condition.toString()}`);
   };
   const click = (text: string) => {
     const button = Array.from(
       document.querySelectorAll<HTMLButtonElement | HTMLAnchorElement>("button, a")
     ).find((element) => element.textContent?.trim() === text);
     if (!button) {
-      throw new Error(`Bouton absent : ${text}`);
+      throw new Error(`Button missing: ${text}`);
     }
     button.focus();
     button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
@@ -204,7 +204,7 @@ async function nativeWorkflow(config: {
         () =>
           reject(
             new Error(
-              `La WebView ne produit pas de frame : ${JSON.stringify({ focused: document.hasFocus(), visibility: document.visibilityState })}`
+              `The WebView is not producing frames : ${JSON.stringify({ focused: document.hasFocus(), visibility: document.visibilityState })}`
             )
           ),
         2000
@@ -223,7 +223,7 @@ async function nativeWorkflow(config: {
       )
     ).find((element) => element.textContent?.trim() === label);
     if (!option) {
-      throw new Error(`Option absente : ${label}`);
+      throw new Error(`Option missing: ${label}`);
     }
     option.focus();
     await wait(() => document.activeElement === option);
@@ -242,7 +242,7 @@ async function nativeWorkflow(config: {
     ).catch((cause: unknown) => {
       const popup = document.querySelector<HTMLElement>('[data-slot="select-content"]');
       throw new Error(
-        `Fermeture du Select : ${JSON.stringify({
+        `Select dismissal : ${JSON.stringify({
           animation: popup && getComputedStyle(popup).animation,
           animations: popup?.getAnimations().map((animation) => ({
             playState: animation.playState,
@@ -261,21 +261,19 @@ async function nativeWorkflow(config: {
     await fetch("/api/desktop/open", { method: "POST" });
     await document.fonts.ready;
     check(
-      "React hydraté et moteur connecté",
-      document.body.textContent?.includes("Moteur connecté") === true
+      "React hydrated and engine connected",
+      document.body.textContent?.includes("Engine connected") === true
     );
     check(
-      "Filtre et tri utilisent des Select accessibles",
-      document
-        .querySelector('[aria-label="Filtrer les torrents par état"]')
-        ?.getAttribute("role") === "combobox" &&
-        document.querySelector('[aria-label="Trier les torrents"]')?.getAttribute("role") ===
-          "combobox"
+      "Filtering and sorting use accessible Select controls",
+      document.querySelector('[aria-label="Filter torrents by status"]')?.getAttribute("role") ===
+        "combobox" &&
+        document.querySelector('[aria-label="Sort torrents"]')?.getAttribute("role") === "combobox"
     );
     check(
-      "Styles et police locale chargés",
+      "Styles and system font loaded",
       getComputedStyle(document.querySelector('[data-slot="sidebar-container"]')!).width ===
-        "190px" && document.fonts.check('13px "Manrope Variable"')
+        "190px" && getComputedStyle(document.documentElement).fontFamily.includes("system-ui")
     );
     const content = document.querySelector("main")!;
     const contentBounds = content.getBoundingClientRect();
@@ -283,7 +281,7 @@ async function nativeWorkflow(config: {
       .querySelector('[data-slot="sidebar-container"]')!
       .getBoundingClientRect();
     check(
-      "Contenu inset arrondi, espacé et sans chevauchement de la sidebar",
+      "Inset content rounded and spaced without sidebar overlap",
       document.querySelectorAll("main").length === 1 &&
         contentBounds.left >= navigationBounds.right &&
         contentBounds.top > 0 &&
@@ -291,8 +289,8 @@ async function nativeWorkflow(config: {
         Number.parseFloat(getComputedStyle(content).borderTopLeftRadius) > 0
     );
     check(
-      "Données du moteur présentes dans le HTML avant JavaScript",
-      (await (await fetch("/")).text()).includes("Moteur connecté")
+      "Engine data present in HTML before JavaScript",
+      (await (await fetch("/")).text()).includes("Engine connected")
     );
     await wait(() =>
       performance
@@ -300,14 +298,14 @@ async function nativeWorkflow(config: {
         .some((entry) => entry.name.includes("/_furin/sync/changes"))
     );
     check(
-      "Statistiques rafraîchies par Furin Sync sans polling API du navigateur",
+      "Statistics refreshed by Furin Sync without browser API polling",
       !performance.getEntriesByType("resource").some((entry) => entry.name.includes("/api/state"))
     );
-    await choose('[aria-label="Trier les torrents"]', "Nom");
-    await choose('[aria-label="Trier les torrents"]', "Plus récents");
-    check("Choix et fermeture des Select au clavier", true);
+    await choose('[aria-label="Sort torrents"]', "Name");
+    await choose('[aria-label="Sort torrents"]', "Newest first");
+    check("Select controls support keyboard selection and dismissal", true);
     const sidebarToggle = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Réduire la sidebar"]'
+      'button[aria-label="Collapse sidebar"]'
     )!;
     // WebKit tracks keyboard modality separately from programmatic focus.
     (document.activeElement as HTMLElement | null)?.blur();
@@ -318,10 +316,10 @@ async function nativeWorkflow(config: {
         document.querySelectorAll<HTMLElement>('[data-slot="tooltip-content"][data-open]')
       ).some(
         (tooltip) =>
-          tooltip.textContent === "Réduire la sidebar" && tooltip.getClientRects().length > 0
+          tooltip.textContent === "Collapse sidebar" && tooltip.getClientRects().length > 0
       )
     );
-    check("Tooltip des actions icônes visible au focus clavier", true);
+    check("Icon action tooltips visible on keyboard focus", true);
     sidebarToggle.blur();
     const originalPath = (await state()).settings.downloadPath;
     await fetch("/api/destinations", {
@@ -330,13 +328,13 @@ async function nativeWorkflow(config: {
       method: "POST",
     });
     await wait(() =>
-      Array.from(document.querySelectorAll('[aria-label="Onglets de destination"] a')).some(
+      Array.from(document.querySelectorAll('[aria-label="Destination tabs"] a')).some(
         (link) => link.textContent?.trim() === "Sync"
       )
     );
-    check("Une modification externe apparaît automatiquement via Sync", true);
+    check("An external change appears automatically through Sync", true);
     const createTab = async (name: string) => {
-      document.querySelector<HTMLButtonElement>('button[aria-label="Créer un onglet"]')!.click();
+      document.querySelector<HTMLButtonElement>('button[aria-label="Create a tab"]')!.click();
       await wait(() => !!document.querySelector('[role="dialog"][data-open]'));
       set(document.querySelector<HTMLInputElement>("#destination-name")!, name);
       set(document.querySelector<HTMLInputElement>("#destination-path")!, originalPath);
@@ -346,22 +344,22 @@ async function nativeWorkflow(config: {
       await wait(() => !document.querySelector('[role="dialog"][data-open]'));
       await wait(() => document.body.innerText.includes(name));
     };
-    await createTab("Séries");
-    await createTab("À suivre");
+    await createTab("Series");
+    await createTab("Following");
     const shared = (await state()).destinations.filter((tab) =>
-      ["Séries", "À suivre"].includes(tab.name)
+      ["Series", "Following"].includes(tab.name)
     );
     check(
-      "Deux onglets indépendants avec le même dossier",
+      "Two independent tabs with the same folder",
       shared.length === 2 &&
         shared[0]!.id !== shared[1]!.id &&
         shared.every((tab) => tab.downloadPath === originalPath)
     );
-    const seriesId = shared.find((tab) => tab.name === "Séries")!.id;
-    click("Séries");
+    const seriesId = shared.find((tab) => tab.name === "Series")!.id;
+    click("Series");
     await wait(() => location.pathname.endsWith(seriesId));
     const sidebar = document.querySelector('[data-slot="sidebar-container"]');
-    document.querySelector<HTMLButtonElement>('button[aria-label="Réduire la sidebar"]')!.click();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Collapse sidebar"]')!.click();
     await wait(
       () =>
         document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "collapsed"
@@ -391,35 +389,35 @@ async function nativeWorkflow(config: {
         };
       });
       throw new Error(
-        `Centrage sidebar : ${JSON.stringify({ connected: sidebar!.isConnected, offsets })}`
+        `Sidebar centering : ${JSON.stringify({ connected: sidebar!.isConnected, offsets })}`
       );
     });
-    check("Icônes de la sidebar repliée centrées avec des marges symétriques", true);
-    const followedId = shared.find((tab) => tab.name === "À suivre")!.id;
-    click("À suivre");
+    check("Collapsed sidebar icons centered with symmetric margins", true);
+    const followedId = shared.find((tab) => tab.name === "Following")!.id;
+    click("Following");
     await wait(() => location.pathname === `/library/destinations/${followedId}`);
     check(
-      "Navigation Furin conserve le layout et la sidebar compacte",
+      "Furin navigation preserves the layout and compact sidebar",
       document.querySelector('[data-slot="sidebar-container"]') === sidebar &&
         document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state") === "collapsed"
     );
     history.back();
     await wait(() => !location.pathname.endsWith(followedId));
     check(
-      "Retour navigateur restaure la destination précédente",
-      document.querySelector(".library-title")?.textContent?.includes("Séries") === true
+      "Browser back restores the previous destination",
+      document.querySelector(".library-title")?.textContent?.includes("Series") === true
     );
-    click("À suivre");
+    click("Following");
     await wait(() => location.pathname.endsWith(followedId));
-    document.querySelector<HTMLButtonElement>('button[aria-label="Réduire la sidebar"]')!.click();
-    click("Ajouter un torrent");
+    document.querySelector<HTMLButtonElement>('button[aria-label="Collapse sidebar"]')!.click();
+    click("Add a torrent");
     await wait(() => !!document.querySelector('[role="dialog"][data-open]'));
     check(
-      "Destination héritée de l’onglet sélectionné",
-      document.querySelector("#torrent-destination")!.textContent?.trim() === "À suivre"
+      "Destination inherited from the selected tab",
+      document.querySelector("#torrent-destination")!.textContent?.trim() === "Following"
     );
     const fileZone = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Choisir un fichier .torrent"]'
+      'button[aria-label="Choose a .torrent file"]'
     )!;
     const uploadTransfer = new DataTransfer();
     uploadTransfer.items.add(
@@ -436,11 +434,11 @@ async function nativeWorkflow(config: {
     );
     await new Promise((resolve) => setTimeout(resolve, 150));
     check(
-      "Le dépôt dans le formulaire attend la validation et conserve la destination",
+      "Dropping a file in the form waits for confirmation and preserves the destination",
       (await state()).torrents.length === 0 &&
         document.querySelector<HTMLInputElement>("#torrent-source")!.disabled
     );
-    click("Retirer le fichier");
+    click("Remove file");
     await wait(() => !document.querySelector<HTMLInputElement>("#torrent-source")!.disabled);
     await wait(
       () => !!document.querySelector('[role="dialog"][data-open], [role="alertdialog"][data-open]')
@@ -455,11 +453,11 @@ async function nativeWorkflow(config: {
       () => !document.querySelector('[role="dialog"][data-open], [role="alertdialog"][data-open]')
     );
     check(
-      "Ajout du magnet depuis le formulaire",
+      "Magnet added through the form",
       document.querySelectorAll(".torrent-table tbody tr").length === 1
     );
     check(
-      "Téléchargement directement dans le dossier cible",
+      "Download directly into the target folder",
       (await state()).detail?.savePath === originalPath
     );
     const secondForm = new FormData();
@@ -482,19 +480,19 @@ async function nativeWorkflow(config: {
         true
     );
     set(
-      document.querySelector<HTMLInputElement>('[aria-label="Rechercher un torrent"]')!,
-      "Test réel"
+      document.querySelector<HTMLInputElement>('[aria-label="Search torrents"]')!,
+      "Real Tofu test"
     );
     await wait(() => document.querySelectorAll(".torrent-table tbody tr").length === 1);
     await wait(
       () =>
-        document.querySelector(".detail-pane")?.textContent?.includes("Test réel Tofu.bin") === true
+        document.querySelector(".detail-pane")?.textContent?.includes("Real Tofu test.bin") === true
     );
     check(
-      "La recherche sélectionne un torrent visible et conserve ses détails",
+      "Search selects a visible torrent and preserves its details",
       document.querySelector('.torrent-select[aria-pressed="true"]') !== null
     );
-    set(document.querySelector<HTMLInputElement>('[aria-label="Rechercher un torrent"]')!, "");
+    set(document.querySelector<HTMLInputElement>('[aria-label="Search torrents"]')!, "");
     await fetch(`/api/torrents/${second.id}`, {
       body: JSON.stringify({ deleteFiles: false }),
       headers: { "content-type": "application/json" },
@@ -511,15 +509,12 @@ async function nativeWorkflow(config: {
     await wait(
       async () => (await state()).detail?.trackers.every((row) => row.status === "working") === true
     );
-    check(
-      "Trackers réels et statistiques",
-      document.body.textContent?.includes("Sources") === true
-    );
+    check("Real trackers and statistics", document.body.textContent?.includes("Sources") === true);
     document
-      .querySelector<HTMLButtonElement>(`button[aria-label="Supprimer ${config.urls[0]}"]`)!
+      .querySelector<HTMLButtonElement>(`button[aria-label="Remove ${config.urls[0]}"]`)!
       .click();
     await wait(async () => (await state()).detail?.trackers.length === 1);
-    click("Gérer les trackers");
+    click("Manage trackers");
     await wait(
       () => !!document.querySelector('[role="dialog"][data-open], [role="alertdialog"][data-open]')
     );
@@ -535,35 +530,31 @@ async function nativeWorkflow(config: {
     await wait(
       () => !document.querySelector('[role="dialog"][data-open], [role="alertdialog"][data-open]')
     );
-    check("Suppression, modification et ajout de trackers depuis l’interface", true);
-    document
-      .querySelector<HTMLButtonElement>('button[aria-label^="Mettre en pause Test"]')!
-      .click();
+    check("Remove, edit, and add trackers through the UI", true);
+    document.querySelector<HTMLButtonElement>('button[aria-label^="Pause Test"]')!.click();
     await wait(async () => (await state()).detail?.status === "paused");
-    await wait(() => !!document.querySelector('button[aria-label^="Reprendre Test"]'));
-    document.querySelector<HTMLButtonElement>('button[aria-label^="Reprendre Test"]')!.click();
+    await wait(() => !!document.querySelector('button[aria-label^="Resume Test"]'));
+    document.querySelector<HTMLButtonElement>('button[aria-label^="Resume Test"]')!.click();
     await wait(async () => (await state()).detail?.status === "seeding");
-    check("Pause et reprise natives", true);
-    click("Fichiers1");
+    check("Native pause and resume", true);
+    click("Files1");
     await wait(() => !!document.querySelector('.inner-table [role="combobox"]'));
-    await choose('.inner-table [role="combobox"]', "Haute");
+    await choose('.inner-table [role="combobox"]', "High");
     await wait(async () => (await state()).detail?.files[0]?.priority === "high");
     const detail = (await state()).detail!;
     const bytes = await (await fetch(`/api/torrents/${detail.id}/files/0/content`)).arrayBuffer();
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
-    check("Priorité de fichier et données SHA-256 exactes", hash === config.expectedHash);
+    check("File priority and exact SHA-256 data", hash === config.expectedHash);
     const initialTorrent = (await state()).detail!;
-    document
-      .querySelector<HTMLButtonElement>('button[aria-label="Modifier l’onglet À suivre"]')!
-      .click();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Edit tab Following"]')!.click();
     await wait(() => !!document.querySelector('[role="dialog"][data-open]'));
     set(document.querySelector<HTMLInputElement>("#destination-name")!, "Anime");
     set(document.querySelector<HTMLInputElement>("#destination-path")!, `${originalPath}/future`);
     await wait(() => !!document.querySelector("#move-files"));
     check(
-      "Le changement de dossier propose un déplacement explicite",
+      "Changing folders offers an explicit move",
       document.querySelector<HTMLInputElement>("#move-files")!.checked === false
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -571,13 +562,11 @@ async function nativeWorkflow(config: {
     await wait(async () => (await state()).destinations.some((tab) => tab.name === "Anime"));
     await wait(() => !document.querySelector('[role="dialog"][data-open]'));
     check(
-      "Renommage et changement de dossier sans déplacer le torrent",
+      "Rename and change folders without moving the torrent",
       (await state()).detail!.savePath === initialTorrent.savePath
     );
-    await wait(() => !!document.querySelector('button[aria-label="Modifier l’onglet Anime"]'));
-    document
-      .querySelector<HTMLButtonElement>('button[aria-label="Modifier l’onglet Anime"]')!
-      .click();
+    await wait(() => !!document.querySelector('button[aria-label="Edit tab Anime"]'));
+    document.querySelector<HTMLButtonElement>('button[aria-label="Edit tab Anime"]')!.click();
     await wait(() => !!document.querySelector("#destination-path"));
     const movedPath = `${originalPath}/relocated`;
     set(document.querySelector<HTMLInputElement>("#destination-path")!, movedPath);
@@ -597,22 +586,22 @@ async function nativeWorkflow(config: {
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
     check(
-      "Déplacement depuis le formulaire, reprise du partage et conservation des priorités et des octets",
+      "Move through the form, resume seeding, and preserve priorities and bytes",
       relocated.savePath === movedPath &&
         relocated.files[0]!.priority === "high" &&
         relocatedHash === config.expectedHash
     );
-    click("Séries");
+    click("Series");
     await wait(() => document.querySelectorAll(".torrent-table tbody tr").length === 0);
     click("Anime");
     await wait(() => document.querySelectorAll(".torrent-table tbody tr").length === 1);
-    check("Filtrage des torrents par identifiant d’onglet", true);
+    check("Filter torrents by tab ID", true);
     const automationState = async () =>
       (await (await fetch("/api/automation")).json()) as import("../src/types").AutomationState;
     click("Plugins");
     await wait(() => !!document.querySelector("#plugin-nyaa"));
     check(
-      "Cinq plugins proposés, désactivés au départ",
+      "Five plugins offered, initially disabled",
       document.querySelectorAll(".plugin-card").length === 5 &&
         (await automationState()).plugins.every((plugin) => !plugin.enabled)
     );
@@ -621,18 +610,18 @@ async function nativeWorkflow(config: {
       (await automationState()).plugins.some((plugin) => plugin.id === "nyaa" && plugin.enabled)
     );
     await wait(() => !document.querySelector<HTMLInputElement>("#plugin-nyaa")!.disabled);
-    click("Découvrir");
+    click("Discover");
     await wait(() => !!document.querySelector("#discovery-source-nyaa"));
     check(
-      "Sans Jev configuré, Découvrir affiche la recherche classique",
+      "Without Jev configured, Discover displays keyword search",
       document.querySelector<HTMLInputElement>("#feed-search")!.placeholder ===
-        "Un titre, des mots-clés…" &&
+        "A title, keywords…" &&
         document
           .querySelector('label[for="feed-search"]')!
-          .textContent?.includes("Recherche classique") === true
+          .textContent?.includes("Keyword search") === true
     );
     check(
-      "Découvrir propose uniquement les sources activées et les sélectionne toutes",
+      "Discover offers only enabled sources and selects all of them",
       document.querySelector<HTMLInputElement>("#discovery-all-sources")!.checked === true &&
         document.querySelector<HTMLInputElement>("#discovery-source-nyaa")!.checked === true &&
         !document.querySelector("#discovery-source-tsundere") &&
@@ -640,13 +629,13 @@ async function nativeWorkflow(config: {
         !document.querySelector("#discovery-source-jev") &&
         !document.querySelector("#discovery-source-anilist")
     );
-    set(document.querySelector<HTMLInputElement>("#feed-search")!, "re zero ep9 saison4");
+    set(document.querySelector<HTMLInputElement>("#feed-search")!, "re zero ep9 season4");
     document.querySelector<HTMLInputElement>("#discovery-source-nyaa")!.click();
     await wait(
       () => document.querySelector<HTMLInputElement>("#discovery-all-sources")!.checked === false
     );
     check(
-      "Découvrir bloque la recherche lorsque toutes les sources sont décochées",
+      "Discover blocks search when all sources are unchecked",
       document
         .querySelector<HTMLButtonElement>("#feed-search")!
         .closest("form")!
@@ -663,7 +652,7 @@ async function nativeWorkflow(config: {
           .closest("form")!
           .querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled
     );
-    check("Toutes restaure les sources et autorise la recherche", true);
+    check("All restores sources and enables search", true);
     const pluginsTab = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[role="tab"]')
     ).find((button) => button.textContent?.trim() === "Plugins")!;
@@ -678,7 +667,7 @@ async function nativeWorkflow(config: {
     await wait(() => {
       const save = Array.from(
         document.querySelector("#key-jev")!.closest("article")!.querySelectorAll("button")
-      ).find((button) => button.textContent?.trim() === "Enregistrer");
+      ).find((button) => button.textContent?.trim() === "Save");
       return !!save && !save.disabled;
     });
     Array.from(
@@ -687,13 +676,13 @@ async function nativeWorkflow(config: {
         .closest("article")!
         .querySelectorAll<HTMLButtonElement>("button")
     )
-      .find((button) => button.textContent?.trim() === "Enregistrer")!
+      .find((button) => button.textContent?.trim() === "Save")!
       .click();
     await wait(async () =>
       (await automationState()).plugins.some((plugin) => plugin.id === "jev" && plugin.hasApiKey)
     );
     check(
-      "Clé Jev enregistrée sans l’exposer dans l’état public",
+      "Jev key saved without exposing it in public state",
       !JSON.stringify(await automationState()).includes("native-test-secret")
     );
     click("AniList");
@@ -704,63 +693,59 @@ async function nativeWorkflow(config: {
       "native-oauth-private"
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
-    click("Enregistrer la connexion");
+    click("Save connection");
     await wait(async () => (await (await fetch("/api/anilist")).json()).hasClientSecret === true);
     check(
-      "Configuration OAuth AniList persistée sans exposer le secret",
+      "AniList OAuth configuration persisted without exposing the secret",
       !(await (await fetch("/api/anilist")).text()).includes("native-oauth-private")
     );
     await wait(() =>
       Array.from(document.querySelectorAll<HTMLButtonElement>("button")).some(
-        (button) => button.textContent?.trim() === "Préparer le suivi" && !button.disabled
+        (button) => button.textContent?.trim() === "Prepare tracking" && !button.disabled
       )
     );
-    click("Préparer le suivi");
+    click("Prepare tracking");
     await wait(() => !!document.querySelector("#automation-language"));
     check(
-      "Préférences des listes AniList et états suivis configurables",
+      "AniList list preferences and tracked statuses configurable",
       document.querySelector<HTMLInputElement>("#automation-language")!.value === "VOSTFR" &&
         document.querySelector<HTMLInputElement>("#anilist-CURRENT")!.checked === true &&
         document.querySelector<HTMLInputElement>("#anilist-PLANNING")!.checked === true
     );
     check(
-      "AniList propose un thread par anime depuis le dossier courant et attend une sélection avant création",
+      "AniList proposes one thread per anime from the current folder and waits for selection before creation",
       document.querySelector<HTMLSelectElement>("#anilist-organization")!.value === "per-anime" &&
         document.querySelector<HTMLInputElement>("#anilist-base-path")!.value === movedPath &&
         Array.from(document.querySelectorAll<HTMLButtonElement>("button")).some(
-          (button) => button.textContent?.trim() === "Créer le suivi AniList" && button.disabled
+          (button) => button.textContent?.trim() === "Create AniList tracking" && button.disabled
         )
     );
     const organization = document.querySelector<HTMLSelectElement>("#anilist-organization")!;
     organization.value = "shared";
     organization.dispatchEvent(new Event("change", { bubbles: true }));
     await wait(() => !document.querySelector("#anilist-base-path"));
-    check(
-      "AniList permet de réunir tous les animes dans un seul thread",
-      organization.value === "shared"
-    );
+    check("AniList can group all anime into one thread", organization.value === "shared");
     document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!.click();
     await wait(() => !document.querySelector('[role="dialog"][data-open]'));
-    click("Automatisations");
+    click("Automations");
     await wait(() => !!document.querySelector("#automation-query"));
     const anime = (await state()).destinations.find((tab) => tab.name === "Anime")!;
     check(
-      "Automatisation liée à l’onglet courant et à son dossier",
+      "Automation linked to the current tab and its folder",
       document.querySelector("#automation-destination")!.textContent?.trim() === anime.name &&
         document.querySelector(".automation-destination-path")!.textContent === anime.downloadPath
     );
     set(
       document.querySelector<HTMLTextAreaElement>("#automation-query")!,
-      'Télécharge les nouveaux épisodes de "Example" en VF, préfère 1080p puis 720p avec Tsundere-Raws avant Nyaa.'
+      'Download new episodes of "Example" with VF, prefer 1080p then 720p with Tsundere-Raws before Nyaa.'
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
-    click("Préparer la règle");
+    click("Prepare rule");
     await wait(() => !!document.querySelector("#automation-title"));
     check(
-      "Sans Jev, critères éditables et matching exact",
+      "Without Jev, editable criteria and exact matching",
       document.querySelector<HTMLInputElement>("#automation-title")!.value === "Example" &&
-        document.querySelector("#automation-matcher")!.textContent?.trim() ===
-          "Nom exact du titre" &&
+        document.querySelector("#automation-matcher")!.textContent?.trim() === "Exact title name" &&
         document.querySelector<HTMLInputElement>("#automation-resolution")!.value.includes("1080p")
     );
     document.querySelector<HTMLInputElement>("#automation-enabled")!.click();
@@ -768,7 +753,7 @@ async function nativeWorkflow(config: {
       () => document.querySelector<HTMLInputElement>("#automation-enabled")!.checked === false
     );
     check(
-      "La suppression des anciennes versions est désactivée par défaut",
+      "Deleting old versions is disabled by default",
       document.querySelector<HTMLInputElement>("#automation-deleteReplacedFiles")!.checked === false
     );
     document.querySelector<HTMLInputElement>("#automation-deleteReplacedFiles")!.click();
@@ -778,14 +763,14 @@ async function nativeWorkflow(config: {
         true
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
-    click("Prévisualiser les correspondances");
+    click("Preview matches");
     await wait(() => !!document.querySelector(".automation-preview"));
-    check("Aperçu des correspondances disponible avant création", true);
-    click("Créer l’automatisation");
+    check("Match preview available before creation", true);
+    click("Create automation");
     await wait(async () => (await automationState()).automations.length === 1);
     const automation = (await automationState()).automations[0]!;
     check(
-      "Règle persistée dans le thread avec ses priorités",
+      "Rule persisted in the thread with its priorities",
       automation.destinationId === anime.id &&
         !automation.enabled &&
         automation.deleteReplacedFiles === true &&
@@ -795,7 +780,7 @@ async function nativeWorkflow(config: {
     await fetch(`/api/automations/${automation.id}`, { method: "DELETE" });
     document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!.click();
     await wait(() => !document.querySelector('[role="dialog"][data-open]'));
-    click("Préférences");
+    click("Preferences");
     await wait(
       () => !!document.querySelector('[role="dialog"][data-open], [role="alertdialog"][data-open]')
     );
@@ -808,8 +793,8 @@ async function nativeWorkflow(config: {
     await wait(
       () => !document.querySelector('[role="dialog"][data-open], [role="alertdialog"][data-open]')
     );
-    check("Préférences enregistrées depuis le formulaire", true);
-    document.querySelector<HTMLButtonElement>('button[aria-label="Supprimer le torrent"]')!.click();
+    check("Preferences saved through the form", true);
+    document.querySelector<HTMLButtonElement>('button[aria-label="Remove torrent"]')!.click();
     await wait(
       () => !!document.querySelector('[role="dialog"][data-open], [role="alertdialog"][data-open]')
     );
@@ -817,7 +802,7 @@ async function nativeWorkflow(config: {
       .querySelector<HTMLFormElement>('[role="dialog"] form, [role="alertdialog"] form')!
       .requestSubmit();
     await wait(async () => (await state()).torrents.length === 0);
-    check("Suppression confirmée depuis l’interface", true);
+    check("Removal confirmed through the UI", true);
     const drop = (target: Element) => {
       const transfer = new DataTransfer();
       transfer.items.add(
@@ -833,7 +818,7 @@ async function nativeWorkflow(config: {
     await wait(async () => (await state()).torrents.length === 1);
     const dropped = (await state()).torrents[0]!;
     check(
-      "Dépôt global : ajout immédiat dans le dossier actif sans dialog",
+      "Global drop: immediate addition in the active folder without a dialog",
       dropped.destinationId === followedId && !document.querySelector('[role="dialog"][data-open]')
     );
     await fetch(`/api/torrents/${dropped.id}`, {
@@ -842,53 +827,50 @@ async function nativeWorkflow(config: {
       method: "DELETE",
     });
     await wait(() => document.querySelectorAll(".torrent-table tbody tr").length === 0);
-    click("Tous les torrents");
+    click("All torrents");
     await wait(() => location.pathname === "/library/all");
     drop(document.body);
     await wait(() => !!document.querySelector("#drop-destination"));
     check(
-      "Tous les torrents : le dépôt attend le choix de destination",
+      "All torrents: dropping waits for a destination choice",
       (await state()).torrents.length === 0
     );
-    click("Annuler");
+    click("Cancel");
     await wait(() => !document.querySelector('[role="dialog"][data-open]'));
-    check("Annulation du dépôt sans ajout", (await state()).torrents.length === 0);
+    check("Cancel drop without adding", (await state()).torrents.length === 0);
     drop(document.body);
     await wait(() => !!document.querySelector("#drop-destination"));
-    await choose("#drop-destination", "Séries");
+    await choose("#drop-destination", "Series");
     await new Promise((resolve) => setTimeout(resolve, 100));
     document.querySelector<HTMLFormElement>('[role="dialog"] form')!.requestSubmit();
     await wait(async () => (await state()).torrents.length === 1);
     await wait(() => !document.querySelector('[role="dialog"][data-open]'));
     await wait(() => location.pathname.endsWith(seriesId));
     const existing = (await state()).torrents[0]!;
-    check(
-      "Dépôt vers un onglet existant et navigation vers celui-ci",
-      existing.destinationId === seriesId
-    );
+    check("Drop into an existing tab and navigate to it", existing.destinationId === seriesId);
     await fetch(`/api/torrents/${existing.id}`, {
       body: JSON.stringify({ deleteFiles: false }),
       headers: { "content-type": "application/json" },
       method: "DELETE",
     });
     await wait(() => document.querySelectorAll(".torrent-table tbody tr").length === 0);
-    click("Tous les torrents");
+    click("All torrents");
     await wait(() => location.pathname === "/library/all");
     drop(document.body);
     await wait(() => !!document.querySelector("#drop-destination"));
-    await choose("#drop-destination", "Créer un nouvel onglet…");
+    await choose("#drop-destination", "Create a new tab…");
     await wait(() => !!document.querySelector("#destination-name"));
-    set(document.querySelector<HTMLInputElement>("#destination-name")!, "Dépôt");
+    set(document.querySelector<HTMLInputElement>("#destination-name")!, "Drop");
     set(document.querySelector<HTMLInputElement>("#destination-path")!, `${originalPath}/drop`);
     await new Promise((resolve) => setTimeout(resolve, 100));
     document.querySelector<HTMLFormElement>('[role="dialog"] form')!.requestSubmit();
     await wait(async () => (await state()).torrents.length === 1);
     await wait(() => !document.querySelector('[role="dialog"][data-open]'));
-    const created = (await state()).destinations.find((tab) => tab.name === "Dépôt")!;
+    const created = (await state()).destinations.find((tab) => tab.name === "Drop")!;
     await wait(() => location.pathname.endsWith(created.id));
     await wait(async () => (await state()).detail?.progress === 1);
     check(
-      "Dépôt : création de destination et téléchargement réel immédiat",
+      "Drop: destination creation and immediate real download",
       (await state()).detail!.destinationId === created.id &&
         (await state()).detail!.savePath.startsWith(`${originalPath}/drop`)
     );
@@ -901,10 +883,10 @@ async function nativeWorkflow(config: {
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
     check(
-      "Le fichier .torrent déposé télécharge les octets exacts",
+      "The dropped .torrent file downloads the exact bytes",
       droppedHash === config.expectedHash
     );
-    check("Aucune erreur JavaScript", errors.length === 0);
+    check("No JavaScript errors", errors.length === 0);
     await fetch(config.reportUrl, {
       body: JSON.stringify({
         checks,
@@ -956,7 +938,7 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       }
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
-    throw new Error(`Délai dépassé : ${condition.toString()}`);
+    throw new Error(`Timed out : ${condition.toString()}`);
   };
   const button = (label: string) =>
     Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
@@ -990,7 +972,7 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     const rootInput = document.querySelector<HTMLInputElement>("#anilist-base-path")!;
     const organization = document.querySelector<HTMLSelectElement>("#anilist-organization")!;
     check(
-      "AniList propose un thread par anime depuis le dossier courant",
+      "AniList proposes one thread per anime from the current folder",
       organization.value === "per-anime" && rootInput.value === state.settings.downloadPath
     );
     const customRoot = `${state.settings.downloadPath}/anime`;
@@ -1000,34 +982,30 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     );
     rootInput.dispatchEvent(new Event("input", { bubbles: true }));
     rootInput.dispatchEvent(new Event("change", { bubbles: true }));
-    await wait(() => rootInput.value === customRoot && !button("Préparer le suivi").disabled);
-    button("Préparer le suivi").click();
+    await wait(() => rootInput.value === customRoot && !button("Prepare tracking").disabled);
+    button("Prepare tracking").click();
     await wait(
-      () =>
-        !!document.querySelector("#automation-language") && !button("Préparer le suivi").disabled
+      () => !!document.querySelector("#automation-language") && !button("Prepare tracking").disabled
     );
     check(
-      "Le dossier racine personnalisé et les préférences Nyaa sont conservés",
+      "Custom root folder and Nyaa preferences are preserved",
       rootInput.value === customRoot &&
         document.querySelector<HTMLInputElement>("#automation-language")!.value === "VOSTFR"
     );
-    check(
-      "La création attend la validation des titres AniList",
-      button("Créer le suivi AniList").disabled
-    );
+    check("Creation waits for AniList title approval", button("Create AniList tracking").disabled);
     organization.value = "shared";
     organization.dispatchEvent(new Event("change", { bubbles: true }));
     await wait(() => !document.querySelector("#anilist-base-path"));
     check(
-      "Tous les animes peuvent utiliser le même thread",
-      organization.value === "shared" && !document.querySelector('[aria-label="Threads proposés"]')
+      "All anime can use the same thread",
+      organization.value === "shared" && !document.querySelector('[aria-label="Proposed threads"]')
     );
     check(
-      "Aucun thread créé pendant la préparation",
+      "No thread created during preparation",
       ((await (await fetch("/api/state")).json()) as import("../src/types").DashboardState)
         .destinations.length === 1
     );
-    check("Aucune erreur JavaScript", errors.length === 0);
+    check("No JavaScript errors", errors.length === 0);
     await fetch(config.reportUrl, {
       body: JSON.stringify({
         checks,
@@ -1084,7 +1062,7 @@ async function destinationWorkflow(config: {
       }
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
-    throw new Error(`Délai dépassé : ${condition.toString()}`);
+    throw new Error(`Timed out : ${condition.toString()}`);
   };
   const check = (name: string, passed: boolean) => {
     checks.push({ name, passed });
@@ -1099,9 +1077,7 @@ async function destinationWorkflow(config: {
       method,
     });
   const changePath = async (path: string) => {
-    document
-      .querySelector<HTMLButtonElement>('button[aria-label="Modifier l’onglet Téléchargements"]')!
-      .click();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Edit tab Downloads"]')!.click();
     await wait(() => !!document.querySelector("#destination-path"));
     const input = document.querySelector<HTMLInputElement>("#destination-path")!;
     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")!.set!.call(input, path);
@@ -1117,11 +1093,11 @@ async function destinationWorkflow(config: {
     await wait(async () => (await state()).detail?.progress === 1);
     await send(`/torrents/${id}/pause`, "POST", {});
     await send(`/torrents/${id}/files/0`, "PUT", { priority: "high" });
-    await wait(() => !!document.querySelector('button[aria-label="Vérifier les fichiers"]'));
+    await wait(() => !!document.querySelector('button[aria-label="Verify files"]'));
     const newPath = `${originalPath}/relocated`;
     await changePath(newPath);
     check(
-      "Le déplacement est proposé et nécessite un choix explicite",
+      "Moving is offered and requires an explicit choice",
       document.querySelector<HTMLInputElement>("#move-files")!.checked === false
     );
     document.querySelector<HTMLInputElement>("#move-files")!.click();
@@ -1134,7 +1110,7 @@ async function destinationWorkflow(config: {
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
     check(
-      "Le formulaire déplace les octets exacts et conserve la pause et les priorités",
+      "The form moves exact bytes and preserves paused state and priorities",
       moved.savePath === newPath &&
         moved.status === "paused" &&
         moved.files[0]!.priority === "high" &&
@@ -1149,37 +1125,35 @@ async function destinationWorkflow(config: {
       () =>
         document
           .querySelector('[role="dialog"] [role="alert"]')
-          ?.textContent?.includes("n’est plus présent") === true
+          ?.textContent?.includes("is no longer present") === true
     );
     check(
-      "Le formulaire affiche le fichier manquant et conserve la destination",
+      "The form displays the missing file and preserves the destination",
       (await state()).detail!.savePath === newPath &&
         (await state()).destinations[0]!.downloadPath === newPath
     );
     Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'))
-      .find((button) => button.textContent?.trim() === "Annuler")!
+      .find((button) => button.textContent?.trim() === "Cancel")!
       .click();
     await wait(() => !document.querySelector('[role="dialog"][data-open]'));
     const filesTab = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(
-      (tab) => tab.textContent?.startsWith("Fichiers")
+      (tab) => tab.textContent?.startsWith("Files")
     )!;
     filesTab.focus();
     filesTab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     filesTab.click();
-    await wait(
-      () => !!document.querySelector('button[aria-label="Enregistrer Test réel Tofu.bin"]')
-    );
+    await wait(() => !!document.querySelector('button[aria-label="Save Real Tofu test.bin"]'));
     document
-      .querySelector<HTMLButtonElement>('button[aria-label="Enregistrer Test réel Tofu.bin"]')!
+      .querySelector<HTMLButtonElement>('button[aria-label="Save Real Tofu test.bin"]')!
       .click();
     await wait(
       () =>
         document
           .querySelector('.detail-pane [role="alert"]')
-          ?.textContent?.includes("n’est plus présent") === true
+          ?.textContent?.includes("is no longer present") === true
     );
-    check("L’enregistrement d’un fichier absent affiche une erreur dans l’interface", true);
-    check("Aucune erreur JavaScript", errors.length === 0);
+    check("Saving a missing file displays an error in the UI", true);
+    check("No JavaScript errors", errors.length === 0);
     await fetch(config.reportUrl, {
       body: JSON.stringify({
         checks,

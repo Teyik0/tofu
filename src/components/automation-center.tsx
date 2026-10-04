@@ -57,24 +57,24 @@ const sourceNames: Record<SourcePluginId, string> = {
 };
 const criterionNames: Record<AutomationCriterion, string> = {
   codec: "Codec",
-  language: "Langue",
-  resolution: "Résolution",
-  source: "Flux",
+  language: "Language",
+  resolution: "Resolution",
+  source: "Source",
 };
 const ruleStatuses: Record<AutomationRule["status"], string> = {
   active: "Active",
-  error: "À vérifier",
-  paused: "En pause",
-  running: "Vérification…",
-  "source-disabled": "Plugin désactivé",
+  error: "Needs review",
+  paused: "Paused",
+  running: "Checking…",
+  "source-disabled": "Plugin disabled",
 };
 const decisionStatuses: Record<AutomationDecision["status"], string> = {
-  added: "Ajouté",
-  adding: "Ajout en cours",
-  error: "En erreur",
-  ignored: "Ignoré",
-  review: "À confirmer",
-  waiting: "En attente",
+  added: "Added",
+  adding: "Adding",
+  error: "Error",
+  ignored: "Ignored",
+  review: "Needs confirmation",
+  waiting: "Waiting",
 };
 type Action = (task: () => Promise<void>) => void;
 type Preview = DiscoveryResult & {
@@ -136,11 +136,11 @@ function PluginCard({
           <PlugIcon aria-hidden="true" />
           <strong>{plugin.name}</strong>
           <Badge variant={plugin.enabled ? "secondary" : "outline"}>
-            {plugin.enabled ? "Activé" : "Désactivé"}
+            {plugin.enabled ? "Enabled" : "Disabled"}
           </Badge>
         </div>
         <Checkbox
-          aria-label={`Activer ${plugin.name}`}
+          aria-label={`Enable ${plugin.name}`}
           checked={plugin.enabled}
           disabled={busy}
           id={`plugin-${plugin.id}`}
@@ -153,32 +153,28 @@ function PluginCard({
           <Field>
             <FieldLabel htmlFor={`key-${plugin.id}`}>
               {plugin.id === "anilist"
-                ? "Token d’accès AniList"
-                : `Clé API ${plugin.id === "jev" ? "TypeSafe" : "C411"}`}
+                ? "AniList access token"
+                : `API key ${plugin.id === "jev" ? "TypeSafe" : "C411"}`}
             </FieldLabel>
             <Input
               autoComplete="off"
               id={`key-${plugin.id}`}
               onChange={(event) => setKey(event.target.value)}
-              placeholder={
-                plugin.hasApiKey
-                  ? "Clé enregistrée · saisir pour remplacer"
-                  : "Votre clé personnelle"
-              }
+              placeholder={plugin.hasApiKey ? "Key saved · enter to replace" : "Your personal key"}
               type="password"
               value={key}
             />
             <FieldDescription>
               {plugin.id === "anilist"
-                ? "Token OAuth personnel, différent du secret du client. La connexion est disponible dans l’onglet AniList."
+                ? "Personal OAuth token, separate from the client secret. Connect from the AniList tab."
                 : plugin.id === "jev"
-                  ? "Sans clé : nom exact ou pattern. Les titres et métadonnées évalués sont envoyés à TypeSafe."
-                  : "Disponible dans C411 → Intégrations API. La clé reste côté serveur."}
+                  ? "Without a key: exact name or pattern. Evaluated titles and metadata are sent to TypeSafe."
+                  : "Available in C411 → API integrations. The key stays on the server."}
             </FieldDescription>
           </Field>
           {plugin.id === "jev" && (
             <Field>
-              <FieldLabel htmlFor="jev-daily-limit">Plafond d’appels par jour</FieldLabel>
+              <FieldLabel htmlFor="jev-daily-limit">Daily call limit</FieldLabel>
               <Input
                 id="jev-daily-limit"
                 max="100000"
@@ -188,8 +184,7 @@ function PluginCard({
                 value={limit}
               />
               <FieldDescription>
-                {plugin.callsToday} appel(s) aujourd’hui · les évaluations en cache ne sont pas
-                facturées à nouveau.
+                {plugin.callsToday} calls today · cached evaluations are not billed again.
               </FieldDescription>
             </Field>
           )}
@@ -203,7 +198,7 @@ function PluginCard({
       <div className="flex flex-wrap items-center gap-2">
         {keyed === true && (
           <Button disabled={busy} onClick={() => save(plugin.enabled)} size="sm" variant="outline">
-            Enregistrer
+            Save
           </Button>
         )}
         <Button
@@ -217,11 +212,11 @@ function PluginCard({
           size="sm"
           variant="ghost"
         >
-          Tester la connexion
+          Test connection
         </Button>
         {plugin.checkedAt !== null && (
           <span className="automation-caption">
-            Vérifié à {new Date(plugin.checkedAt).toLocaleTimeString("fr-FR")}
+            Checked at {new Date(plugin.checkedAt).toLocaleTimeString("en-US")}
           </span>
         )}
       </div>
@@ -305,7 +300,7 @@ function RuleFields({
     <FieldGroup>
       <div className="automation-field-grid">
         <Field>
-          <FieldLabel htmlFor="automation-title">Nom exact ou pattern de secours</FieldLabel>
+          <FieldLabel htmlFor="automation-title">Exact name or fallback pattern</FieldLabel>
           <Input
             id="automation-title"
             onChange={(event) => set("title", event.target.value)}
@@ -313,16 +308,16 @@ function RuleFields({
             value={draft.title}
           />
           <FieldDescription>
-            Vérifiez le titre extrait. Il sert aussi au matching sans Jev.
+            Check the extracted title. It is also used for matching without Jev.
           </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="automation-matcher">Matching</FieldLabel>
           <Select
             items={[
-              { label: "Nom exact du titre", value: "exact" },
-              { label: "Pattern sur le nom de sortie", value: "pattern" },
-              { label: "Jev + secours exact", value: "jev" },
+              { label: "Exact title name", value: "exact" },
+              { label: "Release name pattern", value: "pattern" },
+              { label: "Jev + exact fallback", value: "jev" },
             ]}
             onValueChange={(value) => set("matchMode", value as AutomationDraft["matchMode"])}
             value={draft.matchMode}
@@ -332,9 +327,9 @@ function RuleFields({
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
-                <SelectItem value="exact">Nom exact du titre</SelectItem>
-                <SelectItem value="pattern">Pattern sur le nom de sortie</SelectItem>
-                <SelectItem value="jev">Jev + secours exact</SelectItem>
+                <SelectItem value="exact">Exact title name</SelectItem>
+                <SelectItem value="pattern">Release name pattern</SelectItem>
+                <SelectItem value="jev">Jev + exact fallback</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -342,7 +337,9 @@ function RuleFields({
       </div>
       <div className="automation-field-grid">
         <Field>
-          <FieldLabel htmlFor="automation-language">Langues acceptées, par priorité</FieldLabel>
+          <FieldLabel htmlFor="automation-language">
+            Accepted languages, in priority order
+          </FieldLabel>
           <Input
             id="automation-language"
             onChange={(event) =>
@@ -351,15 +348,15 @@ function RuleFields({
                 list(event.target.value).map((value) => value.toUpperCase())
               )
             }
-            placeholder="VF, MULTI ou VOSTFR"
+            placeholder="VF, MULTI or VOSTFR"
             value={draft.languages.join(", ")}
           />
           <FieldDescription>
-            Vide = toutes. MULTI ne prouve pas la présence de sous-titres français.
+            Empty = all. MULTI does not guarantee French subtitles.
           </FieldDescription>
         </Field>
         <Field>
-          <FieldLabel htmlFor="automation-resolution">Résolutions, par priorité</FieldLabel>
+          <FieldLabel htmlFor="automation-resolution">Resolutions, in priority order</FieldLabel>
           <Input
             id="automation-resolution"
             onChange={(event) =>
@@ -372,13 +369,13 @@ function RuleFields({
             value={draft.resolutions.join(", ")}
           />
           <FieldDescription>
-            Une seule valeur = exigence. Plusieurs = replis autorisés.
+            One value = required. Multiple values = allowed fallbacks.
           </FieldDescription>
         </Field>
       </div>
       <div className="automation-field-grid">
         <Field>
-          <FieldLabel htmlFor="automation-codec">Codecs acceptés, par priorité</FieldLabel>
+          <FieldLabel htmlFor="automation-codec">Accepted codecs, in priority order</FieldLabel>
           <Input
             id="automation-codec"
             onChange={(event) => set("codecs", list(event.target.value))}
@@ -387,14 +384,14 @@ function RuleFields({
           />
         </Field>
         <Field>
-          <FieldLabel htmlFor="automation-season">Saison</FieldLabel>
+          <FieldLabel htmlFor="automation-season">Season</FieldLabel>
           <Input
             id="automation-season"
             min="1"
             onChange={(event) =>
               set("season", event.target.value ? Number(event.target.value) : null)
             }
-            placeholder="Toutes"
+            placeholder="All"
             type="number"
             value={draft.season ?? ""}
           />
@@ -402,20 +399,20 @@ function RuleFields({
       </div>
       <div className="automation-field-grid">
         <OrderEditor
-          label="Priorité des flux"
+          label="Source priority"
           names={sourceNames}
           onChange={(value) => set("sources", value)}
           values={draft.sources}
         />
         <OrderEditor
-          label="Ordre des critères"
+          label="Criteria order"
           names={criterionNames}
           onChange={(value) => set("priority", value)}
           values={draft.priority}
         />
       </div>
       <Field>
-        <FieldLabel>Sources utilisées</FieldLabel>
+        <FieldLabel>Sources used</FieldLabel>
         <div className="flex flex-wrap gap-4">
           {(Object.keys(sourceNames) as SourcePluginId[]).map((id) => (
             <Field key={id} orientation="horizontal">
@@ -438,7 +435,7 @@ function RuleFields({
       </Field>
       <div className="automation-field-grid">
         <Field>
-          <FieldLabel htmlFor="automation-interval">Vérifier toutes les (minutes)</FieldLabel>
+          <FieldLabel htmlFor="automation-interval">Check every (minutes)</FieldLabel>
           <Input
             id="automation-interval"
             max="1440"
@@ -449,9 +446,7 @@ function RuleFields({
           />
         </Field>
         <Field>
-          <FieldLabel htmlFor="automation-wait">
-            Attendre une meilleure version (minutes)
-          </FieldLabel>
+          <FieldLabel htmlFor="automation-wait">Wait for a better version (minutes)</FieldLabel>
           <Input
             id="automation-wait"
             max="1440"
@@ -461,23 +456,23 @@ function RuleFields({
             value={draft.waitMinutes}
           />
           <FieldDescription>
-            0 = immédiat. La combinaison idéale démarre sans attendre. Une version de repli reste
-            surveillée et sera remplacée par une meilleure selon vos priorités.
+            0 = immediate. The ideal combination starts without waiting. A fallback version stays
+            monitored and will be replaced by a better one according to your priorities.
           </FieldDescription>
         </Field>
       </div>
       <div className="automation-checks">
         {(
           [
-            { key: "automatic", label: "Télécharger automatiquement" },
-            { key: "includeExisting", label: "Inclure les sorties déjà disponibles" },
-            { key: "excludePacks", label: "Exclure les packs et intégrales" },
-            { key: "paused", label: "Ajouter les torrents en pause" },
+            { key: "automatic", label: "Download automatically" },
+            { key: "includeExisting", label: "Include existing releases" },
+            { key: "excludePacks", label: "Exclude packs and complete collections" },
+            { key: "paused", label: "Add torrents paused" },
             {
               key: "deleteReplacedFiles",
-              label: "Supprimer les anciens fichiers après remplacement",
+              label: "Delete old files after replacement",
             },
-            { key: "enabled", label: "Activer cette automatisation" },
+            { key: "enabled", label: "Enable this automation" },
           ] as const
         ).map((option) => (
           <Field key={option.key} orientation="horizontal">
@@ -491,9 +486,9 @@ function RuleFields({
         ))}
       </div>
       <FieldDescription>
-        L’ancienne version est retirée une fois la nouvelle entièrement téléchargée. Ses fichiers
-        sont conservés sauf si vous cochez leur suppression. Une correspondance idéale n’est plus
-        réévaluée ; les nouveaux épisodes restent surveillés.
+        The old version is removed once the new one finishes downloading. Its files are kept unless
+        you select the deletion option. An ideal match is no longer reevaluated; new episodes remain
+        monitored.
       </FieldDescription>
     </FieldGroup>
   );
@@ -549,9 +544,7 @@ export function AutomationCenter({
     setBusy(true);
     setError(null);
     void task()
-      .catch((cause) =>
-        setError(cause instanceof Error ? cause.message : "Une erreur est survenue")
-      )
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "An error occurred"))
       .finally(() => setBusy(false));
   };
   const destination = dashboard.destinations.find((item) => item.id === target);
@@ -642,9 +635,9 @@ export function AutomationCenter({
     >
       <DialogContent className="automation-dialog">
         <DialogHeader>
-          <DialogTitle>Sources & automatisations</DialogTitle>
+          <DialogTitle>Sources & automations</DialogTitle>
           <DialogDescription>
-            Vos flux, vos priorités. Chaque règle télécharge dans le dossier de son thread.
+            Your sources, your priorities. Each rule downloads into its thread folder.
           </DialogDescription>
         </DialogHeader>
         <Tabs onValueChange={setTab} value={tab}>
@@ -655,20 +648,18 @@ export function AutomationCenter({
             </TabsTrigger>
             <TabsTrigger value="discover">
               <SearchIcon />
-              Découvrir
+              Discover
             </TabsTrigger>
             <TabsTrigger value="automations">
               <ZapIcon />
-              Automatisations
+              Automations
             </TabsTrigger>
-            <TabsTrigger value="history">Historique</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
             <TabsTrigger value="anilist">AniList</TabsTrigger>
           </TabsList>
           {error || loadingError ? (
             <Alert>
-              <AlertDescription>
-                {error ?? "Impossible de charger les automatisations"}
-              </AlertDescription>
+              <AlertDescription>{error ?? "Unable to load automations"}</AlertDescription>
             </Alert>
           ) : null}
           {state ? (
@@ -699,8 +690,8 @@ export function AutomationCenter({
               </TabsContent>
               <TabsContent value="plugins">
                 <div className="plugins-intro">
-                  <span className="automation-caption">PLUGINS INCLUS</span>
-                  <p>Activez uniquement les sources que vous souhaitez utiliser.</p>
+                  <span className="automation-caption">INCLUDED PLUGINS</span>
+                  <p>Enable only the sources you want to use.</p>
                 </div>
                 <div className="plugin-grid">
                   {state.plugins.map((plugin) => (
@@ -749,7 +740,7 @@ export function AutomationCenter({
                                 setDiscovery(null);
                               }}
                             />
-                            <FieldLabel htmlFor="discovery-all-sources">Toutes</FieldLabel>
+                            <FieldLabel htmlFor="discovery-all-sources">All</FieldLabel>
                           </Field>
                           {activeSources.map((plugin) => (
                             <Field key={plugin.id} orientation="horizontal">
@@ -774,7 +765,7 @@ export function AutomationCenter({
                         </FieldGroup>
                       ) : (
                         <FieldDescription>
-                          Activez une source dans l’onglet Plugins pour rechercher.
+                          Enable a source in the Plugins tab to search.
                         </FieldDescription>
                       )}
                     </FieldSet>
@@ -782,16 +773,14 @@ export function AutomationCenter({
                       <Field>
                         <FieldLabel htmlFor="feed-search">
                           {naturalSearch
-                            ? "Recherche naturelle dans les sources"
-                            : "Recherche classique dans les sources"}
+                            ? "Natural language search across sources"
+                            : "Keyword search across sources"}
                         </FieldLabel>
                         <Input
                           disabled={busy || !activeSources.length}
                           id="feed-search"
                           onChange={(event) => setSearch(event.target.value)}
-                          placeholder={
-                            naturalSearch ? "re zero ep9 saison4" : "Un titre, des mots-clés…"
-                          }
+                          placeholder={naturalSearch ? "re zero ep9 season4" : "A title, keywords…"}
                           required
                           value={search}
                         />
@@ -805,13 +794,13 @@ export function AutomationCenter({
                         ) : (
                           <SearchIcon data-icon="inline-start" />
                         )}
-                        {busy ? "Recherche…" : "Rechercher"}
+                        {busy ? "Searching…" : "Search"}
                       </Button>
                     </div>
                     <FieldDescription>
                       {naturalSearch
-                        ? "Indiquez le titre, la saison et l’épisode dans l’ordre que vous voulez. Les titres anglais et japonais sont recherchés automatiquement."
-                        : "Vos mots-clés sont recherchés tels quels. Activez et configurez Jev dans Plugins pour utiliser la recherche naturelle."}
+                        ? "Enter the title, season, and episode in any order. English and Japanese titles are searched automatically."
+                        : "Your keywords are searched as entered. Enable and configure Jev in Plugins to use natural language search."}
                     </FieldDescription>
                   </FieldGroup>
                 </form>
@@ -831,13 +820,13 @@ export function AutomationCenter({
                   <div aria-live="polite" className="discovery-summary">
                     <strong>{discovery.search.title}</strong>
                     {discovery.search.season === null ? null : (
-                      <Badge variant="secondary">Saison {discovery.search.season}</Badge>
+                      <Badge variant="secondary">Season {discovery.search.season}</Badge>
                     )}
                     {discovery.search.episode === null ? null : (
-                      <Badge variant="secondary">Épisode {discovery.search.episode}</Badge>
+                      <Badge variant="secondary">Episode {discovery.search.episode}</Badge>
                     )}
                     <span>
-                      {discovery.releases.length} résultat{discovery.releases.length > 1 ? "s" : ""}
+                      {discovery.releases.length} result{discovery.releases.length > 1 ? "s" : ""}
                     </span>
                   </div>
                 ) : null}
@@ -867,7 +856,7 @@ export function AutomationCenter({
                       variant="outline"
                     >
                       <PlusIcon data-icon="inline-start" />
-                      Ajouter
+                      Add
                     </Button>
                   </ReleaseRow>
                 ))}
@@ -875,10 +864,10 @@ export function AutomationCenter({
                   <QuietEmpty
                     description={
                       discovery
-                        ? "Essayez un autre titre, une autre saison ou élargissez les sources sélectionnées."
-                        : "Choisissez vos sources et recherchez une série, une saison ou un épisode."
+                        ? "Try another title or season, or select more sources."
+                        : "Choose your sources and search for a series, season, or episode."
                     }
-                    title={discovery ? "Aucune sortie trouvée" : "Une recherche, plusieurs sources"}
+                    title={discovery ? "No releases found" : "One search, multiple sources"}
                   />
                 )}
               </TabsContent>
@@ -895,7 +884,7 @@ export function AutomationCenter({
                   <FieldGroup>
                     <Field>
                       <FieldLabel htmlFor="automation-query">
-                        Que souhaitez-vous télécharger ?
+                        What would you like to download?
                       </FieldLabel>
                       <Textarea
                         id="automation-query"
@@ -904,15 +893,15 @@ export function AutomationCenter({
                           setDraft(null);
                           setPreview(null);
                         }}
-                        placeholder="Télécharge les nouveaux épisodes d’Ao Ashi saison 2 en VF, préfère 1080p puis 720p, avec Tsundere-Raws avant Nyaa."
+                        placeholder="Download new episodes of Ao Ashi season 2 with VF, prefer 1080p then 720p, with Tsundere-Raws before Nyaa."
                         required
                         rows={3}
                         value={query}
                       />
                       <FieldDescription>
                         {state.plugins.find((plugin) => plugin.id === "jev")?.enabled
-                          ? "Jev interprète la demande. Vérifiez ensuite les critères proposés."
-                          : "Sans Jev : renseignez un nom exact ou un pattern et ajustez les critères ci-dessous."}
+                          ? "Jev interprets your request. Then review the proposed criteria."
+                          : "Without Jev: enter an exact name or pattern and adjust the criteria below."}
                       </FieldDescription>
                     </Field>
                   </FieldGroup>
@@ -923,11 +912,11 @@ export function AutomationCenter({
                       ) : (
                         <ZapIcon data-icon="inline-start" />
                       )}
-                      Préparer la règle
+                      Prepare rule
                     </Button>
                     {editId !== null && (
                       <Button onClick={reset} type="button" variant="ghost">
-                        Annuler la modification
+                        Cancel editing
                       </Button>
                     )}
                   </div>
@@ -953,20 +942,20 @@ export function AutomationCenter({
                         }
                         variant="outline"
                       >
-                        Prévisualiser les correspondances
+                        Preview matches
                       </Button>
                       <Button
                         disabled={busy || !draft.title.trim() || !draft.sources.length}
                         onClick={save}
                       >
                         <CheckIcon data-icon="inline-start" />
-                        {editId ? "Enregistrer les modifications" : "Créer l’automatisation"}
+                        {editId ? "Save changes" : "Create automation"}
                       </Button>
                     </div>
                     {preview !== null && (
                       <div className="automation-preview">
                         <span className="automation-caption">
-                          APERÇU · {preview.candidates.length} SORTIE(S)
+                          PREVIEW · {preview.candidates.length} RELEASE(S)
                         </span>
                         {preview.errors.map((item) => (
                           <Alert key={item.sourceId}>
@@ -982,22 +971,22 @@ export function AutomationCenter({
                           >
                             <Badge variant="outline">
                               {candidate.reason ??
-                                (candidate.uncertain ? "À vérifier" : "Correspond")}
+                                (candidate.uncertain ? "Needs review" : "Matches")}
                             </Badge>
                           </ReleaseRow>
                         ))}
                         {!preview.candidates.length && (
-                          <p>Aucune sortie disponible pour cet aperçu.</p>
+                          <p>No releases available for this preview.</p>
                         )}
                       </div>
                     )}
                   </div>
                 )}
                 <div className="automation-section-heading">
-                  <span className="automation-caption">RÈGLES DE CE THREAD · {rules.length}</span>
+                  <span className="automation-caption">RULES IN THIS THREAD · {rules.length}</span>
                   <Button disabled={busy} onClick={() => action(reload)} size="sm" variant="ghost">
                     <RefreshCwIcon data-icon="inline-start" />
-                    Actualiser
+                    Refresh
                   </Button>
                 </div>
                 {rules.map((rule) => (
@@ -1011,8 +1000,8 @@ export function AutomationCenter({
                     <p>{rule.query}</p>
                     <div className="feed-release-meta">
                       <span>{rule.sources.map((id) => sourceNames[id]).join(" → ")}</span>
-                      <span>{rule.resolutions.join(" → ") || "Toutes résolutions"}</span>
-                      <span>{rule.languages.join(" → ") || "Toutes langues"}</span>
+                      <span>{rule.resolutions.join(" → ") || "All resolutions"}</span>
+                      <span>{rule.languages.join(" → ") || "All languages"}</span>
                     </div>
                     {rule.error !== null && (
                       <Alert>
@@ -1033,7 +1022,7 @@ export function AutomationCenter({
                         variant="outline"
                       >
                         <PlayIcon data-icon="inline-start" />
-                        Vérifier maintenant
+                        Check now
                       </Button>
                       <Button onClick={() => edit(rule)} size="sm" variant="ghost">
                         Modifier
@@ -1052,11 +1041,11 @@ export function AutomationCenter({
                         size="sm"
                         variant="ghost"
                       >
-                        {rule.enabled ? "Suspendre" : "Activer"}
+                        {rule.enabled ? "Suspendre" : "Enable"}
                       </Button>
                       <ActionTooltip>
                         <Button
-                          aria-label={`Supprimer l’automatisation ${rule.title}`}
+                          aria-label={`Remove l’automatisation ${rule.title}`}
                           disabled={busy}
                           onClick={() =>
                             action(async () => {
@@ -1073,25 +1062,25 @@ export function AutomationCenter({
                     </div>
                     <span className="automation-caption">
                       {rule.lastRunAt
-                        ? `Dernière vérification : ${new Date(rule.lastRunAt).toLocaleString("fr-FR")}`
-                        : "Vérifiée au prochain démarrage"}
+                        ? `Last check : ${new Date(rule.lastRunAt).toLocaleString("en-US")}`
+                        : "Checked on next startup"}
                     </span>
                   </article>
                 ))}
                 {!(rules.length || draft) && (
                   <QuietEmpty
-                    description="Décrivez votre demande, choisissez vos priorités et laissez Tofu suivre les sorties de ce thread."
-                    title="Votre première automatisation"
+                    description="Describe your request, choose your priorities, and let Tofu follow releases for this thread."
+                    title="Your first automation"
                   />
                 )}
               </TabsContent>
               <TabsContent value="history">
                 <DestinationField onChange={setTarget} value={target} />
                 <div className="automation-section-heading">
-                  <span className="automation-caption">DÉCISIONS DE CE THREAD</span>
+                  <span className="automation-caption">DECISIONS IN THIS THREAD</span>
                   <Button disabled={busy} onClick={() => action(reload)} size="sm" variant="ghost">
                     <RefreshCwIcon data-icon="inline-start" />
-                    Actualiser
+                    Refresh
                   </Button>
                 </div>
                 {decisions.map((decision) => (
@@ -1109,7 +1098,8 @@ export function AutomationCenter({
                     </p>
                     {decision.deadline !== null && decision.status === "waiting" && (
                       <span className="automation-caption">
-                        Choix prévu à {new Date(decision.deadline).toLocaleTimeString("fr-FR")}
+                        Selection scheduled for{" "}
+                        {new Date(decision.deadline).toLocaleTimeString("en-US")}
                       </span>
                     )}
                     {["review", "waiting", "error"].includes(decision.status) && (
@@ -1129,7 +1119,7 @@ export function AutomationCenter({
                           }
                           size="sm"
                         >
-                          Télécharger cette version
+                          Download this version
                         </Button>
                         <Button
                           disabled={busy}
@@ -1154,8 +1144,8 @@ export function AutomationCenter({
                 ))}
                 {!decisions.length && (
                   <QuietEmpty
-                    description="Les versions choisies, les attentes et les sorties ignorées apparaîtront ici."
-                    title="Aucune décision pour le moment"
+                    description="Selected versions, pending choices, and ignored releases will appear here."
+                    title="No decisions yet"
                   />
                 )}
               </TabsContent>
@@ -1178,7 +1168,7 @@ function DestinationField({
   const { data } = useDashboard();
   return (
     <Field className="automation-target">
-      <FieldLabel htmlFor="automation-destination">Thread de destination</FieldLabel>
+      <FieldLabel htmlFor="automation-destination">Destination thread</FieldLabel>
       <Select
         items={data.destinations.map((destination) => ({
           label: destination.name,

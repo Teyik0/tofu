@@ -153,11 +153,11 @@ function validAnswer(value: unknown, question: ChoiceQuestion | NoulQuestion) {
 }
 export function parseJevResponse(value: unknown, questions: JevQuestions): JevResult {
   if (!record(value) || typeof value.model !== "string" || !record(value.answers)) {
-    throw new Error("Réponse Jev invalide");
+    throw new Error("Invalid Jev response");
   }
   const { answers } = value;
   if (!Object.entries(questions).every(([id, question]) => validAnswer(answers[id], question))) {
-    throw new Error("Réponse Jev invalide");
+    throw new Error("Invalid Jev response");
   }
   return value as unknown as JevResult;
 }

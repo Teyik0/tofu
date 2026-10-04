@@ -63,7 +63,7 @@ test("file access returns a useful error when downloaded data has disappeared", 
       ["availability", "content"].map(async (endpoint) => {
         const response = await context.request(`/torrents/${id}/files/0/${endpoint}`, undefined);
         expect(response.status).toBe(404);
-        expect((await response.json()).error).toContain("n’est plus présent");
+        expect((await response.json()).error).toContain("is no longer present");
       })
     );
   } finally {

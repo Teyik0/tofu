@@ -105,12 +105,12 @@ async function workflow(config: { magnets: string[]; reportUrl: string }) {
       }
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    throw new Error(`Délai : ${condition.toString()}`);
+    throw new Error(`Timeout: ${condition.toString()}`);
   };
   const frame = () =>
     new Promise<void>((resolve, reject) => {
       const timer = setTimeout(
-        () => reject(new Error("La WebView ne produit plus de frames")),
+        () => reject(new Error("The WebView stopped producing frames")),
         2000
       );
       requestAnimationFrame(() => {

@@ -124,16 +124,16 @@ function date(value: string | undefined) {
 
 export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] {
   if (body.length > 8 * 1024 * 1024) {
-    throw new Error("Flux RSS invalide");
+    throw new Error("Invalid RSS feed");
   }
   let document: RssDocument;
   try {
     document = Bun.XML.parse(body) as RssDocument;
   } catch (cause) {
-    throw new Error("Flux RSS invalide", { cause });
+    throw new Error("Invalid RSS feed", { cause });
   }
   if (document.rss?.channel === undefined) {
-    throw new Error("Flux RSS absent");
+    throw new Error("RSS feed missing");
   }
   if (document.rss.channel === "") {
     return [];
@@ -170,7 +170,7 @@ export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] 
 export function parseTsundere(body: string): FeedRelease[] {
   const document = JSON.parse(body) as { entries?: TsundereEntry[] };
   if (!Array.isArray(document.entries)) {
-    throw new Error("Flux JSON invalide");
+    throw new Error("Invalid JSON feed");
   }
   return document.entries.flatMap((entry) => {
     if (typeof entry.title !== "string" || !validDownload(entry.torrentUrl)) {

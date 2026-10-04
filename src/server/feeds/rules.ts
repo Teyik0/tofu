@@ -4,21 +4,21 @@ const feedExpression1 = /\p{M}/gu;
 const feedExpression2 = /[^\p{L}\p{N}]+/gu;
 const feedExpression3 = /[«"“]([^»"”]+)[»"”]/;
 const feedExpression4 =
-  /^(?:t[eé]l[eé]charge(?:r)?|suivre|r[eé]cup[eè]re|download)\s+(?:les\s+)?(?:nouveaux\s+)?(?:[eé]pisodes\s+(?:de\s+)?)?/i;
+  /^(?:t[eé]l[eé]charge(?:r)?|suivre|r[eé]cup[eè]re|download|follow)\s+(?:les\s+|the\s+)?(?:nouveaux\s+|new\s+)?(?:[eé]pisodes\s+(?:de\s+)?|episodes\s+(?:of\s+)?)?/i;
 const feedExpression5 =
-  /\s+(?:saison\s+\d+|en\s+(?:VF|VOSTFR|MULTI)|en\s+\d{3,4}p|pr[eé]f[eè]re|avec\s|sur\s)|[,;]/i;
+  /\s+(?:(?:saison|season)\s+\d+|(?:en|with|in)\s+(?:VF|VOSTFR|MULTI)|(?:en|with|in)\s+\d{3,4}p|pr[eé]f[eè]re|prefer|avec\s|with\s|sur\s|on\s)|[,;]/i;
 const feedExpression6 = /\b(?:2160|1080|900|720|480)p\b/gi;
 const feedExpression7 = /\b(?:VOSTFR|VF|MULTI)\b/gi;
 const feedExpression8 = /tsundere(?:-raws)?/i;
 const feedExpression9 = /nyaa(?:\.si)?/i;
 const feedExpression10 = /c411/i;
-const feedExpression11 = /\bsaison\s+(\d+)\b/i;
+const feedExpression11 = /\b(?:saison|season)\s+(\d+)\b/i;
 
 export function normalizeTitle(value: string) {
   return value
     .normalize("NFKD")
     .replace(feedExpression1, "")
-    .toLocaleLowerCase("fr-FR")
+    .toLocaleLowerCase("en-US")
     .replace(feedExpression2, " ")
     .trim();
 }
@@ -72,32 +72,32 @@ export function localMatch(rule: AutomationDraft, release: FeedRelease) {
           (title) => normalizeTitle(release.workTitle) === normalizeTitle(title)
         );
   if (!matches && rule.matchMode !== "jev") {
-    return "Le titre ne correspond pas";
+    return "The title does not match";
   }
   if (rule.excludePacks && release.pack) {
-    return "Les packs sont exclus";
+    return "Packs are excluded";
   }
   if (
     rule.afterEpisode !== undefined &&
     rule.afterEpisode > 0 &&
     (release.episode === null || release.episode <= rule.afterEpisode)
   ) {
-    return "Épisode déjà regardé ou numéro inconnu";
+    return "Episode already watched or number unknown";
   }
   if (rule.season !== null && release.season !== rule.season) {
-    return "Saison différente ou inconnue";
+    return "Season differs or is unknown";
   }
   if (rule.languages.length && !(release.language && rule.languages.includes(release.language))) {
-    return "Langue non acceptée ou inconnue";
+    return "Language not accepted or unknown";
   }
   if (
     rule.resolutions.length &&
     !(release.resolution && rule.resolutions.includes(release.resolution))
   ) {
-    return "Résolution non acceptée ou inconnue";
+    return "Resolution not accepted or unknown";
   }
   if (rule.codecs.length && !(release.codec && rule.codecs.includes(release.codec))) {
-    return "Codec non accepté ou inconnu";
+    return "Codec not accepted or unknown";
   }
   return null;
 }

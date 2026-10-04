@@ -29,7 +29,7 @@ export const { instance } = runtime;
 export const { dataDir } = instance;
 function syncAdapter() {
   if (!runtime.sync) {
-    throw new UserError("Le journal démarre, veuillez patienter", { status: 503 });
+    throw new UserError("The journal is starting, please wait", { status: 503 });
   }
   return runtime.sync.options.adapter;
 }
@@ -51,26 +51,26 @@ export const syncOptions: FurinSyncOptions = {
 
 export function getEngine() {
   if (!runtime.engine) {
-    throw new UserError("Le moteur démarre, veuillez patienter", { status: 503 });
+    throw new UserError("The engine is starting, please wait", { status: 503 });
   }
   return runtime.engine;
 }
 export function getAutomation() {
   if (!runtime.automation) {
-    throw new UserError("Les automatisations démarrent", { status: 503 });
+    throw new UserError("Automations are starting", { status: 503 });
   }
   return runtime.automation;
 }
 
 export function getUpdates() {
   if (!runtime.updates) {
-    throw new UserError("Les mises à jour démarrent", { status: 503 });
+    throw new UserError("Updates are starting", { status: 503 });
   }
   return runtime.updates;
 }
 export function getDesktop() {
   if (!runtime.desktop) {
-    throw new UserError("L’application de bureau démarre", { status: 503 });
+    throw new UserError("The desktop app is starting", { status: 503 });
   }
   return runtime.desktop;
 }

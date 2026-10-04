@@ -53,17 +53,17 @@ function moveError(cause: unknown) {
     return cause;
   }
   const code = cause instanceof Error && "code" in cause ? cause.code : null;
-  let message = "Impossible de déplacer les fichiers";
+  let message = "Unable to move files";
   if (code === "ENOSPC") {
-    message = "Espace insuffisant dans le dossier de destination";
+    message = "Not enough space in the destination folder";
   }
   if (code === "EACCES" || code === "EPERM") {
-    message = "Permission refusée lors du déplacement des fichiers";
+    message = "Permission denied while moving files";
   }
   if (code === "EEXIST") {
-    message = "Un fichier existe déjà dans le dossier de destination";
+    message = "A file already exists in the destination folder";
   }
-  return new UserError(`${message}. Les fichiers d’origine sont conservés.`, {
+  return new UserError(`${message}. The original files are preserved.`, {
     cause,
     status: 409,
   });
@@ -115,10 +115,10 @@ export function trackerUrls(urls: string[]) {
     try {
       url = new URL(value);
     } catch (cause) {
-      throw new UserError(`Tracker invalide : ${value}`, { cause, status: 400 });
+      throw new UserError(`Invalid tracker : ${value}`, { cause, status: 400 });
     }
     if (!trackerProtocols.has(url.protocol)) {
-      throw new UserError("Les trackers doivent utiliser HTTP, HTTPS, UDP ou WebSocket", {
+      throw new UserError("Trackers must use HTTP, HTTPS, UDP, or WebSocket", {
         status: 400,
       });
     }
@@ -179,7 +179,7 @@ export class TorrentEngine {
       this.storeDestination({
         downloadPath: this.settings.downloadPath,
         id: "default",
-        name: "Téléchargements",
+        name: "Downloads",
       });
     }
     const totals = this.db
@@ -312,7 +312,7 @@ export class TorrentEngine {
       this.storeDestination({
         downloadPath,
         id: crypto.randomUUID(),
-        name: basename(downloadPath) || "Téléchargements",
+        name: basename(downloadPath) || "Downloads",
       })
     );
   }
@@ -320,13 +320,13 @@ export class TorrentEngine {
   async saveDestination(id: string | null, input: DestinationInput) {
     const name = input.name.trim();
     if (!(name && isAbsolute(input.downloadPath))) {
-      throw new UserError("Indiquez un nom et un chemin de dossier absolu", { status: 400 });
+      throw new UserError("Enter a name and an absolute folder path", { status: 400 });
     }
     if (id && !this.destinations.has(id)) {
-      throw new UserError("Onglet introuvable", { status: 404 });
+      throw new UserError("Tab not found", { status: 404 });
     }
     if (this.movingDestinations.size > 0) {
-      throw new UserError("Un déplacement est déjà en cours pour cet onglet", { status: 409 });
+      throw new UserError("A move is already in progress for this tab", { status: 409 });
     }
     const downloadPath = resolvePath(input.downloadPath);
     if (id && input.moveFiles) {
@@ -341,7 +341,7 @@ export class TorrentEngine {
     }
     await mkdir(input.downloadPath, { recursive: true });
     if (this.movingDestinations.size > 0) {
-      throw new UserError("Un déplacement est déjà en cours pour cet onglet", { status: 409 });
+      throw new UserError("A move is already in progress for this tab", { status: 409 });
     }
     const destination = this.storeDestination({
       downloadPath,
@@ -407,7 +407,7 @@ export class TorrentEngine {
       const cleanup = await Promise.allSettled(files.map((file) => rm(file.source)));
       if (cleanup.some((result) => result.status === "rejected")) {
         throw new UserError(
-          "Les fichiers ont été déplacés, mais certaines copies dans l’ancien dossier n’ont pas pu être retirées. Le nouveau dossier est actif.",
+          "Files were moved, but some copies in the old folder could not be removed. The new folder is active.",
           { status: 500 }
         );
       }
@@ -447,7 +447,7 @@ export class TorrentEngine {
   private validateMove(entries: Entry[]) {
     for (const entry of entries) {
       if (this.entries.get(entry.detail.id) !== entry) {
-        throw new UserError("Torrent introuvable", { status: 404 });
+        throw new UserError("Torrent not found", { status: 404 });
       }
       const status = entryStatus(entry);
       if (
@@ -456,18 +456,17 @@ export class TorrentEngine {
         (entry.torrent?.metadata && !entry.torrent.ready)
       ) {
         throw new UserError(
-          `${entry.detail.name} est en cours de vérification. Réessayez une fois la vérification terminée.`,
+          `${entry.detail.name} is being verified. Try again after verification completes.`,
           { status: 409 }
         );
       }
       if (!entry.metadata || status === "metadata") {
-        throw new UserError(
-          `Les métadonnées de ${entry.detail.name} ne sont pas encore disponibles.`,
-          { status: 409 }
-        );
+        throw new UserError(`The metadata for ${entry.detail.name} is not available yet.`, {
+          status: 409,
+        });
       }
       if (entry.detail.error) {
-        throw new UserError(`Impossible de déplacer ${entry.detail.name} : ${entry.detail.error}`, {
+        throw new UserError(`Unable to move ${entry.detail.name} : ${entry.detail.error}`, {
           status: 409,
         });
       }
@@ -501,7 +500,7 @@ export class TorrentEngine {
         sources.has(item.targetKey)
       ) {
         throw new UserError(
-          `Le fichier ${item.file.path} est déjà utilisé par un autre torrent. Choisissez un autre dossier.`,
+          `The file ${item.file.path} is already used by another torrent. Choose another folder.`,
           { status: 409 }
         );
       }
@@ -512,25 +511,25 @@ export class TorrentEngine {
         const [existing, stored] = await Promise.all([storedFile(target), storedFile(source)]);
         if (existing) {
           throw new UserError(
-            `Un fichier existe déjà dans le dossier de destination : ${target}. Il ne sera pas écrasé.`,
+            `A file already exists in the destination folder : ${target}. It will not be overwritten.`,
             { status: 409 }
           );
         }
         if (!stored) {
           if (file.downloaded > 0 || (file.progress === 1 && file.length > 0)) {
             throw new UserError(
-              `Le fichier téléchargé n’est plus présent : ${source}. Restaurez-le ou vérifiez le torrent avant de réessayer.`,
+              `The downloaded file is no longer present : ${source}. Restore it or verify the torrent before retrying.`,
               { status: 404 }
             );
           }
           return null;
         }
         if (!stored.isFile()) {
-          throw new UserError(`Ce chemin n’est pas un fichier : ${source}`, { status: 409 });
+          throw new UserError(`This path is not a file : ${source}`, { status: 409 });
         }
         if (stored.size < file.downloaded) {
           throw new UserError(
-            `Le fichier téléchargé a été modifié ou tronqué : ${source}. Vérifiez le torrent avant de le déplacer.`,
+            `The downloaded file was modified or truncated : ${source}. Verify the torrent before moving it.`,
             { status: 409 }
           );
         }
@@ -570,14 +569,14 @@ export class TorrentEngine {
     const path = resolvePath(savePath, filePath);
     const within = relative(savePath, path);
     if (!within || within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within)) {
-      throw new UserError("Chemin de fichier hors du dossier de téléchargement", { status: 400 });
+      throw new UserError("File path outside the download folder", { status: 400 });
     }
     let component = savePath;
     for (const part of within.split(sep)) {
       component = join(component, part);
       try {
         if (lstatSync(component).isSymbolicLink()) {
-          throw new UserError("Un lien symbolique est présent dans le chemin du fichier", {
+          throw new UserError("A symbolic link is present in the file path", {
             status: 409,
           });
         }
@@ -594,18 +593,18 @@ export class TorrentEngine {
   private resolveDestination(options: { destinationId?: string; downloadPath?: string }) {
     const chosen = this.destinations.get(options.destinationId ?? "");
     if (options.destinationId && !chosen) {
-      throw new UserError("Onglet introuvable", { status: 404 });
+      throw new UserError("Tab not found", { status: 404 });
     }
     const downloadPath =
       chosen?.downloadPath ?? (options.downloadPath || this.settings.downloadPath);
     if (!isAbsolute(downloadPath)) {
-      throw new UserError("Le dossier de téléchargement doit être un chemin absolu", {
+      throw new UserError("The download folder must be an absolute path", {
         status: 400,
       });
     }
     const destination = chosen ?? this.destinationForPath(downloadPath);
     if (this.movingDestinations.size > 0) {
-      throw new UserError("Attendez la fin du déplacement avant d’ajouter un torrent", {
+      throw new UserError("Wait for the move to finish before adding a torrent", {
         status: 409,
       });
     }
@@ -620,20 +619,20 @@ export class TorrentEngine {
     if (typeof source === "string" && torrentUrl.test(source)) {
       const response = await fetch(source, { signal: AbortSignal.timeout(15_000) });
       if (!response.ok) {
-        throw new UserError(`Le fichier torrent est inaccessible (HTTP ${response.status})`, {
+        throw new UserError(`The torrent file is inaccessible (HTTP ${response.status})`, {
           status: 400,
         });
       }
       source = new Uint8Array(await response.arrayBuffer());
       if (source.length > 8 * 1024 * 1024) {
-        throw new UserError("Le fichier torrent est trop volumineux", { status: 400 });
+        throw new UserError("The torrent file is too large", { status: 400 });
       }
     }
     let parsed: Awaited<ReturnType<typeof parseTorrent>>;
     try {
       parsed = await parseTorrent(source);
     } catch (cause) {
-      throw new UserError("Lien magnet ou fichier .torrent invalide (BitTorrent v1 requis)", {
+      throw new UserError("Invalid magnet link or .torrent file (BitTorrent v1 required)", {
         cause,
         status: 400,
       });
@@ -645,12 +644,12 @@ export class TorrentEngine {
     const savePath = downloadPath;
     await mkdir(savePath, { recursive: true });
     if (this.movingDestinations.size > 0) {
-      throw new UserError("Attendez la fin du déplacement avant d’ajouter un torrent", {
+      throw new UserError("Wait for the move to finish before adding a torrent", {
         status: 409,
       });
     }
     if (this.entries.has(id)) {
-      throw new UserError("Ce torrent est déjà dans votre bibliothèque", { status: 409 });
+      throw new UserError("This torrent is already in your library", { status: 409 });
     }
 
     const detail: TorrentDetail = {
@@ -752,7 +751,7 @@ export class TorrentEngine {
         }
         collision = this.storageCollision(entry, torrent);
       } catch (cause) {
-        detail.error = cause instanceof Error ? cause.message : "Chemin de fichier invalide";
+        detail.error = cause instanceof Error ? cause.message : "Invalid file path";
         entry.torrent = null;
         entry.unwatch?.();
         torrent.destroy({ destroyStore: false });
@@ -772,7 +771,7 @@ export class TorrentEngine {
       }));
       entry.storageClaimed = !collision;
       if (collision) {
-        detail.error = `Le fichier ${collision.path} est déjà utilisé par un autre torrent. Choisissez un autre dossier.`;
+        detail.error = `The file ${collision.path} is already used by another torrent. Choose another folder.`;
         entry.torrent = null;
         entry.unwatch?.();
         torrent.destroy({ destroyStore: false });
@@ -839,16 +838,15 @@ export class TorrentEngine {
 
   private serial(entry: Entry, action: () => Promise<void>) {
     if (entry.moving) {
-      throw new UserError(
-        "Les fichiers de ce torrent sont en cours de déplacement. Réessayez ensuite.",
-        { status: 409 }
-      );
+      throw new UserError("This torrent's files are being moved. Try again afterward.", {
+        status: 409,
+      });
     }
     const next = entry.operation
       .catch(() => undefined)
       .then(async () => {
         if (this.entries.get(entry.detail.id) !== entry) {
-          throw new UserError("Torrent introuvable", { status: 404 });
+          throw new UserError("Torrent not found", { status: 404 });
         }
         await action();
         if (this.entries.get(entry.detail.id) === entry) {
@@ -951,7 +949,7 @@ export class TorrentEngine {
     await this.serial(entry, () => {
       const file = this.details(entry).files[index];
       if (!file) {
-        throw new UserError("Fichier introuvable", { status: 404 });
+        throw new UserError("File not found", { status: 404 });
       }
       file.priority = priority;
       this.selectFiles(entry);
@@ -963,10 +961,10 @@ export class TorrentEngine {
   async verify(id: string) {
     const entry = this.get(id);
     if (entry.verifying || entryStatus(entry) === "checking") {
-      throw new UserError("Une vérification est déjà en cours pour ce torrent", { status: 409 });
+      throw new UserError("Verification is already in progress for this torrent", { status: 409 });
     }
     if (!entry.metadata) {
-      throw new UserError("Les métadonnées doivent être disponibles avant la vérification", {
+      throw new UserError("Metadata must be available before verification", {
         status: 409,
       });
     }
@@ -975,14 +973,12 @@ export class TorrentEngine {
       await this.start(entry);
       const { torrent } = entry;
       if (!torrent) {
-        throw new UserError("Vérification impossible", { status: 500 });
+        throw new UserError("Unable to verify", { status: 500 });
       }
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(
           () =>
-            reject(
-              new UserError("La vérification a dépassé le délai de 60 secondes", { status: 408 })
-            ),
+            reject(new UserError("Verification exceeded the 60-second timeout", { status: 408 })),
           60_000
         );
         torrent.once("ready", () => {
@@ -1011,19 +1007,19 @@ export class TorrentEngine {
   addPeer(id: string, peer: string) {
     const entry = this.get(id);
     if (!entry.torrent || entry.paused) {
-      throw new UserError("Reprenez le torrent avant d'ajouter un pair", { status: 409 });
+      throw new UserError("Resume the torrent before adding a peer", { status: 409 });
     }
     let address: URL;
     try {
       address = new URL(`tcp://${peer}`);
     } catch (cause) {
-      throw new UserError("Adresse invalide, utilisez IP:port", { cause, status: 400 });
+      throw new UserError("Invalid address, use IP:port", { cause, status: 400 });
     }
     if (!(address.hostname && address.port) || Number(address.port) < 1) {
-      throw new UserError("Adresse invalide, utilisez IP:port", { status: 400 });
+      throw new UserError("Invalid address, use IP:port", { status: 400 });
     }
     if (!entry.torrent.addPeer(peer)) {
-      throw new UserError("Ce pair est invalide ou déjà connecté", { status: 400 });
+      throw new UserError("This peer is invalid or already connected", { status: 400 });
     }
     return parseTorrent(entry.source).then((parsed) => {
       parsed.peerAddresses = [...new Set([...(parsed.peerAddresses ?? []), peer])];
@@ -1036,7 +1032,7 @@ export class TorrentEngine {
 
   async updateSettings(settings: SettingsInput) {
     if (!isAbsolute(settings.downloadPath)) {
-      throw new UserError("Le dossier doit être un chemin absolu", { status: 400 });
+      throw new UserError("The folder must be an absolute path", { status: 400 });
     }
     const destination = this.destinations.get("default");
     if (destination) {
@@ -1062,10 +1058,10 @@ export class TorrentEngine {
   reannounce(id: string) {
     const entry = this.get(id);
     if (!entry.torrent || entry.paused) {
-      throw new UserError("Reprenez le torrent avant d'actualiser ses trackers", { status: 409 });
+      throw new UserError("Resume the torrent before refreshing its trackers", { status: 409 });
     }
     if (!announce(entry.torrent)) {
-      throw new UserError("La connexion aux trackers n'est pas encore prête", { status: 409 });
+      throw new UserError("The tracker connection is not ready yet", { status: 409 });
     }
     for (const row of entry.detail.trackers) {
       row.status = "announcing";
@@ -1076,7 +1072,7 @@ export class TorrentEngine {
   get(id: string) {
     const entry = this.entries.get(id);
     if (!entry) {
-      throw new UserError("Torrent introuvable", { status: 404 });
+      throw new UserError("Torrent not found", { status: 404 });
     }
     return entry;
   }
@@ -1213,26 +1209,25 @@ export class TorrentEngine {
     const entry = this.get(id);
     const detail = this.details(entry);
     if (detail.status === "checking" || entry.verifying) {
-      throw new UserError(
-        "Les fichiers sont en cours de vérification. Réessayez une fois la vérification terminée.",
-        { status: 409 }
-      );
+      throw new UserError("Files are being verified. Try again after verification completes.", {
+        status: 409,
+      });
     }
     if (entry.moving) {
-      throw new UserError("Les fichiers sont en cours de déplacement. Réessayez ensuite.", {
+      throw new UserError("Files are being moved. Try again afterward.", {
         status: 409,
       });
     }
     const file = detail.files[index];
     if (!file) {
-      throw new UserError("Fichier introuvable", { status: 404 });
+      throw new UserError("File not found", { status: 404 });
     }
     if (file.progress !== 1) {
-      throw new UserError("Le téléchargement de ce fichier n'est pas terminé", { status: 409 });
+      throw new UserError("This file has not finished downloading", { status: 409 });
     }
     const path = this.storagePath(detail.savePath, file.path);
     if (!(await Bun.file(path).exists())) {
-      throw new UserError(`Le fichier téléchargé n’est plus présent : ${path}`, { status: 404 });
+      throw new UserError(`The downloaded file is no longer present : ${path}`, { status: 404 });
     }
     return { name: file.name, path };
   }

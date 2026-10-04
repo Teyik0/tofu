@@ -41,7 +41,7 @@ import {
   preferred,
 } from "./rules";
 
-const feedExpression1 = /^(Source indisponible|Flux)/;
+const feedExpression1 = /^(Source unavailable|Invalid RSS feed|RSS feed missing|Invalid JSON feed)/;
 
 function automationQuery(rule: Pick<AutomationDraft, "matchMode" | "title">) {
   return rule.matchMode === "pattern" ? "" : rule.title;
@@ -214,7 +214,7 @@ export class AutomationService {
   configure(id: string, input: { enabled: boolean; apiKey?: string; dailyLimit?: number }) {
     const plugin = this.plugins.get(id as PluginId);
     if (!plugin) {
-      throw new UserError("Plugin inconnu", { status: 404 });
+      throw new UserError("Unknown plugin", { status: 404 });
     }
     const next = {
       ...plugin,
@@ -223,7 +223,7 @@ export class AutomationService {
       error: null,
     };
     if (next.enabled && (id === "c411" || id === "jev") && !next.apiKey) {
-      throw new UserError("Ajoutez votre clé API avant d’activer ce plugin", { status: 400 });
+      throw new UserError("Add your API key before enabling this plugin", { status: 400 });
     }
     this.plugins.set(next.id, next);
     if (!next.enabled) {
@@ -250,7 +250,7 @@ export class AutomationService {
     } else if (id === "nyaa" || id === "tsundere" || id === "c411") {
       await this.fetchSource(id, "");
     } else {
-      throw new UserError("Plugin inconnu", { status: 404 });
+      throw new UserError("Unknown plugin", { status: 404 });
     }
     return this.snapshot();
   }
@@ -313,12 +313,12 @@ export class AutomationService {
         url.searchParams.delete("page");
         const fallback = await fetch(url, { signal: controller.signal });
         if (!fallback.ok) {
-          throw new Error(`Source indisponible (HTTP ${fallback.status})`);
+          throw new Error(`Source unavailable (HTTP ${fallback.status})`);
         }
         releases = parseNyaaHtml(await fallback.text(), url.href);
       } else {
         if (!response.ok) {
-          throw new Error(`Source indisponible (HTTP ${response.status})`);
+          throw new Error(`Source unavailable (HTTP ${response.status})`);
         }
         const text = await response.text();
         releases = sourceId === "tsundere" ? parseTsundere(text) : parseRss(text, sourceId);
@@ -349,7 +349,7 @@ export class AutomationService {
           const message =
             cause instanceof Error && feedExpression1.test(cause.message)
               ? cause.message
-              : "Connexion à la source impossible";
+              : "Unable to connect to the source";
           result.errors.push({ message, sourceId });
           const plugin = this.plugins.get(sourceId);
           if (plugin) {
@@ -444,7 +444,7 @@ export class AutomationService {
   ) {
     const release = this.releases.get(`${sourceId}:${id}`);
     if (!release) {
-      throw new UserError("Recherchez cette sortie avant de l’ajouter", { status: 404 });
+      throw new UserError("Search for this release before adding it", { status: 404 });
     }
     const key = release.infoHash ?? `${sourceId}:${id}`;
     const pending = this.additions.get(key);
@@ -466,7 +466,7 @@ export class AutomationService {
     allowed: (() => boolean) | undefined
   ) {
     if (!this.isEnabled(release.sourceId) || this.isClosed()) {
-      throw new UserError("Plugin désactivé", { status: 409 });
+      throw new UserError("Plugin disabled", { status: 409 });
     }
     let input: string | Uint8Array = release.downloadUrl;
     if (!input.startsWith("magnet:")) {
@@ -478,13 +478,13 @@ export class AutomationService {
       try {
         const response = await fetch(input, { signal: controller.signal });
         if (!response.ok) {
-          throw new UserError(`Fichier torrent indisponible (HTTP ${response.status})`, {
+          throw new UserError(`Torrent file unavailable (HTTP ${response.status})`, {
             status: 502,
           });
         }
         input = new Uint8Array(await response.arrayBuffer());
         if (input.byteLength > 8 * 1024 * 1024) {
-          throw new UserError("Fichier torrent trop volumineux", { status: 400 });
+          throw new UserError("Torrent file too large", { status: 400 });
         }
       } finally {
         clearTimeout(timeout);
@@ -493,10 +493,10 @@ export class AutomationService {
     }
     const parsed = await parseTorrent(input);
     if (this.isClosed() || !this.isEnabled(release.sourceId)) {
-      throw new UserError("Plugin désactivé", { status: 409 });
+      throw new UserError("Plugin disabled", { status: 409 });
     }
     if (allowed && !allowed()) {
-      throw new UserError("Automatisation modifiée ou sortie ignorée", { status: 409 });
+      throw new UserError("Automation changed or release ignored", { status: 409 });
     }
     const existing = this.options
       .engine()
@@ -527,7 +527,7 @@ export class AutomationService {
       plugin.callsToday = 0;
     }
     if (plugin.callsToday >= plugin.dailyLimit) {
-      throw new UserError("Plafond quotidien Jev atteint", { status: 429 });
+      throw new UserError("Jev daily limit reached", { status: 429 });
     }
     plugin.callsToday += 1;
     this.db
@@ -546,11 +546,11 @@ export class AutomationService {
         signal: controller.signal,
       });
       if (!response.ok) {
-        throw new UserError(`Jev indisponible (HTTP ${response.status})`, { status: 503 });
+        throw new UserError(`Jev unavailable (HTTP ${response.status})`, { status: 503 });
       }
       const result = parseJevResponse(await response.json(), questions);
       if (this.isClosed() || !this.isEnabled("jev")) {
-        throw new UserError("Plugin Jev désactivé", { status: 409 });
+        throw new UserError("Jev plugin disabled", { status: 409 });
       }
       plugin.error = null;
       plugin.checkedAt = this.options.now();
@@ -560,11 +560,11 @@ export class AutomationService {
       return result;
     } catch (cause) {
       if (plugin.enabled) {
-        plugin.error = "Évaluation Jev indisponible";
+        plugin.error = "Jev evaluation unavailable";
       }
       throw cause instanceof UserError
         ? cause
-        : new UserError("Connexion à Jev impossible", { status: 503 });
+        : new UserError("Unable to connect to Jev", { status: 503 });
     } finally {
       clearTimeout(timeout);
       active.delete(controller);
@@ -615,7 +615,7 @@ export class AutomationService {
     );
     return {
       probability,
-      reason: probability <= 0.2 ? "La sortie ne correspond pas à la demande" : null,
+      reason: probability <= 0.2 ? "The release does not match the request" : null,
       uncertain: probability < 0.95,
     };
   }
@@ -634,7 +634,7 @@ export class AutomationService {
   private rule(id: string) {
     const rule = this.rules.get(id);
     if (!rule) {
-      throw new UserError("Automatisation inconnue", { status: 404 });
+      throw new UserError("Unknown automation", { status: 404 });
     }
     return rule;
   }
@@ -645,20 +645,20 @@ export class AutomationService {
         .snapshot(null, false)
         .destinations.some((destination) => destination.id === draft.destinationId)
     ) {
-      throw new UserError("Destination inconnue", { status: 400 });
+      throw new UserError("Unknown destination", { status: 400 });
     }
     if (draft.matchMode === "pattern") {
       if (draft.title.length > 256) {
-        throw new UserError("Pattern trop long", { status: 400 });
+        throw new UserError("Pattern too long", { status: 400 });
       }
       try {
         new RegExp(draft.title, "iu").test("");
       } catch (cause) {
-        throw new UserError("Pattern invalide", { cause, status: 400 });
+        throw new UserError("Invalid pattern", { cause, status: 400 });
       }
     }
     if (!(draft.title.trim() && draft.sources.length)) {
-      throw new UserError("Indiquez un titre et au moins une source", { status: 400 });
+      throw new UserError("Enter a title and at least one source", { status: 400 });
     }
     const previous = id ? this.rule(id) : null;
     const rule: AutomationRule = {
@@ -684,7 +684,7 @@ export class AutomationService {
             deadline: null,
             id: `${rule.id}:${contentKey(release)}`,
             probability: null,
-            reason: "Présent avant l’activation de la règle",
+            reason: "Present before the rule was enabled",
             release,
             status: "ignored",
             torrentId: null,
@@ -725,7 +725,7 @@ export class AutomationService {
     const rule = this.rule(id);
     const task = this.execute(rule).catch(() => {
       if (!this.isClosed() && this.rules.get(id) === rule) {
-        rule.error = "Vérification interrompue ; nouvelle tentative planifiée";
+        rule.error = "Check interrupted; retry scheduled";
         rule.nextRunAt = this.options.now() + 60_000;
         this.persistRule(rule);
       }
@@ -824,8 +824,8 @@ export class AutomationService {
       id,
       probability: evaluation?.probability ?? null,
       reason: evaluation?.uncertain
-        ? "Correspondance Jev incertaine — à vérifier"
-        : "Titre et formats acceptés · classement selon les priorités",
+        ? "Uncertain Jev match — review required"
+        : "Title and formats accepted · ranked by priority",
       release,
       status,
       supersedes:
@@ -912,17 +912,15 @@ export class AutomationService {
         }
         decision.supersedes = null;
         if (shared) {
-          decision.reason =
-            "Meilleure version téléchargée · ancienne version utilisée par une autre règle";
+          decision.reason = "Better version downloaded · old version used by another rule";
         } else {
           decision.reason =
             rule.deleteReplacedFiles === true
-              ? "Meilleure version téléchargée · anciens fichiers supprimés"
-              : "Meilleure version téléchargée · anciens fichiers conservés";
+              ? "Better version downloaded · old files deleted"
+              : "Better version downloaded · old files kept";
         }
       } catch {
-        decision.reason =
-          "Meilleure version téléchargée · retrait de l’ancienne version à réessayer";
+        decision.reason = "Better version downloaded · retry removing the old version";
       }
       if (!this.isClosed()) {
         this.persistDecision(decision);
@@ -959,19 +957,18 @@ export class AutomationService {
       decision.torrentId = torrent.id;
       decision.status = "added";
       if (existing) {
-        decision.reason = "Déjà présent dans la bibliothèque";
+        decision.reason = "Already in the library";
       } else {
         decision.reason = decision.supersedes
-          ? "Meilleure version ajoutée · ancienne version conservée jusqu’à la fin du téléchargement"
-          : "Ajouté dans le dossier du thread";
+          ? "Better version added · old version kept until the download completes"
+          : "Added to the thread folder";
       }
     } catch {
       if (decision.status === "ignored") {
         return;
       }
       decision.status = "error";
-      decision.reason =
-        "Impossible d’ajouter le torrent ; nouvelle tentative à la prochaine vérification";
+      decision.reason = "Unable to add the torrent; retrying on the next check";
     }
     if (!this.isClosed() && this.decisions.get(decision.id) === decision) {
       this.persistDecision(decision);
@@ -980,7 +977,7 @@ export class AutomationService {
   async approve(id: string) {
     const decision = this.decisions.get(id);
     if (!decision) {
-      throw new UserError("Sortie inconnue", { status: 404 });
+      throw new UserError("Unknown release", { status: 404 });
     }
     if (decision.status === "added" || decision.status === "ignored") {
       return this.snapshot();
@@ -991,10 +988,10 @@ export class AutomationService {
   ignore(id: string) {
     const decision = this.decisions.get(id);
     if (!decision) {
-      throw new UserError("Sortie inconnue", { status: 404 });
+      throw new UserError("Unknown release", { status: 404 });
     }
     decision.status = "ignored";
-    decision.reason = "Ignoré manuellement";
+    decision.reason = "Ignored manually";
     this.persistDecision(decision);
     return this.snapshot();
   }

@@ -37,12 +37,12 @@ export class DesktopController {
       width: 18,
     });
     this.tray.setMenu([
-      { action: "open-native", label: `Ouvrir ${this.name}`, type: "normal" },
-      { action: "open-web", label: "Ouvrir dans le navigateur", type: "normal" },
+      { action: "open-native", label: `Open ${this.name}`, type: "normal" },
+      { action: "open-web", label: "Open in browser", type: "normal" },
       { type: "divider" },
-      { action: "check-updates", label: "Rechercher une mise à jour", type: "normal" },
+      { action: "check-updates", label: "Check for updates", type: "normal" },
       { type: "divider" },
-      { action: "quit", label: `Quitter ${this.name}`, type: "normal" },
+      { action: "quit", label: `Quit ${this.name}`, type: "normal" },
     ]);
     this.tray.on("tray-clicked", (event) => {
       const { action } = (event as { data: { action: string } }).data;
@@ -91,7 +91,7 @@ export class DesktopController {
   open() {
     // biome-ignore lint/suspicious/noUnnecessaryConditions: the native before-quit callback sets this flag asynchronously.
     if (this.quitting) {
-      throw new UserError("Tofu est en cours de fermeture", { status: 409 });
+      throw new UserError("Tofu is shutting down", { status: 409 });
     }
     if (this.window) {
       this.window.show();
@@ -122,15 +122,14 @@ export class DesktopController {
   }
   background() {
     if (!this.engine().settings.runInBackground) {
-      throw new UserError("Activez d’abord l’option Tourner en arrière-plan dans les paramètres", {
+      throw new UserError("Enable Run in background in settings first", {
         status: 409,
       });
     }
     if (!this.snapshot().trayVisible) {
-      throw new UserError(
-        "L’icône de la barre de menus est indisponible ; la fenêtre reste ouverte",
-        { status: 503 }
-      );
+      throw new UserError("The menu bar icon is unavailable; the window stays open", {
+        status: 503,
+      });
     }
     // Let the HTTP response reach the WebView before releasing its native window.
     setTimeout(() => this.window?.requestClose(), 100);

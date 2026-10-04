@@ -68,12 +68,12 @@ function SheetContent({
         {showCloseButton === true && (
           <ActionTooltip>
             <SheetPrimitive.Close
-              aria-label="Fermer"
+              aria-label="Close"
               data-slot="sheet-close"
               render={<Button className="absolute top-3 right-3" size="icon-sm" variant="ghost" />}
             >
               <XIcon />
-              <span className="sr-only">Fermer</span>
+              <span className="sr-only">Close</span>
             </SheetPrimitive.Close>
           </ActionTooltip>
         )}

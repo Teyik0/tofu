@@ -23,13 +23,13 @@ export function createApi(
         error instanceof Error && "status" in error && typeof error.status === "number"
           ? error.status
           : 500;
-      return { error: error instanceof Error ? error.message : "Erreur inattendue" };
+      return { error: error instanceof Error ? error.message : "Unexpected error" };
     })
     .use(
       createAutomationApi(
         automation ??
           (() => {
-            throw new UserError("Automatisations indisponibles", { status: 503 });
+            throw new UserError("Automations unavailable", { status: 503 });
           }),
         sync
       )
@@ -39,26 +39,26 @@ export function createApi(
       createUpdatesApi(
         services?.updates ??
           (() => {
-            throw new UserError("Mises à jour indisponibles", { status: 503 });
+            throw new UserError("Updates unavailable", { status: 503 });
           }),
         sync
       )
     )
     .get("/desktop", () => {
       if (!services || engine().mode !== "desktop") {
-        throw new UserError("Cette action nécessite l’application de bureau", { status: 409 });
+        throw new UserError("This action requires the desktop app", { status: 409 });
       }
       return services.desktop().snapshot();
     })
     .post("/desktop/open", () => {
       if (!services || engine().mode !== "desktop") {
-        throw new UserError("Cette action nécessite l’application de bureau", { status: 409 });
+        throw new UserError("This action requires the desktop app", { status: 409 });
       }
       return services.desktop().open();
     })
     .post("/desktop/background", () => {
       if (!services || engine().mode !== "desktop") {
-        throw new UserError("Cette action nécessite l’application de bureau", { status: 409 });
+        throw new UserError("This action requires the desktop app", { status: 409 });
       }
       return services.desktop().background();
     })
@@ -67,7 +67,7 @@ export function createApi(
         return { opened: false };
       }
       if (services.updates().snapshot().status !== "available") {
-        throw new UserError("Aucune mise à jour disponible", { status: 409 });
+        throw new UserError("No update available", { status: 409 });
       }
       return services.desktop().openDownload();
     })

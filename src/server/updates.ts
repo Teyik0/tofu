@@ -43,7 +43,7 @@ function release(value: unknown): Release {
     !("assets" in value) ||
     !Array.isArray(value.assets)
   ) {
-    throw new Error("La réponse de GitHub est invalide");
+    throw new Error("Invalid GitHub response");
   }
   const assets = value.assets.map((asset: unknown): ReleaseAsset => {
     if (
@@ -56,7 +56,7 @@ function release(value: unknown): Release {
       !("name" in asset) ||
       typeof asset.name !== "string"
     ) {
-      throw new Error("La liste des installateurs est invalide");
+      throw new Error("Invalid installer list");
     }
     return { id: asset.id, name: asset.name };
   });
@@ -66,7 +66,7 @@ function release(value: unknown): Release {
 function versionParts(version: string) {
   const match: RegExpExecArray | null = versionPattern.exec(version);
   if (match === null) {
-    throw new Error("Version de release invalide (format attendu : v1.2.3)");
+    throw new Error("Invalid release version (expected format: v1.2.3)");
   }
   return match.slice(1).map(Number);
 }
@@ -167,7 +167,7 @@ export class UpdatesService {
       this.access.token = "";
     } else if (input.token !== undefined) {
       if (!tokenPattern.test(input.token)) {
-        throw new UserError("Jeton GitHub invalide", { status: 400 });
+        throw new UserError("Invalid GitHub token", { status: 400 });
       }
       this.access.token = input.token;
     }
@@ -217,16 +217,15 @@ export class UpdatesService {
       const response = await this.github("/releases/latest", "application/vnd.github+json");
       this.state.checkedAt = Date.now();
       if (response.status === 401 || response.status === 403) {
-        throw new UserError(
-          "Le jeton GitHub est expiré ou ne permet pas de lire les releases privées",
-          { status: 401 }
-        );
+        throw new UserError("The GitHub token has expired or cannot read private releases", {
+          status: 401,
+        });
       }
       if (response.status === 404) {
         const repo = await this.github("", "application/vnd.github+json");
         if (!repo.ok) {
           throw new UserError(
-            "Ce jeton n’a pas accès au dépôt privé Teyik0/Tofu (permission Contents : lecture)",
+            "This token cannot access the private Teyik0/Tofu repository (Contents: read permission)",
             { status: 401 }
           );
         }
@@ -234,11 +233,11 @@ export class UpdatesService {
         return this.snapshot();
       }
       if (!response.ok) {
-        throw new Error(`GitHub est indisponible (HTTP ${response.status})`);
+        throw new Error(`GitHub is unavailable (HTTP ${response.status})`);
       }
       const latest = release(await response.json());
       if (latest.draft || latest.prerelease) {
-        throw new Error("Aucune release stable disponible");
+        throw new Error("No stable release available");
       }
       const version = latest.tag_name.replace(versionPrefix, "");
       versionParts(version);
@@ -253,7 +252,7 @@ export class UpdatesService {
         latest.assets.find((item) => item.name === name && this.options.platform === "darwin") ??
         null;
       if (!this.asset) {
-        throw new Error("Aucun installateur compatible avec cette machine dans la release");
+        throw new Error("No installer compatible with this machine in the release");
       }
       this.state.downloadName = this.asset.name;
       this.state.status = "available";
@@ -265,13 +264,13 @@ export class UpdatesService {
     } catch (error) {
       this.state.status =
         error instanceof UserError && error.status === 401 ? "auth-required" : "error";
-      this.state.error = error instanceof Error ? error.message : "Vérification impossible";
+      this.state.error = error instanceof Error ? error.message : "Unable to verify";
     }
     return this.snapshot();
   }
   async download() {
     if (!(this.access.token && this.asset) || this.state.status !== "available") {
-      throw new UserError("Vérifiez les mises à jour avant de télécharger l’installateur", {
+      throw new UserError("Check for updates before downloading the installer", {
         status: 409,
       });
     }
@@ -282,7 +281,7 @@ export class UpdatesService {
       this.state.downloadName = null;
       this.state.status = "auth-required";
       this.state.error =
-        "L’accès à cette release privée a expiré ou a été révoqué. Vérifiez votre jeton GitHub.";
+        "Access to this private release has expired or been revoked. Check your GitHub token.";
       throw new UserError(this.state.error, { status: 401 });
     }
     if (response.status === 302) {
@@ -294,7 +293,7 @@ export class UpdatesService {
           target.hostname
         )
       ) {
-        throw new UserError("GitHub a renvoyé une adresse de téléchargement invalide", {
+        throw new UserError("GitHub returned an invalid download URL", {
           status: 502,
         });
       }
@@ -302,7 +301,7 @@ export class UpdatesService {
       response = await fetch(target, { redirect: "error", signal: AbortSignal.timeout(120_000) });
     }
     if (!response.ok) {
-      throw new UserError(`Téléchargement indisponible (HTTP ${response.status})`, { status: 502 });
+      throw new UserError(`Download unavailable (HTTP ${response.status})`, { status: 502 });
     }
     return new Response(response.body, {
       headers: {

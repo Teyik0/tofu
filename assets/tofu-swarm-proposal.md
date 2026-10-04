@@ -1,6 +1,6 @@
-# Proposition essaim
+# Swarm proposal
 
-Image : `tofu-swarm-proposal.png`, générée avec imagegen intégré. Version retenue pour l’icône native de Tofu.
+Image: `tofu-swarm-proposal.png`, generated with the built-in imagegen tool. Version selected for Tofu's native icon at the time of this proposal.
 
 Prompt :
 

@@ -20,17 +20,17 @@ export async function currentInstanceConfig() {
       join(dirname(process.execPath), "../Resources/version.json")
     ).json();
     if (!metadata || typeof metadata !== "object" || !("channel" in metadata)) {
-      throw new Error("Le profil du bundle Tofu est absent");
+      throw new Error("The Tofu bundle profile is missing");
     }
     if (metadata.channel === "stable") {
       profile = "release";
     } else if (metadata.channel !== "dev") {
-      throw new Error("Le profil du bundle Tofu est inconnu");
+      throw new Error("The Tofu bundle profile is unknown");
     }
     bundleIdentifier = "identifier" in metadata ? metadata.identifier : undefined;
   } else if (process.env.TOFU_PROFILE !== undefined) {
     if (process.env.TOFU_PROFILE !== "dev" && process.env.TOFU_PROFILE !== "release") {
-      throw new Error("TOFU_PROFILE doit être dev ou release");
+      throw new Error("TOFU_PROFILE must be dev or release");
     }
     profile = process.env.TOFU_PROFILE;
   }
@@ -45,7 +45,7 @@ export async function currentInstanceConfig() {
   });
   if (process.execPath.includes(".app/Contents/MacOS/") && bundleIdentifier !== config.identifier) {
     throw new Error(
-      "L’identifiant natif Tofu ne correspond pas au profil du bundle ; reconstruisez l’application"
+      "The native Tofu identifier does not match the bundle profile; rebuild the app"
     );
   }
   return { ...config, desktop };
@@ -69,12 +69,12 @@ export function resolveInstanceConfig(options: {
   const webPort = development ? "3030" : "3031";
   const port = Number(options.port ?? (options.desktop ? "0" : webPort));
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-    throw new Error("TOFU_PORT doit être un entier entre 0 et 65535");
+    throw new Error("TOFU_PORT must be an integer between 0 and 65535");
   }
   const dataDir = resolve(options.dataDir ?? join(stateRoot, directoryName));
   if (development && within(dataDir, join(stateRoot, "Tofu"))) {
     throw new Error(
-      "Ce dossier de données est réservé à la release ; utilisez Tofu-dev ou un dossier de test distinct"
+      "This data directory is reserved for release; use Tofu-dev or a separate test directory"
     );
   }
   return {
@@ -106,7 +106,7 @@ export async function acquireInstance(config: InstanceConfig) {
     const canonicalReleaseDir = await realpath(releaseDir).catch(() => releaseDir);
     if (within(await realpath(config.dataDir), canonicalReleaseDir)) {
       throw new Error(
-        "Ce dossier de données est réservé à la release, y compris via un lien symbolique"
+        "This data directory is reserved for release, including through a symbolic link"
       );
     }
   }
@@ -120,7 +120,7 @@ export async function acquireInstance(config: InstanceConfig) {
     closeSync(fd);
     library.close();
     throw new Error(
-      `Le dossier de données est déjà utilisé par une autre instance Tofu : ${config.dataDir}`
+      `The data directory is already in use by another Tofu instance : ${config.dataDir}`
     );
   }
   try {
@@ -147,11 +147,11 @@ async function claimProfile(config: InstanceConfig) {
   if (await marker.exists()) {
     const metadata: unknown = await marker.json();
     if (!metadata || typeof metadata !== "object" || !("profile" in metadata)) {
-      throw new Error("Le profil du dossier de données Tofu est invalide");
+      throw new Error("The Tofu data directory profile is invalid");
     }
     if (metadata.profile !== config.profile) {
       throw new Error(
-        `Ce dossier de données appartient au profil ${String(metadata.profile)} ; le profil ${config.profile} ne peut pas l’ouvrir`
+        `This data directory belongs to profile ${String(metadata.profile)} ; profile ${config.profile} cannot open it`
       );
     }
     return;
@@ -164,7 +164,7 @@ async function claimProfile(config: InstanceConfig) {
   );
   if (config.profile === "dev" && existing.some(Boolean)) {
     throw new Error(
-      "Ce dossier contient des données Tofu d’un profil inconnu ; utilisez un dossier de développement vide"
+      "This directory contains Tofu data from an unknown profile; use an empty development directory"
     );
   }
   await Bun.write(marker, JSON.stringify({ profile: config.profile }), { mode: 0o600 });
@@ -198,7 +198,7 @@ async function assertLegacyStopped(dataDir: string) {
     throw error;
   }
   throw new Error(
-    "Une ancienne instance Tofu utilise déjà ce dossier ; quittez-la avant de démarrer cette version"
+    "A legacy Tofu instance is already using this directory; quit it before starting this version"
   );
 }
 

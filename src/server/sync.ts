@@ -32,7 +32,7 @@ export async function createTofuSync(dataDir: string) {
           response: { body: new Uint8Array(), headers: [], status: 204 },
         });
         if (result.kind !== "committed") {
-          throw new Error("Publication Furin Sync expirée");
+          throw new Error("Furin Sync publication timed out");
         }
       }
     },

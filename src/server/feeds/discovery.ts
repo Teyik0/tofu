@@ -165,7 +165,7 @@ export class DiscoveryResolver {
         signal: controller.signal,
       });
       if (!response.ok) {
-        throw new Error("Catalogue indisponible");
+        throw new Error("Catalogue unavailable");
       }
       const result = (await response.json()) as {
         data?: { Page?: { media?: AnimeTitle[] } };
@@ -173,7 +173,7 @@ export class DiscoveryResolver {
       };
       const media = result.data?.Page?.media;
       if (!Array.isArray(media) || result.errors?.length) {
-        throw new Error("Catalogue invalide");
+        throw new Error("Invalid catalogue");
       }
       if (this.cache.size >= 100) {
         this.cache.clear();
@@ -181,7 +181,7 @@ export class DiscoveryResolver {
       this.cache.set(key, { expires: Date.now() + 3_600_000, media });
       resolveTitles(search, media);
     } catch {
-      search.warning = "Titres alternatifs indisponibles ; recherche avec le titre saisi.";
+      search.warning = "Alternative titles unavailable; searching with the entered title.";
     } finally {
       clearTimeout(timeout);
       this.requests.delete(controller);

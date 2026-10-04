@@ -27,14 +27,12 @@ export function TorrentDrop() {
           paused: "false",
         });
         if (!(result && "id" in result)) {
-          throw new Error(
-            result && "error" in result ? result.error : "Impossible d’ajouter le torrent"
-          );
+          throw new Error(result && "error" in result ? result.error : "Unable to add the torrent");
         }
         setSelected(result.id);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Impossible d’ajouter le torrent");
+      setError(cause instanceof Error ? cause.message : "Unable to add the torrent");
     } finally {
       await refresh();
     }
@@ -82,7 +80,7 @@ export function TorrentDrop() {
       if (files.length > 0) {
         void dropped(files);
       } else {
-        setError("Déposez un fichier .torrent.");
+        setError("Drop a .torrent file.");
       }
     };
     window.addEventListener("dragenter", enter);
@@ -101,7 +99,7 @@ export function TorrentDrop() {
       {dragging === true && (
         <div className="torrent-drop-overlay">
           <DownloadIcon />
-          <p>Déposez vos fichiers .torrent</p>
+          <p>Drop your .torrent files</p>
         </div>
       )}
       {error !== null && (
@@ -109,7 +107,7 @@ export function TorrentDrop() {
           <AlertDescription>
             {error}
             <Button onClick={() => setError(null)} size="sm" variant="ghost">
-              Fermer
+              Close
             </Button>
           </AlertDescription>
         </Alert>

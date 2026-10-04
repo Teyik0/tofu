@@ -49,7 +49,7 @@ export const DestinationSidebar = memo(
               <span>Tofu</span>
             </Link>
             <ActionTooltip>
-              <SidebarTrigger aria-label="Réduire la sidebar" />
+              <SidebarTrigger aria-label="Collapse sidebar" />
             </ActionTooltip>
           </div>
         </SidebarHeader>
@@ -60,10 +60,10 @@ export const DestinationSidebar = memo(
                 <SidebarMenuButton
                   isActive={active === null}
                   render={<Link resetScroll={false} to="/library/all" />}
-                  tooltip="Tous les torrents"
+                  tooltip="All torrents"
                 >
                   <LayoutGridIcon />
-                  <span>Tous les torrents</span>
+                  <span>All torrents</span>
                 </SidebarMenuButton>
                 <SidebarMenuBadge>{data?.torrents.length ?? 0}</SidebarMenuBadge>
               </SidebarMenuItem>
@@ -73,14 +73,14 @@ export const DestinationSidebar = memo(
             <SidebarGroupLabel>DESTINATIONS</SidebarGroupLabel>
             <ActionTooltip>
               <SidebarGroupAction
-                aria-label="Créer un onglet"
+                aria-label="Create a tab"
                 disabled={!data}
                 onClick={() => open({ destination: null, type: "destination" })}
               >
                 <PlusIcon />
               </SidebarGroupAction>
             </ActionTooltip>
-            <SidebarMenu aria-label="Onglets de destination">
+            <SidebarMenu aria-label="Destination tabs">
               {data?.destinations.map((destination) => (
                 <SidebarMenuItem key={destination.id}>
                   <SidebarMenuButton
@@ -106,7 +106,7 @@ export const DestinationSidebar = memo(
                   </SidebarMenuBadge>
                   <ActionTooltip>
                     <SidebarMenuAction
-                      aria-label={`Modifier l’onglet ${destination.name}`}
+                      aria-label={`Edit tab ${destination.name}`}
                       onClick={() => open({ destination, type: "destination" })}
                       showOnHover
                     >
@@ -122,7 +122,7 @@ export const DestinationSidebar = memo(
           <div className="sidebar-disk">
             <FolderIcon />
             <div>
-              <span>Espace disponible</span>
+              <span>Available space</span>
               <strong>{bytes(data?.session.freeSpace ?? null)}</strong>
             </div>
           </div>
@@ -141,10 +141,10 @@ export const DestinationSidebar = memo(
               <SidebarMenuButton
                 disabled={!data}
                 onClick={() => open({ type: "settings" })}
-                tooltip="Préférences"
+                tooltip="Preferences"
               >
                 <SettingsIcon />
-                <span>Préférences</span>
+                <span>Preferences</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

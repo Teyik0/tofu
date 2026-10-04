@@ -8,11 +8,11 @@ export default function LibraryError({ reset }: ErrorProps) {
     <main className="main">
       <Alert className="connection-banner">
         <AlertCircleIcon />
-        <AlertTitle>Le moteur Tofu est indisponible</AlertTitle>
+        <AlertTitle>The Tofu engine is unavailable</AlertTitle>
         <AlertDescription>
-          <p>Les données n’ont pas pu être chargées.</p>
+          <p>The data could not be loaded.</p>
           <Button onClick={reset} variant="outline">
-            Réessayer
+            Retry
           </Button>
         </AlertDescription>
       </Alert>

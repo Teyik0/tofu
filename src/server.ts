@@ -37,7 +37,7 @@ const app = new Elysia()
     async ({ body }) => {
       const url = new URL(body.url);
       if (url.origin !== "https://anilist.co" || url.pathname !== "/api/v2/oauth/authorize") {
-        throw new UserError("URL de connexion AniList invalide", { status: 400 });
+        throw new UserError("Invalid AniList connection URL", { status: 400 });
       }
       if (getEngine().mode !== "desktop") {
         return { opened: false, url: url.href };
@@ -48,7 +48,7 @@ const app = new Elysia()
   )
   .post("/api/directory", { sync: false }, async () => {
     if (getEngine().mode !== "desktop") {
-      throw new UserError("Saisissez le chemin du dossier sur le serveur", { status: 409 });
+      throw new UserError("Enter the folder path on the server", { status: 409 });
     }
     const { Utils } = await import("electrobun/main");
     const paths = await Utils.openFileDialog({
@@ -61,7 +61,7 @@ const app = new Elysia()
   })
   .post("/api/torrents/:id/reveal", { sync: false }, async ({ params }) => {
     if (getEngine().mode !== "desktop") {
-      throw new UserError("Le dossier se trouve sur la machine qui héberge Tofu", { status: 409 });
+      throw new UserError("The folder is on the machine hosting Tofu", { status: 409 });
     }
     const { Utils } = await import("electrobun/main");
     return { opened: Utils.openPath(getEngine().get(params.id).detail.savePath) };
@@ -127,8 +127,8 @@ async function launchServer() {
         void import("electrobun/main")
           .then(({ Utils }) =>
             Utils.showNotification({
-              body: `Ouvrez ${instance.name} pour télécharger la nouvelle version.`,
-              title: `${instance.name} : Tofu ${latest} est disponible`,
+              body: `Open ${instance.name} to download the new version.`,
+              title: `${instance.name} : Tofu ${latest} is available`,
             })
           )
           .catch(console.error);
@@ -162,7 +162,7 @@ async function launchServer() {
     { mode: 0o600 }
   );
   await rename(join(dataDir, "server.json.tmp"), join(dataDir, "server.json"));
-  console.log(`${instance.name} est prêt : ${url} (données : ${dataDir})`);
+  console.log(`${instance.name} is ready : ${url} (data: ${dataDir})`);
   const shutdown = async () => {
     await dispose();
     process.exit(0);
@@ -183,13 +183,13 @@ async function launchServer() {
     {
       label: instance.name,
       submenu: [
-        { label: `À propos de ${instance.name}`, role: "about" },
+        { label: `About ${instance.name}`, role: "about" },
         { type: "divider" },
-        { accelerator: "CmdOrCtrl+Q", label: `Quitter ${instance.name}`, role: "quit" },
+        { accelerator: "CmdOrCtrl+Q", label: `Quit ${instance.name}`, role: "quit" },
       ],
     },
     {
-      label: "Édition",
+      label: "Edit",
       submenu: [
         { role: "undo" },
         { role: "redo" },

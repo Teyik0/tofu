@@ -30,7 +30,7 @@ const DashboardContext = createContext<DashboardContextValue | null>(null);
 export function useDashboard() {
   const dashboard = useContext(DashboardContext);
   if (!dashboard) {
-    throw new Error("Le tableau de bord nécessite le layout Tofu");
+    throw new Error("The dashboard requires the Tofu layout");
   }
   return dashboard;
 }

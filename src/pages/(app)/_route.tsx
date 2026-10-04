@@ -10,7 +10,7 @@ export const route = defineRoute()
       query: { detail: "false" },
     });
     if (error || !data || !("destinations" in data)) {
-      throw new Error("Le moteur Tofu est indisponible");
+      throw new Error("The Tofu engine is unavailable");
     }
     return { dashboard: data };
   })

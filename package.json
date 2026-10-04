@@ -1,8 +1,8 @@
 {
   "name": "tofu",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
-  "description": "Client torrent macOS sous Bun, Furin et Electrobun",
+  "description": "Torrent client powered by Bun, Furin, and Electrobun",
   "bugs": {
     "url": "https://github.com/Teyik0/Tofu/issues"
   },
@@ -32,14 +32,9 @@
     "test:native": "bun scripts/native-smoke.ts",
     "tscheck": "tsc --noEmit"
   },
-  "overrides": {
-    "@elysia/eden": "2.0.0-beta.5"
-  },
   "dependencies": {
     "@base-ui/react": "1.8.0",
     "@elysia/eden": "2.0.0-beta.5",
-    "@fontsource-variable/manrope": "5.2.8",
-    "@fontsource/ibm-plex-mono": "5.2.7",
     "@teyik0/furin": "0.7.0-alpha.2",
     "bun-plugin-tailwind": "0.1.2",
     "class-variance-authority": "0.7.1",

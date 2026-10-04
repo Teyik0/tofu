@@ -8,5 +8,5 @@ export const route = defineRoute()
   .loader(({ dashboard, request }) =>
     loadTorrentPage(dashboard, new URL(request.url).origin, "default")
   )
-  .head(() => ({ meta: [{ title: "Tofu — Vos téléchargements, simplement." }] }))
+  .head(() => ({ meta: [{ title: "Tofu — Your downloads, made simple." }] }))
   .page(App);

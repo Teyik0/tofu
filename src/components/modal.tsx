@@ -165,23 +165,22 @@ export function Modal({
     data.settings.uploadLimit === -1 ? "" : String(data.settings.uploadLimit / 1024)
   );
   const titles = {
-    add: "Ajouter un torrent",
-    destination:
-      modal.type === "destination" && modal.destination ? "Modifier l’onglet" : "Créer un onglet",
-    drop: "Choisir la destination",
-    peer: "Ajouter un pair",
-    remove: "Supprimer le torrent",
-    settings: "Préférences",
-    trackers: "Gérer les trackers",
+    add: "Add a torrent",
+    destination: modal.type === "destination" && modal.destination ? "Edit tab" : "Create a tab",
+    drop: "Choose destination",
+    peer: "Add a peer",
+    remove: "Remove torrent",
+    settings: "Preferences",
+    trackers: "Manage trackers",
   };
   const descriptions = {
-    add: "Déposez un fichier ou collez un lien pour commencer.",
-    destination: "Un onglet, un dossier. Plusieurs onglets peuvent utiliser le même dossier.",
-    drop: "Les torrents démarreront immédiatement dans le dossier choisi.",
-    peer: "Connectez-vous directement à un pair connu.",
-    remove: "Les fichiers restent sur le disque, sauf si vous demandez leur suppression.",
-    settings: "Vos limites s’appliquent immédiatement à tous les transferts.",
-    trackers: "Ajoutez, modifiez ou retirez les URLs. Les fichiers téléchargés sont conservés.",
+    add: "Drop a file or paste a link to get started.",
+    destination: "One tab, one folder. Multiple tabs can use the same folder.",
+    drop: "Torrents will start immediately in the selected folder.",
+    peer: "Connect directly to a known peer.",
+    remove: "Files remain on disk unless you choose to delete them.",
+    settings: "Your limits apply immediately to all transfers.",
+    trackers: "Add, edit, or remove URLs. Downloaded files are preserved.",
   };
   const urls = () =>
     trackers
@@ -195,7 +194,7 @@ export function Modal({
         setPath(result.path);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Impossible d’ouvrir le dossier");
+      setError(cause instanceof Error ? cause.message : "Unable to open the folder");
     }
   };
   const submit = async (event: FormEvent) => {
@@ -210,7 +209,7 @@ export function Modal({
         if (target === "new") {
           const destination = await createDestination.mutateAsync({ downloadPath: path, name });
           if (!(destination && "id" in destination)) {
-            throw new Error("Impossible de créer l’onglet");
+            throw new Error("Unable to create the tab");
           }
           target = destination.id;
           setDestinationId(target);
@@ -224,7 +223,7 @@ export function Modal({
           });
           if (!(result && "id" in result)) {
             throw new Error(
-              result && "error" in result ? result.error : "Impossible d’ajouter le torrent"
+              result && "error" in result ? result.error : "Unable to add the torrent"
             );
           }
           selected = result.id;
@@ -275,7 +274,7 @@ export function Modal({
       done(selected, savedDestination);
       close();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Une erreur est survenue");
+      setError(cause instanceof Error ? cause.message : "An error occurred");
     } finally {
       setBusy(false);
     }
@@ -289,17 +288,17 @@ export function Modal({
       {busy === true && <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />}
       {busy
         ? offerMove && moveFiles
-          ? "Déplacement en cours…"
-          : "Un instant…"
+          ? "Moving files…"
+          : "One moment…"
         : modal.type === "drop"
-          ? "Télécharger"
+          ? "Download"
           : modal.type === "add"
-            ? "Ajouter le torrent"
+            ? "Add torrent"
             : modal.type === "remove"
-              ? "Supprimer"
+              ? "Remove"
               : modal.type === "destination" && !modal.destination
-                ? "Créer l’onglet"
-                : "Enregistrer"}
+                ? "Create tab"
+                : "Save"}
     </Button>
   );
   return (
@@ -321,7 +320,7 @@ export function Modal({
                 {droppedFiles.map((item) => item.name).join(", ")}
               </FieldDescription>
               <Field>
-                <FieldLabel htmlFor="drop-destination">Onglet de destination</FieldLabel>
+                <FieldLabel htmlFor="drop-destination">Destination tab</FieldLabel>
                 <Select
                   disabled={busy}
                   items={[
@@ -329,7 +328,7 @@ export function Modal({
                       label: destination.name,
                       value: destination.id,
                     })),
-                    { label: "Créer un nouvel onglet…", value: "new" },
+                    { label: "Create a new tab…", value: "new" },
                   ]}
                   onValueChange={(value) => {
                     if (value !== null) {
@@ -348,7 +347,7 @@ export function Modal({
                           {destination.name}
                         </SelectItem>
                       ))}
-                      <SelectItem value="new">Créer un nouvel onglet…</SelectItem>
+                      <SelectItem value="new">Create a new tab…</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -375,10 +374,10 @@ export function Modal({
                 onError={setError}
               />
               <div className="torrent-source-divider">
-                <span>ou avec un lien</span>
+                <span>or use a link</span>
               </div>
               <Field>
-                <FieldLabel htmlFor="torrent-source">Lien magnet ou URL</FieldLabel>
+                <FieldLabel htmlFor="torrent-source">Magnet link or URL</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon>
                     <LinkIcon />
@@ -387,7 +386,7 @@ export function Modal({
                     disabled={Boolean(file) || busy}
                     id="torrent-source"
                     onChange={(event) => setSource(event.target.value)}
-                    placeholder="Collez un lien magnet ou https://…"
+                    placeholder="Paste a magnet link or https://…"
                     required={!file}
                     spellCheck={false}
                     value={source}
@@ -395,7 +394,7 @@ export function Modal({
                 </InputGroup>
               </Field>
               <Field>
-                <FieldLabel htmlFor="torrent-destination">Onglet de destination</FieldLabel>
+                <FieldLabel htmlFor="torrent-destination">Destination tab</FieldLabel>
                 <Select
                   disabled={busy}
                   items={data.destinations.map((destination) => ({
@@ -430,9 +429,9 @@ export function Modal({
                 </FieldDescription>
               </Field>
               <details className="torrent-add-options">
-                <summary>Trackers supplémentaires</summary>
+                <summary>Additional trackers</summary>
                 <Field className="mt-3">
-                  <FieldLabel htmlFor="extra-trackers">Une URL par ligne</FieldLabel>
+                  <FieldLabel htmlFor="extra-trackers">One URL per line</FieldLabel>
                   <Textarea
                     id="extra-trackers"
                     onChange={(event) => setTrackers(event.target.value)}
@@ -448,13 +447,13 @@ export function Modal({
                   id="torrent-paused"
                   onCheckedChange={(value) => setPaused(value === true)}
                 />
-                <FieldLabel htmlFor="torrent-paused">Ajouter en pause</FieldLabel>
+                <FieldLabel htmlFor="torrent-paused">Add paused</FieldLabel>
               </Field>
             </>
           )}
           {(modal.type === "destination" || (modal.type === "drop" && destinationId === "new")) && (
             <Field data-invalid={Boolean(error)}>
-              <FieldLabel htmlFor="destination-name">Nom de l’onglet</FieldLabel>
+              <FieldLabel htmlFor="destination-name">Tab name</FieldLabel>
               <Input
                 aria-invalid={Boolean(error)}
                 disabled={busy}
@@ -470,7 +469,7 @@ export function Modal({
             modal.type === "settings" ||
             (modal.type === "drop" && destinationId === "new")) && (
             <Field data-invalid={Boolean(error)}>
-              <FieldLabel htmlFor="destination-path">Dossier de téléchargement</FieldLabel>
+              <FieldLabel htmlFor="destination-path">Download folder</FieldLabel>
               <InputGroup>
                 <InputGroupInput
                   aria-invalid={Boolean(error)}
@@ -484,15 +483,15 @@ export function Modal({
                   <InputGroupAddon align="inline-end">
                     <InputGroupButton disabled={busy} onClick={() => void browse()} type="button">
                       <FolderIcon />
-                      Parcourir
+                      Browse
                     </InputGroupButton>
                   </InputGroupAddon>
                 )}
               </InputGroup>
               <FieldDescription>
                 {offerMove && moveFiles
-                  ? "Les téléchargements de cet onglet utiliseront le nouveau dossier."
-                  : "Ce dossier s’applique aux prochains ajouts. Les fichiers existants gardent leur emplacement."}
+                  ? "Downloads in this tab will use the new folder."
+                  : "This folder applies to future additions. Existing files stay in their current location."}
               </FieldDescription>
             </Field>
           )}
@@ -506,36 +505,33 @@ export function Modal({
                   onCheckedChange={(value) => setMoveFiles(value === true)}
                 />
                 <FieldContent>
-                  <FieldLabel htmlFor="move-files">
-                    Déplacer les fichiers déjà téléchargés
-                  </FieldLabel>
+                  <FieldLabel htmlFor="move-files">Move downloaded files</FieldLabel>
                   <FieldDescription>
-                    {existingTorrents.length} torrent{existingTorrents.length > 1 ? "s" : ""} dans
-                    cet onglet. Les transferts seront interrompus pendant le déplacement puis
-                    reprendront ; les torrents en pause resteront en pause.
+                    {existingTorrents.length} torrent{existingTorrents.length > 1 ? "s" : ""} in
+                    this tab. Transfers will stop during the move and then resume; paused torrents
+                    will remain paused.
                   </FieldDescription>
                 </FieldContent>
               </Field>
               {busy === false && moveFiles === true && checkingTorrent !== undefined && (
                 <Alert variant="destructive">
                   <AlertDescription>
-                    {checkingTorrent.name} est en cours de{" "}
-                    {checkingTorrent.status === "checking" ? "vérification" : "déplacement"}.
-                    Attendez la fin avant de déplacer ses fichiers.
+                    {checkingTorrent.name} is undergoing{" "}
+                    {checkingTorrent.status === "checking" ? "verification" : "move"}. Wait for
+                    completion before moving its files.
                   </AlertDescription>
                 </Alert>
               )}
               {busy === true && moveFiles === true && (
                 <FieldDescription role="status">
-                  Déplacement des fichiers en cours. Cette opération peut prendre du temps selon
-                  leur taille.
+                  Moving files. This may take some time depending on their size.
                 </FieldDescription>
               )}
             </>
           )}
           {modal.type === "trackers" && (
             <Field>
-              <FieldLabel htmlFor="tracker-urls">Trackers · une URL par ligne</FieldLabel>
+              <FieldLabel htmlFor="tracker-urls">Trackers · one URL per line</FieldLabel>
               <Textarea
                 id="tracker-urls"
                 onChange={(event) => setTrackers(event.target.value)}
@@ -543,12 +539,12 @@ export function Modal({
                 spellCheck={false}
                 value={trackers}
               />
-              <FieldDescription>Protocoles HTTP, HTTPS, UDP, WS et WSS.</FieldDescription>
+              <FieldDescription>HTTP, HTTPS, UDP, WS, and WSS protocols.</FieldDescription>
             </Field>
           )}
           {modal.type === "peer" && (
             <Field>
-              <FieldLabel htmlFor="peer-address">Adresse IP ou hôte et port</FieldLabel>
+              <FieldLabel htmlFor="peer-address">IP address or host and port</FieldLabel>
               <Input
                 id="peer-address"
                 onChange={(event) => setSource(event.target.value)}
@@ -561,7 +557,7 @@ export function Modal({
           {modal.type === "remove" && (
             <>
               <p>
-                Retirer <strong>{modal.torrent.name}</strong> de Tofu ?
+                Remove <strong>{modal.torrent.name}</strong> from Tofu?
               </p>
               <Field orientation="horizontal">
                 <Checkbox
@@ -570,15 +566,11 @@ export function Modal({
                   id="remove-files"
                   onCheckedChange={(value) => setRemoveFiles(value === true)}
                 />
-                <FieldLabel htmlFor="remove-files">
-                  Supprimer également les fichiers téléchargés
-                </FieldLabel>
+                <FieldLabel htmlFor="remove-files">Also delete downloaded files</FieldLabel>
               </Field>
               {removeFiles === true && (
                 <Alert variant="destructive">
-                  <AlertDescription>
-                    Cette suppression des fichiers est définitive.
-                  </AlertDescription>
+                  <AlertDescription>Deleting these files is permanent.</AlertDescription>
                 </Alert>
               )}
             </>
@@ -587,33 +579,31 @@ export function Modal({
             <>
               <FieldGroup className="grid grid-cols-2 gap-4">
                 <Field>
-                  <FieldLabel htmlFor="limit-download">Réception · Kio/s</FieldLabel>
+                  <FieldLabel htmlFor="limit-download">Download · KiB/s</FieldLabel>
                   <Input
                     id="limit-download"
                     min="0"
                     onChange={(event) => setDown(event.target.value)}
-                    placeholder="Illimitée"
+                    placeholder="Unlimited"
                     step="1"
                     type="number"
                     value={down}
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="limit-upload">Envoi · Kio/s</FieldLabel>
+                  <FieldLabel htmlFor="limit-upload">Upload · KiB/s</FieldLabel>
                   <Input
                     id="limit-upload"
                     min="0"
                     onChange={(event) => setUp(event.target.value)}
-                    placeholder="Illimité"
+                    placeholder="Unlimited"
                     step="1"
                     type="number"
                     value={up}
                   />
                 </Field>
               </FieldGroup>
-              <FieldDescription>
-                Un champ vide signifie illimité. 0 suspend le trafic.
-              </FieldDescription>
+              <FieldDescription>An empty field means unlimited. 0 pauses traffic.</FieldDescription>
               {data.session.mode === "desktop" && (
                 <Field orientation="horizontal">
                   <Checkbox
@@ -623,11 +613,11 @@ export function Modal({
                     onCheckedChange={(value) => setRunInBackground(value === true)}
                   />
                   <FieldContent>
-                    <FieldLabel htmlFor="run-in-background">Tourner en arrière-plan</FieldLabel>
+                    <FieldLabel htmlFor="run-in-background">Run in background</FieldLabel>
                     <FieldDescription>
-                      Fermer la fenêtre libère l’interface. Les transferts et automatisations
-                      continuent. Retrouvez Tofu ou son interface web depuis l’icône de la barre de
-                      menus. « Quitter Tofu » arrête le serveur.
+                      Closing the window releases the interface. Transfers and automations continue.
+                      Open Tofu or its web interface from the menu bar icon. “Quit Tofu” stops the
+                      server.
                     </FieldDescription>
                   </FieldContent>
                 </Field>
@@ -643,7 +633,7 @@ export function Modal({
                         setError(
                           cause instanceof Error
                             ? cause.message
-                            : "Passage en arrière-plan impossible"
+                            : "Unable to switch to background mode"
                         );
                       })
                       .finally(() => setBusy(false));
@@ -651,14 +641,14 @@ export function Modal({
                   type="button"
                   variant="outline"
                 >
-                  Passer en arrière-plan maintenant
+                  Switch to background mode now
                 </Button>
               )}
               <UpdatesPanel disabled={busy} />
               <Alert>
                 <ShieldCheckIcon />
                 <AlertDescription>
-                  Vos transferts et préférences sont enregistrés sur cette machine.
+                  Your transfers and preferences are stored on this machine.
                 </AlertDescription>
               </Alert>
             </>
@@ -671,13 +661,13 @@ export function Modal({
         </FieldGroup>
         {modal.type === "remove" ? (
           <AlertDialogFooter className="mt-6">
-            <AlertDialogCancel disabled={busy}>Annuler</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
             {submitButton}
           </AlertDialogFooter>
         ) : (
           <DialogFooter className="mt-6">
             <Button disabled={busy} onClick={close} type="button" variant="outline">
-              Annuler
+              Cancel
             </Button>
             {submitButton}
           </DialogFooter>

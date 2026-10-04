@@ -40,11 +40,11 @@ export const TrafficChart = memo(function TrafficChartView({
       {!small && (
         <div className="chart-scale">
           <span>{speed(maximum)}</span>
-          <span>0 o/s</span>
+          <span>0 B/s</span>
         </div>
       )}
       <svg
-        aria-label="Historique réel des débits de réception et d’envoi"
+        aria-label="Actual download and upload speed history"
         preserveAspectRatio="none"
         role="img"
         viewBox="0 0 600 100"
@@ -69,13 +69,13 @@ export const TrafficChart = memo(function TrafficChartView({
         <div className="chart-legend">
           <span>
             <i className="download-dot" />
-            Réception
+            Download
           </span>
           <span>
             <i className="upload-dot" />
-            Envoi
+            Upload
           </span>
-          <span className="muted">Les 2 dernières minutes · tous les torrents</span>
+          <span className="muted">Last 2 minutes · all torrents</span>
         </div>
       )}
     </div>
@@ -116,21 +116,21 @@ export const Detail = memo(function DetailView({
       link.download = name;
       link.click();
     } catch (cause) {
-      setFileError(cause instanceof Error ? cause.message : "Impossible d’enregistrer le fichier");
+      setFileError(cause instanceof Error ? cause.message : "Unable to save the file");
     } finally {
       setSavingFile(null);
     }
   };
-  const tabs = ["Activité", "Fichiers", "Trackers", "Pairs", "Informations"];
+  const tabs = ["Activity", "Files", "Trackers", "Peers", "Information"];
   const trackerLabels = {
     announcing: "Annonce…",
-    error: "Erreur",
-    paused: "En pause",
-    waiting: "En attente",
-    working: "Connecté",
+    error: "Error",
+    paused: "Paused",
+    waiting: "Waiting",
+    working: "Connected",
   };
   return (
-    <section aria-label="Détails du torrent" className="detail-pane">
+    <section aria-label="Torrent details" className="detail-pane">
       <div className="detail-top">
         <div className="detail-name">
           <Icon name={torrent.progress === 1 ? "check" : "download"} />
@@ -142,7 +142,7 @@ export const Detail = memo(function DetailView({
         <div className="detail-actions">
           <ActionTooltip>
             <Button
-              aria-label="Vérifier les fichiers"
+              aria-label="Verify files"
               disabled={busy || !torrent.pieces}
               onClick={() => void act(`${base}/verify`, "POST", undefined)}
               size="icon-sm"
@@ -154,7 +154,7 @@ export const Detail = memo(function DetailView({
           </ActionTooltip>
           <ActionTooltip>
             <Button
-              aria-label="Copier le lien magnet"
+              aria-label="Copy magnet link"
               onClick={() => void navigator.clipboard.writeText(torrent.magnet)}
               size="icon-sm"
               type="button"
@@ -166,7 +166,7 @@ export const Detail = memo(function DetailView({
           {data.session.mode === "desktop" && (
             <ActionTooltip>
               <Button
-                aria-label="Ouvrir le dossier"
+                aria-label="Open folder"
                 disabled={busy}
                 onClick={() => void act(`${base}/reveal`, "POST", undefined)}
                 size="icon-sm"
@@ -179,7 +179,7 @@ export const Detail = memo(function DetailView({
           )}
           <ActionTooltip>
             <Button
-              aria-label="Supprimer le torrent"
+              aria-label="Remove torrent"
               className="danger-text"
               onClick={() => open({ torrent, type: "remove" })}
               size="icon-sm"
@@ -196,14 +196,14 @@ export const Detail = memo(function DetailView({
           <AlertDescription>{fileError}</AlertDescription>
         </Alert>
       )}
-      <Tabs defaultValue="Activité">
-        <TabsList aria-label="Détails" className="tabs" variant="line">
+      <Tabs defaultValue="Activity">
+        <TabsList aria-label="Details" className="tabs" variant="line">
           {tabs.map((name) => (
             <TabsTrigger key={name} value={name}>
               {name}
-              {name === "Fichiers" && <Badge variant="secondary">{torrent.files.length}</Badge>}
+              {name === "Files" && <Badge variant="secondary">{torrent.files.length}</Badge>}
               {name === "Trackers" && <Badge variant="secondary">{torrent.trackers.length}</Badge>}
-              {name === "Pairs" && <Badge variant="secondary">{torrent.peers}</Badge>}
+              {name === "Peers" && <Badge variant="secondary">{torrent.peers}</Badge>}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -216,26 +216,26 @@ export const Detail = memo(function DetailView({
               </AlertDescription>
             </Alert>
           )}
-          <TabsContent value="Activité">
+          <TabsContent value="Activity">
             <div className="activity-layout">
               <div>
                 <div className="section-heading">
-                  <h3>Trafic en temps réel</h3>
+                  <h3>Live traffic</h3>
                   <span className="live">
                     <i />
-                    Actualisation en direct
+                    Live updates
                   </span>
                 </div>
                 <TrafficChart samples={data.history} small={false} />
                 <div className="pieces-heading">
-                  <span>Disponibilité locale</span>
+                  <span>Local availability</span>
                   <span className="mono">
-                    {torrent.verifiedPieces.toLocaleString("fr-FR")} /{" "}
-                    {torrent.pieces.toLocaleString("fr-FR")} pièces
+                    {torrent.verifiedPieces.toLocaleString("en-US")} /{" "}
+                    {torrent.pieces.toLocaleString("en-US")} pieces
                   </span>
                 </div>
                 <div
-                  aria-label={`${torrent.verifiedPieces} pièces vérifiées sur ${torrent.pieces}`}
+                  aria-label={`${torrent.verifiedPieces} verified pieces out of ${torrent.pieces}`}
                   className="pieces"
                   role="img"
                 >
@@ -252,17 +252,17 @@ export const Detail = memo(function DetailView({
               </div>
               <dl className="stats-grid">
                 <Stat
-                  label="Téléchargé"
+                  label="Downloaded"
                   value={`${bytes(torrent.downloaded)} / ${bytes(torrent.length)}`}
                 />
-                <Stat label="Envoyé" value={bytes(torrent.uploaded)} />
+                <Stat label="Uploaded" value={bytes(torrent.uploaded)} />
                 <Stat label="Ratio" value={ratio(torrent.ratio)} />
                 <Stat
                   label="Temps restant"
-                  value={torrent.progress === 1 ? "Terminé" : duration(torrent.eta)}
+                  value={torrent.progress === 1 ? "Completed" : duration(torrent.eta)}
                 />
                 <Stat
-                  label="Pairs connectés"
+                  label="Connected peers"
                   value={`${torrent.peers} · ${torrent.seeds} sources`}
                 />
                 <Stat
@@ -270,30 +270,30 @@ export const Detail = memo(function DetailView({
                   value={`${torrent.swarmSeeds ?? "—"} / ${torrent.swarmPeers ?? "—"}`}
                 />
                 <Stat label="Temps actif" value={duration(torrent.activeSeconds)} />
-                <Stat label="Temps en partage" value={duration(torrent.seedSeconds)} />
+                <Stat label="Seeding time" value={duration(torrent.seedSeconds)} />
               </dl>
             </div>
           </TabsContent>
-          <TabsContent value="Fichiers">
+          <TabsContent value="Files">
             <div className="section-heading">
               <h3>
-                {torrent.files.length} fichier{torrent.files.length > 1 ? "s" : ""}
+                {torrent.files.length} file{torrent.files.length > 1 ? "s" : ""}
               </h3>
-              <span className="muted">Choisissez ce que vous téléchargez.</span>
+              <span className="muted">Choose what to download.</span>
             </div>
             {torrent.files.length === 0 ? (
-              <p className="panel-empty">En attente des métadonnées du torrent.</p>
+              <p className="panel-empty">Waiting for torrent metadata.</p>
             ) : (
               <div className="table-scroll">
                 <table className="inner-table">
                   <thead>
                     <tr>
-                      <th>Nom du fichier</th>
-                      <th>Taille</th>
-                      <th>Progression</th>
-                      <th>Priorité</th>
+                      <th>File name</th>
+                      <th>Size</th>
+                      <th>Progress</th>
+                      <th>Priority</th>
                       <th>
-                        <span className="sr-only">Télécharger</span>
+                        <span className="sr-only">Download</span>
                       </th>
                     </tr>
                   </thead>
@@ -310,7 +310,7 @@ export const Detail = memo(function DetailView({
                         <td>
                           <div className="file-progress">
                             <Progress
-                              aria-label={`Progression de ${file.name}`}
+                              aria-label={`Progress for ${file.name}`}
                               value={file.progress * 100}
                             />
                             <span className="mono">{percent(file.progress)}</span>
@@ -320,9 +320,9 @@ export const Detail = memo(function DetailView({
                           <Select
                             disabled={busy}
                             items={[
-                              { label: "Ignorer", value: "skip" },
-                              { label: "Normale", value: "normal" },
-                              { label: "Haute", value: "high" },
+                              { label: "Skip", value: "skip" },
+                              { label: "Normal", value: "normal" },
+                              { label: "High", value: "high" },
                             ]}
                             onValueChange={(value) =>
                               void act(`${base}/files/${file.index}`, "PUT", {
@@ -331,14 +331,14 @@ export const Detail = memo(function DetailView({
                             }
                             value={file.priority}
                           >
-                            <SelectTrigger aria-label={`Priorité de ${file.name}`} size="sm">
+                            <SelectTrigger aria-label={`Priority for ${file.name}`} size="sm">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent alignItemWithTrigger={false}>
                               <SelectGroup>
-                                <SelectItem value="skip">Ignorer</SelectItem>
-                                <SelectItem value="normal">Normale</SelectItem>
-                                <SelectItem value="high">Haute</SelectItem>
+                                <SelectItem value="skip">Skip</SelectItem>
+                                <SelectItem value="normal">Normal</SelectItem>
+                                <SelectItem value="high">High</SelectItem>
                               </SelectGroup>
                             </SelectContent>
                           </Select>
@@ -347,7 +347,7 @@ export const Detail = memo(function DetailView({
                           {file.progress === 1 && (
                             <ActionTooltip>
                               <Button
-                                aria-label={`Enregistrer ${file.name}`}
+                                aria-label={`Save ${file.name}`}
                                 disabled={busy || savingFile !== null}
                                 onClick={() => void downloadFile(file.index, file.name)}
                                 size="icon-sm"
@@ -380,7 +380,7 @@ export const Detail = memo(function DetailView({
                   variant="outline"
                 >
                   <Icon name="refresh" size={15} />
-                  Réannoncer
+                  Reannounce
                 </Button>
                 <Button
                   onClick={() => open({ torrent, type: "trackers" })}
@@ -389,7 +389,7 @@ export const Detail = memo(function DetailView({
                   variant="outline"
                 >
                   <Icon name="edit" size={15} />
-                  Gérer les trackers
+                  Manage trackers
                 </Button>
               </div>
             </div>
@@ -398,11 +398,11 @@ export const Detail = memo(function DetailView({
                 <table className="inner-table">
                   <thead>
                     <tr>
-                      <th>URL du tracker</th>
-                      <th>État</th>
+                      <th>Tracker URL</th>
+                      <th>Status</th>
                       <th>Sources</th>
-                      <th>Pairs</th>
-                      <th>Dernière annonce</th>
+                      <th>Peers</th>
+                      <th>Last announce</th>
                       <th>
                         <span className="sr-only">Actions</span>
                       </th>
@@ -451,7 +451,7 @@ export const Detail = memo(function DetailView({
                             </ActionTooltip>
                             <ActionTooltip>
                               <Button
-                                aria-label={`Supprimer ${row.url}`}
+                                aria-label={`Remove ${row.url}`}
                                 className="danger-text"
                                 disabled={busy}
                                 onClick={() =>
@@ -477,22 +477,22 @@ export const Detail = memo(function DetailView({
               </div>
             ) : (
               <div className="panel-empty">
-                Aucun tracker. La découverte peut utiliser la DHT ou des pairs directs.
+                No trackers. Discovery can use DHT or direct peers.
                 <Button
                   onClick={() => open({ torrent, type: "trackers" })}
                   size="sm"
                   type="button"
                   variant="link"
                 >
-                  Ajouter un tracker
+                  Add a tracker
                 </Button>
               </div>
             )}
           </TabsContent>
-          <TabsContent value="Pairs">
+          <TabsContent value="Peers">
             <div className="section-heading">
               <h3>
-                Pairs connectés <span className="muted">{torrent.peers}</span>
+                Connected peers <span className="muted">{torrent.peers}</span>
               </h3>
               <Button
                 disabled={torrent.status === "paused"}
@@ -502,7 +502,7 @@ export const Detail = memo(function DetailView({
                 variant="outline"
               >
                 <Icon name="plus" size={15} />
-                Ajouter un pair
+                Add a peer
               </Button>
             </div>
             {torrent.peerList.length ? (
@@ -510,13 +510,13 @@ export const Detail = memo(function DetailView({
                 <table className="inner-table">
                   <thead>
                     <tr>
-                      <th>Adresse</th>
+                      <th>Address</th>
                       <th>Client</th>
                       <th>Transport</th>
-                      <th>Réception</th>
-                      <th>Envoi</th>
-                      <th>Progression</th>
-                      <th>Indicateurs</th>
+                      <th>Download</th>
+                      <th>Upload</th>
+                      <th>Progress</th>
+                      <th>Flags</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -532,7 +532,7 @@ export const Detail = memo(function DetailView({
                         </td>
                         <td
                           className="mono"
-                          title="I : intéressé ; i : pair intéressé ; C : envoi bloqué ; c : réception bloquée"
+                          title="I: interested; i: peer interested; C: upload choked; c: download choked"
                         >
                           {peer.flags}
                         </td>
@@ -544,25 +544,25 @@ export const Detail = memo(function DetailView({
             ) : (
               <p className="panel-empty">
                 {torrent.status === "paused"
-                  ? "Les connexions sont fermées pendant la pause."
-                  : "Aucun pair connecté pour le moment."}
+                  ? "Connections are closed while paused."
+                  : "No peers connected yet."}
               </p>
             )}
           </TabsContent>
-          <TabsContent value="Informations">
+          <TabsContent value="Information">
             <dl className="info-grid">
-              <Stat label="Hash du torrent" value={torrent.id} />
-              <Stat label="Dossier" value={torrent.savePath} />
-              <Stat label="Ajouté le" value={date(torrent.addedAt)} />
-              <Stat label="Terminé le" value={date(torrent.completedAt)} />
-              <Stat label="Dernier transfert" value={date(torrent.lastTransferAt)} />
-              <Stat label="Données reçues sur le réseau" value={bytes(torrent.received)} />
-              <Stat label="Taille des pièces" value={bytes(torrent.pieceLength)} />
+              <Stat label="Torrent hash" value={torrent.id} />
+              <Stat label="Folder" value={torrent.savePath} />
+              <Stat label="Added on" value={date(torrent.addedAt)} />
+              <Stat label="Completed on" value={date(torrent.completedAt)} />
+              <Stat label="Last transfer" value={date(torrent.lastTransferAt)} />
+              <Stat label="Data received over the network" value={bytes(torrent.received)} />
+              <Stat label="Piece size" value={bytes(torrent.pieceLength)} />
               <Stat
-                label="Visibilité"
-                value={torrent.private ? "Torrent privé" : "Torrent public"}
+                label="Visibility"
+                value={torrent.private ? "Private torrent" : "Public torrent"}
               />
-              <Stat label="Créé avec" value={torrent.createdBy || "—"} />
+              <Stat label="Created with" value={torrent.createdBy || "—"} />
               <Stat label="Commentaire" value={torrent.comment || "—"} />
             </dl>
           </TabsContent>

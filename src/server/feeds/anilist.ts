@@ -177,7 +177,7 @@ export class AniListService {
       redirect.search ||
       redirect.hash
     ) {
-      throw new UserError("Le retour OAuth doit être une URL HTTP locale avec un port explicite", {
+      throw new UserError("The OAuth callback must be a local HTTP URL with an explicit port", {
         status: 400,
       });
     }
@@ -189,7 +189,7 @@ export class AniListService {
   }
   connect(): { url: string } {
     if (!(this.config.clientId && this.config.clientSecret)) {
-      throw new UserError("Ajoutez l’ID et le secret de votre client OAuth AniList", {
+      throw new UserError("Add your AniList OAuth client ID and secret", {
         status: 400,
       });
     }
@@ -209,7 +209,7 @@ export class AniListService {
             !url.searchParams.get("code")
           ) {
             return new Response(
-              "Retour OAuth invalide ou expiré. Relancez la connexion depuis Tofu.",
+              "Invalid or expired OAuth callback. Restart the connection from Tofu.",
               { headers: { "cache-control": "no-store" }, status: 400 }
             );
           }
@@ -236,11 +236,11 @@ export class AniListService {
               this.lifecycle.closed ||
               this.config.clientId !== config.clientId
             ) {
-              throw new Error("Échange refusé");
+              throw new Error("Exchange rejected");
             }
             this.options.setToken(token.access_token);
             return new Response(
-              "Connexion AniList réussie. Vous pouvez fermer cet onglet et revenir dans Tofu.",
+              "AniList connected successfully. You can close this tab and return to Tofu.",
               {
                 headers: {
                   "cache-control": "no-store",
@@ -250,10 +250,9 @@ export class AniListService {
               }
             );
           } catch {
-            return new Response(
-              "Connexion AniList impossible. Relancez la connexion depuis Tofu.",
-              { status: 502 }
-            );
+            return new Response("Unable to connect AniList. Restart the connection from Tofu.", {
+              status: 502,
+            });
           } finally {
             clearTimeout(timeout);
             this.requests.delete(controller);
@@ -265,7 +264,7 @@ export class AniListService {
     } catch (cause) {
       this.oauthState = null;
       throw new UserError(
-        "Le port de retour OAuth est occupé. Choisissez le même port libre dans Tofu et dans le client AniList.",
+        "The OAuth callback port is busy. Choose the same available port in Tofu and your AniList client.",
         { cause, status: 409 }
       );
     }
@@ -303,20 +302,20 @@ export class AniListService {
       signal: controller.signal,
     });
     if (!response.ok) {
-      throw new UserError(`AniList indisponible (HTTP ${response.status})`, { status: 502 });
+      throw new UserError(`AniList unavailable (HTTP ${response.status})`, { status: 502 });
     }
     const result = (await response.json()) as { data?: T; errors?: unknown[] };
     if (!result.data || result.errors?.length) {
-      throw new UserError("AniList : compte ou liste inaccessible", { status: 502 });
+      throw new UserError("AniList: account or list inaccessible", { status: 502 });
     }
     return result.data;
   }
   async list(): Promise<AniListState> {
     if (!this.options.enabled() || this.lifecycle.closed) {
-      throw new UserError("Plugin AniList désactivé", { status: 409 });
+      throw new UserError("AniList plugin disabled", { status: 409 });
     }
     if (!(this.options.token() || this.config.userName)) {
-      throw new UserError("Connectez AniList ou indiquez votre nom de compte public", {
+      throw new UserError("Connect AniList or enter your public account name", {
         status: 400,
       });
     }
@@ -340,7 +339,7 @@ export class AniListService {
             )
           ).User;
       if (!identity?.id) {
-        throw new UserError("Compte AniList introuvable", { status: 404 });
+        throw new UserError("AniList account not found", { status: 404 });
       }
       const found = new Map<number, AniListEntry>();
       let more = true;
@@ -353,18 +352,18 @@ export class AniListService {
         );
         const collection = response.MediaListCollection;
         if (!Array.isArray(collection?.lists)) {
-          throw new UserError("Liste AniList invalide", { status: 502 });
+          throw new UserError("Invalid AniList list", { status: 502 });
         }
         more = collection.hasNextChunk;
         collectEntries(collection, found);
       }
       if (more) {
-        throw new UserError("Liste AniList trop grande pour une synchronisation complète", {
+        throw new UserError("AniList list too large for a full sync", {
           status: 400,
         });
       }
       if (!this.options.enabled() || this.lifecycle.closed) {
-        throw new UserError("Plugin AniList désactivé", { status: 409 });
+        throw new UserError("AniList plugin disabled", { status: 409 });
       }
       this.entries = [...found.values()];
       this.account = identity;
@@ -386,7 +385,7 @@ export class AniListService {
   }
   previewThreads(basePath: string, statuses: AniListStatus[]): AniListThreadProposal[] {
     if (!isAbsolute(basePath)) {
-      throw new UserError("Indiquez un chemin de dossier racine absolu", { status: 400 });
+      throw new UserError("Enter an absolute root folder path", { status: 400 });
     }
     const destinations = this.options.destinations();
     return this.entries
@@ -413,7 +412,7 @@ export class AniListService {
       !this.account ||
       mediaIds.some((id) => !this.entries.some((entry) => entry.mediaId === id))
     ) {
-      throw new UserError("Chargez la liste AniList avant de choisir ses titres", { status: 400 });
+      throw new UserError("Load the AniList list before choosing its titles", { status: 400 });
     }
     for (const mediaId of mediaIds) {
       const key = `selection:${this.account.id}:${mediaId}`;
@@ -447,7 +446,7 @@ export class AniListService {
     >
   ) {
     if (!this.options.destinationExists(input.template.destinationId)) {
-      throw new UserError("Destination inconnue", { status: 400 });
+      throw new UserError("Unknown destination", { status: 400 });
     }
     if (input.organization?.mode === "per-anime") {
       this.previewThreads(input.organization.basePath, input.statuses);
@@ -460,7 +459,7 @@ export class AniListService {
           (override.destinationId !== null &&
             !this.options.destinationExists(override.destinationId))
         ) {
-          throw new UserError("Vérifiez les noms, dossiers et threads proposés", { status: 400 });
+          throw new UserError("Check the proposed names, folders, and threads", { status: 400 });
         }
         ids.add(override.mediaId);
       }
@@ -480,7 +479,7 @@ export class AniListService {
   private subscription(id: string) {
     const subscription = this.subscriptions.get(id);
     if (!subscription) {
-      throw new UserError("Suivi AniList inconnu", { status: 404 });
+      throw new UserError("Unknown AniList tracking", { status: 404 });
     }
     return subscription;
   }
@@ -492,8 +491,7 @@ export class AniListService {
     const subscription = this.subscription(id);
     const task = this.reconcile(subscription).catch(() => {
       if (!this.lifecycle.closed && this.subscriptions.get(id) === subscription) {
-        subscription.error =
-          "Synchronisation AniList interrompue ; réessayez ou vérifiez la connexion";
+        subscription.error = "AniList sync interrupted; retry or check the connection";
         subscription.nextSyncAt = this.options.now() + 60_000;
         this.persist(subscription);
       }
@@ -525,11 +523,11 @@ export class AniListService {
         (item) => item.mediaId === entry.mediaId
       );
     if (!proposal) {
-      throw new UserError("Proposition de thread introuvable", { status: 400 });
+      throw new UserError("Thread proposal not found", { status: 400 });
     }
     if (proposal.destinationId !== null) {
       if (!this.options.destinationExists(proposal.destinationId)) {
-        throw new UserError("Le thread choisi n’existe plus", { status: 400 });
+        throw new UserError("The selected thread no longer exists", { status: 400 });
       }
       return proposal.destinationId;
     }
@@ -567,7 +565,7 @@ export class AniListService {
       aliases: entry.aliases,
       destinationId,
       enabled: previous && binding?.active ? previous.enabled : subscription.template.enabled,
-      query: `Télécharge "${entry.title}". ${subscription.template.query}`,
+      query: `Download "${entry.title}". ${subscription.template.query}`,
       title: entry.title,
     });
     if (binding) {
@@ -593,7 +591,7 @@ export class AniListService {
     }
     if (subscription.userId !== undefined && subscription.userId !== this.account?.id) {
       this.pause(subscription);
-      throw new UserError("Ce suivi appartient à un autre compte AniList", { status: 409 });
+      throw new UserError("This tracking belongs to another AniList account", { status: 409 });
     }
     subscription.userId = this.account?.id;
     const selected = entries.filter(

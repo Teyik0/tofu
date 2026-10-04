@@ -9,11 +9,11 @@ export function createRequestGuard() {
     // A loopback listener can still receive requests with a hostile Host through DNS rebinding.
     if (!localHosts.has(url.hostname)) {
       set.status = 403;
-      return { error: "Cette adresse ne permet pas d’accéder à Tofu" };
+      return { error: "This address cannot access Tofu" };
     }
     if (request.method !== "GET" && origin && origin !== url.origin) {
       set.status = 403;
-      return { error: "Cette action doit provenir de l’interface Tofu" };
+      return { error: "This action must come from the Tofu interface" };
     }
   });
 }

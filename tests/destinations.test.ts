@@ -23,7 +23,7 @@ test("moving a destination relocates downloaded bytes and preserves paused torre
     });
     const newPath = join(context.directory, "moved");
     const response = await context.request("/destinations/default", {
-      ...json({ downloadPath: newPath, moveFiles: true, name: "Déplacés" }),
+      ...json({ downloadPath: newPath, moveFiles: true, name: "Moved" }),
       method: "PUT",
     });
     expect(response.status).toBe(200);
@@ -75,12 +75,12 @@ test("a missing downloaded file refuses relocation and keeps the original destin
       ...json({
         downloadPath: join(context.directory, "missing"),
         moveFiles: true,
-        name: "Déplacés",
+        name: "Moved",
       }),
       method: "PUT",
     });
     expect(response.status).toBe(404);
-    expect((await response.json()).error).toContain("n’est plus présent");
+    expect((await response.json()).error).toContain("is no longer present");
     const state = context.engine.snapshot(id);
     expect(state.detail?.savePath).toBe(completed.savePath);
     expect(state.destinations[0]?.downloadPath).toBe(completed.savePath);
@@ -104,11 +104,11 @@ test("a destination collision preserves existing files and running downloads", a
     const newPath = join(context.directory, "occupied");
     await Bun.write(join(newPath, "source.bin"), "Do not overwrite");
     const response = await context.request("/destinations/default", {
-      ...json({ downloadPath: newPath, moveFiles: true, name: "Déplacés" }),
+      ...json({ downloadPath: newPath, moveFiles: true, name: "Moved" }),
       method: "PUT",
     });
     expect(response.status).toBe(409);
-    expect((await response.json()).error).toContain("existe déjà");
+    expect((await response.json()).error).toContain("already exists");
     expect(context.engine.detail(id).savePath).toBe(originalPath);
     expect(await Bun.file(join(newPath, "source.bin")).text()).toBe("Do not overwrite");
     expect(
@@ -165,13 +165,13 @@ test("distinct destination tabs may share a folder and an add uses its chosen ta
     const path = join(context.directory, "shared-output");
     const first = await context.request(
       "/destinations",
-      json({ downloadPath: path, name: "Séries" })
+      json({ downloadPath: path, name: "Series" })
     );
     expect(first.status).toBe(200);
     const a = (await first.json()) as { id: string };
     const second = await context.request(
       "/destinations",
-      json({ downloadPath: path, name: "À suivre" })
+      json({ downloadPath: path, name: "Following" })
     );
     expect(second.status).toBe(200);
     const b = (await second.json()) as { id: string };
@@ -232,7 +232,7 @@ test("editing a destination persists its identity and changes future adds withou
   try {
     const path = join(context.directory, "original");
     const destination = (await (
-      await context.request("/destinations", json({ downloadPath: path, name: "Séries" }))
+      await context.request("/destinations", json({ downloadPath: path, name: "Series" }))
     ).json()) as import("../src/types").Destination;
     const { id } = (await (
       await context.request(

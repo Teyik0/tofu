@@ -51,13 +51,13 @@ function AniListConnection({
   return (
     <section className="automation-editor">
       <div className="automation-row-heading">
-        <strong>Votre compte AniList</strong>
-        <Badge variant="outline">{state.connectedUser ?? "Non vérifié"}</Badge>
+        <strong>Your AniList account</strong>
+        <Badge variant="outline">{state.connectedUser ?? "Not verified"}</Badge>
       </div>
       <FieldGroup>
         <div className="automation-field-grid">
           <Field>
-            <FieldLabel htmlFor="anilist-client-id">ID du client OAuth</FieldLabel>
+            <FieldLabel htmlFor="anilist-client-id">OAuth client ID</FieldLabel>
             <Input
               id="anilist-client-id"
               onChange={(event) => setClientId(event.target.value)}
@@ -66,15 +66,13 @@ function AniListConnection({
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="anilist-client-secret">Secret du client OAuth</FieldLabel>
+            <FieldLabel htmlFor="anilist-client-secret">OAuth client secret</FieldLabel>
             <Input
               autoComplete="off"
               id="anilist-client-secret"
               onChange={(event) => setClientSecret(event.target.value)}
               placeholder={
-                state.hasClientSecret
-                  ? "Secret enregistré · saisir pour remplacer"
-                  : "Secret du client"
+                state.hasClientSecret ? "Secret saved · enter to replace" : "Client secret"
               }
               type="password"
               value={clientSecret}
@@ -82,28 +80,28 @@ function AniListConnection({
           </Field>
         </div>
         <Field>
-          <FieldLabel htmlFor="anilist-redirect">URL de retour OAuth</FieldLabel>
+          <FieldLabel htmlFor="anilist-redirect">OAuth callback URL</FieldLabel>
           <Input
             id="anilist-redirect"
             onChange={(event) => setRedirectUri(event.target.value)}
             value={redirectUri}
           />
           <FieldDescription>
-            Doit correspondre exactement à celle du client dans AniList → Settings → Developer. Tofu
-            ouvre ce port local pendant la connexion.
+            Must exactly match the client URL in AniList → Settings → Developer. Tofu opens this
+            local port while connecting.
           </FieldDescription>
         </Field>
         <Field>
-          <FieldLabel htmlFor="anilist-username">Ou un nom de compte public</FieldLabel>
+          <FieldLabel htmlFor="anilist-username">Or a public account name</FieldLabel>
           <Input
             id="anilist-username"
             onChange={(event) => setUserName(event.target.value)}
-            placeholder="Votre pseudo AniList"
+            placeholder="Your AniList username"
             value={userName}
           />
           <FieldDescription>
-            Pour une liste publique, le nom suffit. Pour une liste privée, connectez le compte ou
-            ajoutez un token d’accès dans Plugins → AniList.
+            A username is enough for a public list. For a private list, connect your account or add
+            an access token in Plugins → AniList.
           </FieldDescription>
         </Field>
       </FieldGroup>
@@ -119,7 +117,7 @@ function AniListConnection({
           }
           variant="outline"
         >
-          Enregistrer la connexion
+          Save connection
         </Button>
         <Button
           disabled={busy || !clientId || !(clientSecret || state.hasClientSecret)}
@@ -141,7 +139,7 @@ function AniListConnection({
           }
         >
           <ExternalLinkIcon data-icon="inline-start" />
-          Connecter AniList
+          Connect AniList
         </Button>
         {authorizationUrl !== null && (
           <a
@@ -150,12 +148,12 @@ function AniListConnection({
             rel="noopener noreferrer"
             target="_blank"
           >
-            Autoriser dans le navigateur
+            Authorize in browser
           </a>
         )}
       </div>
       <p className="automation-caption">
-        Après autorisation dans le navigateur, revenez ici et cliquez sur Actualiser.
+        After authorizing in your browser, return here and click Refresh.
       </p>
     </section>
   );
@@ -185,7 +183,7 @@ export function AniListPanel({
   const { data: live } = useQuery(api.api.anilist.get);
   const [saved, setSaved] = useState<AniListState | null>(null);
   const state = saved ?? (live && "subscriptions" in live ? live : null);
-  const [query, setQuery] = useState("Sur Nyaa, en VOSTFR, préfère 1080p puis 720p.");
+  const [query, setQuery] = useState("On Nyaa, with VOSTFR, prefer 1080p then 720p.");
   const [draft, setDraft] = useState<AutomationDraft | null>(null);
   const [statuses, setStatuses] = useState<AniListStatus[]>(["CURRENT", "PLANNING"]);
   const [mode, setMode] = useState<"per-anime" | "shared">("per-anime");
@@ -198,7 +196,7 @@ export function AniListPanel({
     await reloadPlugins();
   };
   if (!state) {
-    return <p>Chargement de la connexion AniList…</p>;
+    return <p>Loading AniList connection…</p>;
   }
   const selectedCount = state.entries.filter(
     (entry) =>
@@ -211,15 +209,15 @@ export function AniListPanel({
         <span className="automation-caption">ANILIST · WATCHING & PLAN TO WATCH</span>
         <Button disabled={busy} onClick={() => action(reload)} size="sm" variant="ghost">
           <RefreshCwIcon data-icon="inline-start" />
-          Actualiser
+          Refresh
         </Button>
       </div>
       <AniListConnection action={action} busy={busy} reload={reload} state={state} />
       {!plugin?.enabled && (
         <Alert>
           <AlertDescription>
-            Activez le plugin AniList pour lire vos listes et synchroniser les suivis. La connexion
-            OAuth l’active après autorisation.
+            Enable the AniList plugin to read your lists and sync tracking. The OAuth connection
+            enables it after authorization.
           </AlertDescription>
         </Alert>
       )}
@@ -234,20 +232,20 @@ export function AniListPanel({
           }
           variant="outline"
         >
-          Charger Watching et Plan to Watch
+          Load Watching and Plan to Watch
         </Button>
       </div>
       {state.entries.length > 0 && (
         <div className="automation-preview">
           <div className="automation-row-heading">
-            <strong>Choisissez les animés à télécharger</strong>
+            <strong>Choose anime to download</strong>
             <Badge variant="outline">
-              {state.selections.filter((selection) => selection.enabled).length} validé(s)
+              {state.selections.filter((selection) => selection.enabled).length} approved
             </Badge>
           </div>
           <p className="automation-caption">
-            Vos choix restent dans Tofu. Votre liste AniList reste inchangée. Chaque nouveau titre
-            attend votre validation.
+            Your choices stay in Tofu. Your AniList list remains unchanged. Each new title waits for
+            your approval.
           </p>
           {state.entries.map((entry) => (
             <div className="automation-history-item" key={entry.mediaId}>
@@ -276,18 +274,18 @@ export function AniListPanel({
                 <Badge variant="outline">
                   {entry.status === "CURRENT" ? "Watching" : "Plan to Watch"}
                 </Badge>
-                <span>{entry.progress} épisode(s) regardé(s)</span>
+                <span>{entry.progress} episodes watched</span>
               </div>
             </div>
           ))}
         </div>
       )}
       <section className="automation-editor">
-        <strong>Suivre automatiquement ces listes</strong>
+        <strong>Automatically follow these lists</strong>
         {destinationField}
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="anilist-organization">Organisation des threads</FieldLabel>
+            <FieldLabel htmlFor="anilist-organization">Thread organization</FieldLabel>
             <NativeSelect
               disabled={busy}
               id="anilist-organization"
@@ -296,18 +294,18 @@ export function AniListPanel({
               }
               value={mode}
             >
-              <NativeSelectOption value="per-anime">Un thread par anime</NativeSelectOption>
+              <NativeSelectOption value="per-anime">One thread per anime</NativeSelectOption>
               <NativeSelectOption value="shared">
-                Tous les animes dans le thread choisi
+                All anime in the selected thread
               </NativeSelectOption>
             </NativeSelect>
             <FieldDescription>
-              Chaque anime validé possède une automation liée à AniList.
+              Each approved anime has an automation linked to AniList.
             </FieldDescription>
           </Field>
           {mode === "per-anime" && (
             <Field>
-              <FieldLabel htmlFor="anilist-base-path">Dossier racine</FieldLabel>
+              <FieldLabel htmlFor="anilist-base-path">Root folder</FieldLabel>
               <Input
                 disabled={busy}
                 id="anilist-base-path"
@@ -319,16 +317,13 @@ export function AniListPanel({
                 value={basePath}
               />
               <FieldDescription>
-                Exemple : /video → One Piece dans /video/one-piece. Vous pourrez modifier chaque
-                proposition.
+                Example: /video → One Piece in /video/one-piece. You can edit each proposal.
               </FieldDescription>
             </Field>
           )}
         </FieldGroup>
         <Field>
-          <FieldLabel htmlFor="anilist-preferences">
-            Vos préférences pour les titres de la liste
-          </FieldLabel>
+          <FieldLabel htmlFor="anilist-preferences">Your preferences for list titles</FieldLabel>
           <Textarea
             id="anilist-preferences"
             onChange={(event) => {
@@ -339,8 +334,8 @@ export function AniListPanel({
             value={query}
           />
           <FieldDescription>
-            Les noms et leurs alias viennent d’AniList. Les épisodes déjà regardés sont exclus. Le
-            suivi crée une règle par titre validé dans le thread choisi pour cet anime.
+            Names and aliases come from AniList. Watched episodes are excluded. Tracking creates one
+            rule per approved title in the thread selected for that anime.
           </FieldDescription>
         </Field>
         <div className="automation-checks">
@@ -390,13 +385,13 @@ export function AniListPanel({
                 setDraft({
                   ...value,
                   includeExisting: true,
-                  title: "Titres de mes listes AniList",
+                  title: "Titles from my AniList lists",
                 });
               })
             }
             variant="outline"
           >
-            Préparer le suivi
+            Prepare tracking
           </Button>
         </div>
         {draft !== null && (
@@ -412,8 +407,8 @@ export function AniListPanel({
             )}
             {renderTemplate({ ...draft, destinationId: target }, setDraft)}
             <FieldDescription>
-              Le champ Nom est remplacé par chaque titre AniList. Un titre retiré des listes suivies
-              est mis en pause ; les téléchargements existants sont conservés.
+              The Name field is replaced with each AniList title. A title removed from the tracked
+              lists is paused; existing downloads are preserved.
             </FieldDescription>
             <div className="automation-form-actions">
               <Button
@@ -453,7 +448,7 @@ export function AniListPanel({
                 }
               >
                 <CheckIcon data-icon="inline-start" />
-                Créer le suivi AniList
+                Create AniList tracking
               </Button>
             </div>
           </>
@@ -471,15 +466,15 @@ export function AniListPanel({
               </strong>
               <Badge variant="outline">
                 {subscription.enabled
-                  ? `${subscription.bindings.filter((binding) => binding.active).length} titres suivis`
-                  : "En pause"}
+                  ? `${subscription.bindings.filter((binding) => binding.active).length} tracked titles`
+                  : "Paused"}
               </Badge>
             </div>
             <p>{subscription.template.query}</p>
             <p className="automation-caption">
               {subscription.organization?.mode === "per-anime"
-                ? `Un thread par anime · ${subscription.organization.basePath}`
-                : "Tous les animes dans ce thread"}
+                ? `One thread per anime · ${subscription.organization.basePath}`
+                : "All anime in this thread"}
             </p>
             {subscription.bindings.map((binding) => {
               const rule = automations.find((item) => item.id === binding.ruleId);
@@ -500,10 +495,10 @@ export function AniListPanel({
               );
             })}
             <span className="automation-caption">
-              Synchronisation toutes les {subscription.intervalMinutes} min ·{" "}
+              Sync every {subscription.intervalMinutes} min ·{" "}
               {subscription.lastSyncAt === null
-                ? "Jamais synchronisé"
-                : new Date(subscription.lastSyncAt).toLocaleString("fr-FR")}
+                ? "Never synced"
+                : new Date(subscription.lastSyncAt).toLocaleString("en-US")}
             </span>
             {subscription.error !== null && (
               <Alert>
@@ -522,7 +517,7 @@ export function AniListPanel({
                 size="sm"
                 variant="outline"
               >
-                Synchroniser
+                Sync
               </Button>
               <Button
                 disabled={busy}
@@ -537,11 +532,11 @@ export function AniListPanel({
                 size="sm"
                 variant="ghost"
               >
-                {subscription.enabled ? "Mettre en pause" : "Activer"}
+                {subscription.enabled ? "Pause" : "Enable"}
               </Button>
               <ActionTooltip>
                 <Button
-                  aria-label="Supprimer le suivi AniList"
+                  aria-label="Remove AniList tracking"
                   disabled={busy}
                   onClick={() =>
                     action(async () => {

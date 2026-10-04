@@ -46,7 +46,7 @@ function launch(config: InstanceConfig, hotEntry?: string) {
         (url) => url !== null
       );
       if (!address) {
-        throw new Error("Le serveur Tofu n’a pas démarré");
+        throw new Error("The Tofu server did not start");
       }
       return address;
     },
@@ -94,7 +94,7 @@ test("development refuses the production data directory even before it has a pro
       port: undefined,
       profile: "dev",
     })
-  ).toThrow("réservé à la release");
+  ).toThrow("reserved for release");
 });
 
 test("development does not claim an existing database whose channel is unknown", async () => {
@@ -114,7 +114,7 @@ test("development does not claim an existing database whose channel is unknown",
     const exit = await Promise.race([child.child.exited, Bun.sleep(5000).then(() => null)]);
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
-    expect(await child.output).toContain("profil inconnu");
+    expect(await child.output).toContain("unknown profile");
     expect(await Bun.file(join(config.dataDir, "instance.json")).exists()).toBe(false);
     expect(await Bun.file(join(config.dataDir, "tofu.sqlite")).text()).toBe(
       "legacy database, preserve these bytes"
@@ -181,7 +181,7 @@ test("the first protected startup refuses a running legacy instance without a lo
     const exit = await Promise.race([child.child.exited, Bun.sleep(5000).then(() => null)]);
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
-    expect(await child.output).toContain("ancienne instance");
+    expect(await child.output).toContain("legacy Tofu instance");
     expect((await fetch(new URL("/api/health", legacy.url))).ok).toBe(true);
     expect(await Bun.file(join(config.dataDir, "instance.json")).exists()).toBe(false);
   } finally {
@@ -370,7 +370,7 @@ test("an inactive profile cannot be reused by the other channel, even through a 
     const exit = await Promise.race([dev.child.exited, Bun.sleep(5000).then(() => null)]);
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
-    expect(await dev.output).toContain("profil release");
+    expect(await dev.output).toContain("profile release");
     expect(await Bun.file(join(config.dataDir, "tofu.sqlite")).arrayBuffer()).toEqual(before);
   } finally {
     await dev?.stop();
@@ -399,7 +399,7 @@ test("a second process cannot open the same data directory and a crash releases 
     const exit = await Promise.race([second.child.exited, Bun.sleep(5000).then(() => null)]);
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
-    expect(await second.output).toContain("déjà utilisé");
+    expect(await second.output).toContain("already in use");
     expect(await Bun.file(join(config.dataDir, "server.json")).text()).toBe(before);
     expect((await fetch(`${url}/api/health`)).ok).toBe(true);
     first.child.kill("SIGKILL");

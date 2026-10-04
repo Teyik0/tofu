@@ -6,7 +6,7 @@ const native = Bun.spawn([process.execPath, "../prebuild-install/bin.js", "-r", 
   stdout: "inherit",
 });
 if ((await native.exited) !== 0) {
-  throw new Error("Installation du module natif WebTorrent impossible");
+  throw new Error("Unable to install the native WebTorrent module");
 }
 const prepare = Bun.spawn(
   [process.execPath, "--bun", "node_modules/electrobun/bin/electrobun.cjs", "prepare"],
@@ -21,5 +21,5 @@ const prepare = Bun.spawn(
   }
 );
 if ((await prepare.exited) !== 0) {
-  throw new Error("Préparation Electrobun impossible");
+  throw new Error("Unable to prepare Electrobun");
 }

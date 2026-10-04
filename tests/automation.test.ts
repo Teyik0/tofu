@@ -407,7 +407,7 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
     const draft = (await (
       await request(
         "/automations/interpret",
-        json({ destinationId: "default", query: "Télécharge Example en VF 1080p" })
+        json({ destinationId: "default", query: "Download Example with VF 1080p" })
       )
     ).json()) as import("../src/types").AutomationDraft;
     expect(draft.matchMode).toBe("jev");
@@ -504,12 +504,14 @@ test("an automation chooses one preferred version, downloads into its thread and
       "/automations/interpret",
       json({
         destinationId: destination.id,
-        query: "Télécharge Example saison 1 en VF, préfère 1080p puis 720p",
+        query: "Download Example season 1 with VF, prefer 1080p then 720p",
       })
     );
     expect(interpreted.status).toBe(200);
     const draft = (await interpreted.json()) as import("../src/types").AutomationDraft;
     expect(draft.languages).toEqual(["VF"]);
+    expect(draft.title).toBe("Example");
+    expect(draft.season).toBe(1);
     const saved = await request(
       "/automations",
       json({

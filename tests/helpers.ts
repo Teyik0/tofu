@@ -33,7 +33,7 @@ export async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => bo
     }
     await Bun.sleep(30);
   }
-  throw new Error("La condition attendue n'a pas été atteinte");
+  throw new Error("The expected condition was not reached");
 }
 
 export async function fixture(length: number, trackers: string[], filename?: string) {

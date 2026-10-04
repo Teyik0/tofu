@@ -36,7 +36,7 @@ test("discovery keeps the literal query and makes no catalogue request until Jev
     api.handle(new Request(`http://localhost/api${path}`, init));
   try {
     await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
-    const query = "re zero ep9 saison4";
+    const query = "re zero ep9 season4";
     const response = await request("/discover", json({ query, sources: ["nyaa"] }));
     const result = (await response.json()) as DiscoveryResult;
     expect(response.status).toBe(200);
@@ -211,7 +211,7 @@ test("natural discovery falls back during a catalogue outage and reads episode n
     expect(result.releases[0]?.episode).toBe(9);
     expect(result.releases[0]?.season).toBe(4);
     expect(result.releases[0]?.seeders).toBeNull();
-    expect(result.search?.warning).toContain("indisponibles");
+    expect(result.search?.warning).toContain("unavailable");
     expect(result.errors.map((error) => error.sourceId)).toEqual(["nyaa"]);
     expect(calls.sort()).toEqual(["/anilist", "/nyaa", "/nyaa", "/tsundere"]);
   } finally {
@@ -302,7 +302,7 @@ test("natural discovery searches English and Japanese aliases and keeps only the
     await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
     const response = await request(
       "/discover",
-      json({ query: "re zero ep9 saison4", sources: ["nyaa"] })
+      json({ query: "re zero ep9 season4", sources: ["nyaa"] })
     );
     expect(response.status).toBe(200);
     const result = (await response.json()) as DiscoveryResult;

@@ -1,4 +1,6 @@
-# 🌱 Tofu
+<img src="assets/tofu-icon.png" alt="Tofu" width="128" height="128" />
+
+# Tofu
 
 A desktop torrent client with a clean interface, real transfer stats, and built-in anime tracking.
 

@@ -35,11 +35,11 @@ import { Skeleton } from "./ui/skeleton";
 
 type Filter = "all" | "downloading" | "seeding" | "paused" | "error";
 const filters: { id: Filter; label: string }[] = [
-  { id: "all", label: "Tous les états" },
-  { id: "downloading", label: "En téléchargement" },
-  { id: "seeding", label: "En partage" },
-  { id: "paused", label: "En pause" },
-  { id: "error", label: "Avec une erreur" },
+  { id: "all", label: "All statuses" },
+  { id: "downloading", label: "Downloading" },
+  { id: "seeding", label: "Seeding" },
+  { id: "paused", label: "Paused" },
+  { id: "error", label: "With errors" },
 ];
 const matches = (torrent: TorrentSummary, filter: Filter) =>
   filter === "all" ||
@@ -79,11 +79,11 @@ export function App({
           (torrent) =>
             (activeDestination === null || torrent.destinationId === activeDestination) &&
             matches(torrent, filter) &&
-            torrent.name.toLocaleLowerCase("fr-FR").includes(search.toLocaleLowerCase("fr-FR"))
+            torrent.name.toLocaleLowerCase("en-US").includes(search.toLocaleLowerCase("en-US"))
         )
         .sort((a, b) =>
           sort === "name"
-            ? a.name.localeCompare(b.name, "fr-FR")
+            ? a.name.localeCompare(b.name, "en-US")
             : sort === "progress"
               ? b.progress - a.progress
               : b.addedAt - a.addedAt
@@ -102,7 +102,7 @@ export function App({
         await request(path, method, body);
         await refresh();
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Une erreur est survenue");
+        setError(cause instanceof Error ? cause.message : "An error occurred");
       } finally {
         setPending((previous) => {
           const next = new Set(previous);
@@ -118,12 +118,9 @@ export function App({
       <header className="library-topbar">
         <div className="library-title">
           <ActionTooltip>
-            <SidebarTrigger
-              aria-label="Afficher les destinations"
-              className="mobile-sidebar-trigger"
-            />
+            <SidebarTrigger aria-label="Show destinations" className="mobile-sidebar-trigger" />
           </ActionTooltip>
-          <h1>{destination?.name ?? "Tous les torrents"}</h1>
+          <h1>{destination?.name ?? "All torrents"}</h1>
           {destination && (
             <>
               <span aria-hidden="true" className="breadcrumb-divider">
@@ -144,11 +141,11 @@ export function App({
             variant="ghost"
           >
             <ZapIcon data-icon="inline-start" />
-            Automatisations
+            Automations
           </Button>
           <Button className="add-button" onClick={add} size="xs" type="button" variant="outline">
             <PlusIcon data-icon="inline-start" />
-            Ajouter un torrent
+            Add a torrent
           </Button>
         </div>
       </header>
@@ -159,7 +156,7 @@ export function App({
             {error}
             <ActionTooltip>
               <Button
-                aria-label="Masquer l’erreur"
+                aria-label="Dismiss error"
                 onClick={() => setError(null)}
                 size="icon-sm"
                 type="button"
@@ -171,7 +168,7 @@ export function App({
           </AlertDescription>
         </Alert>
       )}
-      <section aria-label="Liste des torrents" className="library">
+      <section aria-label="Torrent list" className="library">
         <div className="library-toolbar">
           <span className="library-count">
             {torrents.length} torrent{torrents.length === 1 ? "" : "s"}
@@ -179,9 +176,9 @@ export function App({
           <div className="toolbar-controls">
             <InputGroup className="torrent-search">
               <InputGroupInput
-                aria-label="Rechercher un torrent"
+                aria-label="Search torrents"
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Rechercher un torrent"
+                placeholder="Search torrents"
                 type="search"
                 value={search}
               />
@@ -192,7 +189,7 @@ export function App({
                 <InputGroupAddon align="inline-end">
                   <ActionTooltip>
                     <InputGroupButton
-                      aria-label="Effacer la recherche"
+                      aria-label="Clear search"
                       onClick={() => setSearch("")}
                       size="icon-xs"
                     >
@@ -211,7 +208,7 @@ export function App({
               }}
               value={filter}
             >
-              <SelectTrigger aria-label="Filtrer les torrents par état" size="sm">
+              <SelectTrigger aria-label="Filter torrents by status" size="sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent align="end" alignItemWithTrigger={false}>
@@ -226,7 +223,7 @@ export function App({
             </Select>
             <ActionTooltip>
               <Button
-                aria-label="Tout mettre en pause"
+                aria-label="Pause all"
                 disabled={pending.has("bulk") || !torrents.length}
                 onClick={() =>
                   void act("/bulk", "POST", {
@@ -243,7 +240,7 @@ export function App({
             </ActionTooltip>
             <ActionTooltip>
               <Button
-                aria-label="Tout reprendre"
+                aria-label="Resume all"
                 disabled={pending.has("bulk") || !torrents.length}
                 onClick={() =>
                   void act("/bulk", "POST", {
@@ -260,9 +257,9 @@ export function App({
             </ActionTooltip>
             <Select
               items={[
-                { label: "Plus récents", value: "added" },
-                { label: "Nom", value: "name" },
-                { label: "Progression", value: "progress" },
+                { label: "Newest first", value: "added" },
+                { label: "Name", value: "name" },
+                { label: "Progress", value: "progress" },
               ]}
               onValueChange={(value) => {
                 if (value !== null) {
@@ -271,14 +268,14 @@ export function App({
               }}
               value={sort}
             >
-              <SelectTrigger aria-label="Trier les torrents" size="sm">
+              <SelectTrigger aria-label="Sort torrents" size="sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent align="end" alignItemWithTrigger={false}>
                 <SelectGroup>
-                  <SelectItem value="added">Plus récents</SelectItem>
-                  <SelectItem value="name">Nom</SelectItem>
-                  <SelectItem value="progress">Progression</SelectItem>
+                  <SelectItem value="added">Newest first</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="progress">Progress</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
@@ -288,14 +285,14 @@ export function App({
           <table className="torrent-table">
             <thead>
               <tr>
-                <th className="name-col">Nom du torrent</th>
-                <th>Taille</th>
-                <th className="progress-col">Progression</th>
-                <th>Réception</th>
-                <th>Envoi</th>
-                <th>Pairs</th>
+                <th className="name-col">Torrent name</th>
+                <th>Size</th>
+                <th className="progress-col">Progress</th>
+                <th>Download</th>
+                <th>Upload</th>
+                <th>Peers</th>
                 <th>Ratio</th>
-                <th>Restant</th>
+                <th>Remaining</th>
                 <th>
                   <span className="sr-only">Actions</span>
                 </th>
@@ -333,7 +330,7 @@ export function App({
                   <td>
                     <div className="row-progress">
                       <Progress
-                        aria-label={`Progression de ${torrent.name}`}
+                        aria-label={`Progress for ${torrent.name}`}
                         value={torrent.progress * 100}
                       />
                       <span className="mono">{percent(torrent.progress)}</span>
@@ -349,7 +346,7 @@ export function App({
                   <td>
                     <ActionTooltip>
                       <Button
-                        aria-label={`${torrent.status === "paused" || torrent.status === "error" ? "Reprendre" : "Mettre en pause"} ${torrent.name}`}
+                        aria-label={`${torrent.status === "paused" || torrent.status === "error" ? "Resume" : "Pause"} ${torrent.name}`}
                         disabled={pending.has(torrent.id)}
                         onClick={() =>
                           void act(
@@ -384,21 +381,21 @@ export function App({
                 <EmptyTitle>
                   {data
                     ? search || filter !== "all"
-                      ? "Aucun torrent ici"
-                      : "Votre prochain téléchargement commence ici."
-                    : "Votre espace se prépare…"}
+                      ? "No torrents here"
+                      : "Your next download starts here."
+                    : "Preparing your workspace…"}
                 </EmptyTitle>
                 <EmptyDescription>
                   {search || filter !== "all"
-                    ? "Essayez un autre filtre ou une autre recherche."
-                    : "Ajoutez un lien magnet ou un fichier .torrent. Tofu s’occupe du reste."}
+                    ? "Try another filter or search."
+                    : "Add a magnet link or a .torrent file. Tofu takes care of the rest."}
                 </EmptyDescription>
               </EmptyHeader>
               {data !== null && !search && filter === "all" && (
                 <EmptyContent>
                   <Button onClick={add} variant="outline">
                     <PlusIcon data-icon="inline-start" />
-                    Ajouter mon premier torrent
+                    Add my first torrent
                   </Button>
                 </EmptyContent>
               )}
@@ -410,7 +407,7 @@ export function App({
             {torrents.length} torrent{torrents.length === 1 ? "" : "s"}
           </span>
           <span>
-            Sélectionnez un torrent pour afficher ses détails <Icon name="chevron" size={13} />
+            Select a torrent to view its details <Icon name="chevron" size={13} />
           </span>
         </div>
       </section>
@@ -427,13 +424,13 @@ export function App({
       <footer className="status-bar">
         <span>
           <i />
-          Moteur connecté
+          Engine connected
         </span>
-        <span>DHT : {data?.session.dhtNodes ?? 0} nœuds</span>
+        <span>DHT : {data?.session.dhtNodes ?? 0} nodes</span>
         <span>Port : {data?.session.port ?? "—"}</span>
         <span className="status-version">
           Tofu {version} <span>·</span>{" "}
-          {data?.session.mode === "desktop" ? "Application native" : "Espace web"}
+          {data?.session.mode === "desktop" ? "Native app" : "Web workspace"}
         </span>
       </footer>
     </div>
@@ -442,11 +439,7 @@ export function App({
 
 function DetailLoading() {
   return (
-    <section
-      aria-busy="true"
-      aria-label="Chargement des détails"
-      className="detail-pane detail-loading"
-    >
+    <section aria-busy="true" aria-label="Loading details" className="detail-pane detail-loading">
       <Skeleton className="h-5 w-64" />
       <Skeleton className="h-32 w-full" />
     </section>
@@ -476,9 +469,7 @@ function SelectedDetail({
     return (
       <Alert className="connection-banner">
         <AlertCircleIcon />
-        <AlertDescription>
-          Impossible de charger les détails. Nouvelle tentative à la prochaine mise à jour.
-        </AlertDescription>
+        <AlertDescription>Unable to load details. Retrying on the next update.</AlertDescription>
       </Alert>
     );
   }

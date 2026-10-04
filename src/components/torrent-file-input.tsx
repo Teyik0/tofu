@@ -23,7 +23,7 @@ export function TorrentFileInput({
     }
     const [selected] = files;
     if (files.length !== 1 || !selected?.name.toLowerCase().endsWith(".torrent")) {
-      onError("Choisissez un seul fichier .torrent.");
+      onError("Choose a single .torrent file.");
       return;
     }
     onError(null);
@@ -32,7 +32,7 @@ export function TorrentFileInput({
   return (
     <Field className="torrent-file-field">
       <FieldLabel className="sr-only" htmlFor="torrent-file">
-        Fichier .torrent
+        .torrent file
       </FieldLabel>
       <input
         accept=".torrent,application/x-bittorrent"
@@ -45,7 +45,7 @@ export function TorrentFileInput({
         type="file"
       />
       <Button
-        aria-label="Choisir un fichier .torrent"
+        aria-label="Choose a .torrent file"
         className="torrent-file-dropzone"
         data-dragging={dragging}
         data-selected={file !== null}
@@ -81,13 +81,13 @@ export function TorrentFileInput({
           {file ? (
             <>
               <strong data-file-name>{file.name}</strong>
-              <span>{bytes(file.size)} · Cliquer pour changer de fichier</span>
+              <span>{bytes(file.size)} · Click to change file</span>
             </>
           ) : (
             <>
-              <strong>Glissez votre fichier .torrent ici</strong>
+              <strong>Drop your .torrent file here</strong>
               <span>
-                ou <span className="torrent-file-browse">parcourir les fichiers</span>
+                or <span className="torrent-file-browse">browse files</span>
               </span>
             </>
           )}
@@ -108,7 +108,7 @@ export function TorrentFileInput({
           type="button"
           variant="ghost"
         >
-          Retirer le fichier
+          Remove file
         </Button>
       )}
     </Field>

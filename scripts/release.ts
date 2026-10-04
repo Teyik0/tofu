@@ -7,20 +7,20 @@ const keychain = temporary ? join(temporary, "tofu-signing.keychain-db") : null;
 async function command(args: string[]) {
   const child = Bun.spawn(args, { stderr: "inherit", stdout: "inherit" });
   if ((await child.exited) !== 0) {
-    throw new Error(`Échec de ${args[0]}`);
+    throw new Error(`Failed: ${args[0]}`);
   }
 }
 
 if (Bun.argv[2] === "validate") {
   if (!/^\d+\.\d+\.\d+$/.test(version)) {
-    throw new Error("La version doit respecter major.minor.patch");
+    throw new Error("The version must follow major.minor.patch");
   }
   if (process.env.EXPECTED_ARCH !== process.arch) {
-    throw new Error("Architecture du runner incorrecte");
+    throw new Error("Incorrect runner architecture");
   }
   const ref = process.env.GITHUB_REF;
   if (ref?.startsWith("refs/tags/") && ref !== `refs/tags/v${version}`) {
-    throw new Error("Le tag Git doit correspondre à la version de package.json");
+    throw new Error("The Git tag must match the package.json version");
   }
 } else if (Bun.argv[2] === "signing") {
   const certificate = process.env.APPLE_CERTIFICATE_P12;
@@ -47,9 +47,7 @@ if (Bun.argv[2] === "validate") {
         keychain
       )
     ) {
-      throw new Error(
-        "Les six secrets de signature/notarisation Apple doivent être configurés ensemble"
-      );
+      throw new Error("All six Apple signing/notarization secrets must be configured together");
     }
     const secret = crypto.randomUUID();
     const p12 = join(temporary, "tofu-certificate.p12");
@@ -87,12 +85,12 @@ if (Bun.argv[2] === "validate") {
     await command(["security", "list-keychains", "-d", "user", "-s", keychain]);
     const env = process.env.GITHUB_ENV;
     if (!env) {
-      throw new Error("GITHUB_ENV manquant");
+      throw new Error("GITHUB_ENV missing");
     }
     const existing = await Bun.file(env).text();
     await Bun.write(env, `${existing}\nELECTROBUN_APPLEAPIKEYPATH=${p8}\n`);
   } else {
-    console.log("Aucun certificat Apple configuré : installateurs de développement non signés.");
+    console.log("No Apple certificate configured: unsigned development installers.");
   }
 } else if (Bun.argv[2] === "cleanup") {
   if (temporary && keychain) {
@@ -109,7 +107,7 @@ if (Bun.argv[2] === "validate") {
   const tag = process.env.GITHUB_REF_NAME;
   const repository = process.env.GITHUB_REPOSITORY;
   if (tag !== `v${version}` || repository !== "Teyik0/Tofu") {
-    throw new Error("Tag ou dépôt de publication incorrect");
+    throw new Error("Incorrect publication tag or repository");
   }
   await mkdir("artifacts", { recursive: true });
   const paths = [...new Bun.Glob("*").scanSync("artifacts")]
@@ -117,7 +115,7 @@ if (Bun.argv[2] === "validate") {
     .sort();
   for (const arch of ["arm64"]) {
     if (!paths.includes(`Tofu-${version}-macos-${arch}.dmg`)) {
-      throw new Error(`Installateur ${arch} manquant`);
+      throw new Error(`Installer ${arch} missing`);
     }
   }
   const checksums = await Promise.all(
@@ -142,5 +140,5 @@ if (Bun.argv[2] === "validate") {
     "--generate-notes",
   ]);
 } else {
-  throw new Error("Commande release inconnue");
+  throw new Error("Unknown release command");
 }

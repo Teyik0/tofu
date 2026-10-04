@@ -1,40 +1,40 @@
-# Arrière-plan et distribution de Tofu
+# Tofu background mode and distribution
 
-La release et le développement peuvent tourner ensemble : le dev utilise `Tofu-dev` pour ses bases et téléchargements par défaut, un identifiant macOS distinct et un port indépendant. La release conserve les données existantes dans `Tofu`. Un verrou système et un marqueur de profil empêchent de partager accidentellement les bases. Voir [le guide de développement](development.md#data-and-configuration).
+Release and development can run together: development uses `Tofu-dev` for its databases and default downloads, a distinct macOS identifier, and an independent port. Release keeps existing data in `Tofu`. An OS lock and a profile marker prevent accidental database sharing. See the [development guide](development.md#data-and-configuration).
 
-Dans **Préférences**, activer **Tourner en arrière-plan**, puis enregistrer. Fermer la fenêtre, ou choisir **Passer en arrière-plan maintenant**, détruit la fenêtre native et sa WebView. Le processus Bun conserve le serveur HTTP, les torrents et les automatisations. L’icône Tofu de la barre de menus permet d’ouvrir l’application, d’ouvrir la même interface dans le navigateur, de rechercher une mise à jour ou de quitter complètement. Sans cette préférence, fermer la fenêtre quitte l’application.
+In **Preferences**, enable **Run in background**, then save. Closing the window or choosing **Switch to background mode now** destroys the native window and its WebView. The Bun process keeps the HTTP server, torrents, and automations running. The Tofu menu bar icon lets you open the app, open the same interface in a browser, check for updates, or quit completely. Without this preference, closing the window quits the app.
 
-Cette architecture évite de garder une WebView masquée en mémoire. Elle réutilise le moteur et le serveur du mode web plutôt qu’un second service. Bun, les connexions BitTorrent et les tâches actives continuent de consommer des ressources. Elle ne démarre pas automatiquement à l’ouverture de session et ne maintient pas macOS éveillé.
+This architecture avoids keeping a hidden WebView in memory. It reuses the web mode engine and server rather than introducing a second service. Bun, BitTorrent connections, and active tasks still consume resources. It does not start automatically at login or keep macOS awake.
 
-Le test `bun run test:background` active la préférence depuis la vraie WebView, ferme celle-ci pendant un transfert avec un pair réel, vérifie l’absence de WebView, l’accès aux automatisations et le SHA-256 du fichier terminé, puis recrée une unique fenêtre. L’injection reste exclusivement opt-in via `TOFU_SMOKE_SCRIPT`.
+`bun run test:background` enables the preference through the real WebView, closes it during a transfer with a real peer, checks that no WebView remains, verifies automation access and the completed file's SHA-256, then recreates a single window. Injection remains exclusively opt-in through `TOFU_SMOKE_SCRIPT`.
 
-## Accès aux releases privées
+## Private release access
 
-Le code et les installateurs restent dans [Teyik0/Tofu](https://github.com/Teyik0/Tofu), **privé**. Les utilisateurs doivent être collaborateurs du dépôt. Dans **Préférences → Mises à jour → Connecter GitHub**, chacun configure son propre jeton GitHub personnel, limité à ce dépôt avec **Contents : lecture**. Le jeton reste côté Bun, dans `release-access.json` du dossier de données, accessible uniquement au compte local (permissions 0600). L’API et le journal ne renvoient jamais sa valeur. **Déconnecter** efface l’accès enregistré.
+Code and installers remain in the **private** [Teyik0/Tofu](https://github.com/Teyik0/Tofu) repository. Users must be repository collaborators. In **Preferences → Updates → Connect GitHub**, each user configures a personal GitHub token limited to this repository with **Contents: read** permission. The token stays on the Bun side, in `release-access.json` in the data directory, accessible only to the local account (0600 permissions). The API and journal never return its value. **Disconnect** removes the saved access.
 
-Tofu vérifie les releases stables au démarrage puis toutes les six heures. Une nouvelle version compatible avec l’architecture du Mac déclenche une notification native, une seule fois par version, et une bannière **Télécharger**. Le serveur local transmet l’installateur DMG avec l’accès personnel de l’utilisateur. Il ne transmet jamais le jeton au serveur des assets GitHub lors de la redirection.
+Tofu checks stable releases at startup and every six hours. A new version compatible with the Mac's architecture triggers a native notification once per version and a **Download** banner. The local server streams the DMG installer using the user's personal access. It never forwards the token to the GitHub asset server during redirection.
 
-Après téléchargement, choisir **Quitter Tofu**, ouvrir le DMG et remplacer l’application dans Applications. Les préférences et les fichiers téléchargés sont conservés. Le remplacement automatique de l’application n’est pas implémenté : l’updater Electrobun attend des artefacts accessibles par URL, alors que les releases de ce dépôt nécessitent l’authentification GitHub. La vérification et le téléchargement passent donc par l’API GitHub authentifiée côté Bun.
+After downloading, choose **Quit Tofu**, open the DMG, and replace the app in Applications. Preferences and downloaded files are preserved. Automatic app replacement is not implemented: the Electrobun updater expects artifacts accessible by URL, while this repository's releases require GitHub authentication. Checks and downloads therefore use the authenticated GitHub API on the Bun side.
 
-## Pipeline GitHub Actions
+## GitHub Actions pipeline
 
-- **Checks** vérifie les types, le lint, les tests avec de vrais pairs et la compilation bureau à chaque push sur main ou pull request.
-- **Release** compile et teste sur macOS Apple Silicon. Un tag `vX.Y.Z` correspondant exactement à `package.json` publie le DMG, les archives et métadonnées Electrobun ainsi que `SHA256SUMS` dans les releases du dépôt privé. La version native provient du même package.json. Electrobun 2.0.2 et Hutch ne distribuent pas de runtime macOS Intel ; cette architecture nécessite un support en amont avant d’ajouter un runner x64.
-- Un lancement manuel de **Release** teste le build et conserve les artefacts pendant sept jours, sans publier de release. Les tests d’interface native se lancent localement sur un Mac disposant d’une session graphique.
+- **Checks** validates types, lint, tests with real peers, and the desktop build on every push to main or pull request.
+- **Release** builds and tests on macOS Apple Silicon. A `vX.Y.Z` tag matching `package.json` exactly publishes the DMG, Electrobun archives and metadata, and `SHA256SUMS` to the private repository's releases. The native version comes from the same package.json. Electrobun 2.0.2 and Hutch do not distribute a macOS Intel runtime; upstream support is required before adding an x64 runner.
+- A manual **Release** run tests the build and retains artifacts for seven days without publishing a release. Native UI tests run locally on a Mac with a graphical session.
 
-Pour préparer une version : modifier la version dans package.json, exécuter `bun run tscheck`, `bun run fix`, `bun run test`, `bun run build:desktop`, `bun run test:native` et `bun run test:background`, puis committer et pousser le tag correspondant. Respecter les hooks Git du projet avant commit et push. `bun run build:release` produit également le DMG localement.
+To prepare a version, update package.json, run `bun run tscheck`, `bun run fix`, `bun run test`, `bun run build:desktop`, `bun run test:native`, and `bun run test:background`, then commit and push the matching tag. Follow the project's Git hooks before committing and pushing. `bun run build:release` also produces the DMG locally.
 
-## Signature Apple
+## Apple signing
 
-Sans secrets Apple, le workflow produit des installateurs non signés pour le développement. Pour la distribution signée et notarisée, configurer ensemble dans les secrets Actions :
+Without Apple secrets, the workflow produces unsigned development installers. For signed and notarized distribution, configure all of these Actions secrets together:
 
-| Secret | Valeur |
+| Secret | Value |
 | --- | --- |
-| APPLE_CERTIFICATE_P12 | Certificat Developer ID Application avec sa clé privée, exporté en P12 et encodé en base64 |
-| APPLE_CERTIFICATE_PASSWORD | Mot de passe du P12 |
-| ELECTROBUN_DEVELOPER_ID | Nom complet de l’identité Developer ID Application |
-| APPLE_API_KEY_P8 | Contenu de la clé privée App Store Connect pour la notarisation |
-| ELECTROBUN_APPLEAPIKEY | Identifiant de cette clé |
-| ELECTROBUN_APPLEAPIISSUER | Identifiant de l’émetteur |
+| APPLE_CERTIFICATE_P12 | Developer ID Application certificate with its private key, exported as P12 and base64 encoded |
+| APPLE_CERTIFICATE_PASSWORD | P12 password |
+| ELECTROBUN_DEVELOPER_ID | Full Developer ID Application identity name |
+| APPLE_API_KEY_P8 | App Store Connect private key contents for notarization |
+| ELECTROBUN_APPLEAPIKEY | Key identifier |
+| ELECTROBUN_APPLEAPIISSUER | Issuer identifier |
 
-Le pipeline importe le certificat dans un trousseau temporaire et nettoie les clés après le build. La publication utilise uniquement le GITHUB_TOKEN temporaire du job, avec Contents en écriture. Les jetons personnels des utilisateurs ne sont pas des secrets de CI.
+The pipeline imports the certificate into a temporary keychain and cleans up keys after the build. Publication uses only the job's temporary GITHUB_TOKEN with Contents write permission. Users' personal tokens are not CI secrets.

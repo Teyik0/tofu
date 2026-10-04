@@ -9,19 +9,19 @@ export const pluginEndpoints = {
 export type PluginEndpoints = typeof pluginEndpoints & { anilist?: string; anilistToken?: string };
 export const plugins: Pick<PluginState, "id" | "name" | "description">[] = [
   {
-    description: "Watching et Plan to Watch transformés en automatisations de votre onglet.",
+    description: "Turn Watching and Plan to Watch into automations for your tab.",
     id: "anilist",
     name: "AniList",
   },
-  { description: "Recherche et suivi des sorties via RSS.", id: "nyaa", name: "Nyaa" },
+  { description: "Search and follow releases through RSS.", id: "nyaa", name: "Nyaa" },
   {
-    description: "Sorties et métadonnées du flux JSON officiel.",
+    description: "Releases and metadata from the official JSON feed.",
     id: "tsundere",
     name: "Tsundere-Raws",
   },
-  { description: "Recherche Torznab avec votre clé personnelle.", id: "c411", name: "C411" },
+  { description: "Torznab search with your personal key.", id: "c411", name: "C411" },
   {
-    description: "Compréhension des demandes et matching des titres en langage naturel.",
+    description: "Natural language request interpretation and title matching.",
     id: "jev",
     name: "Jev · TypeSafe",
   },

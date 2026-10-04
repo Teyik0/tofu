@@ -9,7 +9,7 @@ if (!(await Bun.file(launcher).exists())) {
     stdout: "inherit",
   });
   if ((await build.exited) !== 0) {
-    throw new Error("La construction de Tofu a échoué");
+    throw new Error("Tofu build failed");
   }
 }
 const app = Bun.spawn([launcher], {

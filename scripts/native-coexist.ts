@@ -60,7 +60,7 @@ async function ready(instance: ReturnType<typeof launch>) {
     (value) => value !== null
   );
   if (!result) {
-    throw new Error("La fenêtre native Tofu n’a pas démarré");
+    throw new Error("The native Tofu window did not start");
   }
   return result;
 }
@@ -90,10 +90,10 @@ try {
     devInfo.identifier === releaseInfo.identifier ||
     devUrl === releaseUrl
   ) {
-    throw new Error("Les bundles natifs n’ont pas des profils, identités et ports distincts");
+    throw new Error("Native bundles do not have distinct profiles, identities, and ports");
   }
   checks.push(
-    "Deux vrais bundles natifs ouverts ensemble, profils issus du bundle malgré un environnement contradictoire"
+    "Two real native bundles open together, using bundle profiles despite conflicting environment variables"
   );
   const read = async (url: string) =>
     (await (await fetch(`${url}/api/state`)).json()) as DashboardState;
@@ -121,15 +121,15 @@ try {
     stable.torrents.length !== 0 ||
     stable.settings.runInBackground
   ) {
-    throw new Error("Le téléchargement réel ou les préférences se mélangent entre les profils");
+    throw new Error("Real downloads or preferences are mixed between profiles");
   }
-  checks.push("Transfert réel SHA-256 exact et préférences isolées, release intacte");
+  checks.push("Real transfer with exact SHA-256 and isolated preferences, release intact");
   dev.child.kill("SIGTERM");
   await dev.child.exited;
   if (!(await fetch(`${releaseUrl}/api/health`)).ok) {
-    throw new Error("Quitter le dev affecte la release");
+    throw new Error("Quitting development affects release");
   }
-  checks.push("Quitter le bundle de développement laisse la release disponible");
+  checks.push("Quitting the development bundle leaves release available");
   await mkdir(join(root, ".cache"), { recursive: true });
   await Bun.write(
     join(root, ".cache/native-coexist-smoke.json"),

@@ -204,7 +204,7 @@ function Sidebar({
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Destinations</SheetTitle>
-            <SheetDescription>Choisissez un onglet de destination.</SheetDescription>
+            <SheetDescription>Choose a destination tab.</SheetDescription>
           </SheetHeader>
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
@@ -275,7 +275,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       {...props}
     >
       <PanelLeftIcon className="cn-rtl-flip" />
-      <span className="sr-only">Réduire la sidebar</span>
+      <span className="sr-only">Collapse sidebar</span>
     </Button>
   );
 }
@@ -285,7 +285,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 
   return (
     <button
-      aria-label="Réduire la sidebar"
+      aria-label="Collapse sidebar"
       className={cn(
         "absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
@@ -299,7 +299,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       data-slot="sidebar-rail"
       onClick={toggleSidebar}
       tabIndex={-1}
-      title="Réduire la sidebar"
+      title="Collapse sidebar"
       {...props}
     />
   );

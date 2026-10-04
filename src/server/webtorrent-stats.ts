@@ -118,7 +118,7 @@ function peerClient(wire: RuntimeWire) {
   if (wire.peerIdBuffer) {
     return new TextDecoder().decode(wire.peerIdBuffer.slice(0, 8));
   }
-  return "Inconnu";
+  return "Unknown";
 }
 function peerProgress(wire: RuntimeWire, pieces: number) {
   if (wire.isSeeder) {

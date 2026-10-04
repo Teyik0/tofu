@@ -21,7 +21,7 @@ function DownloadUpdate() {
         window.location.assign("/api/updates/download");
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Téléchargement impossible");
+      setError(cause instanceof Error ? cause.message : "Unable to download");
     } finally {
       setBusy(false);
     }
@@ -30,7 +30,7 @@ function DownloadUpdate() {
     <div className="flex flex-col gap-2">
       <Button disabled={busy} onClick={() => void download()} size="sm" type="button">
         <DownloadIcon data-icon="inline-start" />
-        Télécharger
+        Download
       </Button>
       {error !== null && (
         <p className="text-destructive text-sm" role="alert">
@@ -53,7 +53,7 @@ export function UpdateNotice() {
       role="status"
     >
       <p className="text-sm">
-        <strong>Tofu {data.latestVersion}</strong> est disponible.
+        <strong>Tofu {data.latestVersion}</strong> is available.
       </p>
       <DownloadUpdate />
     </div>
@@ -62,21 +62,21 @@ export function UpdateNotice() {
 
 function statusText(state: UpdateState) {
   if (state.status === "available") {
-    return `La version ${state.latestVersion} est disponible.`;
+    return `Version ${state.latestVersion} is available.`;
   }
   if (state.status === "current") {
-    return "Vous utilisez la dernière version.";
+    return "You are using the latest version.";
   }
   if (state.status === "no-release") {
-    return "Aucune release n’a encore été publiée.";
+    return "No release has been published yet.";
   }
   if (state.status === "checking") {
-    return "Vérification des releases…";
+    return "Checking releases…";
   }
   if (state.status === "auth-required") {
-    return "Connectez votre accès GitHub pour recevoir les mises à jour du dépôt privé.";
+    return "Connect GitHub to receive updates from the private repository.";
   }
-  return "Les mises à jour sont vérifiées au démarrage, puis toutes les six heures.";
+  return "Updates are checked at startup and every six hours.";
 }
 
 export function UpdatesPanel({ disabled }: { disabled: boolean }) {
@@ -93,7 +93,7 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
     try {
       await task();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Vérification impossible");
+      setError(cause instanceof Error ? cause.message : "Unable to verify");
     } finally {
       setBusy(false);
     }
@@ -107,7 +107,7 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
     <div className="flex flex-col gap-3 border-t pt-4">
       <div className="flex items-center justify-between gap-2">
         <p className="font-semibold text-sm">
-          Mises à jour{" "}
+          Updates{" "}
           <span className="font-normal text-muted-foreground">
             {data ? `· v${data.currentVersion}` : ""}
           </span>
@@ -120,17 +120,17 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
           variant="outline"
         >
           <RefreshCwIcon className={busy ? "animate-spin" : undefined} data-icon="inline-start" />
-          Vérifier
+          Check
         </Button>
       </div>
       {data !== undefined && <FieldDescription role="status">{statusText(data)}</FieldDescription>}
       {data?.status === "available" && <DownloadUpdate />}
       <details>
         <summary className="cursor-pointer text-sm">
-          {data?.hasToken ? "Gérer l’accès GitHub" : "Connecter GitHub"}
+          {data?.hasToken ? "Manage GitHub access" : "Connect GitHub"}
         </summary>
         <Field className="mt-3">
-          <FieldLabel htmlFor="release-token">Jeton GitHub personnel</FieldLabel>
+          <FieldLabel htmlFor="release-token">Personal GitHub token</FieldLabel>
           <Input
             autoComplete="off"
             disabled={disabled || busy}
@@ -144,14 +144,14 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
                 }
               }
             }}
-            placeholder={data?.hasToken ? "Remplacer le jeton enregistré" : "github_pat_…"}
+            placeholder={data?.hasToken ? "Replace the saved token" : "github_pat_…"}
             spellCheck={false}
             type="password"
             value={token}
           />
           <FieldDescription>
-            Votre compte doit avoir accès à Teyik0/Tofu. Utilisez un jeton limité à ce dépôt avec la
-            permission Contents en lecture. Il reste sur cette machine.
+            Your account must have access to Teyik0/Tofu. Use a token limited to this repository
+            with Contents read permission. It stays on this machine.
           </FieldDescription>
           <div className="flex gap-2">
             <Button
@@ -171,7 +171,7 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
                 type="button"
                 variant="ghost"
               >
-                Déconnecter
+                Disconnect
               </Button>
             )}
           </div>
@@ -179,9 +179,7 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
       </details>
       {Boolean(error || data?.error || loadingError) && (
         <Alert variant="destructive">
-          <AlertDescription>
-            {error ?? data?.error ?? "Impossible de charger les mises à jour"}
-          </AlertDescription>
+          <AlertDescription>{error ?? data?.error ?? "Unable to load updates"}</AlertDescription>
         </Alert>
       )}
     </div>

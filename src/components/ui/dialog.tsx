@@ -62,12 +62,12 @@ function DialogContent({
         {showCloseButton === true && (
           <ActionTooltip>
             <DialogPrimitive.Close
-              aria-label="Fermer"
+              aria-label="Close"
               data-slot="dialog-close"
               render={<Button className="absolute top-2 right-2" size="icon-sm" variant="ghost" />}
             >
               <XIcon />
-              <span className="sr-only">Fermer</span>
+              <span className="sr-only">Close</span>
             </DialogPrimitive.Close>
           </ActionTooltip>
         )}
@@ -104,7 +104,7 @@ function DialogFooter({
     >
       {children}
       {showCloseButton === true && (
-        <DialogPrimitive.Close render={<Button variant="outline" />}>Fermer</DialogPrimitive.Close>
+        <DialogPrimitive.Close render={<Button variant="outline" />}>Close</DialogPrimitive.Close>
       )}
     </div>
   );

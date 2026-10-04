@@ -78,7 +78,7 @@ test("symbolic aliases of a destination cannot overwrite or delete another torre
       (detail) => detail.status === "error" || detail.progress === 1
     );
     expect(collision.status).toBe("error");
-    expect(collision.error).toContain("déjà utilisé");
+    expect(collision.error).toContain("already used");
     expect(
       (
         await context.request(`/torrents/${second.id}`, {
@@ -122,7 +122,7 @@ test("a torrent refuses symbolic links below its destination before writing down
       (value) => value.status === "error" || value.progress === 1
     );
     expect(detail.status).toBe("error");
-    expect(detail.error).toContain("symbolique");
+    expect(detail.error).toContain("symbolic link");
     expect(await Bun.file(join(outside, "first.bin")).exists()).toBe(false);
   } finally {
     await context.close();

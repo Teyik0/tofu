@@ -37,6 +37,7 @@ For changes to development/release isolation, build both native channels with `b
 
 ## Changes and commits
 
+- Write identifiers, comments, documentation, UI text, accessibility labels, errors, logs, native menus, test descriptions, and commit scopes in English. Update related assertions and native selectors when translating text. Preserve user-authored content and existing input compatibility.
 - Discuss substantial features in an issue before implementation. Explain the architecture and its alternative.
 - Describe bugs with a reproducible case, the expected behavior, and the affected version.
 - Use Conventional Commits, enforced by commitlint, and update [CHANGELOG.md](CHANGELOG.md) under Unreleased.

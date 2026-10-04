@@ -59,12 +59,5 @@ export function Icon({
 }
 
 export function Logo() {
-  return (
-    <svg aria-hidden="true" fill="none" height="32" viewBox="0 0 32 32" width="32">
-      <rect fill="#466548" height="13" rx="4" width="13" x="2" y="2" />
-      <rect fill="#b9c9a7" height="13" rx="4" width="12" x="18" y="2" />
-      <rect fill="#b9c9a7" height="12" rx="4" width="13" x="2" y="18" />
-      <rect fill="#d7dfc9" height="12" rx="4" width="12" x="18" y="18" />
-    </svg>
-  );
+  return <img alt="" aria-hidden="true" height="32" src="/public/icon.png" width="32" />;
 }

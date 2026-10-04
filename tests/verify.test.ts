@@ -21,7 +21,7 @@ test("verification reports conflicts for file access, another verification and d
         ...json({
           downloadPath: join(context.directory, "checking"),
           moveFiles: true,
-          name: "Vérification",
+          name: "Verification",
         }),
         method: "PUT",
       }),
@@ -29,9 +29,9 @@ test("verification reports conflicts for file access, another verification and d
     ]);
     expect(during.detail?.status).toBe("checking");
     expect(content.status).toBe(409);
-    expect((await content.json()).error).toContain("vérification");
+    expect((await content.json()).error).toContain("verification");
     expect(move.status).toBe(409);
-    expect((await move.json()).error).toContain("vérification");
+    expect((await move.json()).error).toContain("verification");
     expect(duplicate.status).toBe(409);
     expect((await checking).ok).toBe(true);
     expect((await read()).detail?.status).toBe("paused");

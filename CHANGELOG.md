@@ -6,6 +6,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ### Changed
 
+- Translated project text, native menus, API messages, and documentation into English, with English formatting and explicit repository language guidelines.
 - Isolated development and release profiles, native identities and download folders, with database ownership and exclusive process locks.
 - Migrated shadcn components from Radix UI to Base UI, including keyboard interactions and native smoke checks.
 - Replaced the external XML parser with Bun's native XML parser for RSS and Torznab feeds.

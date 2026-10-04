@@ -10,14 +10,14 @@ const { dataDir, profile } = await currentInstanceConfig();
 const serverInfo = Bun.file(join(dataDir, "server.json"));
 const saved = (await serverInfo.exists()) ? ((await serverInfo.json()) as { url: string }) : null;
 if (!saved) {
-  throw new Error("Démarrez l’instance de développement Tofu avant de lancer la démo");
+  throw new Error("Start the Tofu development instance before running the demo");
 }
 const { url } = saved;
 const target = (await fetch(`${url}/api/instance`).then((response) => response.json())) as {
   profile: string;
 };
 if (profile !== "dev" || target.profile !== "dev") {
-  throw new Error("La démo est réservée au profil de développement Tofu");
+  throw new Error("The demo is restricted to the Tofu development profile");
 }
 const directory = join(import.meta.dir, "../.cache/demo-source");
 await mkdir(directory, { recursive: true });
@@ -25,7 +25,7 @@ const tracker = new Tracker({ http: true, stats: false, udp: false, ws: false })
 await new Promise<void>((resolve) => tracker.listen(0, "127.0.0.1", resolve));
 const address = tracker.http.address();
 if (!address || typeof address === "string") {
-  throw new Error("Le tracker ne démarre pas");
+  throw new Error("The tracker did not start");
 }
 const announce = `http://127.0.0.1:${address.port}/announce`;
 const client = new WebTorrent({
@@ -37,9 +37,9 @@ const client = new WebTorrent({
 });
 client.throttleUpload(384 * 1024);
 const examples = [
-  { length: 2048, name: "Démo — Bienvenue dans Tofu.txt", paused: false },
-  { length: 32 * 1024 * 1024, name: "Démo — Transfert local.bin", paused: false },
-  { length: 64 * 1024, name: "Démo — À télécharger plus tard.bin", paused: true },
+  { length: 2048, name: "Demo — Welcome to Tofu.txt", paused: false },
+  { length: 32 * 1024 * 1024, name: "Demo — Local transfer.bin", paused: false },
+  { length: 64 * 1024, name: "Demo — Download later.bin", paused: true },
 ];
 for (const example of examples) {
   const path = join(directory, example.name);
@@ -47,7 +47,7 @@ for (const example of examples) {
     await Bun.write(
       path,
       example.name.endsWith(".txt")
-        ? "Bienvenue dans Tofu. Ce fichier a été téléchargé depuis un vrai pair local.\n".repeat(28)
+        ? "Welcome to Tofu. This file was downloaded from a real local peer.\n".repeat(28)
         : randomBytes(example.length)
     );
   }
@@ -75,7 +75,7 @@ for (const example of examples) {
   }
 }
 console.log(
-  `Trois torrents de démonstration sont disponibles dans ${url}. Gardez ce terminal ouvert pour que le pair et le tracker restent actifs.`
+  `Three demo torrents are available at ${url}. Keep this terminal open so the peer and tracker remain active.`
 );
 const close = async () => {
   await new Promise<void>((resolve) => client.destroy(() => resolve()));

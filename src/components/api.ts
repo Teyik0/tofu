@@ -10,10 +10,10 @@ export async function request<T>(
     method,
   });
   if (!response.ok) {
-    const result = (await response
-      .json()
-      .catch(() => ({ error: `Erreur ${response.status}` }))) as { error?: string };
-    throw new Error(result.error ?? `Erreur ${response.status}`);
+    const result = (await response.json().catch(() => ({ error: `Error ${response.status}` }))) as {
+      error?: string;
+    };
+    throw new Error(result.error ?? `Error ${response.status}`);
   }
   return (await response.json()) as T;
 }

@@ -24,14 +24,14 @@ export function AniListThreads({
       )
     );
   return (
-    <section aria-label="Threads proposés" className="automation-preview">
+    <section aria-label="Proposed threads" className="automation-preview">
       <div className="automation-row-heading">
-        <strong>Threads proposés</strong>
+        <strong>Proposed threads</strong>
         <Badge variant="outline">{proposals.length} anime(s)</Badge>
       </div>
       <p className="automation-caption">
-        Vérifiez les noms et dossiers avant de créer le suivi. Un thread existant avec le même
-        dossier est réutilisé.
+        Check names and folders before creating tracking. An existing thread with the same folder is
+        reused.
       </p>
       {proposals.map((proposal) => (
         <div className="automation-history-item" key={proposal.mediaId}>
@@ -50,7 +50,7 @@ export function AniListThreads({
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor={`anilist-thread-${proposal.mediaId}`}>
-                Thread de destination
+                Destination thread
               </FieldLabel>
               <NativeSelect
                 disabled={busy}
@@ -70,7 +70,7 @@ export function AniListThreads({
                 }}
                 value={proposal.destinationId ?? ""}
               >
-                <NativeSelectOption value="">Créer un thread</NativeSelectOption>
+                <NativeSelectOption value="">Create a thread</NativeSelectOption>
                 {destinations.map((destination) => (
                   <NativeSelectOption key={destination.id} value={destination.id}>
                     {destination.name} · {destination.downloadPath}
@@ -80,7 +80,7 @@ export function AniListThreads({
             </Field>
             <Field>
               <FieldLabel htmlFor={`anilist-thread-name-${proposal.mediaId}`}>
-                Nom du thread
+                Thread name
               </FieldLabel>
               <Input
                 disabled={busy || proposal.destinationId !== null}
@@ -91,7 +91,7 @@ export function AniListThreads({
             </Field>
             <Field>
               <FieldLabel htmlFor={`anilist-thread-path-${proposal.mediaId}`}>
-                Dossier de téléchargement
+                Download folder
               </FieldLabel>
               <Input
                 disabled={busy || proposal.destinationId !== null}
