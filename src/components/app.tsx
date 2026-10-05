@@ -10,6 +10,7 @@ import { useDashboard } from "./app-shell";
 import { Detail } from "./detail";
 import { bytes, duration, percent, ratio, speed, statusLabels } from "./format";
 import { Icon } from "./icon";
+import { SidebarToggle } from "./sidebar-toggle";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
@@ -30,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { SidebarTrigger } from "./ui/sidebar";
 import { Skeleton } from "./ui/skeleton";
 
 type Filter = "all" | "downloading" | "seeding" | "paused" | "error";
@@ -117,9 +117,7 @@ export function App({
     <div className="main">
       <header className="library-topbar">
         <div className="library-title">
-          <ActionTooltip>
-            <SidebarTrigger aria-label="Show destinations" className="mobile-sidebar-trigger" />
-          </ActionTooltip>
+          <SidebarToggle className="mobile-sidebar-toggle" />
           <h1>{destination?.name ?? "All torrents"}</h1>
           {destination && (
             <>
@@ -132,21 +130,24 @@ export function App({
             </>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() =>
-              setModal({ destinationId: activeDestination ?? "default", type: "automation" })
-            }
-            size="xs"
-            variant="ghost"
-          >
-            <ZapIcon data-icon="inline-start" />
-            Automations
-          </Button>
-          <Button className="add-button" onClick={add} size="xs" type="button" variant="outline">
-            <PlusIcon data-icon="inline-start" />
-            Add a torrent
-          </Button>
+        <div className="library-actions">
+          <ActionTooltip>
+            <Button
+              aria-label="Automations"
+              onClick={() =>
+                setModal({ destinationId: activeDestination ?? "default", type: "automation" })
+              }
+              size="icon"
+              variant="outline"
+            >
+              <ZapIcon />
+            </Button>
+          </ActionTooltip>
+          <ActionTooltip>
+            <Button aria-label="Add a torrent" className="add-button" onClick={add} size="icon">
+              <PlusIcon />
+            </Button>
+          </ActionTooltip>
         </div>
       </header>
       {error !== null && (
@@ -426,8 +427,8 @@ export function App({
           <i />
           Engine connected
         </span>
-        <span>DHT : {data?.session.dhtNodes ?? 0} nodes</span>
-        <span>Port : {data?.session.port ?? "—"}</span>
+        <span>DHT: {data?.session.dhtNodes ?? 0} nodes</span>
+        <span>Port: {data?.session.port ?? "—"}</span>
         <span className="status-version">
           Tofu {version} <span>·</span>{" "}
           {data?.session.mode === "desktop" ? "Native app" : "Web workspace"}

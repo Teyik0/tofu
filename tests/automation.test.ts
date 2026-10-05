@@ -84,7 +84,7 @@ test("pattern rules exclude existing releases and still download newly published
     );
     await waitFor(
       async () => context.engine.detail(context.seed.infoHash),
-      (detail) => detail.progress === 1
+      (detail) => detail.status === "seeding"
     );
     const content = await request(`/torrents/${context.seed.infoHash}/files/0/content`, undefined);
     expect(content.status).toBe(200);
@@ -122,7 +122,10 @@ test("plugin credentials stay private when automation reuses an existing data di
     );
     expect(configured.status).toBe(200);
     expect(await configured.text()).not.toContain("test-private-key");
-    expect((await stat(dataDir)).mode % 0o100).toBe(0);
+    // Windows protects AppData with account ACLs; chmod cannot express POSIX group permissions.
+    if (process.platform !== "win32") {
+      expect((await stat(dataDir)).mode % 0o100).toBe(0);
+    }
   } finally {
     await service.close();
     await context.close();
@@ -186,7 +189,7 @@ test("C411 downloads the enclosure server-side without exposing its API key", as
     );
     await waitFor(
       async () => context.engine.snapshot(result.id),
-      (state) => state.detail?.progress === 1
+      (state) => state.detail?.status === "seeding"
     );
     expect(downloads).toBe(1);
     expect(await (await request("/automation", undefined)).text()).not.toContain("c411-secret");
@@ -314,7 +317,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     await request(`/automations/${rule.id}/run`, json({}));
     await waitFor(
       async () => context.engine.snapshot(context.seed.infoHash),
-      (state) => state.detail?.progress === 1
+      (state) => state.detail?.status === "seeding"
     );
     expect(service.snapshot().decisions[0]?.status).toBe("added");
   } finally {
@@ -430,7 +433,7 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
     await request(`/automation-decisions/${encodeURIComponent(id ?? "")}/approve`, json({}));
     await waitFor(
       async () => context.engine.snapshot(context.seed.infoHash),
-      (value) => value.detail?.progress === 1
+      (value) => value.detail?.status === "seeding"
     );
   } finally {
     await service.close();
@@ -530,7 +533,7 @@ test("an automation chooses one preferred version, downloads into its thread and
     expect(run.status).toBe(200);
     await waitFor(
       async () => engine.snapshot(high.seed.infoHash),
-      (state) => state.detail?.progress === 1
+      (state) => state.detail?.status === "seeding"
     );
     expect(engine.detail(high.seed.infoHash).destinationId).toBe(destination.id);
     expect(engine.detail(high.seed.infoHash).savePath).toBe(target);
@@ -558,7 +561,7 @@ test("an automation chooses one preferred version, downloads into its thread and
     await service.start();
     await waitFor(
       async () => engine.snapshot(low.seed.infoHash),
-      (state) => state.detail?.progress === 1
+      (state) => state.detail?.status === "seeding"
     );
     expect(engine.snapshot(null).torrents).toHaveLength(1);
     expect(engine.detail(low.seed.infoHash).destinationId).toBe(destination.id);

@@ -1,6 +1,7 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: wait for observable native lifecycle and real peers.
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { DashboardState, DesktopState } from "../src/types";
 import { fixture, json, waitFor } from "../tests/helpers";
 
@@ -23,21 +24,18 @@ await Bun.write(
   script,
   `(${configureBackground.toString()})(${JSON.stringify(`http://127.0.0.1:${collector.port}`)})`
 );
-const native = Bun.spawn(
-  [join(root, `build/dev-macos-${process.arch}/Tofu-dev.app/Contents/MacOS/launcher`)],
-  {
-    cwd: root,
-    env: {
-      ...process.env,
-      TOFU_DATA_DIR: join(context.directory, "native-state"),
-      TOFU_DOWNLOAD_DIR: join(context.directory, "native-downloads"),
-      TOFU_MODE: "desktop",
-      TOFU_SMOKE_SCRIPT: script,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  }
-);
+const native = Bun.spawn([desktopLauncher(root, hostDesktopTarget(), "dev")], {
+  cwd: root,
+  env: {
+    ...process.env,
+    TOFU_DATA_DIR: join(context.directory, "native-state"),
+    TOFU_DOWNLOAD_DIR: join(context.directory, "native-downloads"),
+    TOFU_MODE: "desktop",
+    TOFU_SMOKE_SCRIPT: script,
+  },
+  stderr: "pipe",
+  stdout: "pipe",
+});
 const stdout = new Response(native.stdout).text();
 const stderr = new Response(native.stderr).text();
 const deadline = setTimeout(
@@ -142,12 +140,12 @@ async function configureBackground(reportUrl: string) {
   };
   const button = (text: string) =>
     [...document.querySelectorAll<HTMLButtonElement>("button")].find(
-      (item) => item.textContent?.trim() === text
+      (item) => item.getAttribute("aria-label") === text || item.textContent?.trim() === text
     );
   try {
-    await wait(() => Boolean(button("Preferences")));
+    await wait(() => Boolean(button("Settings")));
     await new Promise((resolve) => setTimeout(resolve, 500));
-    const preferences = button("Preferences");
+    const preferences = button("Settings");
     preferences?.focus();
     preferences?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     preferences?.click();

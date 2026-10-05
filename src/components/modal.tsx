@@ -1,9 +1,10 @@
 import { useMutation } from "@teyik0/furin/client";
-import { FolderIcon, LinkIcon, LoaderCircleIcon, ShieldCheckIcon } from "lucide-react";
+import { FolderIcon, LinkIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { api } from "../client";
-import type { DashboardState, Destination, TorrentDetail } from "../types";
+import type { DashboardState, Destination, DestinationIconName, TorrentDetail } from "../types";
 import { request } from "./api";
+import { DestinationIconPicker } from "./destination-icon";
 import { TorrentFileInput } from "./torrent-file-input";
 import { Alert, AlertDescription } from "./ui/alert";
 import {
@@ -37,17 +38,12 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-import { UpdatesPanel } from "./updates";
 
-export type ModalKind =
-  | FormModalKind
-  | { type: "plugins" }
-  | { type: "automation"; destinationId: string };
+export type ModalKind = FormModalKind | { type: "automation"; destinationId: string };
 export type FormModalKind =
   | { type: "add"; destinationId: string }
   | { type: "drop"; files: File[] }
   | { type: "destination"; destination: Destination | null }
-  | { type: "settings" }
   | { type: "remove"; torrent: TorrentDetail }
   | { type: "trackers"; torrent: TorrentDetail }
   | { type: "peer"; torrent: TorrentDetail };
@@ -106,6 +102,63 @@ function ModalFrame({
   );
 }
 
+function DeleteDestinationModal({
+  destination,
+  cancel,
+  close,
+  done,
+}: {
+  destination: Destination;
+  cancel: () => void;
+  close: () => void;
+  done: (id: string | null, destinationId: string | null) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await request(`/destinations/${destination.id}`, "DELETE", undefined);
+      await done(null, null);
+      close();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to delete the tab");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <ModalFrame
+      close={() => {
+        if (!busy) {
+          cancel();
+        }
+      }}
+      description="Torrents and automation rules will be reassigned to the default tab. Existing files stay in their current folders."
+      remove
+      title={`Delete tab ${destination.name}?`}
+    >
+      {error !== null && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      <AlertDialogFooter>
+        <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+        <Button disabled={busy} onClick={() => void remove()} type="button" variant="destructive">
+          {busy ? (
+            <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+          ) : (
+            <Trash2Icon data-icon="inline-start" />
+          )}
+          {busy ? "Deleting…" : "Delete tab"}
+        </Button>
+      </AlertDialogFooter>
+    </ModalFrame>
+  );
+}
+
 export function Modal({
   modal,
   data,
@@ -115,7 +168,7 @@ export function Modal({
   modal: FormModalKind;
   data: DashboardState;
   close: () => void;
-  done: (id: string | null, destinationId: string | null) => void;
+  done: (id: string | null, destinationId: string | null) => Promise<void>;
 }) {
   const initialDestination =
     modal.type === "add"
@@ -125,6 +178,12 @@ export function Modal({
   const createDestination = useMutation(api.api.destinations.post);
   const [droppedFiles, setDroppedFiles] = useState(modal.type === "drop" ? modal.files : []);
   const [destinationId, setDestinationId] = useState(initialDestination?.id ?? "default");
+  const [pinned, setPinned] = useState(
+    modal.type === "destination" ? (modal.destination?.pinned ?? false) : false
+  );
+  const [destinationIcon, setDestinationIcon] = useState<DestinationIconName>(
+    modal.type === "destination" ? (modal.destination?.icon ?? "folder") : "folder"
+  );
   const [name, setName] = useState(
     modal.type === "destination" ? (modal.destination?.name ?? "") : ""
   );
@@ -135,6 +194,7 @@ export function Modal({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deletingDestination, setDeletingDestination] = useState(false);
   const [source, setSource] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [paused, setPaused] = useState(false);
@@ -143,13 +203,7 @@ export function Modal({
   );
   const [removeFiles, setRemoveFiles] = useState(false);
   const [moveFiles, setMoveFiles] = useState(false);
-  const [runInBackground, setRunInBackground] = useState(data.settings.runInBackground);
-  const editedDestination =
-    modal.type === "destination"
-      ? modal.destination
-      : modal.type === "settings"
-        ? data.destinations.find((destination) => destination.id === "default")
-        : null;
+  const editedDestination = modal.type === "destination" ? modal.destination : null;
   const destinationChanged = Boolean(editedDestination && path !== editedDestination.downloadPath);
   const existingTorrents = editedDestination
     ? data.torrents.filter((torrent) => torrent.destinationId === editedDestination.id)
@@ -158,19 +212,22 @@ export function Modal({
   const checkingTorrent = existingTorrents.find(
     (torrent) => torrent.status === "checking" || torrent.status === "moving"
   );
-  const [down, setDown] = useState(
-    data.settings.downloadLimit === -1 ? "" : String(data.settings.downloadLimit / 1024)
-  );
-  const [up, setUp] = useState(
-    data.settings.uploadLimit === -1 ? "" : String(data.settings.uploadLimit / 1024)
-  );
+  if (deletingDestination && modal.type === "destination" && modal.destination) {
+    return (
+      <DeleteDestinationModal
+        cancel={() => setDeletingDestination(false)}
+        close={close}
+        destination={modal.destination}
+        done={done}
+      />
+    );
+  }
   const titles = {
     add: "Add a torrent",
     destination: modal.type === "destination" && modal.destination ? "Edit tab" : "Create a tab",
     drop: "Choose destination",
     peer: "Add a peer",
     remove: "Remove torrent",
-    settings: "Preferences",
     trackers: "Manage trackers",
   };
   const descriptions = {
@@ -179,7 +236,6 @@ export function Modal({
     drop: "Torrents will start immediately in the selected folder.",
     peer: "Connect directly to a known peer.",
     remove: "Files remain on disk unless you choose to delete them.",
-    settings: "Your limits apply immediately to all transfers.",
     trackers: "Add, edit, or remove URLs. Downloaded files are preserved.",
   };
   const urls = () =>
@@ -253,7 +309,13 @@ export function Modal({
         const result = await request<Destination>(
           modal.destination ? `/destinations/${modal.destination.id}` : "/destinations",
           modal.destination ? "PUT" : "POST",
-          { downloadPath: path, moveFiles: offerMove && moveFiles, name }
+          {
+            downloadPath: path,
+            icon: destinationIcon,
+            moveFiles: offerMove && moveFiles,
+            name,
+            pinned,
+          }
         );
         savedDestination = result.id;
       } else if (modal.type === "trackers") {
@@ -262,16 +324,8 @@ export function Modal({
         await request(`/torrents/${modal.torrent.id}/peers`, "POST", { peer: source.trim() });
       } else if (modal.type === "remove") {
         await request(`/torrents/${modal.torrent.id}`, "DELETE", { deleteFiles: removeFiles });
-      } else {
-        await request("/settings", "PUT", {
-          downloadLimit: down === "" ? -1 : Math.round(Number(down) * 1024),
-          downloadPath: path,
-          moveFiles: offerMove && moveFiles,
-          runInBackground,
-          uploadLimit: up === "" ? -1 : Math.round(Number(up) * 1024),
-        });
       }
-      done(selected, savedDestination);
+      await done(selected, savedDestination);
       close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "An error occurred");
@@ -465,9 +519,30 @@ export function Modal({
               />
             </Field>
           )}
-          {(modal.type === "destination" ||
-            modal.type === "settings" ||
-            (modal.type === "drop" && destinationId === "new")) && (
+          {modal.type === "destination" && (
+            <>
+              <Field orientation="horizontal">
+                <Checkbox
+                  checked={pinned}
+                  disabled={busy}
+                  id="thread-pinned"
+                  onCheckedChange={(value) => setPinned(value === true)}
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="thread-pinned">Pin thread</FieldLabel>
+                  <FieldDescription>
+                    Show this thread as an icon at the top of the sidebar.
+                  </FieldDescription>
+                </FieldContent>
+              </Field>
+              <DestinationIconPicker
+                disabled={busy}
+                onChange={setDestinationIcon}
+                value={destinationIcon}
+              />
+            </>
+          )}
+          {(modal.type === "destination" || (modal.type === "drop" && destinationId === "new")) && (
             <Field data-invalid={Boolean(error)}>
               <FieldLabel htmlFor="destination-path">Download folder</FieldLabel>
               <InputGroup>
@@ -575,84 +650,6 @@ export function Modal({
               )}
             </>
           )}
-          {modal.type === "settings" && (
-            <>
-              <FieldGroup className="grid grid-cols-2 gap-4">
-                <Field>
-                  <FieldLabel htmlFor="limit-download">Download · KiB/s</FieldLabel>
-                  <Input
-                    id="limit-download"
-                    min="0"
-                    onChange={(event) => setDown(event.target.value)}
-                    placeholder="Unlimited"
-                    step="1"
-                    type="number"
-                    value={down}
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="limit-upload">Upload · KiB/s</FieldLabel>
-                  <Input
-                    id="limit-upload"
-                    min="0"
-                    onChange={(event) => setUp(event.target.value)}
-                    placeholder="Unlimited"
-                    step="1"
-                    type="number"
-                    value={up}
-                  />
-                </Field>
-              </FieldGroup>
-              <FieldDescription>An empty field means unlimited. 0 pauses traffic.</FieldDescription>
-              {data.session.mode === "desktop" && (
-                <Field orientation="horizontal">
-                  <Checkbox
-                    checked={runInBackground}
-                    disabled={busy}
-                    id="run-in-background"
-                    onCheckedChange={(value) => setRunInBackground(value === true)}
-                  />
-                  <FieldContent>
-                    <FieldLabel htmlFor="run-in-background">Run in background</FieldLabel>
-                    <FieldDescription>
-                      Closing the window releases the interface. Transfers and automations continue.
-                      Open Tofu or its web interface from the menu bar icon. “Quit Tofu” stops the
-                      server.
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
-              )}
-              {data.session.mode === "desktop" && data.settings.runInBackground && (
-                <Button
-                  disabled={busy}
-                  onClick={() => {
-                    setBusy(true);
-                    setError(null);
-                    void request("/desktop/background", "POST", {})
-                      .catch((cause: unknown) => {
-                        setError(
-                          cause instanceof Error
-                            ? cause.message
-                            : "Unable to switch to background mode"
-                        );
-                      })
-                      .finally(() => setBusy(false));
-                  }}
-                  type="button"
-                  variant="outline"
-                >
-                  Switch to background mode now
-                </Button>
-              )}
-              <UpdatesPanel disabled={busy} />
-              <Alert>
-                <ShieldCheckIcon />
-                <AlertDescription>
-                  Your transfers and preferences are stored on this machine.
-                </AlertDescription>
-              </Alert>
-            </>
-          )}
           {error !== null && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -666,6 +663,20 @@ export function Modal({
           </AlertDialogFooter>
         ) : (
           <DialogFooter className="mt-6">
+            {modal.type === "destination" &&
+              modal.destination &&
+              modal.destination.id !== "default" && (
+                <Button
+                  className="sm:mr-auto"
+                  disabled={busy}
+                  onClick={() => setDeletingDestination(true)}
+                  type="button"
+                  variant="destructive"
+                >
+                  <Trash2Icon data-icon="inline-start" />
+                  Delete tab
+                </Button>
+              )}
             <Button disabled={busy} onClick={close} type="button" variant="outline">
               Cancel
             </Button>

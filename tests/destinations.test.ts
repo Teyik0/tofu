@@ -1,10 +1,251 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { createApi } from "../src/server/api";
 import { TorrentEngine } from "../src/server/engine";
-import type { DashboardState } from "../src/types";
+import type { DashboardState, Destination } from "../src/types";
 import { fixture, json, network, waitFor } from "./helpers";
+
+test("pinned threads retain their selected icon after restart without changing downloaded data", async () => {
+  const context = await fixture(8192, []);
+  let restarted: TorrentEngine | null = null;
+  try {
+    const response = await context.request(
+      "/destinations",
+      json({
+        downloadPath: join(context.directory, "series"),
+        icon: "film",
+        name: "Series",
+        pinned: true,
+      })
+    );
+    expect(response.status).toBe(200);
+    const destination = (await response.json()) as Destination;
+    expect(destination).toMatchObject({ icon: "film", name: "Series", pinned: true });
+    const { id } = (await (
+      await context.request(
+        "/torrents",
+        json({ destinationId: destination.id, paused: false, source: context.magnet })
+      )
+    ).json()) as { id: string };
+    await waitFor(
+      async () =>
+        (
+          await context.request(`/state?selected=${id}`, undefined)
+        ).json() as Promise<DashboardState>,
+      (snapshot) => snapshot.detail?.status === "seeding"
+    );
+    await context.engine.close();
+    restarted = await TorrentEngine.open({
+      dataDir: join(context.directory, "state"),
+      downloadPath: join(context.directory, "downloads"),
+      network,
+    });
+    const restored = restarted;
+    const api = createApi(() => restored, context.sync.options);
+    const state = await waitFor(
+      async () =>
+        (await (
+          await api.handle(new Request(`http://localhost/api/state?selected=${id}`))
+        ).json()) as DashboardState,
+      (snapshot) => snapshot.detail?.status === "seeding"
+    );
+    expect(state.destinations.find((item) => item.id === destination.id)).toEqual(destination);
+    const content = await api.handle(
+      new Request(`http://localhost/api/torrents/${id}/files/0/content`)
+    );
+    expect(content.status).toBe(200);
+    expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(
+      Bun.SHA256.hash(context.bytes, "hex")
+    );
+  } finally {
+    await restarted?.close();
+    await context.close();
+  }
+});
+
+test("pinning and changing icons preserve live transfers and older clients retain thread presentation", async () => {
+  const context = await fixture(8192, []);
+  try {
+    const { id } = (await (
+      await context.request("/torrents", json({ paused: false, source: context.magnet }))
+    ).json()) as { id: string };
+    const read = async () =>
+      (await context.request(`/state?selected=${id}`, undefined)).json() as Promise<DashboardState>;
+    await waitFor(read, (state) => state.detail?.status === "seeding");
+    const updated = await context.request("/destinations/default", {
+      ...json({ icon: "tv", pinned: true }),
+      method: "PATCH",
+    });
+    expect(updated.status).toBe(200);
+    const destination = (await updated.json()) as Destination;
+    expect(destination).toMatchObject({ icon: "tv", pinned: true });
+    const older = await context.request("/destinations/default", {
+      ...json({ downloadPath: destination.downloadPath, name: "Saved thread" }),
+      method: "PUT",
+    });
+    expect(await older.json()).toMatchObject({ icon: "tv", name: "Saved thread", pinned: true });
+    const invalid = await context.request("/destinations/default", {
+      ...json({ icon: "unsupported", pinned: false }),
+      method: "PATCH",
+    });
+    expect(invalid.status).toBe(422);
+    expect((await read()).destinations[0]).toMatchObject({ icon: "tv", pinned: true });
+    expect((await read()).detail?.status).toBe("seeding");
+    const unpinned = await context.request("/destinations/default", {
+      ...json({ pinned: false }),
+      method: "PATCH",
+    });
+    expect(await unpinned.json()).toMatchObject({ icon: "tv", pinned: false });
+    const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
+    expect(content.status).toBe(200);
+    expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(
+      Bun.SHA256.hash(context.bytes, "hex")
+    );
+  } finally {
+    await context.close();
+  }
+});
+
+test("legacy thread databases gain unpinned folder icons without rewriting names, folders or transfers", async () => {
+  const context = await fixture(8192, []);
+  let restarted: TorrentEngine | null = null;
+  try {
+    const destination = (await (
+      await context.request(
+        "/destinations",
+        json({ downloadPath: join(context.directory, "saved"), name: "My saved thread" })
+      )
+    ).json()) as Destination;
+    const { id } = (await (
+      await context.request(
+        "/torrents",
+        json({ destinationId: destination.id, paused: false, source: context.magnet })
+      )
+    ).json()) as { id: string };
+    await waitFor(
+      async () =>
+        (
+          await context.request(`/state?selected=${id}`, undefined)
+        ).json() as Promise<DashboardState>,
+      (state) => state.detail?.status === "seeding"
+    );
+    await context.engine.close();
+    const database = new Database(join(context.directory, "state/tofu.sqlite"));
+    try {
+      database.exec(
+        "ALTER TABLE destinations DROP COLUMN pinned; ALTER TABLE destinations DROP COLUMN icon"
+      );
+    } finally {
+      database.close();
+    }
+    restarted = await TorrentEngine.open({
+      dataDir: join(context.directory, "state"),
+      downloadPath: join(context.directory, "downloads"),
+      network,
+    });
+    const restored = restarted;
+    const api = createApi(() => restored, context.sync.options);
+    const read = async () =>
+      (await (
+        await api.handle(new Request(`http://localhost/api/state?selected=${id}`))
+      ).json()) as DashboardState;
+    const snapshot = await waitFor(read, (state) => state.detail?.status === "seeding");
+    expect(snapshot.destinations.find((item) => item.id === destination.id)).toEqual(destination);
+    const response = await api.handle(
+      new Request(`http://localhost/api/torrents/${id}/files/0/content`)
+    );
+    expect(response.status).toBe(200);
+    expect(Bun.SHA256.hash(await response.arrayBuffer(), "hex")).toBe(
+      Bun.SHA256.hash(context.bytes, "hex")
+    );
+  } finally {
+    await restarted?.close();
+    await context.close();
+  }
+});
+
+test("deleting a tab preserves real transfers and files and persists their default assignment", async () => {
+  const context = await fixture(65_536, []);
+  let restarted: TorrentEngine | null = null;
+  try {
+    const path = join(context.directory, "series");
+    const destination = (await (
+      await context.request("/destinations", json({ downloadPath: path, name: "Series" }))
+    ).json()) as { id: string };
+    const { id } = (await (
+      await context.request(
+        "/torrents",
+        json({ destinationId: destination.id, paused: false, source: context.magnet })
+      )
+    ).json()) as { id: string };
+    await waitFor(
+      async () => context.engine.detail(id),
+      (detail) => detail.status === "seeding"
+    );
+    const response = await context.request(`/destinations/${destination.id}`, { method: "DELETE" });
+    expect(response.status).toBe(200);
+    const state = (await (
+      await context.request(`/state?selected=${id}`, undefined)
+    ).json()) as DashboardState;
+    expect(state.destinations.some((item) => item.id === destination.id)).toBe(false);
+    expect(state.detail).toMatchObject({
+      destinationId: "default",
+      savePath: path,
+      status: "seeding",
+    });
+    expect(
+      new Uint8Array(
+        await (await context.request(`/torrents/${id}/files/0/content`, undefined)).arrayBuffer()
+      )
+    ).toEqual(context.bytes);
+    await context.request(`/torrents/${id}/pause`, json({}));
+    await context.engine.close();
+    restarted = await TorrentEngine.open({
+      dataDir: join(context.directory, "state"),
+      downloadPath: join(context.directory, "downloads"),
+      network,
+    });
+    expect(restarted.snapshot(id).destinations.some((item) => item.id === destination.id)).toBe(
+      false
+    );
+    expect(restarted.detail(id)).toMatchObject({
+      destinationId: "default",
+      savePath: path,
+      status: "paused",
+    });
+    expect(new Uint8Array(await Bun.file(join(path, "source.bin")).arrayBuffer())).toEqual(
+      context.bytes
+    );
+  } finally {
+    await restarted?.close();
+    await context.close();
+  }
+});
+
+test("deleting tabs protects the default destination and rejects unknown or already deleted tabs", async () => {
+  const context = await fixture(4096, []);
+  try {
+    expect((await context.request("/destinations/default", { method: "DELETE" })).status).toBe(409);
+    expect((await context.request("/destinations/unknown", { method: "DELETE" })).status).toBe(404);
+    const destination = (await (
+      await context.request(
+        "/destinations",
+        json({ downloadPath: join(context.directory, "empty"), name: "Empty" })
+      )
+    ).json()) as { id: string };
+    expect(
+      (await context.request(`/destinations/${destination.id}`, { method: "DELETE" })).status
+    ).toBe(200);
+    expect(
+      (await context.request(`/destinations/${destination.id}`, { method: "DELETE" })).status
+    ).toBe(404);
+    expect(context.engine.snapshot(null).destinations.map((item) => item.id)).toEqual(["default"]);
+  } finally {
+    await context.close();
+  }
+});
 
 test("moving a destination relocates downloaded bytes and preserves paused torrents after restart", async () => {
   const context = await fixture(65_536, []);
@@ -15,18 +256,24 @@ test("moving a destination relocates downloaded bytes and preserves paused torre
     ).json()) as { id: string };
     const read = async () =>
       (await context.request(`/state?selected=${id}`, undefined)).json() as Promise<DashboardState>;
-    const completed = await waitFor(read, (state) => state.detail?.progress === 1);
+    const completed = await waitFor(read, (state) => state.detail?.status === "seeding");
     await context.request(`/torrents/${id}/pause`, json({}));
     await context.request(`/torrents/${id}/files/0`, {
       ...json({ priority: "high" }),
       method: "PUT",
     });
     const newPath = join(context.directory, "moved");
+    const presentation = await context.request("/destinations/default", {
+      ...json({ icon: "music", pinned: true }),
+      method: "PATCH",
+    });
+    expect(presentation.status).toBe(200);
     const response = await context.request("/destinations/default", {
       ...json({ downloadPath: newPath, moveFiles: true, name: "Moved" }),
       method: "PUT",
     });
     expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ icon: "music", pinned: true });
     const moved = (await read()).detail;
     expect(moved?.savePath).toBe(newPath);
     expect(moved?.status).toBe("paused");
@@ -47,6 +294,7 @@ test("moving a destination relocates downloaded bytes and preserves paused torre
     });
     expect(restarted.detail(id).savePath).toBe(newPath);
     expect(restarted.detail(id).status).toBe("paused");
+    expect(restarted.snapshot(null).destinations[0]).toMatchObject({ icon: "music", pinned: true });
     await restarted.resume(id);
     const restoredEngine = restarted;
     await waitFor(
@@ -67,7 +315,7 @@ test("a missing downloaded file refuses relocation and keeps the original destin
     ).json()) as { id: string };
     const completed = await waitFor(
       async () => context.engine.detail(id),
-      (detail) => detail.progress === 1
+      (detail) => detail.status === "seeding"
     );
     await context.request(`/torrents/${id}/pause`, json({}));
     await rm(join(completed.savePath, "source.bin"));
@@ -98,7 +346,7 @@ test("a destination collision preserves existing files and running downloads", a
     ).json()) as { id: string };
     const completed = await waitFor(
       async () => context.engine.detail(id),
-      (detail) => detail.progress === 1
+      (detail) => detail.status === "seeding"
     );
     const originalPath = completed.savePath;
     const newPath = join(context.directory, "occupied");
@@ -187,7 +435,7 @@ test("distinct destination tabs may share a folder and an add uses its chosen ta
         (
           await context.request(`/state?selected=${id}`, undefined)
         ).json() as Promise<DashboardState>,
-      (value) => value.detail?.progress === 1
+      (value) => value.detail?.status === "seeding"
     );
     expect(state.detail?.savePath).toBe(path);
     expect(Bun.SHA256.hash(await Bun.file(join(path, "source.bin")).arrayBuffer(), "hex")).toBe(
@@ -242,7 +490,7 @@ test("editing a destination persists its identity and changes future adds withou
     ).json()) as { id: string };
     await waitFor(
       async () => context.engine.snapshot(id),
-      (value) => value.detail?.progress === 1
+      (value) => value.detail?.status === "seeding"
     );
     const newPath = join(context.directory, "changed");
     const response = await context.request(`/destinations/${destination.id}`, {
@@ -259,7 +507,7 @@ test("editing a destination persists its identity and changes future adds withou
     ).json()) as { id: string };
     await waitFor(
       async () => context.engine.snapshot(newId),
-      (value) => value.detail?.progress === 1
+      (value) => value.detail?.status === "seeding"
     );
     expect(context.engine.detail(newId).savePath).toBe(newPath);
     await context.engine.close();
@@ -271,8 +519,10 @@ test("editing a destination persists its identity and changes future adds withou
     const state = restarted.snapshot(id);
     expect(state.destinations.find((item) => item.id === destination.id)).toEqual({
       downloadPath: newPath,
+      icon: "folder",
       id: destination.id,
       name: "Anime",
+      pinned: false,
     });
     expect(state.detail?.destinationId).toBe(destination.id);
     expect(state.detail?.savePath).toBe(path);
@@ -298,14 +548,14 @@ test("torrents with overlapping files do not overwrite an existing download", as
       (await request(`/state?selected=${id}`, undefined)).json() as Promise<DashboardState>;
     await waitFor(
       () => read(first.id),
-      (state) => state.detail?.progress === 1
+      (state) => state.detail?.status === "seeding"
     );
     const second = (await (
       await context.request("/torrents", json({ paused: false, source: other.magnet }))
     ).json()) as { id: string };
     const collision = await waitFor(
       () => read(second.id),
-      (state) => state.detail?.status === "error" || state.detail?.progress === 1
+      (state) => state.detail?.status === "error" || state.detail?.status === "seeding"
     );
     expect(collision.detail?.status).toBe("error");
     expect(collision.detail?.error).toContain("source.bin");

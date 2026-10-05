@@ -1,5 +1,6 @@
 import { type FurinSyncOptions, furinSync } from "@teyik0/furin/sync";
 import { Elysia, t } from "elysia";
+import { destinationIconNames } from "../types";
 import type { DesktopController } from "./desktop";
 import { type TorrentEngine, UserError } from "./engine";
 import { createAutomationApi } from "./feeds/api";
@@ -76,7 +77,9 @@ export function createApi(
       {
         body: t.Object({
           downloadPath: t.String({ maxLength: 4096, minLength: 1 }),
+          icon: t.Optional(t.Union(destinationIconNames.map((icon) => t.Literal(icon)))),
           name: t.String({ maxLength: 80, minLength: 1 }),
+          pinned: t.Optional(t.Boolean()),
         }),
       },
       ({ body }) => engine().saveDestination(null, body)
@@ -86,12 +89,29 @@ export function createApi(
       {
         body: t.Object({
           downloadPath: t.String({ maxLength: 4096, minLength: 1 }),
+          icon: t.Optional(t.Union(destinationIconNames.map((icon) => t.Literal(icon)))),
           moveFiles: t.Optional(t.Boolean()),
           name: t.String({ maxLength: 80, minLength: 1 }),
+          pinned: t.Optional(t.Boolean()),
         }),
       },
       ({ params, body }) => engine().saveDestination(params.id, body)
     )
+    .patch(
+      "/destinations/:id",
+      {
+        body: t.Object({
+          icon: t.Optional(t.Union(destinationIconNames.map((icon) => t.Literal(icon)))),
+          pinned: t.Optional(t.Boolean()),
+        }),
+      },
+      ({ params, body }) => engine().updateDestinationPresentation(params.id, body)
+    )
+    .delete("/destinations/:id", ({ params }) => {
+      const result = engine().removeDestination(params.id);
+      automation?.().reassignDestination(params.id);
+      return result;
+    })
     .get(
       "/state",
       {
@@ -161,6 +181,7 @@ export function createApi(
       { body: t.Object({ peer: t.String({ maxLength: 255, minLength: 1 }) }) },
       ({ params, body }) => engine().addPeer(params.id, body.peer)
     )
+    .get("/settings", () => engine().settings)
     .put(
       "/settings",
       {
@@ -169,6 +190,7 @@ export function createApi(
           downloadPath: t.String({ maxLength: 4096, minLength: 1 }),
           moveFiles: t.Optional(t.Boolean()),
           runInBackground: t.Optional(t.Boolean()),
+          theme: t.Optional(t.Union([t.Literal("system"), t.Literal("light"), t.Literal("dark")])),
           uploadLimit: t.Integer({ minimum: -1 }),
         }),
       },

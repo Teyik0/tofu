@@ -11,7 +11,7 @@ test("verification reports conflicts for file access, another verification and d
     ).json()) as { id: string };
     const read = async () =>
       (await context.request(`/state?selected=${id}`, undefined)).json() as Promise<DashboardState>;
-    await waitFor(read, (state) => state.detail?.progress === 1);
+    await waitFor(read, (state) => state.detail?.status === "seeding");
     await context.request(`/torrents/${id}/pause`, json({}));
     const checking = context.engine.verify(id);
     const [during, content, move, duplicate] = await Promise.all([

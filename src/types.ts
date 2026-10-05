@@ -1,5 +1,10 @@
 export type InstanceProfile = "dev" | "release";
 
+export interface DesktopTarget {
+  arch: "arm64" | "x64";
+  platform: "macos" | "win" | "linux";
+}
+
 export interface InstanceConfig {
   dataDir: string;
   downloadPath: string;
@@ -19,17 +24,20 @@ export type TorrentStatus =
   | "idle"
   | "error";
 export type FilePriority = "skip" | "normal" | "high";
+export type ThemePreference = "system" | "light" | "dark";
 
 export interface Settings {
   downloadLimit: number;
   downloadPath: string;
   runInBackground: boolean;
+  theme: ThemePreference;
   uploadLimit: number;
 }
 
-export interface SettingsInput extends Omit<Settings, "runInBackground"> {
+export interface SettingsInput extends Omit<Settings, "runInBackground" | "theme"> {
   moveFiles?: boolean;
   runInBackground?: boolean;
+  theme?: ThemePreference;
 }
 
 export interface UpdateState {
@@ -50,13 +58,41 @@ export interface DesktopState {
   windows: number;
 }
 
-export interface Destination {
-  downloadPath: string;
-  id: string;
-  name: string;
+export interface TorrentDefaults {
+  magnet: string | null;
+  torrent: string | null;
 }
 
-export interface DestinationInput {
+export const destinationIconNames = [
+  "folder",
+  "film",
+  "tv",
+  "music",
+  "book",
+  "gamepad",
+  "code",
+  "archive",
+  "star",
+  "heart",
+  "cloud",
+  "flame",
+] as const;
+export type DestinationIconName = (typeof destinationIconNames)[number];
+
+export interface Destination {
+  downloadPath: string;
+  icon: DestinationIconName;
+  id: string;
+  name: string;
+  pinned: boolean;
+}
+
+export interface DestinationPresentation {
+  icon?: DestinationIconName;
+  pinned?: boolean;
+}
+
+export interface DestinationInput extends DestinationPresentation {
   downloadPath: string;
   moveFiles?: boolean;
   name: string;
@@ -243,14 +279,30 @@ export interface AutomationDraft {
   waitMinutes: number;
 }
 
-export type AniListStatus = "CURRENT" | "PLANNING";
+export type AniListStatus =
+  | "CURRENT"
+  | "PLANNING"
+  | "COMPLETED"
+  | "PAUSED"
+  | "DROPPED"
+  | "REPEATING";
 export interface AniListEntry {
   aliases: string[];
+  automationId: string | null;
+  bannerImage: string | null;
+  completedEpisodes: number[];
+  coverImage: string | null;
+  episodes: number | null;
+  format: string | null;
   mediaId: number;
   progress: number;
+  seasonYear: number | null;
   siteUrl: string | null;
   status: AniListStatus;
   title: string;
+}
+export interface AniListReleases extends DiscoveryResult {
+  torrents: TorrentSummary[];
 }
 export interface AniListThreadProposal {
   destinationId: string | null;
@@ -275,6 +327,9 @@ export interface AniListSubscription {
   userId?: number;
 }
 export interface AniListState {
+  authenticated: boolean;
+  authorizationError: string | null;
+  authorizationPending: boolean;
   clientId: string;
   connectedUser: string | null;
   entries: AniListEntry[];
@@ -283,6 +338,7 @@ export interface AniListState {
   selections: { mediaId: number; enabled: boolean }[];
   subscriptions: AniListSubscription[];
   userName: string;
+  visibleStatuses: AniListStatus[];
 }
 export interface AutomationRule extends AutomationDraft {
   createdAt: number;
@@ -304,4 +360,8 @@ export interface AutomationDecision {
   status: "waiting" | "review" | "adding" | "added" | "ignored" | "error";
   supersedes?: { release: FeedRelease; torrentId: string } | null;
   torrentId: string | null;
+}
+export interface AniListClient {
+  clientId: string;
+  redirectUri: string;
 }

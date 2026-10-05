@@ -80,7 +80,7 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
     await request(`/automations/${rule.id}/run`, json({}));
     const state = await waitFor(
       async () => context.engine.snapshot(context.seed.infoHash),
-      (snapshot) => snapshot.detail?.progress === 1
+      (snapshot) => snapshot.detail?.status === "seeding"
     );
     const detail = state.detail!;
     const oldPath = join(detail.savePath, detail.files[0]!.path);
@@ -292,7 +292,7 @@ test.each([true, false])(
       expect((await run(rule.id)).decisions[0]?.status).toBe("added");
       await waitFor(
         async () => fallback.engine.snapshot(fallback.seed.infoHash),
-        (state) => state.detail?.progress === 1
+        (state) => state.detail?.status === "seeding"
       );
       const oldDetail = fallback.engine.detail(fallback.seed.infoHash);
       const oldPath = join(oldDetail.savePath, oldDetail.files[0]!.path);
@@ -312,7 +312,7 @@ test.each([true, false])(
       );
       await waitFor(
         async () => fallback.engine.snapshot(replacement.seed.infoHash),
-        (state) => state.detail?.progress === 1
+        (state) => state.detail?.status === "seeding"
       );
       await service.tick();
       expect(fallback.engine.snapshot(null, false).torrents.map((torrent) => torrent.id)).toEqual([

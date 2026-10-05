@@ -16,6 +16,7 @@ import type {
   DashboardState,
   Destination,
   DestinationInput,
+  DestinationPresentation,
   FilePriority,
   Settings,
   SettingsInput,
@@ -170,16 +171,27 @@ export class TorrentEngine {
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS destinations (id TEXT PRIMARY KEY, name TEXT NOT NULL, downloadPath TEXT NOT NULL)"
     );
+    const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(destinations)").all();
+    if (!columns.some((column) => column.name === "pinned")) {
+      this.db.exec("ALTER TABLE destinations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!columns.some((column) => column.name === "icon")) {
+      this.db.exec("ALTER TABLE destinations ADD COLUMN icon TEXT NOT NULL DEFAULT 'folder'");
+    }
     for (const destination of this.db
-      .query<Destination, []>("SELECT * FROM destinations ORDER BY rowid")
+      .query<Omit<Destination, "pinned"> & { pinned: number }, []>(
+        "SELECT * FROM destinations ORDER BY rowid"
+      )
       .all()) {
-      this.destinations.set(destination.id, destination);
+      this.destinations.set(destination.id, { ...destination, pinned: destination.pinned === 1 });
     }
     if (!this.destinations.has("default")) {
       this.storeDestination({
         downloadPath: this.settings.downloadPath,
+        icon: "folder",
         id: "default",
         name: "Downloads",
+        pinned: false,
       });
     }
     const totals = this.db
@@ -253,6 +265,7 @@ export class TorrentEngine {
         downloadLimit: -1,
         downloadPath: options.downloadPath,
         runInBackground: false,
+        theme: "system",
         uploadLimit: -1,
       },
       options.network,
@@ -297,9 +310,15 @@ export class TorrentEngine {
   private storeDestination(destination: Destination) {
     this.db
       .query(
-        "INSERT INTO destinations (id, name, downloadPath) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, downloadPath=excluded.downloadPath"
+        "INSERT INTO destinations (id, name, downloadPath, pinned, icon) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, downloadPath=excluded.downloadPath, pinned=excluded.pinned, icon=excluded.icon"
       )
-      .run(destination.id, destination.name, destination.downloadPath);
+      .run(
+        destination.id,
+        destination.name,
+        destination.downloadPath,
+        Number(destination.pinned),
+        destination.icon
+      );
     this.destinations.set(destination.id, destination);
     return destination;
   }
@@ -311,8 +330,10 @@ export class TorrentEngine {
       ) ??
       this.storeDestination({
         downloadPath,
+        icon: "folder",
         id: crypto.randomUUID(),
         name: basename(downloadPath) || "Downloads",
+        pinned: false,
       })
     );
   }
@@ -330,23 +351,37 @@ export class TorrentEngine {
     }
     const downloadPath = resolvePath(input.downloadPath);
     if (id && input.moveFiles) {
-      const operation = this.moveDestination(id, downloadPath, name);
+      const previous = this.destinations.get(id);
+      const destination: Destination = {
+        downloadPath,
+        icon: input.icon ?? previous?.icon ?? "folder",
+        id,
+        name,
+        pinned: input.pinned ?? previous?.pinned ?? false,
+      };
+      const operation = this.moveDestination(destination);
       this.destinationOperation = operation;
       try {
         await operation;
       } finally {
         this.destinationOperation = null;
       }
-      return { downloadPath, id, name };
+      return destination;
     }
     await mkdir(input.downloadPath, { recursive: true });
+    if (id && !this.destinations.has(id)) {
+      throw new UserError("Tab not found", { status: 404 });
+    }
     if (this.movingDestinations.size > 0) {
       throw new UserError("A move is already in progress for this tab", { status: 409 });
     }
+    const previous = id ? this.destinations.get(id) : undefined;
     const destination = this.storeDestination({
       downloadPath,
+      icon: input.icon ?? previous?.icon ?? "folder",
       id: id ?? crypto.randomUUID(),
       name,
+      pinned: input.pinned ?? previous?.pinned ?? false,
     });
     if (destination.id === "default") {
       this.settings.downloadPath = destination.downloadPath;
@@ -356,7 +391,46 @@ export class TorrentEngine {
     return destination;
   }
 
-  private async moveDestination(id: string, downloadPath: string, name: string) {
+  updateDestinationPresentation(id: string, input: DestinationPresentation) {
+    const destination = this.destinations.get(id);
+    if (!destination) {
+      throw new UserError("Tab not found", { status: 404 });
+    }
+    if (this.movingDestinations.size > 0) {
+      throw new UserError("Wait for the move to finish before editing a tab", { status: 409 });
+    }
+    return this.storeDestination({
+      ...destination,
+      icon: input.icon ?? destination.icon,
+      pinned: input.pinned ?? destination.pinned,
+    });
+  }
+
+  removeDestination(id: string) {
+    if (!this.destinations.has(id)) {
+      throw new UserError("Tab not found", { status: 404 });
+    }
+    if (id === "default") {
+      throw new UserError("The default tab cannot be deleted", { status: 409 });
+    }
+    if (this.movingDestinations.size > 0) {
+      throw new UserError("Wait for the move to finish before deleting a tab", { status: 409 });
+    }
+    this.db.transaction(() => {
+      for (const entry of this.entries.values()) {
+        if (entry.detail.destinationId === id) {
+          entry.detail.destinationId = "default";
+          this.save(entry);
+        }
+      }
+      this.db.query("DELETE FROM destinations WHERE id = ?").run(id);
+    })();
+    this.destinations.delete(id);
+    return { ok: true };
+  }
+
+  private async moveDestination(destination: Destination) {
+    const { id, downloadPath } = destination;
     const entries = [...this.entries.values()].filter(
       (entry) =>
         entry.detail.destinationId === id && resolvePath(entry.detail.savePath) !== downloadPath
@@ -397,7 +471,7 @@ export class TorrentEngine {
           entry.detail.savePath = downloadPath;
           this.save(entry);
         }
-        this.storeDestination({ downloadPath, id, name });
+        this.storeDestination(destination);
         if (id === "default") {
           this.settings.downloadPath = downloadPath;
           this.config("settings", this.settings);
@@ -643,6 +717,9 @@ export class TorrentEngine {
     const { downloadPath } = destination;
     const savePath = downloadPath;
     await mkdir(savePath, { recursive: true });
+    if (!this.destinations.has(destination.id)) {
+      throw new UserError("Tab not found", { status: 404 });
+    }
     if (this.movingDestinations.size > 0) {
       throw new UserError("Wait for the move to finish before adding a torrent", {
         status: 409,
@@ -1046,6 +1123,7 @@ export class TorrentEngine {
       downloadLimit: settings.downloadLimit,
       downloadPath: resolvePath(settings.downloadPath),
       runInBackground: settings.runInBackground ?? this.settings.runInBackground,
+      theme: settings.theme ?? this.settings.theme,
       uploadLimit: settings.uploadLimit,
     });
     this.client.throttleDownload(settings.downloadLimit);

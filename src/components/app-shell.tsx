@@ -7,8 +7,10 @@ import {
   type SetStateAction,
   useCallback,
   useContext,
+  useEffect,
   useState,
 } from "react";
+import { useTheme } from "../hooks/use-theme";
 import type { DashboardState } from "../types";
 import { AutomationCenter } from "./automation-center";
 import { DestinationSidebar } from "./destination-sidebar";
@@ -16,7 +18,6 @@ import { Modal, type ModalKind } from "./modal";
 import { TorrentDrop } from "./torrent-drop";
 import { SidebarInset, SidebarProvider } from "./ui/sidebar";
 import { TooltipProvider } from "./ui/tooltip";
-import { UpdateNotice } from "./updates";
 
 interface DashboardContextValue {
   activeDestination: string | null;
@@ -25,6 +26,7 @@ interface DashboardContextValue {
   refresh: () => Promise<void>;
   selectedId: string | undefined;
   setSelected: Dispatch<SetStateAction<string | null>>;
+  settingsBackPath: string;
 }
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 export function useDashboard() {
@@ -44,13 +46,22 @@ export function AppShell({
   dashboard: DashboardState;
   path: string;
 }) {
+  useTheme(dashboard.settings.theme);
   const activeDestination =
-    path === "/library/all"
-      ? null
-      : path.startsWith("/library/destinations/")
-        ? decodeURIComponent(path.slice("/library/destinations/".length))
-        : "default";
+    path === "/anilist"
+      ? "anilist"
+      : path === "/library/all"
+        ? null
+        : path.startsWith("/library/destinations/")
+          ? decodeURIComponent(path.slice("/library/destinations/".length))
+          : "default";
   const router = useRouter();
+  const [settingsBackPath, setSettingsBackPath] = useState("/library/all");
+  useEffect(() => {
+    if (path !== "/settings" && path !== "/plugins") {
+      setSettingsBackPath(path);
+    }
+  }, [path]);
   const refresh = useCallback(async () => {
     try {
       await router.refresh();
@@ -75,12 +86,26 @@ export function AppShell({
     if (modal?.type === "remove" && modal.torrent.id === selectedId) {
       setSelected(null);
     }
-    if (destinationId && destinationId !== activeDestination) {
-      await router.navigate({
-        params: { id: destinationId },
-        resetScroll: false,
-        to: "/library/destinations/:id",
-      });
+    const targetDestination =
+      destinationId ??
+      (modal?.type === "destination" && modal.destination?.id === activeDestination
+        ? "default"
+        : null);
+    if (targetDestination && targetDestination !== activeDestination) {
+      try {
+        await router.navigate({
+          params: { id: targetDestination },
+          resetScroll: false,
+          to: "/library/destinations/:id",
+        });
+      } catch (cause) {
+        // A newer navigation can supersede the completed form's navigation.
+        if (
+          !(cause && typeof cause === "object" && "name" in cause && cause.name === "AbortError")
+        ) {
+          throw cause;
+        }
+      }
     } else {
       await refresh();
     }
@@ -94,6 +119,7 @@ export function AppShell({
         refresh,
         selectedId,
         setSelected,
+        settingsBackPath,
       }}
     >
       <TooltipProvider>
@@ -101,28 +127,19 @@ export function AppShell({
           className="app-shell"
           style={{ "--sidebar-width": "190px", "--sidebar-width-icon": "52px" } as CSSProperties}
         >
-          <DestinationSidebar active={activeDestination} data={dashboard} open={setModal} />
-          <SidebarInset className="min-w-0 overflow-hidden">
-            <UpdateNotice />
-            {children}
-          </SidebarInset>
+          {path !== "/settings" && path !== "/plugins" && (
+            <DestinationSidebar active={activeDestination} data={dashboard} open={setModal} />
+          )}
+          <SidebarInset className="min-w-0 overflow-hidden">{children}</SidebarInset>
           <TorrentDrop />
           {modal !== null &&
-            (modal.type === "plugins" || modal.type === "automation" ? (
-              <AutomationCenter
-                close={() => setModal(null)}
-                destinationId={
-                  modal.type === "automation"
-                    ? modal.destinationId
-                    : (activeDestination ?? "default")
-                }
-                initialTab={modal.type === "plugins" ? "plugins" : "automations"}
-              />
+            (modal.type === "automation" ? (
+              <AutomationCenter close={() => setModal(null)} destinationId={modal.destinationId} />
             ) : (
               <Modal
                 close={() => setModal(null)}
                 data={dashboard}
-                done={(id, destinationId) => void done(id, destinationId)}
+                done={done}
                 key={modal.type}
                 modal={modal}
               />

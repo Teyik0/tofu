@@ -1,40 +1,57 @@
-import { closeSync, openSync } from "node:fs";
 import { mkdir, realpath, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { InstanceConfig, InstanceProfile } from "../types";
+import { lockDataDirectory } from "./instance-lock";
 
 function within(directory: string, root: string) {
   const path = relative(root, directory);
   return path === "" || (!isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`));
 }
 
-export async function currentInstanceConfig() {
-  let profile: InstanceProfile = "dev";
-  let bundleIdentifier: unknown;
-  const desktop =
-    process.env.TOFU_MODE === "desktop" || process.execPath.includes(".app/Contents/MacOS/");
-  if (process.execPath.includes(".app/Contents/MacOS/")) {
-    // Packaged metadata wins over the terminal environment, independently of NODE_ENV.
-    const metadata: unknown = await Bun.file(
-      join(dirname(process.execPath), "../Resources/version.json")
-    ).json();
+export async function readBundleIdentity(executable: string) {
+  const directory = dirname(executable);
+  const resources = join(directory, "../Resources");
+  const macBundle = executable.includes(`${sep}Contents${sep}MacOS${sep}`);
+  const nativeBundle =
+    basename(directory) === "bin" && (await Bun.file(join(resources, "build.json")).exists());
+  if (macBundle || nativeBundle) {
+    const metadata: unknown = await Bun.file(join(resources, "version.json")).json();
     if (!metadata || typeof metadata !== "object" || !("channel" in metadata)) {
       throw new Error("The Tofu bundle profile is missing");
     }
+    let profile: InstanceProfile;
     if (metadata.channel === "stable") {
       profile = "release";
-    } else if (metadata.channel !== "dev") {
+    } else if (metadata.channel === "dev") {
+      profile = "dev";
+    } else {
       throw new Error("The Tofu bundle profile is unknown");
     }
-    bundleIdentifier = "identifier" in metadata ? metadata.identifier : undefined;
-  } else if (process.env.TOFU_PROFILE !== undefined) {
+    const identifier = profile === "dev" ? "app.tofu.torrents.dev" : "app.tofu.torrents";
+    if (!("identifier" in metadata) || metadata.identifier !== identifier) {
+      throw new Error(
+        "The native Tofu identifier does not match the bundle profile; rebuild the app"
+      );
+    }
+    return { identifier, profile };
+  }
+  return null;
+}
+
+export async function currentInstanceConfig() {
+  // Packaged metadata wins over the terminal environment, independently of NODE_ENV.
+  const bundle = await readBundleIdentity(process.execPath);
+  let profile: InstanceProfile = bundle?.profile ?? "dev";
+  const desktop = process.env.TOFU_MODE === "desktop" || bundle !== null;
+  if (!bundle && process.env.TOFU_PROFILE !== undefined) {
     if (process.env.TOFU_PROFILE !== "dev" && process.env.TOFU_PROFILE !== "release") {
       throw new Error("TOFU_PROFILE must be dev or release");
     }
     profile = process.env.TOFU_PROFILE;
   }
   const config = resolveInstanceConfig({
+    appDataDir: process.env.APPDATA,
     dataDir: process.env.TOFU_DATA_DIR,
     desktop,
     downloadPath: process.env.TOFU_DOWNLOAD_DIR,
@@ -43,17 +60,13 @@ export async function currentInstanceConfig() {
     port: process.env.TOFU_PORT,
     profile,
   });
-  if (process.execPath.includes(".app/Contents/MacOS/") && bundleIdentifier !== config.identifier) {
-    throw new Error(
-      "The native Tofu identifier does not match the bundle profile; rebuild the app"
-    );
-  }
   return { ...config, desktop };
 }
 
 export function resolveInstanceConfig(options: {
   profile: InstanceProfile;
   homeDir: string;
+  appDataDir?: string;
   platform: NodeJS.Platform;
   desktop: boolean;
   dataDir: string | undefined;
@@ -62,10 +75,13 @@ export function resolveInstanceConfig(options: {
 }): InstanceConfig {
   const development = options.profile === "dev";
   const directoryName = development ? "Tofu-dev" : "Tofu";
-  const stateRoot = join(
-    options.homeDir,
-    options.platform === "darwin" ? "Library/Application Support" : ".local/share"
-  );
+  const stateRoot =
+    options.platform === "win32"
+      ? (options.appDataDir ?? join(options.homeDir, "AppData/Roaming"))
+      : join(
+          options.homeDir,
+          options.platform === "darwin" ? "Library/Application Support" : ".local/share"
+        );
   const webPort = development ? "3030" : "3031";
   const port = Number(options.port ?? (options.desktop ? "0" : webPort));
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
@@ -89,12 +105,11 @@ export function resolveInstanceConfig(options: {
   };
 }
 
-// Keep the inode in place: deleting a lock file would let another process lock a different inode.
-// The kernel releases flock even after SIGKILL; no stale PID guessing is required.
 export async function acquireInstance(config: InstanceConfig) {
   await mkdir(config.dataDir, { recursive: true });
   if (config.profile === "dev") {
     const releaseDir = resolveInstanceConfig({
+      appDataDir: process.env.APPDATA,
       dataDir: undefined,
       desktop: false,
       downloadPath: undefined,
@@ -110,24 +125,11 @@ export async function acquireInstance(config: InstanceConfig) {
       );
     }
   }
-  const { dlopen, FFIType } = await import("bun:ffi");
-  const library = dlopen(process.platform === "darwin" ? "libSystem.B.dylib" : "libc.so.6", {
-    flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
-  });
-  const fd = openSync(join(config.dataDir, "instance.lock"), "a+", 0o600);
-  const exclusiveNonBlocking = 6; // LOCK_EX (2) + LOCK_NB (4).
-  if (library.symbols.flock(fd, exclusiveNonBlocking) !== 0) {
-    closeSync(fd);
-    library.close();
-    throw new Error(
-      `The data directory is already in use by another Tofu instance : ${config.dataDir}`
-    );
-  }
+  const lock = await lockDataDirectory(config.dataDir);
   try {
     await claimProfile(config);
   } catch (error) {
-    closeSync(fd);
-    library.close();
+    lock.close();
     throw error;
   }
   return {
@@ -135,8 +137,7 @@ export async function acquireInstance(config: InstanceConfig) {
       try {
         await removeServerInfo(config.dataDir);
       } finally {
-        closeSync(fd);
-        library.close();
+        lock.close();
       }
     },
   };

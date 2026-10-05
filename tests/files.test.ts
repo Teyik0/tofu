@@ -36,7 +36,7 @@ test("skipping a file preserves the shared pieces needed by the preceding select
     );
     const detail = await waitFor(
       async () => context.engine.detail(id),
-      (value) => value.files[0]?.progress === 1
+      (value) => value.status === "seeding"
     );
     expect(detail.files[1]?.priority).toBe("skip");
     const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
@@ -55,7 +55,7 @@ test("file access returns a useful error when downloaded data has disappeared", 
     ).json()) as { id: string };
     const detail = await waitFor(
       async () => context.engine.detail(id),
-      (value) => value.progress === 1
+      (value) => value.status === "seeding"
     );
     await context.request(`/torrents/${id}/pause`, json({}));
     await rm(join(detail.savePath, "source.bin"));

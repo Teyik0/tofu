@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebTorrent, { type Torrent } from "webtorrent";
+import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 
 const root = join(import.meta.dir, "..");
 const folder = await mkdtemp(join(tmpdir(), "tofu-latency-"));
@@ -58,21 +59,18 @@ await Bun.write(
   script,
   `(${workflow.toString()})(${JSON.stringify({ magnets, reportUrl: `http://127.0.0.1:${collector.port}` })})`
 );
-const native = Bun.spawn(
-  [join(root, "build/dev-macos-arm64/Tofu-dev.app/Contents/MacOS/launcher")],
-  {
-    cwd: root,
-    env: {
-      ...process.env,
-      TOFU_DATA_DIR: join(folder, "state"),
-      TOFU_DOWNLOAD_DIR: join(folder, "downloads"),
-      TOFU_MODE: "desktop",
-      TOFU_SMOKE_SCRIPT: script,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  }
-);
+const native = Bun.spawn([desktopLauncher(root, hostDesktopTarget(), "dev")], {
+  cwd: root,
+  env: {
+    ...process.env,
+    TOFU_DATA_DIR: join(folder, "state"),
+    TOFU_DOWNLOAD_DIR: join(folder, "downloads"),
+    TOFU_MODE: "desktop",
+    TOFU_SMOKE_SCRIPT: script,
+  },
+  stderr: "pipe",
+  stdout: "pipe",
+});
 const timeout = setTimeout(
   () => resolveReport(JSON.stringify({ error: "Native benchmark timed out", passed: false })),
   60_000

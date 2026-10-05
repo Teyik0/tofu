@@ -1,18 +1,16 @@
-import { Link } from "@teyik0/furin/link";
-import {
-  FolderIcon,
-  LayoutGridIcon,
-  PencilIcon,
-  PlugIcon,
-  PlusIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { Link, useRouter } from "@teyik0/furin/link";
+import { FolderIcon, PencilIcon, PlugIcon, PlusIcon, SettingsIcon } from "lucide-react";
 import { memo } from "react";
 import type { DashboardState } from "../types";
 import { ActionTooltip } from "./action-tooltip";
+import { AniListIcon } from "./anilist-icon";
+import { DestinationIcon } from "./destination-icon";
+import { DestinationMenu } from "./destination-menu";
 import { bytes } from "./format";
 import { Logo } from "./icon";
 import type { ModalKind } from "./modal";
+import { SidebarToggle } from "./sidebar-toggle";
+import { Button } from "./ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -26,9 +24,8 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
-  SidebarTrigger,
 } from "./ui/sidebar";
+import { SidebarUpdateAction } from "./updates";
 
 export const DestinationSidebar = memo(
   function DestinationSidebarView({
@@ -40,35 +37,68 @@ export const DestinationSidebar = memo(
     active: string | null;
     open: (modal: ModalKind) => void;
   }) {
+    const router = useRouter();
     return (
       <Sidebar className="destination-sidebar" collapsible="icon" variant="inset">
         <SidebarHeader>
           <div className="sidebar-brand-row">
-            <Link aria-label="Tofu, accueil" className="brand" to="/library">
+            <Link
+              aria-current={active === null ? "page" : undefined}
+              aria-label="All torrents"
+              className="sidebar-brand"
+              resetScroll={false}
+              title="All torrents"
+              to="/library/all"
+            >
               <Logo />
-              <span>Tofu</span>
+              <span aria-hidden="true">Tofu</span>
             </Link>
-            <ActionTooltip>
-              <SidebarTrigger aria-label="Collapse sidebar" />
-            </ActionTooltip>
+            <SidebarToggle />
           </div>
+          <nav aria-label="Sidebar shortcuts">
+            <SidebarMenu className="sidebar-shortcuts">
+              <SidebarMenuItem>
+                <ActionTooltip>
+                  <Link
+                    aria-current={active === "anilist" ? "page" : undefined}
+                    aria-label="AniList"
+                    className="sidebar-shortcut sidebar-app-shortcut"
+                    data-sidebar="menu-button"
+                    resetScroll={false}
+                    to="/anilist"
+                  >
+                    <AniListIcon />
+                  </Link>
+                </ActionTooltip>
+              </SidebarMenuItem>
+              {data?.destinations
+                .filter((destination) => destination.pinned)
+                .map((destination) => (
+                  <SidebarMenuItem key={destination.id}>
+                    <DestinationMenu destination={destination} open={open}>
+                      <SidebarMenuButton
+                        aria-label={destination.name}
+                        className="sidebar-shortcut"
+                        isActive={active === destination.id}
+                        render={
+                          <Link
+                            aria-current={active === destination.id ? "page" : undefined}
+                            params={{ id: destination.id }}
+                            resetScroll={false}
+                            to="/library/destinations/:id"
+                          />
+                        }
+                        tooltip={{ children: destination.name, hidden: false }}
+                      >
+                        <DestinationIcon name={destination.icon} />
+                      </SidebarMenuButton>
+                    </DestinationMenu>
+                  </SidebarMenuItem>
+                ))}
+            </SidebarMenu>
+          </nav>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={active === null}
-                  render={<Link resetScroll={false} to="/library/all" />}
-                  tooltip="All torrents"
-                >
-                  <LayoutGridIcon />
-                  <span>All torrents</span>
-                </SidebarMenuButton>
-                <SidebarMenuBadge>{data?.torrents.length ?? 0}</SidebarMenuBadge>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroup>
           <SidebarGroup>
             <SidebarGroupLabel>DESTINATIONS</SidebarGroupLabel>
             <ActionTooltip>
@@ -81,40 +111,47 @@ export const DestinationSidebar = memo(
               </SidebarGroupAction>
             </ActionTooltip>
             <SidebarMenu aria-label="Destination tabs">
-              {data?.destinations.map((destination) => (
-                <SidebarMenuItem key={destination.id}>
-                  <SidebarMenuButton
-                    isActive={active === destination.id}
-                    render={
-                      <Link
-                        params={{ id: destination.id }}
-                        resetScroll={false}
-                        to="/library/destinations/:id"
-                      />
-                    }
-                    title={destination.downloadPath}
-                    tooltip={destination.name}
-                  >
-                    <FolderIcon />
-                    <span>{destination.name}</span>
-                  </SidebarMenuButton>
-                  <SidebarMenuBadge>
-                    {
-                      data.torrents.filter((torrent) => torrent.destinationId === destination.id)
-                        .length
-                    }
-                  </SidebarMenuBadge>
-                  <ActionTooltip>
-                    <SidebarMenuAction
-                      aria-label={`Edit tab ${destination.name}`}
-                      onClick={() => open({ destination, type: "destination" })}
-                      showOnHover
-                    >
-                      <PencilIcon />
-                    </SidebarMenuAction>
-                  </ActionTooltip>
-                </SidebarMenuItem>
-              ))}
+              {data?.destinations
+                .filter((destination) => !destination.pinned)
+                .map((destination) => (
+                  <SidebarMenuItem key={destination.id}>
+                    <DestinationMenu destination={destination} open={open}>
+                      <SidebarMenuButton
+                        aria-label={destination.name}
+                        className="sidebar-thread-link"
+                        isActive={active === destination.id}
+                        render={
+                          <Link
+                            aria-current={active === destination.id ? "page" : undefined}
+                            params={{ id: destination.id }}
+                            resetScroll={false}
+                            to="/library/destinations/:id"
+                          />
+                        }
+                        title={destination.downloadPath}
+                        tooltip={destination.name}
+                      >
+                        <DestinationIcon name={destination.icon} />
+                        <span>{destination.name}</span>
+                      </SidebarMenuButton>
+                    </DestinationMenu>
+                    <SidebarMenuBadge>
+                      {
+                        data.torrents.filter((torrent) => torrent.destinationId === destination.id)
+                          .length
+                      }
+                    </SidebarMenuBadge>
+                    <ActionTooltip>
+                      <SidebarMenuAction
+                        aria-label={`Edit tab ${destination.name}`}
+                        onClick={() => open({ destination, type: "destination" })}
+                        showOnHover
+                      >
+                        <PencilIcon />
+                      </SidebarMenuAction>
+                    </ActionTooltip>
+                  </SidebarMenuItem>
+                ))}
             </SidebarMenu>
           </SidebarGroup>
         </SidebarContent>
@@ -126,30 +163,38 @@ export const DestinationSidebar = memo(
               <strong>{bytes(data?.session.freeSpace ?? null)}</strong>
             </div>
           </div>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                disabled={!data}
-                onClick={() => open({ type: "plugins" })}
-                tooltip="Plugins"
-              >
-                <PlugIcon />
-                <span>Plugins</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                disabled={!data}
-                onClick={() => open({ type: "settings" })}
-                tooltip="Preferences"
-              >
-                <SettingsIcon />
-                <span>Preferences</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <fieldset aria-label="Sidebar actions" className="sidebar-actions">
+            <div className="sidebar-utilities">
+              <ActionTooltip>
+                <Button
+                  aria-label="Settings"
+                  disabled={!data}
+                  onClick={() => void router.navigate({ to: "/settings" })}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <SettingsIcon />
+                </Button>
+              </ActionTooltip>
+              <ActionTooltip>
+                <Button
+                  aria-label="Plugins"
+                  disabled={!data}
+                  onClick={() => void router.navigate({ to: "/plugins" })}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <PlugIcon />
+                </Button>
+              </ActionTooltip>
+            </div>
+            <SidebarUpdateAction
+              openSettings={() => void router.navigate({ hash: "updates", to: "/settings" })}
+            />
+          </fieldset>
         </SidebarFooter>
-        <SidebarRail />
       </Sidebar>
     );
   },

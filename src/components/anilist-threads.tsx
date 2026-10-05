@@ -1,8 +1,11 @@
 import type { AniListEntry, AniListThreadProposal, Destination } from "../types";
+import { OptionSelect } from "./option-select";
 import { Badge } from "./ui/badge";
 import { Field, FieldGroup, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
-import { NativeSelect, NativeSelectOption } from "./ui/native-select";
+
+/** Select values cannot be empty, so this sentinel stands for a thread to create. */
+const newThread = "new-thread";
 
 export function AniListThreads({
   proposals,
@@ -52,11 +55,11 @@ export function AniListThreads({
               <FieldLabel htmlFor={`anilist-thread-${proposal.mediaId}`}>
                 Destination thread
               </FieldLabel>
-              <NativeSelect
+              <OptionSelect
                 disabled={busy}
                 id={`anilist-thread-${proposal.mediaId}`}
-                onChange={(event) => {
-                  const destination = destinations.find((item) => item.id === event.target.value);
+                onValueChange={(value) => {
+                  const destination = destinations.find((item) => item.id === value);
                   update(
                     proposal.mediaId,
                     destination
@@ -68,15 +71,15 @@ export function AniListThreads({
                       : { destinationId: null }
                   );
                 }}
-                value={proposal.destinationId ?? ""}
-              >
-                <NativeSelectOption value="">Create a thread</NativeSelectOption>
-                {destinations.map((destination) => (
-                  <NativeSelectOption key={destination.id} value={destination.id}>
-                    {destination.name} · {destination.downloadPath}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+                options={[
+                  { label: "Create a thread", value: newThread },
+                  ...destinations.map((destination) => ({
+                    label: `${destination.name} · ${destination.downloadPath}`,
+                    value: destination.id,
+                  })),
+                ]}
+                value={proposal.destinationId ?? newThread}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor={`anilist-thread-name-${proposal.mediaId}`}>

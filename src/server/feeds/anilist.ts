@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { isAbsolute, join, resolve } from "node:path";
 import type {
+  AniListClient,
   AniListEntry,
   AniListState,
   AniListStatus,
@@ -12,8 +13,10 @@ import type {
   DestinationInput,
 } from "../../types";
 import { UserError } from "../engine";
+import { AniListAuthorization } from "./anilist-oauth";
 
 interface AniListOptions {
+  client?: AniListClient;
   destinationExists: (id: string) => boolean;
   destinations: () => Destination[];
   enabled: () => boolean;
@@ -51,13 +54,22 @@ interface ListResponse {
           };
           synonyms: string[];
           siteUrl: string | null;
+          coverImage?: { extraLarge: string | null; large: string | null };
+          bannerImage?: string | null;
+          episodes?: number | null;
+          format?: string | null;
+          seasonYear?: number | null;
         };
       }[];
     }[];
   };
 }
 const listQuery =
-  "query($userId: Int!, $chunk: Int!) { MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) { hasNextChunk lists { entries { status progress media { id title { romaji english native userPreferred } synonyms siteUrl } } } } }";
+  "query($userId: Int!, $chunk: Int!) { MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) { hasNextChunk lists { entries { status progress media { id title { romaji english native userPreferred } synonyms siteUrl coverImage { extraLarge large } bannerImage episodes format seasonYear } } } } }";
+
+export function isAniListStatus(value: string): value is AniListStatus {
+  return ["CURRENT", "PLANNING", "COMPLETED", "PAUSED", "DROPPED", "REPEATING"].includes(value);
+}
 
 const folderMarks = /\p{M}/gu;
 const folderSeparators = /[^a-z0-9]+/g;
@@ -79,7 +91,7 @@ function collectEntries(
 ) {
   for (const group of collection.lists) {
     for (const entry of group.entries) {
-      if (entry.status !== "CURRENT" && entry.status !== "PLANNING") {
+      if (!isAniListStatus(entry.status)) {
         continue;
       }
       const aliases = [
@@ -99,8 +111,15 @@ function collectEntries(
       }
       found.set(entry.media.id, {
         aliases,
+        automationId: null,
+        bannerImage: entry.media.bannerImage ?? null,
+        completedEpisodes: [],
+        coverImage: entry.media.coverImage?.extraLarge ?? entry.media.coverImage?.large ?? null,
+        episodes: entry.media.episodes ?? null,
+        format: entry.media.format ?? null,
         mediaId: entry.media.id,
         progress: Math.max(0, entry.progress),
+        seasonYear: entry.media.seasonYear ?? null,
         siteUrl: entry.media.siteUrl ?? null,
         status: entry.status,
         title,
@@ -111,15 +130,19 @@ function collectEntries(
 
 export class AniListService {
   private config: AniListConfig = {
-    clientId: "",
+    clientId: "9037",
     clientSecret: "",
-    redirectUri: "http://localhost:3000/",
+    redirectUri: "tofu://oauth/anilist",
     userName: "",
   };
+  private visibleStatuses: AniListStatus[] = ["CURRENT", "PLANNING"];
   private entries: AniListEntry[] = [];
   private connectedUser: string | null = null;
   private account: { id: number; name: string } | null = null;
   private readonly selections = new Map<string, boolean>();
+  private readonly watched = new Map<string, number[]>();
+  private readonly animeRules = new Map<string, string>();
+  private readonly episodeRuns = new Map<number, Promise<AniListState>>();
   private readonly subscriptions = new Map<string, AniListSubscription>();
   private readonly runs = new Map<string, Promise<AniListState>>();
   private readonly destinationRuns = new Map<string, Promise<Destination>>();
@@ -128,19 +151,30 @@ export class AniListService {
   private callbackServer: ReturnType<typeof Bun.serve> | null = null;
   private callbackTimeout: ReturnType<typeof setTimeout> | null = null;
   private oauthState: string | null = null;
+  private readonly authorization: AniListAuthorization;
   private readonly db: Database;
   private readonly options: AniListOptions;
   constructor(db: Database, options: AniListOptions) {
     this.db = db;
     this.options = options;
+    this.authorization = new AniListAuthorization((token, current) =>
+      this.authorize(token, current)
+    );
     db.exec("CREATE TABLE IF NOT EXISTS anilist (id TEXT PRIMARY KEY, value TEXT NOT NULL)");
     for (const row of db
       .query<{ id: string; value: string }, []>("SELECT id, value FROM anilist")
       .all()) {
-      if (row.id === "config") {
-        this.config = JSON.parse(row.value) as AniListConfig;
+      if (row.id === "preferences") {
+        this.visibleStatuses = JSON.parse(row.value) as AniListStatus[];
+      } else if (row.id === "config") {
+        this.config = { ...this.config, ...(JSON.parse(row.value) as AniListConfig) };
+        this.config.clientId ||= "9037";
       } else if (row.id === "profile") {
         this.account = JSON.parse(row.value) as { id: number; name: string };
+      } else if (row.id.startsWith("anime-rule:")) {
+        this.animeRules.set(row.id, JSON.parse(row.value) as string);
+      } else if (row.id.startsWith("watched:")) {
+        this.watched.set(row.id, JSON.parse(row.value) as number[]);
       } else if (row.id.startsWith("selection:")) {
         this.selections.set(row.id, JSON.parse(row.value) === true);
       } else {
@@ -148,46 +182,97 @@ export class AniListService {
         this.subscriptions.set(subscription.id, subscription);
       }
     }
+    if (
+      options.client &&
+      (this.config.clientId === "9037" || this.config.redirectUri.startsWith("tofu"))
+    ) {
+      this.config = { ...this.config, ...options.client, clientSecret: "" };
+    } else if (
+      this.config.clientId === "9037" &&
+      this.config.redirectUri === "http://localhost:3000/"
+    ) {
+      this.config.redirectUri = "tofu://oauth/anilist";
+      this.config.clientSecret = "";
+    }
   }
   snapshot(): AniListState {
     const { clientSecret, ...config } = this.config;
     return {
       ...config,
+      authenticated: Boolean(this.options.token()),
+      authorizationError: this.authorization.error,
+      authorizationPending: this.authorization.pending || this.oauthState !== null,
       connectedUser: this.connectedUser,
-      entries: this.entries,
+      entries: this.entries.map((entry) => ({
+        ...entry,
+        automationId: this.animeRule(entry.mediaId)?.id ?? null,
+        completedEpisodes: this.completedEpisodes(entry),
+      })),
       hasClientSecret: Boolean(clientSecret),
       selections: this.entries.map((entry) => ({
         enabled: this.accepted(entry.mediaId),
         mediaId: entry.mediaId,
       })),
       subscriptions: [...this.subscriptions.values()],
+      visibleStatuses: this.visibleStatuses,
     };
   }
+  preferences(visibleStatuses: AniListStatus[]) {
+    this.visibleStatuses = visibleStatuses;
+    this.db
+      .query("INSERT OR REPLACE INTO anilist VALUES (?, ?)")
+      .run("preferences", JSON.stringify(visibleStatuses));
+    return this.snapshot();
+  }
   configure(input: {
-    clientId: string;
+    clientId?: string;
     clientSecret?: string;
-    redirectUri: string;
+    redirectUri?: string;
     userName: string;
   }) {
-    const redirect = new URL(input.redirectUri);
+    const redirectUri = input.redirectUri ?? this.config.redirectUri;
+    const redirect = new URL(redirectUri);
     if (
-      redirect.protocol !== "http:" ||
-      !["localhost", "127.0.0.1"].includes(redirect.hostname) ||
-      !redirect.port ||
-      redirect.search ||
-      redirect.hash
+      !["tofu://oauth/anilist", "tofu-dev://oauth/anilist"].includes(redirect.href) &&
+      (redirect.protocol !== "http:" ||
+        !["localhost", "127.0.0.1"].includes(redirect.hostname) ||
+        !redirect.port ||
+        redirect.search ||
+        redirect.hash)
     ) {
       throw new UserError("The OAuth callback must be a local HTTP URL with an explicit port", {
         status: 400,
       });
     }
-    this.config = { ...input, clientSecret: input.clientSecret ?? this.config.clientSecret };
+    this.stopCallback();
+    this.config = {
+      ...this.config,
+      ...input,
+      clientId: input.clientId || this.config.clientId,
+      redirectUri,
+    };
     this.db
       .query("INSERT OR REPLACE INTO anilist VALUES (?, ?)")
       .run("config", JSON.stringify(this.config));
     return this.snapshot();
   }
   connect(): { url: string } {
+    if (this.lifecycle.closed) {
+      throw new UserError("AniList unavailable", { status: 409 });
+    }
+    if (
+      !this.config.clientId ||
+      (this.config.clientId === "9037" && this.config.redirectUri === "tofu-dev://oauth/anilist")
+    ) {
+      throw new UserError(
+        "This development build needs its own AniList client. Set TOFU_ANILIST_CLIENT_ID and rebuild Tofu Dev.",
+        { status: 409 }
+      );
+    }
+    if (this.config.clientId === "9037" || !this.config.clientSecret) {
+      this.stopCallback();
+      return this.authorization.connect(this.config.clientId, this.config.redirectUri);
+    }
     if (!(this.config.clientId && this.config.clientSecret)) {
       throw new UserError("Add your AniList OAuth client ID and secret", {
         status: 400,
@@ -278,6 +363,7 @@ export class AniListService {
     return { url: url.href };
   }
   private stopCallback() {
+    this.authorization.close();
     this.callbackServer?.stop(true);
     this.callbackServer = null;
     if (this.callbackTimeout) {
@@ -288,10 +374,17 @@ export class AniListService {
   }
   private async request<T>(
     query: string,
-    variables: { userId?: number; chunk?: number; name?: string },
-    controller: AbortController
+    variables: {
+      userId?: number;
+      chunk?: number;
+      name?: string;
+      mediaId?: number;
+      progress?: number;
+    },
+    controller: AbortController,
+    accessToken?: string
   ): Promise<T> {
-    const token = this.options.token();
+    const token = accessToken ?? this.options.token();
     const response = await fetch(this.options.endpoint, {
       body: JSON.stringify({ query, variables }),
       headers: {
@@ -309,6 +402,42 @@ export class AniListService {
       throw new UserError("AniList: account or list inaccessible", { status: 502 });
     }
     return result.data;
+  }
+  private async authorize(token: string, current: () => boolean) {
+    const controller = new AbortController();
+    this.requests.add(controller);
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const { Viewer: identity } = await this.request<{ Viewer: { id: number; name: string } }>(
+        "query { Viewer { id name } }",
+        {},
+        controller,
+        token
+      );
+      if (!(identity?.id && identity.name && current()) || this.lifecycle.closed) {
+        throw new UserError("AniList authorization expired", { status: 400 });
+      }
+      this.options.setToken(token);
+      this.entries = [];
+      this.account = identity;
+      this.db
+        .query("INSERT OR REPLACE INTO anilist VALUES (?, ?)")
+        .run("profile", JSON.stringify(identity));
+      this.connectedUser = identity.name;
+      await this.list();
+    } finally {
+      clearTimeout(timeout);
+      this.requests.delete(controller);
+    }
+  }
+  async receiveAuthorizationUrl(input: string) {
+    await this.authorization.receiveUrl(input);
+    return this.snapshot();
+  }
+
+  cancelAuthorization() {
+    this.stopCallback();
+    return this.snapshot();
   }
   async list(): Promise<AniListState> {
     if (!this.options.enabled() || this.lifecycle.closed) {
@@ -383,6 +512,138 @@ export class AniListService {
       this.selections.get(`selection:${this.account.id}:${mediaId}`) === true
     );
   }
+  entry(mediaId: number) {
+    if (!this.options.enabled() || this.lifecycle.closed) {
+      throw new UserError("AniList plugin disabled", { status: 409 });
+    }
+    const entry = this.entries.find((item) => item.mediaId === mediaId);
+    if (!(entry && this.account)) {
+      throw new UserError("Load this anime from your AniList list first", { status: 404 });
+    }
+    return entry;
+  }
+  private completedEpisodes(entry: AniListEntry) {
+    const local = this.watched.get(`watched:${this.account?.id}:${entry.mediaId}`) ?? [];
+    return [
+      ...new Set([...Array.from({ length: entry.progress }, (_, index) => index + 1), ...local]),
+    ].sort((a, b) => a - b);
+  }
+  private animeRule(mediaId: number) {
+    const id =
+      this.animeRules.get(`anime-rule:${this.account?.id}:${mediaId}`) ??
+      [...this.subscriptions.values()]
+        .filter((subscription) => subscription.userId === this.account?.id)
+        .flatMap((subscription) => subscription.bindings)
+        .find((binding) => binding.mediaId === mediaId)?.ruleId;
+    return id ? this.options.rule(id) : undefined;
+  }
+  async saveAutomation(mediaId: number, draft: AutomationDraft) {
+    const entry = this.entry(mediaId);
+    const accountId = this.account?.id;
+    const rule = await this.options.save(this.animeRule(mediaId)?.id ?? null, {
+      ...draft,
+      afterEpisode: entry.progress,
+      aliases: entry.aliases,
+      title: entry.title,
+    });
+    if (this.lifecycle.closed || this.account?.id !== accountId) {
+      throw new UserError("AniList account changed; reload your list", { status: 409 });
+    }
+    const key = `anime-rule:${accountId}:${mediaId}`;
+    this.animeRules.set(key, rule.id);
+    this.db.query("INSERT OR REPLACE INTO anilist VALUES (?, ?)").run(key, JSON.stringify(rule.id));
+    return rule;
+  }
+  async completeEpisode(
+    mediaId: number,
+    episode: number,
+    completed: boolean
+  ): Promise<AniListState> {
+    const pending = this.episodeRuns.get(mediaId);
+    if (pending) {
+      await pending.catch(() => undefined);
+      return this.completeEpisode(mediaId, episode, completed);
+    }
+    const task = this.updateEpisode(mediaId, episode, completed);
+    this.episodeRuns.set(mediaId, task);
+    try {
+      return await task;
+    } finally {
+      this.episodeRuns.delete(mediaId);
+    }
+  }
+  private async updateEpisode(mediaId: number, episode: number, completed: boolean) {
+    const entry = this.entry(mediaId);
+    const accessToken = this.options.token();
+    if (!accessToken) {
+      throw new UserError("Connect your AniList account to sync episode progress", { status: 409 });
+    }
+    if (entry.episodes !== null && episode > entry.episodes) {
+      throw new UserError("Episode exceeds the anime episode count", { status: 400 });
+    }
+    const accountId = this.account?.id;
+    const watched = new Set(this.completedEpisodes(entry));
+    if (completed) {
+      watched.add(episode);
+    } else {
+      watched.delete(episode);
+    }
+    let progress = 0;
+    while (watched.has(progress + 1)) {
+      progress += 1;
+    }
+    const controller = new AbortController();
+    this.requests.add(controller);
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const { Viewer } = await this.request<{ Viewer: { id: number } }>(
+        "query { Viewer { id } }",
+        {},
+        controller
+      );
+      if (Viewer.id !== accountId || this.options.token() !== accessToken) {
+        throw new UserError("Reload your AniList list after changing accounts", { status: 409 });
+      }
+      if (progress !== entry.progress) {
+        const { SaveMediaListEntry } = await this.request<{
+          SaveMediaListEntry: { progress: number };
+        }>(
+          "mutation($mediaId: Int!, $progress: Int!) { SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { progress } }",
+          { mediaId, progress },
+          controller
+        );
+        if (SaveMediaListEntry.progress !== progress) {
+          throw new UserError("AniList did not save the episode progress", { status: 502 });
+        }
+      }
+      if (this.lifecycle.closed || !this.options.enabled() || this.account?.id !== accountId) {
+        throw new UserError("AniList account changed during episode sync; reload the list", {
+          status: 409,
+        });
+      }
+      const key = `watched:${accountId}:${mediaId}`;
+      const episodes = [...watched].sort((a, b) => a - b);
+      this.watched.set(key, episodes);
+      this.db
+        .query("INSERT OR REPLACE INTO anilist VALUES (?, ?)")
+        .run(key, JSON.stringify(episodes));
+      this.entries = this.entries.map((item) =>
+        item.mediaId === mediaId ? { ...item, progress } : item
+      );
+      const rule = this.animeRule(mediaId);
+      if (rule) {
+        await this.options.save(rule.id, { ...rule, afterEpisode: progress });
+      }
+      for (const subscription of this.subscriptions.values()) {
+        subscription.nextSyncAt = this.options.now();
+        this.persist(subscription);
+      }
+      return this.snapshot();
+    } finally {
+      clearTimeout(timeout);
+      this.requests.delete(controller);
+    }
+  }
   previewThreads(basePath: string, statuses: AniListStatus[]): AniListThreadProposal[] {
     if (!isAbsolute(basePath)) {
       throw new UserError("Enter an absolute root folder path", { status: 400 });
@@ -438,6 +699,21 @@ export class AniListService {
     this.db
       .query("INSERT OR REPLACE INTO anilist VALUES (?, ?)")
       .run(subscription.id, JSON.stringify(subscription));
+  }
+  reassignDestination(id: string) {
+    for (const subscription of this.subscriptions.values()) {
+      if (subscription.template.destinationId === id) {
+        subscription.template.destinationId = "default";
+      }
+      if (subscription.organization?.mode === "per-anime") {
+        for (const override of subscription.organization.overrides) {
+          if (override.destinationId === id) {
+            override.destinationId = "default";
+          }
+        }
+      }
+      this.persist(subscription);
+    }
   }
   subscribe(
     input: Pick<
@@ -552,8 +828,10 @@ export class AniListService {
   }
   private async follow(subscription: AniListSubscription, entry: AniListEntry) {
     const binding = subscription.bindings.find((item) => item.mediaId === entry.mediaId);
-    const previous = binding ? this.options.rule(binding.ruleId) : undefined;
+    const previous =
+      this.animeRule(entry.mediaId) ?? (binding ? this.options.rule(binding.ruleId) : undefined);
     const template = previous ?? subscription.template;
+    const overridden = this.animeRules.has(`anime-rule:${this.account?.id}:${entry.mediaId}`);
     const destinationId =
       previous?.destinationId ?? (await this.destinationId(subscription, entry));
     if (!(this.current(subscription) && this.accepted(entry.mediaId))) {
@@ -564,8 +842,11 @@ export class AniListService {
       afterEpisode: entry.progress,
       aliases: entry.aliases,
       destinationId,
-      enabled: previous && binding?.active ? previous.enabled : subscription.template.enabled,
-      query: `Download "${entry.title}". ${subscription.template.query}`,
+      enabled:
+        previous && (overridden || binding?.active)
+          ? previous.enabled
+          : subscription.template.enabled,
+      query: previous?.query ?? `Download "${entry.title}". ${subscription.template.query}`,
       title: entry.title,
     });
     if (binding) {
@@ -672,6 +953,6 @@ export class AniListService {
     for (const controller of this.requests) {
       controller.abort();
     }
-    await Promise.allSettled(this.runs.values());
+    await Promise.allSettled([...this.runs.values(), ...this.episodeRuns.values()]);
   }
 }

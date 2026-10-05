@@ -1,6 +1,8 @@
 import { mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { version } from "../package.json";
+import { hostDesktopTarget, installerExtension, installerName } from "../src/platform";
+import { resolveAniListClient } from "../src/server/feeds/anilist-client";
 
 const root = join(import.meta.dir, "..");
 async function command(args: string[], cwd: string) {
@@ -16,11 +18,29 @@ async function command(args: string[], cwd: string) {
 }
 const release = Bun.argv[2] === "release";
 process.env.TOFU_RELEASE = release ? "1" : "0";
+if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPER_ID) {
+  process.env.ELECTROBUN_DEVELOPER_ID = "-";
+  console.log("Using free ad hoc macOS signing; first launch requires manual approval.");
+}
 await command(["node_modules/@teyik0/furin/src/cli/index.ts", "build", "--target", "bun"], root);
 if (Bun.argv[2] === "desktop" || release) {
   await command(["--bun", "node_modules/electrobun/bin/electrobun.cjs", "prepare"], root);
   const runtime = join(root, "runtime");
   await mkdir(runtime, { recursive: true });
+  const helperBuild = await Bun.build({
+    entrypoints: [join(root, "scripts/desktop-protocol.ts")],
+    outdir: runtime,
+    target: "bun",
+  });
+  if (!helperBuild.success) {
+    throw new AggregateError(helperBuild.logs, "Protocol helper build failed");
+  }
+  await Bun.write(
+    join(runtime, "anilist-client.json"),
+    JSON.stringify(
+      resolveAniListClient(release ? "release" : "dev", process.env.TOFU_ANILIST_CLIENT_ID)
+    )
+  );
   await Bun.write(
     join(runtime, "package.json"),
     JSON.stringify({
@@ -44,13 +64,16 @@ if (Bun.argv[2] === "desktop" || release) {
   );
   if (release) {
     const directory = join(root, "artifacts");
-    const installers = [...new Bun.Glob(`macos-${process.arch}-*.dmg`).scanSync(directory)];
+    const target = hostDesktopTarget();
+    const suffix = target.platform === "macos" ? "*.dmg" : `*-Setup.${installerExtension(target)}`;
+    const installers = [
+      ...new Bun.Glob(`${target.platform}-${target.arch}-${suffix}`).scanSync(directory),
+    ];
     if (installers.length !== 1 || !installers[0]) {
-      throw new Error("Expected exactly one DMG installer in artifacts");
+      throw new Error(
+        `Expected exactly one ${target.platform}/${target.arch} installer in artifacts`
+      );
     }
-    await rename(
-      join(directory, installers[0]),
-      join(directory, `Tofu-${version}-macos-${process.arch}.dmg`)
-    );
+    await rename(join(directory, installers[0]), join(directory, installerName(version, target)));
   }
 }

@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import { resolveInstanceConfig } from "../src/server/instance";
 import type { DashboardState, DesktopState, InstanceConfig } from "../src/types";
 import { fixture, json, waitFor } from "../tests/helpers";
@@ -10,12 +11,7 @@ const instances: ReturnType<typeof launch>[] = [];
 const checks: string[] = [];
 
 function launch(config: InstanceConfig) {
-  const channel = config.profile === "dev" ? "dev" : "stable";
-  const appName = config.profile === "dev" ? "Tofu-dev" : "Tofu";
-  const launcher = join(
-    root,
-    `build/${channel}-macos-${process.arch}/${appName}.app/Contents/MacOS/launcher`
-  );
+  const launcher = desktopLauncher(root, hostDesktopTarget(), config.profile);
   const environment = {
     ...process.env,
     TOFU_DATA_DIR: config.dataDir,
@@ -71,7 +67,7 @@ try {
     desktop: true,
     downloadPath: undefined,
     homeDir: context.directory,
-    platform: "darwin" as const,
+    platform: process.platform,
     port: "0",
   };
   const dev = launch(resolveInstanceConfig({ ...options, profile: "dev" }));

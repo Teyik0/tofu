@@ -3,6 +3,14 @@ import { Elysia, t } from "elysia";
 import type { AutomationService } from "./service";
 
 const source = t.Union([t.Literal("nyaa"), t.Literal("tsundere"), t.Literal("c411")]);
+const listStatus = t.Union([
+  t.Literal("CURRENT"),
+  t.Literal("PLANNING"),
+  t.Literal("COMPLETED"),
+  t.Literal("PAUSED"),
+  t.Literal("DROPPED"),
+  t.Literal("REPEATING"),
+]);
 const organization = t.Union([
   t.Object({ mode: t.Literal("shared") }),
   t.Object({
@@ -58,12 +66,43 @@ export function createAutomationApi(service: () => AutomationService, sync: Furi
     .guard({ sync: false })
     .get("/anilist", () => service().anilist.snapshot())
     .post(
+      "/anilist/entries/:mediaId/releases",
+      { params: t.Object({ mediaId: t.Numeric({ minimum: 1, multipleOf: 1 }) }) },
+      ({ params }) => service().animeReleases(params.mediaId)
+    )
+    .put(
+      "/anilist/entries/:mediaId/automation",
+      { body: draft, params: t.Object({ mediaId: t.Numeric({ minimum: 1, multipleOf: 1 }) }) },
+      ({ params, body }) => service().anilist.saveAutomation(params.mediaId, body)
+    )
+    .put(
+      "/anilist/entries/:mediaId/episodes/:episode",
+      {
+        body: t.Object({ completed: t.Boolean() }),
+        params: t.Object({
+          episode: t.Numeric({ maximum: 10_000, minimum: 1, multipleOf: 1 }),
+          mediaId: t.Numeric({ minimum: 1, multipleOf: 1 }),
+        }),
+      },
+      ({ params, body }) =>
+        service().anilist.completeEpisode(params.mediaId, params.episode, body.completed)
+    )
+    .put(
+      "/anilist/preferences",
+      {
+        body: t.Object({
+          visibleStatuses: t.Array(listStatus, { maxItems: 6, uniqueItems: true }),
+        }),
+      },
+      ({ body }) => service().anilist.preferences(body.visibleStatuses)
+    )
+    .post(
       "/anilist/threads/preview",
       {
         body: t.Object({
           basePath: t.String({ maxLength: 4096, minLength: 1 }),
-          statuses: t.Array(t.Union([t.Literal("CURRENT"), t.Literal("PLANNING")]), {
-            maxItems: 2,
+          statuses: t.Array(listStatus, {
+            maxItems: 6,
             minItems: 1,
             uniqueItems: true,
           }),
@@ -75,7 +114,7 @@ export function createAutomationApi(service: () => AutomationService, sync: Furi
       "/anilist/entries/:mediaId",
       {
         body: t.Object({ enabled: t.Boolean() }),
-        params: t.Object({ mediaId: t.Numeric({ minimum: 1 }) }),
+        params: t.Object({ mediaId: t.Numeric({ minimum: 1, multipleOf: 1 }) }),
       },
       ({ params, body }) => service().anilist.select([params.mediaId], body.enabled)
     )
@@ -97,15 +136,21 @@ export function createAutomationApi(service: () => AutomationService, sync: Furi
       "/anilist",
       {
         body: t.Object({
-          clientId: t.String({ maxLength: 50 }),
+          clientId: t.Optional(t.String({ maxLength: 50 })),
           clientSecret: t.Optional(t.String({ maxLength: 4096 })),
-          redirectUri: t.String({ maxLength: 500 }),
+          redirectUri: t.Optional(t.String({ maxLength: 500 })),
           userName: t.String({ maxLength: 100 }),
         }),
       },
       ({ body }) => service().anilist.configure(body)
     )
     .post("/anilist/connect", () => service().anilist.connect())
+    .post(
+      "/anilist/callback",
+      { body: t.Object({ url: t.String({ maxLength: 8192 }) }) },
+      ({ body }) => service().anilist.receiveAuthorizationUrl(body.url)
+    )
+    .delete("/anilist/connect", () => service().anilist.cancelAuthorization())
     .post("/anilist/list", () => service().anilist.list())
     .post(
       "/anilist/subscriptions",
@@ -114,8 +159,8 @@ export function createAutomationApi(service: () => AutomationService, sync: Furi
           enabled: t.Boolean(),
           intervalMinutes: t.Integer({ maximum: 1440, minimum: 5 }),
           organization: t.Optional(organization),
-          statuses: t.Array(t.Union([t.Literal("CURRENT"), t.Literal("PLANNING")]), {
-            maxItems: 2,
+          statuses: t.Array(listStatus, {
+            maxItems: 6,
             minItems: 1,
             uniqueItems: true,
           }),

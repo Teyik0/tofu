@@ -242,6 +242,71 @@ test("AniList creates linked Nyaa rules in per-anime threads with overrides and 
   }
 });
 
+test("deleting an AniList thread reassigns its rules and subscriptions without recreating it on sync or restart", async () => {
+  const context = await setup();
+  try {
+    const destination = (await (
+      await context.request(
+        "/destinations",
+        json({ downloadPath: join(context.directory, "anime"), name: "Anime" })
+      )
+    ).json()) as Destination;
+    const template = (await (
+      await context.request(
+        "/automations/interpret",
+        json({ destinationId: destination.id, query: "Example Nyaa" })
+      )
+    ).json()) as AutomationDraft;
+    const subscription = (await (
+      await context.request(
+        "/anilist/subscriptions",
+        json({
+          enabled: true,
+          intervalMinutes: 15,
+          organization: {
+            basePath: join(context.directory, "video"),
+            mode: "per-anime",
+            overrides: [
+              {
+                destinationId: destination.id,
+                downloadPath: destination.downloadPath,
+                mediaId: 10,
+                name: destination.name,
+              },
+            ],
+          },
+          statuses: ["CURRENT"],
+          template: { ...template, includeExisting: true },
+        })
+      )
+    ).json()) as AniListSubscription;
+    await context.request(`/anilist/subscriptions/${subscription.id}/sync`, json({}));
+    const response = await context.request(`/destinations/${destination.id}`, { method: "DELETE" });
+    expect(response.status).toBe(200);
+    await context.restart();
+    const synced = (await (
+      await context.request(`/anilist/subscriptions/${subscription.id}/sync`, json({}))
+    ).json()) as AniListState;
+    expect(synced.subscriptions[0]?.error).toBeNull();
+    expect(synced.subscriptions[0]?.template.destinationId).toBe("default");
+    const organization = synced.subscriptions[0]?.organization;
+    expect(organization?.mode).toBe("per-anime");
+    expect(organization?.mode === "per-anime" && organization.overrides[0]?.destinationId).toBe(
+      "default"
+    );
+    const state = (await (
+      await context.request("/automation", undefined)
+    ).json()) as AutomationState;
+    expect(state.automations).toHaveLength(1);
+    expect(state.automations[0]?.destinationId).toBe("default");
+    expect((await (await context.request("/state", undefined)).json()).destinations).toHaveLength(
+      1
+    );
+  } finally {
+    await context.close();
+  }
+});
+
 test("AniList rejects invalid thread overrides before creating a subscription or folders", async () => {
   const context = await setup();
   try {

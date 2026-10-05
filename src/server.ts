@@ -4,7 +4,10 @@ import { furin } from "@teyik0/furin";
 import { Elysia, t } from "elysia";
 import { version } from "../package.json";
 import { createApi } from "./server/api";
+import { DesktopUrlOpener } from "./server/desktop-opening";
+import { registerDesktopProtocol } from "./server/desktop-protocol";
 import { TorrentEngine, UserError } from "./server/engine";
+import { readAniListClient } from "./server/feeds/anilist-client";
 import { AutomationService } from "./server/feeds/service";
 import { acquireInstance } from "./server/instance";
 import { pluginEndpoints } from "./server/plugins/registry";
@@ -98,10 +101,52 @@ async function dispose() {
 }
 
 async function launchServer() {
+  const { desktop } = instance;
+  const sdk = desktop ? await import("electrobun/main") : null;
+  const opening = sdk
+    ? new DesktopUrlOpener({
+        authorize: (callbackUrl) => getAutomation().anilist.receiveAuthorizationUrl(callbackUrl),
+        engine: getEngine,
+        show: () => {
+          getDesktop().open();
+        },
+      })
+    : null;
+  if (sdk && opening) {
+    const openUrl = (callbackUrl: string) => {
+      void opening
+        .open(callbackUrl)
+        .catch((error: unknown) => {
+          if (
+            error instanceof UserError &&
+            error.message ===
+              "AniList authorization was declined. Connect again when you are ready."
+          ) {
+            return;
+          }
+          console.error("Unable to open link");
+          return sdk.Utils.showMessageBox({
+            detail: error instanceof Error ? error.message : "Unexpected error",
+            message: "Unable to open link",
+            title: instance.name,
+            type: "error",
+          });
+        })
+        .catch(console.error);
+    };
+    sdk.default.events.on("open-url", (event: { data: { url: string } }) =>
+      openUrl(event.data.url)
+    );
+    const initialUrl = process.env.TOFU_OPEN_URL;
+    delete process.env.TOFU_OPEN_URL;
+    if (initialUrl) {
+      openUrl(initialUrl);
+    }
+    await registerDesktopProtocol(instance);
+  }
   runtime.lease ??= await acquireInstance(instance);
   runtime.sync ??= await createTofuSync(dataDir);
   const { sync } = runtime;
-  const { desktop } = instance;
   engine =
     runtime.engine ??
     (await TorrentEngine.open({
@@ -110,7 +155,13 @@ async function launchServer() {
       network: { maxConns: 100, userAgent: `Tofu/${version}`, utp: false },
     }));
   runtime.engine = engine;
+  const anilistClient = await readAniListClient(
+    instance.profile,
+    process.env.TOFU_ANILIST_CLIENT_ID,
+    process.execPath
+  );
   runtime.automation ??= await AutomationService.open({
+    anilistClient,
     dataDir,
     endpoints: pluginEndpoints,
     engine: getEngine,
@@ -174,16 +225,18 @@ async function launchServer() {
   runtime.shutdown = shutdown;
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
-  if (!desktop) {
+  if (!sdk) {
     return;
   }
-  const sdk = await import("electrobun/main");
   const { ApplicationMenu } = sdk;
   ApplicationMenu.setApplicationMenu([
     {
       label: instance.name,
       submenu: [
         { label: `About ${instance.name}`, role: "about" },
+        ...(process.platform === "darwin" && instance.profile === "release"
+          ? [{ action: "set-default-torrent-app", label: "Set as default torrent app" }]
+          : []),
         { type: "divider" },
         { accelerator: "CmdOrCtrl+Q", label: `Quit ${instance.name}`, role: "quit" },
       ],
@@ -201,6 +254,30 @@ async function launchServer() {
       ],
     },
   ]);
+  ApplicationMenu.on("application-menu-clicked", (event) => {
+    if ((event as { data: { action: string } }).data.action !== "set-default-torrent-app") {
+      return;
+    }
+    void import("./server/desktop-associations")
+      .then(({ setDefaultTorrentApp }) => setDefaultTorrentApp(instance.profile))
+      .then(() =>
+        sdk.Utils.showMessageBox({
+          detail: "Tofu will open .torrent files and magnet links.",
+          message: "Tofu is your default torrent app",
+          title: instance.name,
+          type: "info",
+        })
+      )
+      .catch((error: unknown) =>
+        sdk.Utils.showMessageBox({
+          detail: error instanceof Error ? error.message : "Unexpected error",
+          message: "Unable to change default torrent app",
+          title: instance.name,
+          type: "error",
+        })
+      )
+      .catch(console.error);
+  });
   const smokeScript = process.env.TOFU_SMOKE_SCRIPT
     ? await Bun.file(process.env.TOFU_SMOKE_SCRIPT).text()
     : null;
@@ -215,5 +292,6 @@ async function launchServer() {
     smokeScript,
     url,
   });
+  opening?.ready();
   return runtime.desktop;
 }

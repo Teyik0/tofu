@@ -14,7 +14,7 @@ test("pausing immediately after an active restart preserves completed file progr
     ).json()) as { id: string };
     await waitFor(
       async () => context.engine.detail(id),
-      (value) => value.progress === 1
+      (value) => value.status === "seeding"
     );
     await context.engine.close();
     reopened = await TorrentEngine.open({

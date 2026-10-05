@@ -11,7 +11,7 @@ test("a torrent rejects an incoming connection from its own peer id", async () =
     const { id } = (await added.json()) as { id: string };
     await waitFor(
       async () => context.engine.snapshot(id),
-      (snapshot) => snapshot.detail?.progress === 1
+      (snapshot) => snapshot.detail?.status === "seeding"
     );
     const socket = await Bun.connect({
       hostname: "127.0.0.1",

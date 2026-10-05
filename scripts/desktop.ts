@@ -1,7 +1,8 @@
 import { join } from "node:path";
+import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 
 const root = join(import.meta.dir, "..");
-const launcher = join(root, `build/dev-macos-${process.arch}/Tofu-dev.app/Contents/MacOS/launcher`);
+const launcher = desktopLauncher(root, hostDesktopTarget(), "dev");
 if (!(await Bun.file(launcher).exists())) {
   const build = Bun.spawn([process.execPath, "scripts/build.ts", "desktop"], {
     cwd: root,

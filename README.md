@@ -18,13 +18,17 @@ Files stay on disk unless you explicitly choose to delete them. Unavailable stat
 
 ## 📦 Install
 
-Download the macOS Apple Silicon build from [Releases](https://github.com/Teyik0/Tofu/releases) and move Tofu to Applications.
+Download an installer matching your system from [Releases](https://github.com/Teyik0/Tofu/releases). The release pipeline targets macOS Apple Silicon, Windows x64, and Linux x64/ARM64.
+
+On macOS, open the DMG and move Tofu to Applications. On Windows, extract the entire ZIP before running `Tofu-Setup.exe`; keep its `.installer` folder alongside it. On Linux, extract the `.tar.gz` and run `./installer`.
+
+On macOS, choose **Tofu → Set as default torrent app** to open `.torrent` files and magnet links with Tofu. Opening a torrent starts it in your saved download folder; reopening an existing torrent preserves its destination and paused state. You can also select Tofu in Finder's **Get Info → Open with → Change All…** for `.torrent` files. The development app does not advertise file or magnet associations.
 
 See the [release guide](docs/releases.md) for updates and signing details. macOS Apple Silicon is the currently validated platform.
 
 ## 🚀 Run from source
 
-You need **Bun 1.4+** and **Xcode Command Line Tools** on macOS.
+You need **Bun 1.4+**. macOS also requires **Xcode Command Line Tools**. Linux requires GTK 3, WebKitGTK 4.1, Ayatana AppIndicator, and librsvg; see the [development guide](docs/development.md).
 
 ```sh
 git clone https://github.com/Teyik0/Tofu.git
@@ -64,7 +68,7 @@ bun run build:desktop
 bun run test:native
 ```
 
-Tests use real peers, local trackers, and temporary folders. The native test also checks the actual desktop interface.
+`bun run test` runs exactly `bun test --parallel --isolate --bail`. Tests use real peers, local trackers, and temporary folders. The native test also checks the actual desktop interface and requires a graphical session.
 
 [Architecture & configuration](docs/development.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Benchmarks](BENCHMARK.md)
 

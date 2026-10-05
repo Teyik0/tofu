@@ -1,5 +1,6 @@
 import { chmod, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
+import { desktopTarget, installerName } from "../platform";
 import type { UpdateState } from "../types";
 import { UserError } from "./engine";
 
@@ -247,10 +248,7 @@ export class UpdatesService {
         this.state.status = "current";
         return this.snapshot();
       }
-      const name = `Tofu-${version}-macos-${this.options.arch}.dmg`;
-      this.asset =
-        latest.assets.find((item) => item.name === name && this.options.platform === "darwin") ??
-        null;
+      this.asset = this.compatibleInstaller(latest, version);
       if (!this.asset) {
         throw new Error("No installer compatible with this machine in the release");
       }
@@ -267,6 +265,14 @@ export class UpdatesService {
       this.state.error = error instanceof Error ? error.message : "Unable to verify";
     }
     return this.snapshot();
+  }
+  private compatibleInstaller(latest: Release, version: string) {
+    const target = desktopTarget(this.options.platform, this.options.arch);
+    if (!target) {
+      return null;
+    }
+    const name = installerName(version, target);
+    return latest.assets.find((item) => item.name === name) ?? null;
   }
   async download() {
     if (!(this.access.token && this.asset) || this.state.status !== "available") {

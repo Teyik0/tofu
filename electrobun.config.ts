@@ -5,8 +5,12 @@ const release = process.env.TOFU_RELEASE === "1";
 
 export default {
   app: {
+    fileAssociations: release
+      ? [{ ext: ["torrent"], name: "BitTorrent document", role: "Viewer" }]
+      : [],
     identifier: release ? "app.tofu.torrents" : "app.tofu.torrents.dev",
     name: "Tofu",
+    urlSchemes: release ? ["magnet", "tofu"] : ["tofu-dev"],
     version,
   },
   build: {
@@ -15,19 +19,33 @@ export default {
       ".furin/build/bun/client": "bun/client",
       ".furin/build/bun/public": "bun/public",
       "LICENSE.md": "bun/LICENSE.md",
+      "runtime/anilist-client.json": "bun/anilist-client.json",
+      "runtime/desktop-protocol.js": "bun/desktop-protocol.js",
       "runtime/node_modules": "bun/node_modules",
+    },
+    linux: {
+      bundleCEF: false,
+      defaultRenderer: "native",
+      icon: "assets/tofu-icon.png",
     },
     mac: {
       bundleCEF: false,
-      codesign: Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
+      codesign: release || Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
       createDmg: process.env.TOFU_RELEASE === "1",
       defaultRenderer: "native",
       icons: "assets/tofu.iconset",
       notarize: Boolean(
-        process.env.ELECTROBUN_DEVELOPER_ID && process.env.ELECTROBUN_APPLEAPIKEYPATH
+        process.env.ELECTROBUN_DEVELOPER_ID &&
+          process.env.ELECTROBUN_DEVELOPER_ID !== "-" &&
+          process.env.ELECTROBUN_APPLEAPIKEYPATH
       ),
     },
     mainProcess: "bun",
+    win: {
+      bundleCEF: false,
+      defaultRenderer: "native",
+      icon: "assets/tofu-icon.png",
+    },
   },
   runtime: { exitOnLastWindowClosed: false },
 } satisfies ElectrobunConfig;

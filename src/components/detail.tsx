@@ -53,14 +53,14 @@ export const TrafficChart = memo(function TrafficChartView({
         <polyline
           fill="none"
           points={points("download")}
-          stroke="#66834c"
+          stroke="var(--chart-download)"
           strokeWidth={small ? 3 : 2}
           vectorEffect="non-scaling-stroke"
         />
         <polyline
           fill="none"
           points={points("upload")}
-          stroke="#a59a80"
+          stroke="var(--chart-upload)"
           strokeWidth={small ? 3 : 2}
           vectorEffect="non-scaling-stroke"
         />
@@ -244,7 +244,9 @@ export const Detail = memo(function DetailView({
                       key={`piece-${torrent.id}-${index}`}
                       style={{
                         background:
-                          value === 0 ? "#e8e9e3" : `rgba(102, 131, 76, ${0.25 + value * 0.75})`,
+                          value === 0
+                            ? "var(--progress-track)"
+                            : `color-mix(in srgb, var(--chart-download) ${(0.25 + value * 0.75) * 100}%, transparent)`,
                       }}
                     />
                   ))}
@@ -258,18 +260,18 @@ export const Detail = memo(function DetailView({
                 <Stat label="Uploaded" value={bytes(torrent.uploaded)} />
                 <Stat label="Ratio" value={ratio(torrent.ratio)} />
                 <Stat
-                  label="Temps restant"
+                  label="Time remaining"
                   value={torrent.progress === 1 ? "Completed" : duration(torrent.eta)}
                 />
                 <Stat
                   label="Connected peers"
-                  value={`${torrent.peers} · ${torrent.seeds} sources`}
+                  value={`${torrent.peers} · ${torrent.seeds} seed${torrent.seeds === 1 ? "" : "s"}`}
                 />
                 <Stat
-                  label="Essaim · sources / pairs"
+                  label="Swarm · seeds / peers"
                   value={`${torrent.swarmSeeds ?? "—"} / ${torrent.swarmPeers ?? "—"}`}
                 />
-                <Stat label="Temps actif" value={duration(torrent.activeSeconds)} />
+                <Stat label="Active time" value={duration(torrent.activeSeconds)} />
                 <Stat label="Seeding time" value={duration(torrent.seedSeconds)} />
               </dl>
             </div>
@@ -433,7 +435,7 @@ export const Detail = memo(function DetailView({
                             ? duration((Date.now() - row.lastAnnounce) / 1000)
                             : "—"}
                           {row.interval !== null && (
-                            <small>Intervalle : {duration(row.interval)}</small>
+                            <small>Interval: {duration(row.interval)}</small>
                           )}
                         </td>
                         <td>

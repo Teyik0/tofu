@@ -10,7 +10,7 @@ test("dashboard reads send summaries while a selected torrent exposes its own de
     ).json()) as { id: string };
     await waitFor(
       async () => context.engine.snapshot(id),
-      (state) => state.detail?.progress === 1
+      (state) => state.detail?.status === "seeding"
     );
     const overview = (await (
       await context.request("/state?detail=false", undefined)

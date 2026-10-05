@@ -1,6 +1,7 @@
 import { chmod, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { version } from "../package.json";
+import { hostDesktopTarget, installerName, releaseTargets } from "../src/platform";
 
 const temporary = process.env.RUNNER_TEMP;
 const keychain = temporary ? join(temporary, "tofu-signing.keychain-db") : null;
@@ -17,6 +18,9 @@ if (Bun.argv[2] === "validate") {
   }
   if (process.env.EXPECTED_ARCH !== process.arch) {
     throw new Error("Incorrect runner architecture");
+  }
+  if (process.env.EXPECTED_PLATFORM !== hostDesktopTarget().platform) {
+    throw new Error("Incorrect runner platform");
   }
   const ref = process.env.GITHUB_REF;
   if (ref?.startsWith("refs/tags/") && ref !== `refs/tags/v${version}`) {
@@ -90,7 +94,7 @@ if (Bun.argv[2] === "validate") {
     const existing = await Bun.file(env).text();
     await Bun.write(env, `${existing}\nELECTROBUN_APPLEAPIKEYPATH=${p8}\n`);
   } else {
-    console.log("No Apple certificate configured: unsigned development installers.");
+    console.log("No Apple certificate configured: free ad hoc signing with manual macOS approval.");
   }
 } else if (Bun.argv[2] === "cleanup") {
   if (temporary && keychain) {
@@ -113,9 +117,10 @@ if (Bun.argv[2] === "validate") {
   const paths = [...new Bun.Glob("*").scanSync("artifacts")]
     .filter((name) => name !== "SHA256SUMS")
     .sort();
-  for (const arch of ["arm64"]) {
-    if (!paths.includes(`Tofu-${version}-macos-${arch}.dmg`)) {
-      throw new Error(`Installer ${arch} missing`);
+  for (const target of releaseTargets) {
+    const name = installerName(version, target);
+    if (!paths.includes(name)) {
+      throw new Error(`Installer ${name} missing`);
     }
   }
   const checksums = await Promise.all(

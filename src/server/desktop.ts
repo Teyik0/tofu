@@ -31,8 +31,11 @@ export class DesktopController {
     this.name = options.name;
     this.tray = new Tray({
       height: 18,
-      image: join(import.meta.dir, "public/tray-template.png"),
-      template: true,
+      image: join(
+        import.meta.dir,
+        process.platform === "darwin" ? "public/tray-template.png" : "public/icon.png"
+      ),
+      template: process.platform === "darwin",
       title: options.profile === "dev" ? "DEV" : "",
       width: 18,
     });

@@ -9,7 +9,7 @@ export const pluginEndpoints = {
 export type PluginEndpoints = typeof pluginEndpoints & { anilist?: string; anilistToken?: string };
 export const plugins: Pick<PluginState, "id" | "name" | "description">[] = [
   {
-    description: "Turn Watching and Plan to Watch into automations for your tab.",
+    description: "Browse your anime library, sync watched episodes, and customize download rules.",
     id: "anilist",
     name: "AniList",
   },

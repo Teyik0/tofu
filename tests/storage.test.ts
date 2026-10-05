@@ -5,53 +5,56 @@ import type { Torrent } from "webtorrent";
 import type { DashboardState } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
 
-test("an inaccessible paused destination reports an error on new downloads and recovers after access returns", async () => {
-  const context = await fixture(16_384, []);
-  const other = await fixture(16_384, []);
-  const protectedDirectory = join(context.directory, "protected");
-  try {
-    const first = (await (
-      await context.request(
-        "/torrents",
-        json({
-          downloadPath: join(protectedDirectory, "files"),
-          paused: false,
-          source: context.magnet,
-        })
-      )
-    ).json()) as { id: string };
-    await waitFor(
-      async () => context.engine.detail(first.id),
-      (detail) => detail.progress === 1
-    );
-    await context.request(`/torrents/${first.id}/pause`, json({}));
-    await chmod(protectedDirectory, 0o000);
-    const second = (await (
-      await context.request("/torrents", json({ paused: false, source: other.magnet }))
-    ).json()) as { id: string };
-    const failed = await waitFor(
-      async () => context.engine.detail(second.id),
-      (detail) => detail.status === "error" || detail.status === "checking"
-    );
-    expect(failed.status).toBe("error");
-    expect(failed.error).toContain("EACCES");
-    expect((await context.request("/health", undefined)).status).toBe(200);
-    await chmod(protectedDirectory, 0o700);
-    await context.request(`/torrents/${second.id}/resume`, json({}));
-    await waitFor(
-      async () => context.engine.detail(second.id),
-      (detail) => detail.progress === 1
-    );
-    const content = await context.request(`/torrents/${second.id}/files/0/content`, undefined);
-    expect(content.status).toBe(200);
-    expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(
-      Bun.SHA256.hash(other.bytes, "hex")
-    );
-  } finally {
-    await chmod(protectedDirectory, 0o700);
-    await Promise.all([context.close(), other.close()]);
+test.skipIf(process.platform === "win32")(
+  "POSIX permissions report an inaccessible paused destination and recover after access returns",
+  async () => {
+    const context = await fixture(16_384, []);
+    const other = await fixture(16_384, []);
+    const protectedDirectory = join(context.directory, "protected");
+    try {
+      const first = (await (
+        await context.request(
+          "/torrents",
+          json({
+            downloadPath: join(protectedDirectory, "files"),
+            paused: false,
+            source: context.magnet,
+          })
+        )
+      ).json()) as { id: string };
+      await waitFor(
+        async () => context.engine.detail(first.id),
+        (detail) => detail.status === "seeding"
+      );
+      await context.request(`/torrents/${first.id}/pause`, json({}));
+      await chmod(protectedDirectory, 0o000);
+      const second = (await (
+        await context.request("/torrents", json({ paused: false, source: other.magnet }))
+      ).json()) as { id: string };
+      const failed = await waitFor(
+        async () => context.engine.detail(second.id),
+        (detail) => detail.status === "error" || detail.status === "checking"
+      );
+      expect(failed.status).toBe("error");
+      expect(failed.error).toContain("EACCES");
+      expect((await context.request("/health", undefined)).status).toBe(200);
+      await chmod(protectedDirectory, 0o700);
+      await context.request(`/torrents/${second.id}/resume`, json({}));
+      await waitFor(
+        async () => context.engine.detail(second.id),
+        (detail) => detail.status === "seeding"
+      );
+      const content = await context.request(`/torrents/${second.id}/files/0/content`, undefined);
+      expect(content.status).toBe(200);
+      expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(
+        Bun.SHA256.hash(other.bytes, "hex")
+      );
+    } finally {
+      await chmod(protectedDirectory, 0o700);
+      await Promise.all([context.close(), other.close()]);
+    }
   }
-});
+);
 
 test("symbolic aliases of a destination cannot overwrite or delete another torrent's files", async () => {
   const context = await fixture(16_384, []);
@@ -62,11 +65,15 @@ test("symbolic aliases of a destination cannot overwrite or delete another torre
     ).json()) as { id: string };
     await waitFor(
       async () => context.engine.detail(first.id),
-      (detail) => detail.progress === 1
+      (detail) => detail.status === "seeding"
     );
     await context.request(`/torrents/${first.id}/pause`, json({}));
     const alias = join(context.directory, "alias-downloads");
-    await symlink(join(context.directory, "downloads"), alias);
+    await symlink(
+      join(context.directory, "downloads"),
+      alias,
+      process.platform === "win32" ? "junction" : "dir"
+    );
     const second = (await (
       await context.request(
         "/torrents",
@@ -75,7 +82,7 @@ test("symbolic aliases of a destination cannot overwrite or delete another torre
     ).json()) as { id: string };
     const collision = await waitFor(
       async () => context.engine.detail(second.id),
-      (detail) => detail.status === "error" || detail.progress === 1
+      (detail) => detail.status === "error" || detail.status === "seeding"
     );
     expect(collision.status).toBe("error");
     expect(collision.error).toContain("already used");
@@ -107,7 +114,11 @@ test("a torrent refuses symbolic links below its destination before writing down
     );
     const outside = join(context.directory, "outside");
     await mkdir(outside);
-    await symlink(outside, join(context.directory, "downloads/collection"));
+    await symlink(
+      outside,
+      join(context.directory, "downloads/collection"),
+      process.platform === "win32" ? "junction" : "dir"
+    );
     const added = await context.request(
       "/torrents",
       json({
@@ -119,7 +130,7 @@ test("a torrent refuses symbolic links below its destination before writing down
     const { id } = (await added.json()) as { id: string };
     const detail = await waitFor(
       async () => context.engine.detail(id),
-      (value) => value.status === "error" || value.progress === 1
+      (value) => value.status === "error" || value.status === "seeding"
     );
     expect(detail.status).toBe("error");
     expect(detail.error).toContain("symbolic link");
@@ -148,13 +159,13 @@ test("file reads, moves and deletion reject a directory replaced by a symbolic l
     ).json()) as { id: string };
     await waitFor(
       async () => context.engine.detail(id),
-      (detail) => detail.progress === 1
+      (detail) => detail.status === "seeding"
     );
     await context.request(`/torrents/${id}/pause`, json({}));
     const original = join(context.directory, "downloads/collection");
     const outside = join(context.directory, "outside");
     await rename(original, outside);
-    await symlink(outside, original);
+    await symlink(outside, original, process.platform === "win32" ? "junction" : "dir");
     const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
     expect(content.status).toBe(409);
     const move = await context.request("/destinations/default", {
@@ -193,7 +204,7 @@ test("filenames starting with two dots can be downloaded, read and explicitly de
     ).json()) as { id: string };
     await waitFor(
       async () => context.engine.detail(id),
-      (detail) => detail.progress === 1
+      (detail) => detail.status === "seeding"
     );
     const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
     expect(content.status).toBe(200);
@@ -232,7 +243,7 @@ test("relocation keeps a multifile torrent intact on failure and moves only its 
     ).json()) as { id: string };
     const completed = await waitFor(
       async () => context.engine.detail(id),
-      (detail) => detail.progress === 1
+      (detail) => detail.status === "seeding"
     );
     await context.request(`/torrents/${id}/pause`, json({}));
     const originalPath = completed.savePath;
@@ -299,7 +310,7 @@ test("a multifile torrent keeps its declared folders and deletion preserves unre
         (
           await context.request(`/state?selected=${id}`, undefined)
         ).json() as Promise<DashboardState>,
-      (value) => value.detail?.progress === 1
+      (value) => value.detail?.status === "seeding"
     );
     const destination = join(context.directory, "downloads");
     expect(state.detail?.savePath).toBe(destination);

@@ -5,14 +5,13 @@ import {
   CheckIcon,
   LoaderCircleIcon,
   PlayIcon,
-  PlugIcon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
   TrashIcon,
   ZapIcon,
 } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { api } from "../client";
 import type {
   AutomationCriterion,
@@ -105,125 +104,6 @@ function QuietEmpty({ title, description }: { title: string; description: string
   );
 }
 
-function PluginCard({
-  plugin,
-  busy,
-  action,
-  reload,
-}: {
-  plugin: PluginState;
-  busy: boolean;
-  action: Action;
-  reload: () => Promise<void>;
-}) {
-  const [key, setKey] = useState("");
-  const [limit, setLimit] = useState(String(plugin.dailyLimit));
-  const save = (enabled: boolean) =>
-    action(async () => {
-      await request(`/plugins/${plugin.id}`, "PUT", {
-        enabled,
-        ...(key.trim() ? { apiKey: key.trim() } : {}),
-        dailyLimit: Number(limit),
-      });
-      setKey("");
-      await reload();
-    });
-  const keyed = plugin.id === "jev" || plugin.id === "c411" || plugin.id === "anilist";
-  return (
-    <article className="plugin-card">
-      <div className="automation-row-heading">
-        <div className="flex items-center gap-2">
-          <PlugIcon aria-hidden="true" />
-          <strong>{plugin.name}</strong>
-          <Badge variant={plugin.enabled ? "secondary" : "outline"}>
-            {plugin.enabled ? "Enabled" : "Disabled"}
-          </Badge>
-        </div>
-        <Checkbox
-          aria-label={`Enable ${plugin.name}`}
-          checked={plugin.enabled}
-          disabled={busy}
-          id={`plugin-${plugin.id}`}
-          onCheckedChange={(value) => save(value === true)}
-        />
-      </div>
-      <p>{plugin.description}</p>
-      {keyed === true && (
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor={`key-${plugin.id}`}>
-              {plugin.id === "anilist"
-                ? "AniList access token"
-                : `API key ${plugin.id === "jev" ? "TypeSafe" : "C411"}`}
-            </FieldLabel>
-            <Input
-              autoComplete="off"
-              id={`key-${plugin.id}`}
-              onChange={(event) => setKey(event.target.value)}
-              placeholder={plugin.hasApiKey ? "Key saved · enter to replace" : "Your personal key"}
-              type="password"
-              value={key}
-            />
-            <FieldDescription>
-              {plugin.id === "anilist"
-                ? "Personal OAuth token, separate from the client secret. Connect from the AniList tab."
-                : plugin.id === "jev"
-                  ? "Without a key: exact name or pattern. Evaluated titles and metadata are sent to TypeSafe."
-                  : "Available in C411 → API integrations. The key stays on the server."}
-            </FieldDescription>
-          </Field>
-          {plugin.id === "jev" && (
-            <Field>
-              <FieldLabel htmlFor="jev-daily-limit">Daily call limit</FieldLabel>
-              <Input
-                id="jev-daily-limit"
-                max="100000"
-                min="1"
-                onChange={(event) => setLimit(event.target.value)}
-                type="number"
-                value={limit}
-              />
-              <FieldDescription>
-                {plugin.callsToday} calls today · cached evaluations are not billed again.
-              </FieldDescription>
-            </Field>
-          )}
-        </FieldGroup>
-      )}
-      {plugin.error !== null && (
-        <Alert>
-          <AlertDescription>{plugin.error}</AlertDescription>
-        </Alert>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-        {keyed === true && (
-          <Button disabled={busy} onClick={() => save(plugin.enabled)} size="sm" variant="outline">
-            Save
-          </Button>
-        )}
-        <Button
-          disabled={busy || !plugin.enabled}
-          onClick={() =>
-            action(async () => {
-              await request(`/plugins/${plugin.id}/test`, "POST", {});
-              await reload();
-            })
-          }
-          size="sm"
-          variant="ghost"
-        >
-          Test connection
-        </Button>
-        {plugin.checkedAt !== null && (
-          <span className="automation-caption">
-            Checked at {new Date(plugin.checkedAt).toLocaleTimeString("en-US")}
-          </span>
-        )}
-      </div>
-    </article>
-  );
-}
-
 function OrderEditor<T extends string>({
   values,
   names,
@@ -287,54 +167,58 @@ function OrderEditor<T extends string>({
   );
 }
 
-function RuleFields({
+export function RuleFields({
   draft,
   onChange,
+  identity,
 }: {
   draft: AutomationDraft;
   onChange: (draft: AutomationDraft) => void;
+  identity?: ReactNode;
 }) {
   const set = <K extends keyof AutomationDraft>(key: K, value: AutomationDraft[K]) =>
     onChange({ ...draft, [key]: value });
   return (
     <FieldGroup>
-      <div className="automation-field-grid">
-        <Field>
-          <FieldLabel htmlFor="automation-title">Exact name or fallback pattern</FieldLabel>
-          <Input
-            id="automation-title"
-            onChange={(event) => set("title", event.target.value)}
-            required
-            value={draft.title}
-          />
-          <FieldDescription>
-            Check the extracted title. It is also used for matching without Jev.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="automation-matcher">Matching</FieldLabel>
-          <Select
-            items={[
-              { label: "Exact title name", value: "exact" },
-              { label: "Release name pattern", value: "pattern" },
-              { label: "Jev + exact fallback", value: "jev" },
-            ]}
-            onValueChange={(value) => set("matchMode", value as AutomationDraft["matchMode"])}
-            value={draft.matchMode}
-          >
-            <SelectTrigger className="w-full" id="automation-matcher">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                <SelectItem value="exact">Exact title name</SelectItem>
-                <SelectItem value="pattern">Release name pattern</SelectItem>
-                <SelectItem value="jev">Jev + exact fallback</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
+      {identity ?? (
+        <div className="automation-field-grid">
+          <Field>
+            <FieldLabel htmlFor="automation-title">Exact name or fallback pattern</FieldLabel>
+            <Input
+              id="automation-title"
+              onChange={(event) => set("title", event.target.value)}
+              required
+              value={draft.title}
+            />
+            <FieldDescription>
+              Check the extracted title. It is also used for matching without Jev.
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="automation-matcher">Matching</FieldLabel>
+            <Select
+              items={[
+                { label: "Exact title name", value: "exact" },
+                { label: "Release name pattern", value: "pattern" },
+                { label: "Jev + exact fallback", value: "jev" },
+              ]}
+              onValueChange={(value) => set("matchMode", value as AutomationDraft["matchMode"])}
+              value={draft.matchMode}
+            >
+              <SelectTrigger className="w-full" id="automation-matcher">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  <SelectItem value="exact">Exact title name</SelectItem>
+                  <SelectItem value="pattern">Release name pattern</SelectItem>
+                  <SelectItem value="jev">Jev + exact fallback</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
+      )}
       <div className="automation-field-grid">
         <Field>
           <FieldLabel htmlFor="automation-language">
@@ -513,11 +397,9 @@ function ReleaseRow({ release, children }: { release: FeedRelease; children?: Re
 }
 
 export function AutomationCenter({
-  initialTab,
   destinationId,
   close,
 }: {
-  initialTab: "plugins" | "automations";
   destinationId: string;
   close: () => void;
 }) {
@@ -526,7 +408,7 @@ export function AutomationCenter({
   const [saved, setSaved] = useState<AutomationState | null>(null);
   const state: AutomationState | null =
     live && "plugins" in live && (!saved || live.updatedAt > saved.updatedAt) ? live : saved;
-  const [tab, setTab] = useState(initialTab as string);
+  const [tab, setTab] = useState("automations");
   const [target, setTarget] = useState(destinationId);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<AutomationDraft | null>(null);
@@ -642,10 +524,6 @@ export function AutomationCenter({
         </DialogHeader>
         <Tabs onValueChange={setTab} value={tab}>
           <TabsList variant="line">
-            <TabsTrigger value="plugins">
-              <PlugIcon />
-              Plugins
-            </TabsTrigger>
             <TabsTrigger value="discover">
               <SearchIcon />
               Discover
@@ -655,7 +533,7 @@ export function AutomationCenter({
               Automations
             </TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
-            <TabsTrigger value="anilist">AniList</TabsTrigger>
+            <TabsTrigger value="anilist">AniList tracking</TabsTrigger>
           </TabsList>
           {error || loadingError ? (
             <Alert>
@@ -687,23 +565,6 @@ export function AutomationCenter({
                   )}
                   target={target}
                 />
-              </TabsContent>
-              <TabsContent value="plugins">
-                <div className="plugins-intro">
-                  <span className="automation-caption">INCLUDED PLUGINS</span>
-                  <p>Enable only the sources you want to use.</p>
-                </div>
-                <div className="plugin-grid">
-                  {state.plugins.map((plugin) => (
-                    <PluginCard
-                      action={action}
-                      busy={busy}
-                      key={plugin.id}
-                      plugin={plugin}
-                      reload={reload}
-                    />
-                  ))}
-                </div>
               </TabsContent>
               <TabsContent value="discover">
                 <form

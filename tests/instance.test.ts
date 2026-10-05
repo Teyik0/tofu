@@ -7,19 +7,25 @@ import { fixture, json, waitFor } from "./helpers";
 
 function launch(config: InstanceConfig, hotEntry?: string) {
   const command = hotEntry ? ["--hot", hotEntry] : ["scripts/dev.ts"];
-  const child = Bun.spawn([process.execPath, ...command], {
-    cwd: join(import.meta.dir, ".."),
-    env: {
-      ...process.env,
-      TOFU_DATA_DIR: config.dataDir,
-      TOFU_DOWNLOAD_DIR: config.downloadPath,
-      TOFU_MODE: "server",
-      TOFU_PORT: String(config.port),
-      TOFU_PROFILE: config.profile,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+  const child = Bun.spawn(
+    [process.execPath, "--preload", join(import.meta.dir, "process-control.ts"), ...command],
+    {
+      cwd: join(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        TOFU_DATA_DIR: config.dataDir,
+        TOFU_DOWNLOAD_DIR: config.downloadPath,
+        TOFU_MODE: "server",
+        TOFU_PORT: String(config.port),
+        TOFU_PROFILE: config.profile,
+      },
+      ipc() {
+        // Enable the parent-to-child shutdown channel; the child sends no messages.
+      },
+      stderr: "pipe",
+      stdout: "pipe",
+    }
+  );
   const output = Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -52,7 +58,12 @@ function launch(config: InstanceConfig, hotEntry?: string) {
     },
     async stop() {
       if (child.exitCode === null) {
-        child.kill("SIGTERM");
+        // Windows termination cannot deliver a POSIX signal; ask the child to run its shutdown handler.
+        if (process.platform === "win32") {
+          child.send("shutdown");
+        } else {
+          child.kill("SIGTERM");
+        }
       }
       await child.exited;
     },
@@ -97,6 +108,33 @@ test("development refuses the production data directory even before it has a pro
   ).toThrow("reserved for release");
 });
 
+test("Windows keeps development and release state in separate roaming application folders", () => {
+  const homeDir = join(import.meta.dir, "temporary-home");
+  const options = {
+    dataDir: undefined,
+    desktop: true,
+    downloadPath: undefined,
+    homeDir,
+    platform: "win32" as const,
+    port: undefined,
+  };
+  const dev = resolveInstanceConfig({ ...options, profile: "dev" });
+  const release = resolveInstanceConfig({ ...options, profile: "release" });
+  expect(dev.dataDir).toBe(join(homeDir, "AppData/Roaming/Tofu-dev"));
+  expect(release.dataDir).toBe(join(homeDir, "AppData/Roaming/Tofu"));
+  expect(dev.downloadPath).toBe(join(homeDir, "Downloads/Tofu-dev"));
+  expect(release.downloadPath).toBe(join(homeDir, "Downloads/Tofu"));
+  expect(dev.port).toBe(0);
+  expect(release.port).toBe(0);
+  const roaming = join(homeDir, "redirected-roaming");
+  expect(
+    resolveInstanceConfig({ ...options, appDataDir: roaming, profile: "release" }).dataDir
+  ).toBe(join(roaming, "Tofu"));
+  expect(() =>
+    resolveInstanceConfig({ ...options, dataDir: release.dataDir, profile: "dev" })
+  ).toThrow("reserved for release");
+});
+
 test("development does not claim an existing database whose channel is unknown", async () => {
   const context = await fixture(1024, []);
   const config = resolveInstanceConfig({
@@ -111,7 +149,10 @@ test("development does not claim an existing database whose channel is unknown",
   await Bun.write(join(config.dataDir, "tofu.sqlite"), "legacy database, preserve these bytes");
   const child = launch(config);
   try {
-    const exit = await Promise.race([child.child.exited, Bun.sleep(5000).then(() => null)]);
+    const exit = await waitFor(
+      async () => child.child.exitCode,
+      (code) => code !== null
+    );
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
     expect(await child.output).toContain("unknown profile");
@@ -123,7 +164,7 @@ test("development does not claim an existing database whose channel is unknown",
     await child.stop();
     await context.close();
   }
-});
+}, 30_000);
 
 test("importing the server for build inspection does not create user databases", async () => {
   const context = await fixture(1024, []);
@@ -154,7 +195,7 @@ test("importing the server for build inspection does not create user databases",
     }
     await context.close();
   }
-});
+}, 30_000);
 
 test("the first protected startup refuses a running legacy instance without a lock", async () => {
   const context = await fixture(1024, []);
@@ -178,7 +219,10 @@ test("the first protected startup refuses a running legacy instance without a lo
   );
   const child = launch(config);
   try {
-    const exit = await Promise.race([child.child.exited, Bun.sleep(5000).then(() => null)]);
+    const exit = await waitFor(
+      async () => child.child.exitCode,
+      (code) => code !== null
+    );
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
     expect(await child.output).toContain("legacy Tofu instance");
@@ -223,7 +267,7 @@ await Bun.write(${JSON.stringify(signal)}, JSON.stringify({iteration: ${iteratio
     const { id } = (await response.json()) as { id: string };
     await waitFor(
       async () => (await (await fetch(`${url}/api/state`)).json()) as DashboardState,
-      (state) => state.torrents[0]?.progress === 1
+      (state) => state.torrents[0]?.status === "seeding"
     );
     await Bun.write(entry, program(2, nextDataDir, "release"));
     const ready = await waitFor(
@@ -312,7 +356,7 @@ test("release claims legacy state without losing existing preferences or downloa
   const { id } = (await response.json()) as { id: string };
   await waitFor(
     async () => context.engine.detail(id),
-    (detail) => detail.progress === 1
+    (detail) => detail.status === "seeding"
   );
   await context.request(`/torrents/${id}/pause`, json({}));
   await context.request("/settings", {
@@ -365,9 +409,12 @@ test("an inactive profile cannot be reused by the other channel, even through a 
     await release.stop();
     const before = await Bun.file(join(config.dataDir, "tofu.sqlite")).arrayBuffer();
     const alias = join(context.directory, "alias");
-    await symlink(config.dataDir, alias);
+    await symlink(config.dataDir, alias, process.platform === "win32" ? "junction" : "dir");
     dev = launch({ ...config, dataDir: alias, profile: "dev" });
-    const exit = await Promise.race([dev.child.exited, Bun.sleep(5000).then(() => null)]);
+    const exit = await waitFor(
+      async () => dev?.child.exitCode ?? null,
+      (code) => code !== null
+    );
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
     expect(await dev.output).toContain("profile release");
@@ -396,7 +443,10 @@ test("a second process cannot open the same data directory and a crash releases 
     const url = await first.ready();
     const before = await Bun.file(join(config.dataDir, "server.json")).text();
     second = launch(config);
-    const exit = await Promise.race([second.child.exited, Bun.sleep(5000).then(() => null)]);
+    const exit = await waitFor(
+      async () => second?.child.exitCode ?? null,
+      (code) => code !== null
+    );
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
     expect(await second.output).toContain("already in use");

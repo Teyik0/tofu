@@ -4,7 +4,24 @@
 
 Use Bun for all commands. `bun run setup` prepares the Electrobun SDK through Hutch and installs the prebuilt WebTorrent native addon. No separate torrent service is required.
 
-`bun run build:desktop` creates `build/dev-macos-arm64/Tofu-dev.app` on Apple Silicon. Quit that development build before replacing it. Development and the installed release use separate state, download folders and native app identities, so both can run together.
+`bun run build:desktop` builds for the current OS and architecture. `bun run desktop` launches its native executable:
+
+| Target | Development bundle |
+| --- | --- |
+| macOS ARM64 | `build/dev-macos-arm64/Tofu-dev.app` |
+| Windows x64 | `build/dev-win-x64/Tofu-dev/` |
+| Linux x64 | `build/dev-linux-x64/Tofu-dev/` |
+| Linux ARM64 | `build/dev-linux-arm64/Tofu-dev/` |
+
+Quit that development build before replacing it. Development and the installed release use separate state, download folders and native app identities, so both can run together. Cross-platform releases use native runners rather than cross-compiling native addons from a Mac.
+
+Linux uses WebKitGTK and needs these runtime packages on Ubuntu 24.04 or newer:
+
+```sh
+sudo apt-get install libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2
+```
+
+Windows uses WebView2, and macOS uses WKWebView. CEF is not bundled. Native UI tests require a graphical session; Linux also needs a tray implementation to exercise background mode.
 
 For a compiled web server:
 
@@ -76,11 +93,11 @@ Each profile has its own files:
 | `instance.json` | Persistent ownership by dev or release |
 | `instance.lock` | OS lock held while this instance runs |
 
-The native profile comes from the packaged Electrobun channel, independently of `NODE_ENV` or terminal variables. `bun run dev` forces the development profile. Compiled web builds also use dev unless explicitly started with `TOFU_PROFILE=release bun run start`. Native releases ignore `TOFU_PROFILE` and stay on their packaged profile. On other systems the equivalent state roots are `~/.local/share/Tofu-dev` and `~/.local/share/Tofu`.
+The native profile comes from the packaged Electrobun channel, independently of `NODE_ENV` or terminal variables. `bun run dev` forces the development profile. Compiled web builds also use dev unless explicitly started with `TOFU_PROFILE=release bun run start`. Native releases ignore `TOFU_PROFILE` and stay on their packaged profile. Linux state roots are `~/.local/share/Tofu-dev` and `~/.local/share/Tofu`. Windows uses `%APPDATA%/Tofu-dev` and `%APPDATA%/Tofu`, falling back to `~/AppData/Roaming` when `APPDATA` is unset. Existing custom directories remain available through `TOFU_DATA_DIR`.
 
 Existing data in `Tofu` is preserved for the release; development starts with independent empty state. No torrents, automations or credentials are automatically copied between profiles. Development refuses the production data directory and unclaimed existing databases. A persistent marker prevents switching a custom data directory between profiles, including through a symlink.
 
-Only one server can open a data directory. An exclusive OS lock is acquired before any SQLite database opens, released after shutdown and automatically released after a crash. The lock file stays in place intentionally. Furin build inspection does not open user databases. Stop old builds before first launching a new build with this protection. To use a native instance from a browser, choose the menu-bar action instead of starting another server with the same state.
+Only one server can open a data directory. An exclusive OS lock is acquired before any SQLite database opens, released after shutdown and automatically released after a crash. macOS/Linux use `flock`; Windows holds a non-shared `CreateFileW` handle. Both preserve the lock file and avoid stale PID ownership. Furin build inspection does not open user databases. Stop old builds before first launching a new build with this protection. To use a native instance from a browser, choose the tray action instead of starting another server with the same state.
 
 Optional environment variables: `TOFU_DATA_DIR`, `TOFU_DOWNLOAD_DIR`, `TOFU_PORT`, `TOFU_MODE=server|desktop`, `TOFU_PROFILE=dev|release` for source/web servers, and `HUTCH_HOME`. Custom data directories remain protected by profile ownership and locking. Saved download preferences override the initial `TOFU_DOWNLOAD_DIR`; manually selected download folders remain an explicit user choice. Hutch uses `.cache/hutch` unless configured otherwise. The development-only demo checks the target profile and cannot seed the release accidentally.
 
@@ -90,7 +107,9 @@ Both compiled Furin bundles run in production mode, so `NODE_ENV` cannot disting
 
 Run the commands listed in the [README](../README.md) after changes. Integration tests exercise public APIs with real TCP peers, HTTP trackers, and temporary directories, including pause/resume, persistence, priorities, removal, relocation, and repair of damaged data.
 
-The native test launches the actual `.app` with temporary state. It checks forms, keyboard navigation, live updates, drag and drop, transfers, and downloaded SHA-256 hashes. Its report is `.cache/native-smoke.json`. Test injection is opt-in through `TOFU_SMOKE_SCRIPT`; normal launches never inject a test script.
+`bun run test` runs exactly `bun test --parallel --isolate --bail`, using Bun's CPU-based worker count and a fresh global scope per file. Peers, trackers, HTTP servers and databases use independent temporary folders and available ports. Whole-transfer checks wait for `seeding` rather than merely 100% received bytes, which can precede filesystem writes and verification.
+
+The native test launches the actual platform bundle with temporary state. It checks forms, keyboard navigation, live updates, drag and drop, transfers, and downloaded SHA-256 hashes. Its report is `.cache/native-smoke.json`. Test injection is opt-in through `TOFU_SMOKE_SCRIPT`; normal launches never inject a test script. POSIX permission tests are skipped on Windows; directory alias tests use Windows junctions there.
 
 Additional native workflows:
 
@@ -100,12 +119,19 @@ TOFU_NATIVE_WORKFLOW=destination bun run test:native
 bun run bench:ui furin-sync
 bun run build:release
 bun run test:coexist
+bun scripts/native-opening.ts
 ```
 
 The benchmark measures selection latency during four local transfers and checks cached details with delayed API responses. `test:coexist` launches the real dev and stable bundles simultaneously in temporary folders, checks their profiles despite contradictory terminal variables, downloads from a real peer and verifies that closing dev leaves the release available. Native tests use temporary state and OS-selected ports.
+
+On macOS, the release bundle declares `.torrent` and `magnet` associations through Electrobun's application configuration. The main process receives `open-url` events, queues them until the engine and desktop are ready, and processes them sequentially. WebTorrent remains in Bun; repeated opens preserve an existing torrent's state. The native menu changes defaults only on explicit selection, using Launch Services through Bun FFI rather than editing macOS preference files. Development builds never claim these associations. `native-opening.ts` checks cold file launch, a magnet sent to the running app, and reopening from background mode with real peers; it does not change system defaults and saves `.cache/native-opening.json`.
 
 ## Current limits
 
 Only macOS Apple Silicon has been validated. Windows/Linux builds are unvalidated. WebTorrent supports BitTorrent v1; v2-only torrents are unsupported. TCP is enabled and uTP is disabled. Plugins are built in; third-party plugin loading and configurable proxies are not implemented.
 
 Local transfer tests validate behavior, not Internet swarm throughput. See [BENCHMARK.md](../BENCHMARK.md) for the separate comparison with WebTorrent Desktop and its limitations.
+
+## AniList development client
+
+The release AniList client `9037` must register `tofu://oauth/anilist`. Development uses client `52735` with Redirect URL `tofu-dev://oauth/anilist`. Both public IDs are shared by source runs and desktop builds; no secret or environment setup is needed. To use another development application, set `TOFU_ANILIST_CLIENT_ID=<development-client-id>` when building or running from source. Its public ID is packaged in the development bundle. This override never changes the release client or callback.

@@ -3,6 +3,8 @@ import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import parseTorrent from "parse-torrent";
 import type {
+  AniListClient,
+  AniListReleases,
   AutomationDecision,
   AutomationDraft,
   AutomationRule,
@@ -48,6 +50,7 @@ function automationQuery(rule: Pick<AutomationDraft, "matchMode" | "title">) {
 }
 
 export interface AutomationOptions {
+  anilistClient?: AniListClient;
   dataDir: string;
   endpoints: PluginEndpoints;
   engine: () => TorrentEngine;
@@ -126,6 +129,7 @@ export class AutomationService {
       this.releases.set(`${release.sourceId}:${release.id}`, release);
     }
     this.anilist = new AniListService(this.db, {
+      client: options.anilistClient,
       destinationExists: (id) =>
         options
           .engine()
@@ -435,6 +439,48 @@ export class AutomationService {
       search,
     };
   }
+  async animeReleases(mediaId: number): Promise<AniListReleases> {
+    const entry = this.anilist.entry(mediaId);
+    const sources = (["nyaa", "tsundere", "c411"] as const).filter((id) => this.isEnabled(id));
+    const matcher = {
+      ...interpretLocally(entry.title, "default"),
+      aliases: entry.aliases,
+      excludePacks: false,
+    };
+    const results = await Promise.all(
+      [...new Set([entry.title, ...entry.aliases])]
+        .slice(0, 2)
+        .map((title) => this.discovery(title, sources))
+    );
+    const stored = [...this.releases.values()].filter(
+      (release) => localMatch(matcher, release) === null
+    );
+    const releases = [
+      ...new Map(
+        [...stored, ...results.flatMap((result) => result.releases)]
+          .filter((release) => localMatch(matcher, release) === null)
+          .map((release) => [`${release.sourceId}:${release.id}`, this.publicRelease(release)])
+      ).values(),
+    ];
+    const hashes = new Set(releases.map((release) => release.infoHash));
+    for (const release of stored) {
+      if (release.infoHash) {
+        hashes.add(release.infoHash);
+      }
+    }
+    return {
+      errors: [
+        ...new Map(
+          results.flatMap((result) => result.errors).map((error) => [error.sourceId, error])
+        ).values(),
+      ],
+      releases,
+      torrents: this.options
+        .engine()
+        .snapshot(null, false)
+        .torrents.filter((torrent) => hashes.has(torrent.id)),
+    };
+  }
   async addRelease(
     sourceId: SourcePluginId,
     id: string,
@@ -492,6 +538,12 @@ export class AutomationService {
       }
     }
     const parsed = await parseTorrent(input);
+    if (parsed.infoHash && release.infoHash !== parsed.infoHash) {
+      release.infoHash = parsed.infoHash;
+      this.db
+        .query("INSERT OR REPLACE INTO releases VALUES (?, ?)")
+        .run(`${release.sourceId}:${release.id}`, JSON.stringify(release));
+    }
     if (this.isClosed() || !this.isEnabled(release.sourceId)) {
       throw new UserError("Plugin disabled", { status: 409 });
     }
@@ -624,6 +676,17 @@ export class AutomationService {
     this.db
       .query("INSERT OR REPLACE INTO automations VALUES (?, ?)")
       .run(rule.id, JSON.stringify(rule));
+  }
+  reassignDestination(id: string) {
+    this.db.transaction(() => {
+      for (const rule of this.rules.values()) {
+        if (rule.destinationId === id) {
+          rule.destinationId = "default";
+          this.persistRule(rule);
+        }
+      }
+      this.anilist.reassignDestination(id);
+    })();
   }
   private persistDecision(decision: AutomationDecision) {
     this.decisions.set(decision.id, decision);

@@ -230,7 +230,7 @@ test("AniList OAuth validates state and stores the exchanged token without retur
   try {
     const configured = await request("/anilist", {
       ...json({
-        clientId: "9037",
+        clientId: "1234",
         clientSecret: "oauth-client-private",
         redirectUri: callback,
         userName: "",

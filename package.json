@@ -1,6 +1,6 @@
 {
   "name": "tofu",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Torrent client powered by Bun, Furin, and Electrobun",
   "bugs": {
@@ -26,7 +26,7 @@
     "prepare": "lefthook install",
     "setup": "bun scripts/setup.ts",
     "start": "TOFU_MODE=server bun .furin/build/bun/server.js",
-    "test": "bun test --timeout 30000",
+    "test": "bun test --parallel --isolate --bail",
     "test:background": "bun scripts/native-background.ts",
     "test:coexist": "bun scripts/native-coexist.ts",
     "test:native": "bun scripts/native-smoke.ts",

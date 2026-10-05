@@ -100,66 +100,78 @@ test("a release check during an installer download keeps the original filename a
   }
 });
 
-test("private release access is persisted without exposing the token and newer compatible releases are downloadable", async () => {
-  const folder = await mkdtemp(join(tmpdir(), "tofu-updates-"));
-  const sync = await createTofuSync(join(folder, "sync"));
-  let requests = 0;
-  const github = Bun.serve({
-    fetch(request) {
-      requests += 1;
-      expect(request.headers.get("authorization")).toBe("Bearer personal-access");
-      if (new URL(request.url).pathname.endsWith("/assets/17")) {
-        expect(request.headers.get("accept")).toBe("application/octet-stream");
-        return new Response("installer-bytes");
-      }
-      return Response.json({
-        assets: [{ id: 17, name: "Tofu-0.2.0-macos-arm64.dmg" }],
-        draft: false,
-        prerelease: false,
-        tag_name: "v0.2.0",
-      });
-    },
-    hostname: "127.0.0.1",
-    port: 0,
-  });
-  const options = {
-    apiOrigin: `http://127.0.0.1:${github.port}`,
-    arch: "arm64",
-    dataDir: folder,
-    notify: (_version: string) => undefined,
-    platform: "darwin",
-    version: "0.1.0",
-  };
-  try {
-    let updates = await UpdatesService.open(options);
-    const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
-    const call = (path: string, init: RequestInit | undefined) =>
-      app.handle(new Request(`http://localhost/updates${path}`, init));
-    expect((await (await call("/check", json({}))).json()).status).toBe("auth-required");
-    expect(requests).toBe(0);
-    const access = await call("/access", json({ token: "personal-access" }));
-    expect(await access.text()).not.toContain("personal-access");
-    updates.close();
-    updates = await UpdatesService.open(options);
-    const checked = await call("/check", json({}));
-    const state = await checked.json();
-    expect(state.status).toBe("available");
-    expect(state.latestVersion).toBe("0.2.0");
-    expect(state.hasToken).toBe(true);
-    expect(JSON.stringify(state)).not.toContain("personal-access");
-    const installer = await call("/download", undefined);
-    expect(installer.status).toBe(200);
-    expect(await installer.text()).toBe("installer-bytes");
-    expect(installer.headers.get("content-disposition")).toContain("Tofu-0.2.0-macos-arm64.dmg");
-    await call("/access", json({ clearToken: true }));
-    expect((await (await call("", undefined)).json()).hasToken).toBe(false);
-    updates.close();
-  } finally {
-    github.stop(true);
-    sync.close();
-    await rm(folder, { force: true, recursive: true });
+test.each([
+  { arch: "arm64", installer: "Tofu-0.2.0-macos-arm64.dmg", platform: "darwin" },
+  { arch: "x64", installer: "Tofu-0.2.0-win-x64.zip", platform: "win32" },
+  { arch: "x64", installer: "Tofu-0.2.0-linux-x64.tar.gz", platform: "linux" },
+  { arch: "arm64", installer: "Tofu-0.2.0-linux-arm64.tar.gz", platform: "linux" },
+])(
+  "private releases persist access and download the compatible installer for $platform/$arch",
+  async ({ platform, arch, installer: filename }) => {
+    const folder = await mkdtemp(join(tmpdir(), "tofu-updates-"));
+    const sync = await createTofuSync(join(folder, "sync"));
+    let requests = 0;
+    const github = Bun.serve({
+      fetch(request) {
+        requests += 1;
+        expect(request.headers.get("authorization")).toBe("Bearer personal-access");
+        if (new URL(request.url).pathname.endsWith("/assets/17")) {
+          expect(request.headers.get("accept")).toBe("application/octet-stream");
+          return new Response("installer-bytes");
+        }
+        return Response.json({
+          assets: [
+            { id: 16, name: "Tofu-0.2.0-linux-unsupported.tar.gz" },
+            { id: 17, name: filename },
+          ],
+          draft: false,
+          prerelease: false,
+          tag_name: "v0.2.0",
+        });
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    });
+    const options = {
+      apiOrigin: `http://127.0.0.1:${github.port}`,
+      arch,
+      dataDir: folder,
+      notify: (_version: string) => undefined,
+      platform,
+      version: "0.1.0",
+    };
+    try {
+      let updates = await UpdatesService.open(options);
+      const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+      const call = (path: string, init: RequestInit | undefined) =>
+        app.handle(new Request(`http://localhost/updates${path}`, init));
+      expect((await (await call("/check", json({}))).json()).status).toBe("auth-required");
+      expect(requests).toBe(0);
+      const access = await call("/access", json({ token: "personal-access" }));
+      expect(await access.text()).not.toContain("personal-access");
+      updates.close();
+      updates = await UpdatesService.open(options);
+      const checked = await call("/check", json({}));
+      const state = await checked.json();
+      expect(state.status).toBe("available");
+      expect(state.latestVersion).toBe("0.2.0");
+      expect(state.downloadName).toBe(filename);
+      expect(state.hasToken).toBe(true);
+      expect(JSON.stringify(state)).not.toContain("personal-access");
+      const installer = await call("/download", undefined);
+      expect(installer.status).toBe(200);
+      expect(await installer.text()).toBe("installer-bytes");
+      expect(installer.headers.get("content-disposition")).toContain(filename);
+      await call("/access", json({ clearToken: true }));
+      expect((await (await call("", undefined)).json()).hasToken).toBe(false);
+      updates.close();
+    } finally {
+      github.stop(true);
+      sync.close();
+      await rm(folder, { force: true, recursive: true });
+    }
   }
-});
+);
 
 test("revoked private access during download reports authentication failure and removes the stale download", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-revoked-"));

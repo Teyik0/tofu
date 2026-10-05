@@ -1,6 +1,6 @@
 import { useQuery } from "@teyik0/furin/client";
 import { CheckIcon, ExternalLinkIcon, RefreshCwIcon, TrashIcon } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useState } from "react";
 import { api } from "../client";
 import type {
   AniListState,
@@ -13,15 +13,16 @@ import type {
   PluginState,
 } from "../types";
 import { ActionTooltip } from "./action-tooltip";
+import { aniListStatusLabel } from "./anilist-status";
 import { AniListThreads } from "./anilist-threads";
 import { request } from "./api";
+import { OptionSelect } from "./option-select";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button, buttonVariants } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
-import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Textarea } from "./ui/textarea";
 
 type Action = (task: () => Promise<void>) => void;
@@ -36,112 +37,71 @@ function AniListConnection({
   reload: () => Promise<void>;
   busy: boolean;
 }) {
-  const [clientId, setClientId] = useState(state.clientId);
-  const [clientSecret, setClientSecret] = useState("");
-  const [redirectUri, setRedirectUri] = useState(state.redirectUri);
   const [userName, setUserName] = useState(state.userName);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
-  const configure = () =>
-    request("/anilist", "PUT", {
-      clientId,
-      redirectUri,
-      userName,
-      ...(clientSecret ? { clientSecret } : {}),
-    });
+  const [pollError, setPollError] = useState<string | null>(null);
+  const poll = useEffectEvent(async () => {
+    try {
+      await reload();
+      setPollError(null);
+    } catch {
+      setPollError("Unable to check the connection. Return to Tofu and try again.");
+    }
+  });
+  useEffect(() => {
+    if (!state.authorizationPending) {
+      return;
+    }
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      await poll();
+      if (active) {
+        timer = setTimeout(check, 1000);
+      }
+    };
+    timer = setTimeout(check, 1000);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [state.authorizationPending]);
   return (
-    <section className="automation-editor">
+    <section aria-label="AniList account connection" className="automation-editor">
       <div className="automation-row-heading">
         <strong>Your AniList account</strong>
-        <Badge variant="outline">{state.connectedUser ?? "Not verified"}</Badge>
+        <Badge variant="outline">
+          {state.authorizationPending
+            ? "Waiting for authorization"
+            : (state.connectedUser ?? (state.authenticated ? "Connected" : "Not connected"))}
+        </Badge>
       </div>
-      <FieldGroup>
-        <div className="automation-field-grid">
-          <Field>
-            <FieldLabel htmlFor="anilist-client-id">OAuth client ID</FieldLabel>
-            <Input
-              id="anilist-client-id"
-              onChange={(event) => setClientId(event.target.value)}
-              placeholder="9037"
-              value={clientId}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="anilist-client-secret">OAuth client secret</FieldLabel>
-            <Input
-              autoComplete="off"
-              id="anilist-client-secret"
-              onChange={(event) => setClientSecret(event.target.value)}
-              placeholder={
-                state.hasClientSecret ? "Secret saved · enter to replace" : "Client secret"
-              }
-              type="password"
-              value={clientSecret}
-            />
-          </Field>
-        </div>
-        <Field>
-          <FieldLabel htmlFor="anilist-redirect">OAuth callback URL</FieldLabel>
-          <Input
-            id="anilist-redirect"
-            onChange={(event) => setRedirectUri(event.target.value)}
-            value={redirectUri}
-          />
-          <FieldDescription>
-            Must exactly match the client URL in AniList → Settings → Developer. Tofu opens this
-            local port while connecting.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="anilist-username">Or a public account name</FieldLabel>
-          <Input
-            id="anilist-username"
-            onChange={(event) => setUserName(event.target.value)}
-            placeholder="Your AniList username"
-            value={userName}
-          />
-          <FieldDescription>
-            A username is enough for a public list. For a private list, connect your account or add
-            an access token in Plugins → AniList.
-          </FieldDescription>
-        </Field>
-      </FieldGroup>
+      <p className="automation-caption">
+        Sign in to AniList in your browser and authorize Tofu. Your account and lists will connect
+        automatically.
+      </p>
       <div className="automation-form-actions">
         <Button
-          disabled={busy}
+          disabled={busy || state.authorizationPending}
           onClick={() =>
             action(async () => {
-              await configure();
-              setClientSecret("");
-              await reload();
-            })
-          }
-          variant="outline"
-        >
-          Save connection
-        </Button>
-        <Button
-          disabled={busy || !clientId || !(clientSecret || state.hasClientSecret)}
-          onClick={() =>
-            action(async () => {
-              await configure();
+              setAuthorizationUrl(null);
               const { url } = await request<{ url: string }>("/anilist/connect", "POST", {});
+              setAuthorizationUrl(url);
+              await reload();
               const result = await request<{ url: string; opened: boolean }>(
                 "/anilist/open",
                 "POST",
                 { url }
               );
-              if (!result.opened) {
-                setAuthorizationUrl(result.url);
-              }
-              setClientSecret("");
-              await reload();
+              setAuthorizationUrl(result.url);
             })
           }
         >
           <ExternalLinkIcon data-icon="inline-start" />
-          Connect AniList
+          {state.authenticated ? "Reconnect AniList" : "Connect AniList"}
         </Button>
-        {authorizationUrl !== null && (
+        {authorizationUrl !== null && state.authorizationPending && (
           <a
             className={buttonVariants({ variant: "outline" })}
             href={authorizationUrl}
@@ -151,13 +111,74 @@ function AniListConnection({
             Authorize in browser
           </a>
         )}
+        {state.authorizationPending ? (
+          <Button
+            disabled={busy}
+            onClick={() =>
+              action(async () => {
+                await request("/anilist/connect", "DELETE", undefined);
+                setAuthorizationUrl(null);
+                await reload();
+              })
+            }
+            variant="outline"
+          >
+            Cancel connection
+          </Button>
+        ) : null}
       </div>
-      <p className="automation-caption">
-        After authorizing in your browser, return here and click Refresh.
-      </p>
+      {state.authorizationPending ? (
+        <p aria-live="polite" className="automation-caption">
+          Waiting for AniList authorization in your browser…
+        </p>
+      ) : null}
+      {state.authorizationError || pollError ? (
+        <Alert>
+          <AlertDescription>{state.authorizationError ?? pollError}</AlertDescription>
+        </Alert>
+      ) : null}
+      {state.authenticated ? null : (
+        <details>
+          <summary>Use a public account name instead</summary>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="anilist-username">Public AniList account name</FieldLabel>
+              <Input
+                id="anilist-username"
+                onChange={(event) => setUserName(event.target.value)}
+                placeholder="Your AniList username"
+                value={userName}
+              />
+              <FieldDescription>
+                Read a public list without connecting. Updating watched episodes requires account
+                authorization.
+              </FieldDescription>
+            </Field>
+            <Button
+              disabled={busy}
+              onClick={() =>
+                action(async () => {
+                  await request("/anilist", "PUT", { userName });
+                  await request("/plugins/anilist", "PUT", { enabled: true });
+                  await request("/anilist/list", "POST", {});
+                  await reload();
+                })
+              }
+              variant="outline"
+            >
+              Load public list
+            </Button>
+          </FieldGroup>
+        </details>
+      )}
     </section>
   );
 }
+
+const organizationOptions = [
+  { label: "One thread per anime", value: "per-anime" },
+  { label: "All anime in the selected thread", value: "shared" },
+] satisfies { label: string; value: "per-anime" | "shared" }[];
 
 export function AniListPanel({
   target,
@@ -169,6 +190,7 @@ export function AniListPanel({
   plugin,
   destinations,
   automations,
+  onRefresh,
 }: {
   target: string;
   destinationField: ReactNode;
@@ -179,6 +201,7 @@ export function AniListPanel({
   plugin: PluginState | undefined;
   destinations: Destination[];
   automations: AutomationRule[];
+  onRefresh?: (state: AniListState) => void;
 }) {
   const { data: live } = useQuery(api.api.anilist.get);
   const [saved, setSaved] = useState<AniListState | null>(null);
@@ -192,7 +215,9 @@ export function AniListPanel({
   );
   const [proposals, setProposals] = useState<AniListThreadProposal[] | null>(null);
   const reload = async () => {
-    setSaved(await request<AniListState>("/anilist", "GET", undefined));
+    const refreshed = await request<AniListState>("/anilist", "GET", undefined);
+    setSaved(refreshed);
+    onRefresh?.(refreshed);
     await reloadPlugins();
   };
   if (!state) {
@@ -271,9 +296,7 @@ export function AniListPanel({
                 <FieldLabel htmlFor={`anilist-title-${entry.mediaId}`}>{entry.title}</FieldLabel>
               </Field>
               <div className="feed-release-meta">
-                <Badge variant="outline">
-                  {entry.status === "CURRENT" ? "Watching" : "Plan to Watch"}
-                </Badge>
+                <Badge variant="outline">{aniListStatusLabel(entry.status)}</Badge>
                 <span>{entry.progress} episodes watched</span>
               </div>
             </div>
@@ -286,19 +309,13 @@ export function AniListPanel({
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="anilist-organization">Thread organization</FieldLabel>
-            <NativeSelect
+            <OptionSelect
               disabled={busy}
               id="anilist-organization"
-              onChange={(event) =>
-                setMode(event.target.value === "shared" ? "shared" : "per-anime")
-              }
+              onValueChange={setMode}
+              options={organizationOptions}
               value={mode}
-            >
-              <NativeSelectOption value="per-anime">One thread per anime</NativeSelectOption>
-              <NativeSelectOption value="shared">
-                All anime in the selected thread
-              </NativeSelectOption>
-            </NativeSelect>
+            />
             <FieldDescription>
               Each approved anime has an automation linked to AniList.
             </FieldDescription>
@@ -459,11 +476,7 @@ export function AniListPanel({
         .map((subscription) => (
           <article className="automation-rule" key={subscription.id}>
             <div className="automation-row-heading">
-              <strong>
-                {subscription.statuses
-                  .map((status) => (status === "CURRENT" ? "Watching" : "Plan to Watch"))
-                  .join(" + ")}
-              </strong>
+              <strong>{subscription.statuses.map(aniListStatusLabel).join(" + ")}</strong>
               <Badge variant="outline">
                 {subscription.enabled
                   ? `${subscription.bindings.filter((binding) => binding.active).length} tracked titles`
