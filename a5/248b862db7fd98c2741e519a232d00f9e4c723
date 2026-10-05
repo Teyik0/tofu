@@ -1,0 +1,55 @@
+src/components/plugins-page.tsx
+  s_3a9b5de4e00c00::t_7485a9b983b127 269
+docs/development.md
+  s_3a9b5de4e00c00::t_6c2f8b9552ae8e 92
+tests/validation.test.ts
+  s_3a9b5de4e00c00::t_51fbb1cc49ed36 29-30,32
+src/server/updates.ts
+  s_3a9b5de4e00c00::t_fd691221577fec 192,250-251
+  s_3a9b5de4e00c00::t_ff4777c3c49952 86
+  s_3a9b5de4e00c00::t_7385ae6d803acc 18,92,94,97-98,105,112-119,122,125,150,162-164,166,181,186,190,195,207-208,210,217-219,221,225-226,239,248-249,266
+docs/releases.md
+  s_3a9b5de4e00c00::t_3eea99fbec82af 11,13
+  s_3a9b5de4e00c00::t_0c54cc811a9cb6 15,63
+tests/updates.test.ts
+  s_3a9b5de4e00c00::t_10346c83f2e8b3 130
+  s_3a9b5de4e00c00::t_084fdfbeec5815 26-27,34
+  s_3a9b5de4e00c00::t_c509d53056d4af 184,189,193,215-217,231,237-238,240-241,250-251,253,255-257,280-287
+  s_3a9b5de4e00c00::t_58c856c51909e2 222
+  s_3a9b5de4e00c00::t_b748b06fb233ee 99-129,131-177
+  s_3a9b5de4e00c00::t_4da21f540cb17a 11
+  s_3a9b5de4e00c00::t_cea95c5834db6c 239
+  s_3a9b5de4e00c00::t_df1de92254b147 25,28-33
+src/types.ts
+  s_3a9b5de4e00c00::t_d1865b7a6278e4 50
+src/components/updates.tsx
+  s_3a9b5de4e00c00::t_ee8f7b9df269c2 199
+  s_3a9b5de4e00c00::t_be562c84d8e84b 74
+src/components/settings-page.tsx
+  s_3a9b5de4e00c00::t_94c84708c3d692 151
+SECURITY.md
+  s_3a9b5de4e00c00::t_6c345287fa3b0c 9,17
+src/components/destination-sidebar.tsx
+  s_3a9b5de4e00c00::t_92923b02106b67 193
+src/server/updates-api.ts
+  s_3a9b5de4e00c00::t_55e50d33519af4 1
+scripts/native-smoke.ts
+  s_3a9b5de4e00c00::t_b59242866c0a2a 1234-1240
+  s_3a9b5de4e00c00::t_44352fe570a41d 656-657
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a5248b862db7fd98c2741e519a232d00f9e4c723",
+  "prompts": {},
+  "sessions": {
+    "s_3a9b5de4e00c00": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ef23aa333ffehUfAT6OkET7Lhs",
+        "model": "unknown"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
