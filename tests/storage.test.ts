@@ -314,7 +314,8 @@ test("a multifile torrent keeps its declared folders and deletion preserves unre
     );
     const destination = join(context.directory, "downloads");
     expect(state.detail?.savePath).toBe(destination);
-    expect(state.detail?.files.map((file) => file.path)).toEqual([
+    // create-torrent declares files in readdir order, which is unordered on ext4.
+    expect(state.detail?.files.map((file) => file.path).toSorted()).toEqual([
       "collection/first.bin",
       "collection/nested/second.bin",
     ]);
