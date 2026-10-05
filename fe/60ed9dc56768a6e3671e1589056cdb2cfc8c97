@@ -1,0 +1,31 @@
+docs/releases.md
+  s_3a9b5de4e00c00::t_eb8036f05c4c7b 20
+CHANGELOG.md
+  s_3a9b5de4e00c00::t_ba3bb0f49af85c 7-18,21-27,34,39
+.github/workflows/ci.yml
+  s_6377bab6ecf84e::t_956296b5ccfdbb 12-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe60ed9dc56768a6e3671e1589056cdb2cfc8c97",
+  "prompts": {},
+  "sessions": {
+    "s_3a9b5de4e00c00": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ef23aa333ffehUfAT6OkET7Lhs",
+        "model": "unknown"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_6377bab6ecf84e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ef2114198ffe86An9ehJ1FETnM",
+        "model": "unknown"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
