@@ -652,18 +652,9 @@ async function nativeWorkflow(config: {
           '[data-slot="sidebar-footer"] button[aria-label="Check for updates"]'
         )?.disabled === false
     );
-    click("Check for updates");
-    await wait(() => !!document.querySelector("#release-token"));
     check(
-      "Checking private releases without access opens GitHub settings",
-      location.pathname === "/settings" && !document.querySelector("[role=dialog]")
-    );
-    click("Back");
-    await wait(() => !document.querySelector("#release-token"));
-    await wait(() => !!document.querySelector(".add-button"));
-    check(
-      "Settings returns to the library without a modal",
-      !document.querySelector("[role=dialog]")
+      "The update action stays enabled without any GitHub access configuration",
+      !document.querySelector("#release-token")
     );
     await choose('[aria-label="Sort torrents"]', "Name");
     await choose('[aria-label="Sort torrents"]', "Newest first");
@@ -1239,6 +1230,13 @@ async function nativeWorkflow(config: {
     check(
       "Settings opens as a dedicated page without a modal",
       location.pathname === "/settings" && !document.querySelector("[role=dialog]")
+    );
+    click("Updates");
+    check(
+      "The updates section shows the installed version without a GitHub token input",
+      location.pathname === "/settings" &&
+        !document.querySelector("#release-token") &&
+        !!document.querySelector(".settings-updates")
     );
     click("Appearance");
     check(

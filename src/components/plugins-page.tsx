@@ -266,9 +266,7 @@ export function PluginsPage() {
             <ArrowLeftIcon data-icon="inline-start" />
             Back
           </Button>
-          <SidebarUpdateAction
-            openSettings={() => void router.navigate({ hash: "updates", to: "/settings" })}
-          />
+          <SidebarUpdateAction />
         </div>
       </aside>
       <main className="settings-main">

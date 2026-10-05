@@ -8,13 +8,11 @@ This architecture avoids keeping a hidden WebView in memory. It reuses the web m
 
 `bun run test:background` enables the preference through the real WebView, closes it during a transfer with a real peer, checks that no WebView remains, verifies automation access and the completed file's SHA-256, then recreates a single window. Injection remains exclusively opt-in through `TOFU_SMOKE_SCRIPT`.
 
-## Private release access
+## Release checks
 
-Code and installers remain in the **private** [Teyik0/Tofu](https://github.com/Teyik0/Tofu) repository. Users must be repository collaborators. In **Preferences → Updates → Connect GitHub**, each user configures a personal GitHub token limited to this repository with **Contents: read** permission. The token stays on the Bun side, in `release-access.json` in the data directory, accessible only to the local account (0600 permissions). The API and journal never return its value. **Disconnect** removes the saved access.
+The [Teyik0/Tofu](https://github.com/Teyik0/Tofu) repository is **public**: checks and installer downloads use the GitHub REST API anonymously, with no personal access token. Tofu checks stable releases at startup and every six hours, well under the unauthenticated rate limit. A new version compatible with the machine's OS and architecture triggers a native notification once per version and a **Download** banner. The local server streams the matching installer instead of opening an external browser. The download follows GitHub's redirect to the signed asset URL without forwarding credentials.
 
-Tofu checks stable releases at startup and every six hours. A new version compatible with the machine's OS and architecture triggers a native notification once per version and a **Download** banner. The local server streams the matching installer using the user's personal access. It never forwards the token to the GitHub asset server during redirection.
-
-After downloading, choose **Quit Tofu** and install the new version. On macOS, open the DMG and replace the app in Applications. On Windows, extract the entire ZIP before running `Tofu-Setup.exe`; its `.installer` directory contains required payload and metadata. On Linux, extract the `.tar.gz` and run `./installer`. Preferences and downloaded files are preserved. Automatic app replacement is not implemented: the Electrobun updater expects artifacts accessible by URL, while this repository's releases require GitHub authentication. Checks and downloads therefore use the authenticated GitHub API on the Bun side.
+After downloading, choose **Quit Tofu** and install the new version. On macOS, open the DMG and replace the app in Applications. On Windows, extract the entire ZIP before running `Tofu-Setup.exe`; its `.installer` directory contains required payload and metadata. On Linux, extract the `.tar.gz` and run `./installer`. Preferences and downloaded files are preserved. Automatic app replacement is not implemented: the Electrobun updater expects its own artifact metadata structure, while releases here ship plain installers per target. Checks and downloads therefore use the GitHub API on the Bun side. If the repository ever becomes private again, anonymous checks would fail and token-based access would need to be reintroduced.
 
 ## GitHub Actions pipeline
 
@@ -62,4 +60,4 @@ To distribute with a Developer ID signature and Apple notarization instead, conf
 | ELECTROBUN_APPLEAPIKEY | Key identifier |
 | ELECTROBUN_APPLEAPIISSUER | Issuer identifier |
 
-The pipeline imports the certificate into a temporary keychain and cleans up keys after the build. Publication uses only the job's temporary GITHUB_TOKEN with Contents write permission. Users' personal tokens are not CI secrets.
+The pipeline imports the certificate into a temporary keychain and cleans up keys after the build. Publication uses only the job's temporary GITHUB_TOKEN with Contents write permission.

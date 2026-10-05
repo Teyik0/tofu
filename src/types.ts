@@ -45,10 +45,9 @@ export interface UpdateState {
   currentVersion: string;
   downloadName: string | null;
   error: string | null;
-  hasToken: boolean;
   latestVersion: string | null;
   releaseUrl: string | null;
-  status: "idle" | "checking" | "auth-required" | "available" | "current" | "no-release" | "error";
+  status: "idle" | "checking" | "available" | "current" | "no-release" | "error";
 }
 
 export interface DesktopState {

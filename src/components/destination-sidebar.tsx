@@ -190,9 +190,7 @@ export const DestinationSidebar = memo(
                 </Button>
               </ActionTooltip>
             </div>
-            <SidebarUpdateAction
-              openSettings={() => void router.navigate({ hash: "updates", to: "/settings" })}
-            />
+            <SidebarUpdateAction />
           </fieldset>
         </SidebarFooter>
       </Sidebar>

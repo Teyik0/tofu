@@ -26,9 +26,10 @@ test("the API rejects untrusted hosts even when their Origin matches", async () 
       })
     );
     expect(native.status).toBe(403);
-    const nested = await context.request("/updates/access", {
-      ...json({ clearToken: true }),
+    const nested = await context.request("/updates/check", {
+      ...json({}),
       headers: { "content-type": "application/json", origin: "https://another-site.example" },
+      method: "POST",
     });
     expect(nested.status).toBe(403);
     expect(context.engine.snapshot(null).torrents).toHaveLength(1);

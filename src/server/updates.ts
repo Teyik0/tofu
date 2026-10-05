@@ -6,7 +6,6 @@ import { UserError } from "./engine";
 
 const repository = "Teyik0/Tofu";
 const versionPattern: RegExp = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const tokenPattern = /^[\w-]{1,4096}$/;
 const versionPrefix = /^v/;
 interface UpdateOptions {
   apiOrigin: string;
@@ -16,9 +15,8 @@ interface UpdateOptions {
   platform: string;
   version: string;
 }
-interface Access {
+interface State {
   notifiedVersion: string | null;
-  token: string;
 }
 interface ReleaseAsset {
   id: number;
@@ -85,45 +83,46 @@ function newer(candidate: string, installed: string) {
 export class UpdatesService {
   private readonly options: UpdateOptions;
   private readonly path: string;
-  private readonly access: Access;
+  private readonly state: State;
   private asset: ReleaseAsset | null = null;
   private pending: Promise<UpdateState> | null = null;
   private mutations: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | undefined;
   private initial: ReturnType<typeof setTimeout> | undefined;
-  private readonly state: UpdateState;
+  private readonly snapshotState: UpdateState;
 
-  private constructor(options: UpdateOptions, access: Access) {
+  private constructor(options: UpdateOptions, state: State) {
     this.options = options;
     this.path = join(options.dataDir, "release-access.json");
-    this.access = access;
-    this.state = {
+    this.state = state;
+    this.snapshotState = {
       checkedAt: null,
       currentVersion: options.version,
       downloadName: null,
       error: null,
-      hasToken: Boolean(access.token),
       latestVersion: null,
       releaseUrl: null,
-      status: access.token ? "idle" : "auth-required",
+      status: "idle",
     };
   }
   static async open(options: UpdateOptions) {
     await mkdir(options.dataDir, { recursive: true });
     const file = Bun.file(join(options.dataDir, "release-access.json"));
     const saved: unknown = (await file.exists()) ? await file.json() : null;
-    const access: Access = { notifiedVersion: null, token: "" };
-    if (saved && typeof saved === "object" && "token" in saved && typeof saved.token === "string") {
-      access.token = saved.token;
-      if ("notifiedVersion" in saved && typeof saved.notifiedVersion === "string") {
-        access.notifiedVersion = saved.notifiedVersion;
-      }
+    const state: State = { notifiedVersion: null };
+    if (
+      saved &&
+      typeof saved === "object" &&
+      "notifiedVersion" in saved &&
+      typeof saved.notifiedVersion === "string"
+    ) {
+      state.notifiedVersion = saved.notifiedVersion;
       await chmod(file.name as string, 0o600);
     }
-    return new UpdatesService(options, access);
+    return new UpdatesService(options, state);
   }
   snapshot(): UpdateState {
-    return { ...this.state };
+    return { ...this.snapshotState };
   }
   start() {
     if (this.timer) {
@@ -148,7 +147,7 @@ export class UpdatesService {
   }
   private async persist() {
     const temporary = `${this.path}.tmp`;
-    await Bun.write(temporary, JSON.stringify(this.access), { mode: 0o600 });
+    await Bun.write(temporary, JSON.stringify(this.state), { mode: 0o600 });
     await chmod(temporary, 0o600);
     await rename(temporary, this.path);
   }
@@ -160,35 +159,16 @@ export class UpdatesService {
     );
     return next;
   }
-  configure(input: { token?: string; clearToken?: boolean }) {
-    return this.serial(() => this.configureAccess(input));
-  }
-  private async configureAccess(input: { token?: string; clearToken?: boolean }) {
-    if (input.clearToken) {
-      this.access.token = "";
-    } else if (input.token !== undefined) {
-      if (!tokenPattern.test(input.token)) {
-        throw new UserError("Invalid GitHub token", { status: 400 });
-      }
-      this.access.token = input.token;
-    }
-    this.asset = null;
-    Object.assign(this.state, {
-      downloadName: null,
-      error: null,
-      hasToken: Boolean(this.access.token),
-      latestVersion: null,
-      releaseUrl: null,
-      status: this.access.token ? "idle" : "auth-required",
+  check(): Promise<UpdateState> {
+    this.pending ??= this.serial(() => this.readLatest()).finally(() => {
+      this.pending = null;
     });
-    await this.persist();
-    return this.snapshot();
+    return this.pending;
   }
   private github(path: string, accept: string) {
     return fetch(`${this.options.apiOrigin}/repos/${repository}${path}`, {
       headers: {
         accept,
-        authorization: `Bearer ${this.access.token}`,
         "user-agent": `Tofu/${this.options.version}`,
         "X-GitHub-Api-Version": "2022-11-28",
       },
@@ -196,41 +176,23 @@ export class UpdatesService {
       signal: AbortSignal.timeout(30_000),
     });
   }
-  check(): Promise<UpdateState> {
-    this.pending ??= this.serial(() => this.readLatest()).finally(() => {
-      this.pending = null;
-    });
-    return this.pending;
-  }
   private async readLatest() {
     this.asset = null;
-    Object.assign(this.state, {
+    Object.assign(this.snapshotState, {
       downloadName: null,
       error: null,
       latestVersion: null,
       releaseUrl: null,
-      status: this.access.token ? "checking" : "auth-required",
+      status: "checking",
     });
-    if (!this.access.token) {
-      return this.snapshot();
-    }
     try {
       const response = await this.github("/releases/latest", "application/vnd.github+json");
-      this.state.checkedAt = Date.now();
+      this.snapshotState.checkedAt = Date.now();
       if (response.status === 401 || response.status === 403) {
-        throw new UserError("The GitHub token has expired or cannot read private releases", {
-          status: 401,
-        });
+        throw new Error(`GitHub rejected the update check (HTTP ${response.status})`);
       }
       if (response.status === 404) {
-        const repo = await this.github("", "application/vnd.github+json");
-        if (!repo.ok) {
-          throw new UserError(
-            "This token cannot access the private Teyik0/Tofu repository (Contents: read permission)",
-            { status: 401 }
-          );
-        }
-        this.state.status = "no-release";
+        this.snapshotState.status = "no-release";
         return this.snapshot();
       }
       if (!response.ok) {
@@ -242,27 +204,26 @@ export class UpdatesService {
       }
       const version = latest.tag_name.replace(versionPrefix, "");
       versionParts(version);
-      this.state.latestVersion = version;
-      this.state.releaseUrl = `https://github.com/${repository}/releases/tag/v${version}`;
+      this.snapshotState.latestVersion = version;
+      this.snapshotState.releaseUrl = `https://github.com/${repository}/releases/tag/v${version}`;
       if (!newer(version, this.options.version)) {
-        this.state.status = "current";
+        this.snapshotState.status = "current";
         return this.snapshot();
       }
       this.asset = this.compatibleInstaller(latest, version);
       if (!this.asset) {
         throw new Error("No installer compatible with this machine in the release");
       }
-      this.state.downloadName = this.asset.name;
-      this.state.status = "available";
-      if (this.access.notifiedVersion !== version) {
+      this.snapshotState.downloadName = this.asset.name;
+      this.snapshotState.status = "available";
+      if (this.state.notifiedVersion !== version) {
         this.options.notify(version);
-        this.access.notifiedVersion = version;
+        this.state.notifiedVersion = version;
         await this.persist();
       }
     } catch (error) {
-      this.state.status =
-        error instanceof UserError && error.status === 401 ? "auth-required" : "error";
-      this.state.error = error instanceof Error ? error.message : "Unable to verify";
+      this.snapshotState.status = "error";
+      this.snapshotState.error = error instanceof Error ? error.message : "Unable to verify";
     }
     return this.snapshot();
   }
@@ -275,7 +236,7 @@ export class UpdatesService {
     return latest.assets.find((item) => item.name === name) ?? null;
   }
   async download() {
-    if (!(this.access.token && this.asset) || this.state.status !== "available") {
+    if (!(this.asset && this.snapshotState.status === "available")) {
       throw new UserError("Check for updates before downloading the installer", {
         status: 409,
       });
@@ -284,11 +245,10 @@ export class UpdatesService {
     let response = await this.github(`/releases/assets/${asset.id}`, "application/octet-stream");
     if ([401, 403, 404].includes(response.status)) {
       this.asset = null;
-      this.state.downloadName = null;
-      this.state.status = "auth-required";
-      this.state.error =
-        "Access to this private release has expired or been revoked. Check your GitHub token.";
-      throw new UserError(this.state.error, { status: 401 });
+      this.snapshotState.downloadName = null;
+      this.snapshotState.status = "error";
+      this.snapshotState.error = "This release is no longer downloadable. Check for updates again.";
+      throw new UserError(this.snapshotState.error, { status: 502 });
     }
     if (response.status === 302) {
       const location = response.headers.get("location");
@@ -303,7 +263,7 @@ export class UpdatesService {
           status: 502,
         });
       }
-      // The signed asset URL needs no GitHub credential; never forward the bearer token.
+      // The signed asset URL needs no GitHub credential; never forward stale headers there.
       response = await fetch(target, { redirect: "error", signal: AbortSignal.timeout(120_000) });
     }
     if (!response.ok) {

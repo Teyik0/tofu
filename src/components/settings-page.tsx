@@ -148,7 +148,7 @@ export function SettingsPage() {
             <ArrowLeftIcon data-icon="inline-start" />
             Back
           </Button>
-          <SidebarUpdateAction openSettings={() => setSection("updates")} />
+          <SidebarUpdateAction />
         </div>
       </aside>
       <main className="settings-main">

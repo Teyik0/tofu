@@ -89,7 +89,7 @@ Each profile has its own files:
 | `feeds.sqlite` | Plugins, credentials, automation, and AniList tracking |
 | `sync.sqlite` | Furin Sync journal |
 | `server.json` | Address of the running instance |
-| `release-access.json` | Personal GitHub release access |
+| `release-access.json` | Update check state (last notified version) |
 | `instance.json` | Persistent ownership by dev or release |
 | `instance.lock` | OS lock held while this instance runs |
 

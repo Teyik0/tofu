@@ -15,7 +15,6 @@ import {
   FieldLegend,
   FieldSet,
 } from "./ui/field";
-import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 function useUpdateDownload() {
@@ -51,9 +50,6 @@ function statusText(state: UpdateState) {
   if (state.status === "checking") {
     return "Checking releases…";
   }
-  if (state.status === "auth-required") {
-    return "Connect GitHub to receive updates from the private repository.";
-  }
   if (state.status === "error") {
     return state.error ?? "Unable to check for updates.";
   }
@@ -75,7 +71,7 @@ function useSpinLatch(checking: boolean) {
   };
 }
 
-export function SidebarUpdateAction({ openSettings }: { openSettings: () => void }) {
+export function SidebarUpdateAction() {
   const { data: live, error: loadingError } = useQuery(api.api.updates.get);
   const data = live && "status" in live ? live : undefined;
   const check = useMutation(api.api.updates.check.post);
@@ -98,8 +94,6 @@ export function SidebarUpdateAction({ openSettings }: { openSettings: () => void
     }
     if (available) {
       void download.download();
-    } else if (!data.hasToken || data.status === "auth-required") {
-      openSettings();
     } else {
       spin.latch();
       check.mutate();
@@ -157,9 +151,7 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
   const { data: live, error: loadingError } = useQuery(api.api.updates.get);
   const data = live && "status" in live ? live : undefined;
   const check = useMutation(api.api.updates.check.post);
-  const access = useMutation(api.api.updates.access.post);
   const download = useUpdateDownload();
-  const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const checking = check.isPending || data?.status === "checking";
@@ -173,11 +165,6 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
     } finally {
       setBusy(false);
     }
-  };
-  const save = async () => {
-    await access.mutateAsync({ token: token.trim() });
-    setToken("");
-    await check.mutateAsync();
   };
   const available = data?.status === "available";
   let checkLabel = "Check for Updates";
@@ -209,9 +196,7 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
             </FieldDescription>
           </FieldContent>
           <Button
-            disabled={
-              disabled || busy || download.busy || checking || !(available || data?.hasToken)
-            }
+            disabled={disabled || busy || download.busy || checking}
             onClick={() =>
               available ? void download.download() : void action(() => check.mutateAsync())
             }
@@ -229,54 +214,6 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
             )}
             {checkLabel}
           </Button>
-        </Field>
-        <Field className="settings-row settings-folder">
-          <FieldContent>
-            <FieldLabel htmlFor="release-token">GitHub access</FieldLabel>
-            <FieldDescription>
-              {data?.hasToken
-                ? "Connected. Paste a new token to replace it."
-                : "Your account must have access to Teyik0/Tofu. Use a token limited to this repository with Contents read permission. It stays on this machine."}
-            </FieldDescription>
-          </FieldContent>
-          <div className="flex gap-2">
-            <Input
-              autoComplete="off"
-              disabled={disabled || busy}
-              id="release-token"
-              onChange={(event) => setToken(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  if (token.trim()) {
-                    void action(save);
-                  }
-                }
-              }}
-              placeholder={data?.hasToken ? "Replace the saved token" : "github_pat_…"}
-              spellCheck={false}
-              type="password"
-              value={token}
-            />
-            <Button
-              disabled={disabled || busy || !token.trim()}
-              onClick={() => void action(save)}
-              type="button"
-              variant="secondary"
-            >
-              Connect
-            </Button>
-            {data?.hasToken === true && (
-              <Button
-                disabled={disabled || busy}
-                onClick={() => void action(() => access.mutateAsync({ clearToken: true }))}
-                type="button"
-                variant="ghost"
-              >
-                Disconnect
-              </Button>
-            )}
-          </div>
         </Field>
       </FieldGroup>
       {failure !== null && (
