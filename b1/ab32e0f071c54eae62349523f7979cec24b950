@@ -1,0 +1,22 @@
+src/server/engine.ts
+  s_6377bab6ecf84e::t_54fdb932e00c38 1223-1225,1231-1232
+  s_6377bab6ecf84e::t_4900eabfa5aa2c 752
+  s_6377bab6ecf84e::t_f146b3bfdbefab 43-46
+  s_6377bab6ecf84e::t_34861efa2e555a 843,845,849-851,855
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1ab32e0f071c54eae62349523f7979cec24b950",
+  "prompts": {},
+  "sessions": {
+    "s_6377bab6ecf84e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ef2114198ffe86An9ehJ1FETnM",
+        "model": "unknown"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
