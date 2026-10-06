@@ -40,6 +40,10 @@ interface RelocatedFile {
   target: string;
 }
 
+function canonicalPath(filePath: string) {
+  return filePath.replaceAll("\\", "/");
+}
+
 function storedFile(path: string) {
   return lstat(path).catch((cause: NodeJS.ErrnoException) => {
     if (cause.code === "ENOENT") {
@@ -745,7 +749,7 @@ export class TorrentEngine {
         index,
         length: file.length,
         name: file.name,
-        path: file.path,
+        path: canonicalPath(file.path),
         priority: "normal",
         progress: 0,
       })),
@@ -836,19 +840,19 @@ export class TorrentEngine {
         return;
       }
       // Reserve the metadata paths before another torrent becomes ready.
-      const savedFiles = new Map(detail.files.map((file) => [file.path, file]));
+      const savedFiles = new Map(detail.files.map((file) => [canonicalPath(file.path), file]));
       detail.files = torrent.files.map((file, index) => ({
-        downloaded: savedFiles.get(file.path)?.downloaded ?? 0,
+        downloaded: savedFiles.get(canonicalPath(file.path))?.downloaded ?? 0,
         index,
         length: file.length,
         name: file.name,
-        path: file.path,
-        priority: savedFiles.get(file.path)?.priority ?? "normal",
-        progress: savedFiles.get(file.path)?.progress ?? 0,
+        path: canonicalPath(file.path),
+        priority: savedFiles.get(canonicalPath(file.path))?.priority ?? "normal",
+        progress: savedFiles.get(canonicalPath(file.path))?.progress ?? 0,
       }));
       entry.storageClaimed = !collision;
       if (collision) {
-        detail.error = `The file ${collision.path} is already used by another torrent. Choose another folder.`;
+        detail.error = `The file ${canonicalPath(collision.path)} is already used by another torrent. Choose another folder.`;
         entry.torrent = null;
         entry.unwatch?.();
         torrent.destroy({ destroyStore: false });
@@ -1216,14 +1220,16 @@ export class TorrentEngine {
         }
         return verified / (to - from);
       });
-      const priorities = new Map(detail.files.map((file) => [file.path, file.priority]));
+      const priorities = new Map(
+        detail.files.map((file) => [canonicalPath(file.path), file.priority])
+      );
       detail.files = torrent.files.map((file, index) => ({
         downloaded: file.done ? file.length : file.downloaded,
         index,
         length: file.length,
         name: file.name,
-        path: file.path,
-        priority: priorities.get(file.path) ?? "normal",
+        path: canonicalPath(file.path),
+        priority: priorities.get(canonicalPath(file.path)) ?? "normal",
         progress: file.done ? 1 : file.progress,
       }));
       detail.peerList = peers(torrent);
