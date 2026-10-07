@@ -1,0 +1,209 @@
+src/components/anilist-episode-modal.tsx
+  s_dd74f19ce74da2::t_6bda962992693e 78
+  s_9aea8319194498::t_875f7347e4d201 221,416
+  s_9aea8319194498::t_b2a7a0c9b05f60 40,48,57,202-203,216-219,232,243-244,326,328,355-359,368-370,386,397,410,415,417-419
+  s_9aea8319194498::t_f6be20d001a67a 79-90,92
+  s_ffe2670d826efa::t_9e9ce72cb057bf 13,21,37,94-99,302-322
+  s_ffe2670d826efa::t_5a2cec3f00d8d0 93,367,371,420
+electrobun.config.ts
+  s_82812c6ca51fe1::t_f09f7e7593453e 50
+  s_82812c6ca51fe1::t_d1f760db226577 2,14
+docs/releases.md
+  s_82812c6ca51fe1::t_006eb58404dab0 13,15-19
+src/server/updates-api.ts
+  s_82812c6ca51fe1::t_f09f7e7593453e 10-11
+src/components/destination-sidebar.tsx
+  s_82812c6ca51fe1::t_879924483ff80c 82,84,86,89,97,108
+  s_1cbc191109b5a2::t_d909a6549cca5a 2,48-49,51,56,80-81,83,85,87-88,90,92-96,98-107,109-110,112,114,238-243
+  s_1cbc191109b5a2::t_2f5d92f39759fa 3-4,7,12,28,31-46,50,52-55,57-79,113,115-121,134
+  s_1cbc191109b5a2::t_6336984187a392 91,111
+  s_9aea8319194498::t_9c294d4bb5ec44 133,275
+  s_dd74f19ce74da2::t_cdd90285438d02 47
+package.json
+  s_a0a481a34b8480::t_a7bf85387bbb23 3
+tests/anilist-opening.test.ts
+  s_ffe2670d826efa::t_1ad7a9b7201825 22-25,27,31-33
+  s_9aea8319194498::t_aba4a2ce8374b1 15-17
+  s_82812c6ca51fe1::t_8b244723b380a5 9-11,26,39-41,58-60,85-87
+  s_82812c6ca51fe1::t_d8340022bd4084 28-30
+  s_ffe2670d826efa::t_c27a22e367806d 1-8,12-14,18-21
+  s_ffe2670d826efa::t_a4406b869a8298 34-38,42-57,61-84,88-96
+src/styles.css
+  s_82812c6ca51fe1::t_879924483ff80c 1804-1806,1810,1827,1829-1830,1832-1834,1841-1844,1846,1848-1849
+  s_1cbc191109b5a2::t_d909a6549cca5a 1803,1807-1809,1811-1826,1828,1831,1835-1840,1845,1850-1862,1872,1943-1946,1985
+  s_dd74f19ce74da2::t_96358322161c0d 2634-2637
+src/components/plugins-page.tsx
+  s_a0a481a34b8480::t_006f39c9b538fe 11,63-68,70-87,96,112,129-133,140,145-146,150-156,158,193-194,203
+  s_a0a481a34b8480::t_28cd7172e243db 192
+  s_9aea8319194498::t_aba4a2ce8374b1 332-334
+  s_9aea8319194498::t_9c294d4bb5ec44 60,216-219,250,271,330
+CHANGELOG.md
+  s_a0a481a34b8480::t_a7bf85387bbb23 7-21
+tests/anilist-threads.test.ts
+  s_1cbc191109b5a2::t_eb97b68e4e6073 12,311-352
+  s_1cbc191109b5a2::t_82337b75ae5c36 353-357
+src/components/updates.tsx
+  s_82812c6ca51fe1::t_f1be9a2929b433 20,27-34,49-59,97,101-102,104-106,108-109,117,120,133,136,140,142,179,195-196,198-200,202-203,205,230-231,233,237,239-241
+src/components/modal.tsx
+  s_1cbc191109b5a2::t_9a9970ca69ac44 7,43-46,109-119,130,133-135,140,155
+  s_1cbc191109b5a2::t_d909a6549cca5a 683-694
+tests/desktop-config.test.ts
+  s_82812c6ca51fe1::t_d5d196ffb7a8cc 1-6,31,33-35
+  s_82812c6ca51fe1::t_bfdb8faeb782f5 17-21
+  s_82812c6ca51fe1::t_e058e83d475878 7-16,22-30
+  s_82812c6ca51fe1::t_9edb6ef7acebb9 32
+  s_82812c6ca51fe1::t_356210f65fdec0 36
+scripts/release.ts
+  s_9aea8319194498::t_aba4a2ce8374b1 143-152
+  s_82812c6ca51fe1::t_8de496e046b978 128-133,153-154
+  s_82812c6ca51fe1::t_9930b679d95e39 134-142
+  s_82812c6ca51fe1::t_e7eb8add0d93d0 126-127,155-156
+tests/release.test.ts
+  s_9aea8319194498::t_aba4a2ce8374b1 21-33,135-141,157-162
+  s_82812c6ca51fe1::t_e7eb8add0d93d0 7-8,20
+  s_82812c6ca51fe1::t_8de496e046b978 19,34-35,129-133
+  s_82812c6ca51fe1::t_dfee35cc97cb78 123-128
+src/server/feeds/anilist-opening-api.ts
+  s_ffe2670d826efa::t_e4ec9c82eeb7ab 25
+  s_ffe2670d826efa::t_dba9d881eba58a 1-4,7-21,23-24,26-31,36-38
+  s_ffe2670d826efa::t_8ff7fa5098bc90 5-6,22
+  s_ffe2670d826efa::t_a4406b869a8298 32-35
+scripts/native-smoke.ts
+  s_9aea8319194498::t_6c6f906f00f5ec 1934-1938
+  s_a0a481a34b8480::t_feb2e522b27e27 1166,1179,1182-1184
+  s_1cbc191109b5a2::t_18a9c8a86922ec 230-257
+  s_a0a481a34b8480::t_7f67a4772bab84 1072-1082
+  s_ffe2670d826efa::t_6f6cfa066e20f8 1909
+  s_9aea8319194498::t_9fbf1b9aa484e0 1583-1588,1674-1680,1683-1689,1691
+  s_9aea8319194498::t_66fbb9ffe8380f 1801
+  s_9aea8319194498::t_583b101a6d9c70 1565-1566,1589-1591,1690,1728-1733,1910-1911,1914-1918,1925
+  s_ffe2670d826efa::t_4c3fe761116458 1955
+  s_a0a481a34b8480::t_68a483a53d65cb 1070-1071
+  s_9aea8319194498::t_70beede0bc54cd 1564,1596,1897-1899,1933,1939-1944
+  s_ffe2670d826efa::t_a4406b869a8298 1559,1567,1579-1582,1902-1908,1945-1946,1948-1950,1953-1954
+  s_a0a481a34b8480::t_c716420206147e 1167-1178,1180-1181
+  s_9aea8319194498::t_020fa941193d46 1681-1682,1734-1737
+  s_a0a481a34b8480::t_e184da8c5f5fbf 1068-1069,1083
+  s_ffe2670d826efa::t_a2964186b30ef1 1788-1792
+  s_ffe2670d826efa::t_458880088f25e1 1947,1951-1952
+  s_a0a481a34b8480::t_036e7f89aef101 1901
+src/server/engine.ts
+  s_1cbc191109b5a2::t_917f067ed445d6 420-427,430,435-440,442,446
+  s_1cbc191109b5a2::t_dd0a0d97490497 413,443-445
+src/server.ts
+  s_ffe2670d826efa::t_dba9d881eba58a 4,11,38-45
+  s_82812c6ca51fe1::t_06aad4d2637e50 171-176,179-180,186,298-306
+  s_82812c6ca51fe1::t_bbf107d4cca751 110,236-237
+  s_dd74f19ce74da2::t_36aee2eb4e821f 177-178,238
+src/server/updates.ts
+  s_82812c6ca51fe1::t_f1be9a2929b433 116-119,151,311
+  s_82812c6ca51fe1::t_e7eb8add0d93d0 269,302
+  s_82812c6ca51fe1::t_bbf107d4cca751 123-125
+  s_82812c6ca51fe1::t_f09f7e7593453e 3,15-18,97-98,106,112,120-122,126,167-168,186-188,245-256,268,270-301,303-310,312-317
+src/server/api.ts
+  s_1cbc191109b5a2::t_eb97b68e4e6073 110-112
+tests/destinations.test.ts
+  s_1cbc191109b5a2::t_a20e68492105ab 227,250-307
+  s_1cbc191109b5a2::t_88f14c55a29407 308-311
+src/types.ts
+  s_ffe2670d826efa::t_dba9d881eba58a 71-75
+  s_82812c6ca51fe1::t_f09f7e7593453e 44,50,52,54-61
+  s_dd74f19ce74da2::t_1847707840c045 53
+src/server/desktop-update-installer.ts
+  s_82812c6ca51fe1::t_06aad4d2637e50 1-38
+src/server/desktop.ts
+  s_82812c6ca51fe1::t_06aad4d2637e50 4,17,28,32-36,38-39
+  s_82812c6ca51fe1::t_f0ede677d91027 79,162
+  s_82812c6ca51fe1::t_bbf107d4cca751 16,80-83,161,163-171
+  s_82812c6ca51fe1::t_e216a04cf3a68a 37,172
+src/components/app-shell.tsx
+  s_1cbc191109b5a2::t_9a9970ca69ac44 17,34,109-110,113,129-136,152,168-174
+  s_9aea8319194498::t_aba4a2ce8374b1 25,143
+  s_9aea8319194498::t_9c294d4bb5ec44 18,28-29,64-85,137,146-147,160
+  s_9aea8319194498::t_d3e04882e3707a 138,163
+tests/updates.test.ts
+  s_82812c6ca51fe1::t_a79b49ea5ebd4e 77,110,137-139
+  s_82812c6ca51fe1::t_9611039f21dc0e 49-50,53,72-76,78-87,92-97,102,104-106,108-109,111-114,122,126-136,140-158
+  s_82812c6ca51fe1::t_606a73dec5cab1 16-17,19-21
+  s_82812c6ca51fe1::t_950722e94732e4 67
+  s_82812c6ca51fe1::t_fca7b582112ba6 101,159-166,168-170,172-179,181,185-190,192,194-195,199-203,208-210,214-250
+  s_82812c6ca51fe1::t_e7eb8add0d93d0 42,44,98-100,191,193,204
+  s_82812c6ca51fe1::t_8029e5f1c22f77 11-15,22-36,38-39,41,43,45-46,54-66,68-70
+  s_82812c6ca51fe1::t_6d68cd3b17a4bc 18
+  s_82812c6ca51fe1::t_51c4c917d56da0 37
+  s_82812c6ca51fe1::t_8c88ca14c30879 40
+  s_82812c6ca51fe1::t_d37d599f65bf9c 47-48
+  s_82812c6ca51fe1::t_75fe4a484acf42 51-52
+  s_82812c6ca51fe1::t_57d096e493cb20 71
+  s_82812c6ca51fe1::t_3471a210e803b6 88-91
+  s_82812c6ca51fe1::t_039d317329504e 103
+  s_82812c6ca51fe1::t_29cf24dc0a7bdd 107
+  s_82812c6ca51fe1::t_e95c3b69338b21 115-117,119-121
+  s_82812c6ca51fe1::t_3bd580bed25c15 123-125
+  s_82812c6ca51fe1::t_572a79d5f91c87 167
+  s_82812c6ca51fe1::t_e8b9451903dca8 171
+  s_82812c6ca51fe1::t_fa5990fa399b60 180
+  s_82812c6ca51fe1::t_d0ffc7dc96666d 182-184
+  s_82812c6ca51fe1::t_aa732d765296f9 196-198
+  s_82812c6ca51fe1::t_d8dd5341fdad19 205-207
+  s_82812c6ca51fe1::t_3c29b67ccdd9a8 211-213
+  s_82812c6ca51fe1::t_153b80b8a2988f 6-7,118
+src/components/destination-menu.tsx
+  s_1cbc191109b5a2::t_2f5d92f39759fa 1,25,62-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3d66595d394caaa2d9b3bd743f7525e068e26398",
+  "prompts": {},
+  "sessions": {
+    "s_1cbc191109b5a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e88fc507-b057-43e3-b931-ef357fbf1469",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_82812c6ca51fe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11817-1bd7-7aa1-811f-b74a34967b7f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_9aea8319194498": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11819-d61c-7622-904e-aae6cc49e14b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_dd74f19ce74da2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1181e-c422-7122-8d11-2535154dbf7a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_ffe2670d826efa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1181d-74b9-7ec0-ad68-1a10c248c454",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
