@@ -1,0 +1,27 @@
+.github/workflows/release.yml
+  s_3f691299908d2a::t_609506ba630d1d 6-10,14,37,42-43,45-46,62-64,70,89,95-96,99-100,109
+scripts/release.ts
+  s_3f691299908d2a::t_8f6eabe490e38c 111,133-137,141,147-149
+tests/release.test.ts
+  s_3f691299908d2a::t_83bc11476b52a2 11-12,53,106,113
+  s_3f691299908d2a::t_609506ba630d1d 121-132
+  s_3f691299908d2a::t_690239f6aac45f 64-69
+  s_3f691299908d2a::t_011f2fce0a442d 10,19-44,60-63,105,107-112,114-119
+  s_3f691299908d2a::t_89eebc2d32c1b4 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "657e3ae35d8fe7b712747009c98eea0f82749dda",
+  "prompts": {},
+  "sessions": {
+    "s_3f691299908d2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a114fc-8806-7523-8a94-1f44bb9fc711",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
