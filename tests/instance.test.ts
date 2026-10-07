@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { symlink } from "node:fs/promises";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveInstanceConfig } from "../src/server/instance";
 import type { DashboardState, InstanceConfig } from "../src/types";
@@ -76,7 +76,7 @@ function launch(config: InstanceConfig, hotEntry?: string) {
 }
 
 test("development and release have distinct default storage, downloads, ports and native identities", () => {
-  const homeDir = "/temporary/tofu-home";
+  const homeDir = join(import.meta.dir, "temporary-home");
   const options = {
     dataDir: undefined,
     desktop: false,
@@ -265,7 +265,9 @@ test("hot reload keeps the original profile and database together until process 
     port: "0",
     profile: "dev",
   });
-  const entry = join(context.directory, "hot-entry.ts");
+  // Bun 1.4.2 on Windows only watches files inside the project directory.
+  const hotDirectory = await mkdtemp(join(import.meta.dir, "tofu-hot-"));
+  const entry = join(hotDirectory, "hot-entry.ts");
   const signal = join(context.directory, "hot-ready.json");
   const source = join(import.meta.dir, "../src/server.ts");
   const nextDataDir = join(context.directory, "hot-release");
@@ -303,7 +305,7 @@ await Bun.write(${JSON.stringify(signal)}, JSON.stringify({iteration: ${iteratio
     expect(Bun.SHA256.hash(bytes, "hex")).toBe(Bun.SHA256.hash(context.bytes, "hex"));
   } finally {
     await dev.stop();
-    await context.close();
+    await Promise.all([context.close(), rm(hotDirectory, { force: true, recursive: true })]);
   }
 }, 30_000);
 

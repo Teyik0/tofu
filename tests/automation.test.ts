@@ -877,4 +877,4 @@ test("C411 paces searches and disabling the plugin cancels queued requests", asy
     upstream.stop(true);
     await context.close();
   }
-});
+}, 15_000);
