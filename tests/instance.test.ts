@@ -5,6 +5,11 @@ import { resolveInstanceConfig } from "../src/server/instance";
 import type { DashboardState, InstanceConfig } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
 
+// Bun 1.4.2's diagnostic from the pinned WebTorrent's optional uTP probe.
+// Match the complete notice so unrelated stderr before or after it still fails.
+const optionalUtpNotice =
+  /^WebTorrent: uTP not supported warn: No native build was found for [^\r\n]+\r?\n {4}loaded from: [^\r\n]*utp-native\r?\n\r?\n(?: {6}at [^\r\n]+\r?\n)+\r?\n/m;
+
 function launch(config: InstanceConfig, hotEntry?: string) {
   const command = hotEntry ? ["--hot", hotEntry] : ["scripts/dev.ts"];
   const child = Bun.spawn(
@@ -166,36 +171,49 @@ test("development does not claim an existing database whose channel is unknown",
   }
 }, 30_000);
 
-test("importing the server for build inspection does not create user databases", async () => {
-  const context = await fixture(1024, []);
-  const dataDir = join(context.directory, "build-inspection");
-  const child = Bun.spawn(
-    [process.execPath, "-e", 'await import("./src/server.ts"); process.exit(0)'],
-    {
-      cwd: join(import.meta.dir, ".."),
-      env: { ...process.env, TOFU_DATA_DIR: dataDir, TOFU_MODE: "server", TOFU_PROFILE: "dev" },
-      stderr: "pipe",
-      stdout: "ignore",
-    }
-  );
-  const output = new Response(child.stderr).text();
-  try {
-    expect({ exit: await child.exited, output: await output }).toEqual({ exit: 0, output: "" });
-    expect(
-      await Promise.all(
-        ["sync.sqlite", "feeds.sqlite", "tofu.sqlite", "instance.json"].map((file) =>
-          Bun.file(join(dataDir, file)).exists()
+test.each(["platform prebuilds", "no uTP prebuild"])(
+  "importing the server with %s for build inspection does not create user databases",
+  async (prebuilds) => {
+    const context = await fixture(1024, []);
+    const dataDir = join(context.directory, "build-inspection");
+    const child = Bun.spawn(
+      [process.execPath, "-e", 'await import("./src/server.ts"); process.exit(0)'],
+      {
+        cwd: join(import.meta.dir, ".."),
+        env: {
+          ...process.env,
+          TOFU_DATA_DIR: dataDir,
+          TOFU_MODE: "server",
+          TOFU_PROFILE: "dev",
+          ...(prebuilds === "no uTP prebuild"
+            ? { UTP_NATIVE_PREBUILD: join(context.directory, "unavailable-utp-native") }
+            : {}),
+        },
+        stderr: "pipe",
+        stdout: "ignore",
+      }
+    );
+    const stderr = new Response(child.stderr).text();
+    try {
+      const output = (await stderr).replace(optionalUtpNotice, "");
+      expect({ exit: await child.exited, output }).toEqual({ exit: 0, output: "" });
+      expect(
+        await Promise.all(
+          ["sync.sqlite", "feeds.sqlite", "tofu.sqlite", "instance.json"].map((file) =>
+            Bun.file(join(dataDir, file)).exists()
+          )
         )
-      )
-    ).toEqual([false, false, false, false]);
-  } finally {
-    if (child.exitCode === null) {
-      child.kill("SIGTERM");
-      await child.exited;
+      ).toEqual([false, false, false, false]);
+    } finally {
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+        await child.exited;
+      }
+      await context.close();
     }
-    await context.close();
-  }
-}, 30_000);
+  },
+  30_000
+);
 
 test("the first protected startup refuses a running legacy instance without a lock", async () => {
   const context = await fixture(1024, []);
