@@ -108,7 +108,7 @@ if (Bun.argv[2] === "validate") {
     );
   }
 } else if (Bun.argv[2] === "publish") {
-  const tag = process.env.GITHUB_REF_NAME;
+  const tag = process.env.RELEASE_TAG ?? process.env.GITHUB_REF_NAME;
   const repository = process.env.GITHUB_REPOSITORY;
   if (tag !== `v${version}` || repository?.toLowerCase() !== "teyik0/tofu") {
     throw new Error("Incorrect publication tag or repository");
@@ -130,19 +130,23 @@ if (Bun.argv[2] === "validate") {
     )
   );
   await Bun.write("artifacts/SHA256SUMS", `${checksums.join("\n")}\n`);
+  const existing = Bun.spawn(["gh", "release", "view", tag, "--repo", repository], {
+    stderr: "ignore",
+    stdout: "ignore",
+  });
+  const releaseExists = (await existing.exited) === 0;
   await command([
     "gh",
     "release",
-    "create",
+    releaseExists ? "upload" : "create",
     tag,
     ...paths.map((name) => join("artifacts", name)),
     "artifacts/SHA256SUMS",
     "--repo",
     repository,
-    "--verify-tag",
-    "--title",
-    `Tofu ${version}`,
-    "--generate-notes",
+    ...(releaseExists
+      ? ["--clobber"]
+      : ["--verify-tag", "--title", `Tofu ${version}`, "--generate-notes"]),
   ]);
 } else {
   throw new Error("Unknown release command");
