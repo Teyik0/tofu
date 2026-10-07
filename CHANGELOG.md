@@ -11,6 +11,10 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 - In-app desktop update downloads and restart installation through Electrobun, with torrent state persistence and recovery when the update helper fails.
 - Sidebar tab deletion with confirmation and an explicit Shift-click shortcut, including support for deleting the default tab while preserving torrents and automation rules.
 
+### Changed
+
+- Use the Furin Electrobun PR #163 core preview through a temporary archive with normalized dependencies, while retaining Tofu's native host.
+
 ### Fixed
 
 - Jev activation without an API key now shows an inline error and focuses the credential field; activation and deactivation preserve saved credentials.

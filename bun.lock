@@ -7,7 +7,7 @@
       "dependencies": {
         "@base-ui/react": "1.8.0",
         "@elysia/eden": "2.0.0-beta.5",
-        "@teyik0/furin": "0.7.0-alpha.2",
+        "@teyik0/furin": "file:vendor/furin-pr163-a74cd57.tgz",
         "bun-plugin-tailwind": "0.1.2",
         "class-variance-authority": "0.7.1",
         "cn": "^0.4.0",
@@ -235,7 +235,7 @@
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
 
-    "@teyik0/furin": ["@teyik0/furin@0.7.0-alpha.2", "", { "dependencies": { "@elysia/eden": "^2.0.0-beta.5", "@elysia/static": "2.0.0-beta.2", "@jridgewell/trace-mapping": "^0.3.31", "@vercel/functions": "^3.9.9", "@yuku-toolchain/types": "0.12.0", "exact-mirror": "1.2.6", "magic-string": "^1.4.2", "react-server-dom-webpack": "19.3.0", "seroval": "^1.6.7", "typescript": "7.0.2", "yuku-ast": "0.12.0", "yuku-parser": "0.12.0" }, "peerDependencies": { "drizzle-orm": "^0.45.3", "elysia": "2.0.0-beta.21", "evlog": "^2.29.0", "react": "19.3.0", "react-dom": "19.3.0", "typebox": "1.3.34" }, "optionalPeers": ["drizzle-orm"], "bin": { "furin": "src/cli/index.ts", "furin-sync-postgres-migrate": "dist/server/sync/postgres/migrate.js" } }, "sha512-RI1+O034Kyb+vD3IJ1NbAP056rEtktZIzpeSRfAHqQ6wavhdUfxnxWBwHBJhmFJnjeGi0Us54SHFDbnR1Ztm2g=="],
+    "@teyik0/furin": ["@teyik0/furin@vendor/furin-pr163-a74cd57.tgz", { "dependencies": { "@elysia/eden": "^2.0.0-beta.5", "@elysia/static": "2.0.0-beta.2", "@jridgewell/trace-mapping": "^0.3.31", "@vercel/functions": "^3.9.9", "@yuku-toolchain/types": "0.12.0", "exact-mirror": "1.2.6", "magic-string": "^1.4.2", "react-server-dom-webpack": "19.3.0", "seroval": "^1.6.7", "typescript": "7.0.2", "yuku-ast": "0.12.0", "yuku-parser": "0.12.0" }, "peerDependencies": { "drizzle-orm": "^0.45.3", "elysia": "2.0.0-beta.21", "evlog": "^2.29.0", "react": "19.3.0", "react-dom": "19.3.0", "typebox": "1.3.34" }, "optionalPeers": ["drizzle-orm"], "bin": { "furin": "./src/cli/index.ts", "furin-sync-postgres-migrate": "./dist/server/sync/postgres/migrate.js" } }, "sha512-PxdyDZ4HvoZYhPmH6gd21IBTB+N4HxvUBWoscxHwN82HqAVm+EAMcPHLcZbCcx39vlsYbGy0n4WVp4ZSDOWTGA=="],
 
     "@thaunknown/simple-peer": ["@thaunknown/simple-peer@10.1.2", "", { "dependencies": { "debug": "^4.4.3", "err-code": "^3.0.1", "streamx": "^2.28.0", "uint8-util": "^2.3.2", "webrtc-polyfill": "^1.2.2" } }, "sha512-pcG35e815X43Crr/HVmOWlbsx9Jz3KD27HOhy/BwIjQkDlafzJFl0NKb8B+bf+bsnfQL/BB6Z44cMZPQaYHLYQ=="],
 
@@ -655,7 +655,7 @@
 
     "eventsource-parser": ["eventsource-parser@3.1.1", "", {}, "sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ=="],
 
-    "evlog": ["evlog@2.30.0", "", { "peerDependencies": { "@nestjs/common": ">=11.2.3", "@nuxt/kit": "^4.4.2", "@orpc/server": ">=1.15.0", "@tanstack/start-client-core": "^1.170.29", "ai": ">=6.0.168 <8.0.0", "elysia": ">=1.4.30", "eve": ">=0.30.0", "express": ">=5.2.1", "fastify": ">=5.12.4", "h3": "^1.15.11", "hono": ">=4.13.7", "next": ">=16.3.4", "nitro": "^3.0.260311-beta", "nitropack": "^2.13.4", "ofetch": "^1.5.1", "react": ">=19.3.0", "react-router": ">=7.18.3", "vite": "^7.0.0 || ^8.0.0" }, "optionalPeers": ["@nestjs/common", "@nuxt/kit", "@orpc/server", "@tanstack/start-client-core", "ai", "elysia", "eve", "express", "fastify", "h3", "hono", "next", "nitro", "nitropack", "ofetch", "react", "react-router", "vite"], "bin": { "evlog": "./bin/evlog.mjs" } }, "sha512-5rfADenoi5YFDjEpljSxpPgqfJl0XAP5pPOCeJqCXA8BCN2gzeecqCXZB5uDJyB/4nvD52z4lCKfOCCXHh947A=="],
+    "evlog": ["evlog@2.30.1", "", { "peerDependencies": { "@nestjs/common": ">=11.2.7", "@nuxt/kit": "^4.4.2", "@orpc/server": ">=1.15.4", "@tanstack/start-client-core": "^1.170.34", "ai": ">=6.0.168 <8.0.0", "elysia": ">=1.4.30", "eve": ">=0.30.0", "express": ">=5.2.1", "fastify": ">=5.12.5", "h3": "^1.15.11", "hono": ">=4.13.12", "next": ">=16.3.8", "nitro": "^3.0.260311-beta", "nitropack": "^2.13.4", "ofetch": "^1.5.1", "react": ">=19.3.0", "react-router": ">=7.18.4", "vite": "^7.0.0 || ^8.0.0" }, "optionalPeers": ["@nestjs/common", "@nuxt/kit", "@orpc/server", "@tanstack/start-client-core", "ai", "elysia", "eve", "express", "fastify", "h3", "hono", "next", "nitro", "nitropack", "ofetch", "react", "react-router", "vite"], "bin": { "evlog": "./bin/evlog.mjs" } }, "sha512-LPVl9TlX/RBnQttBjuoXk5N5vc2UYYcvZwA9lIvJkuCwiyd2dBTan7FSBGBoJSSnSl8ukYNeKH4SMZl06LeK7g=="],
 
     "exact-mirror": ["exact-mirror@1.2.6", "", { "peerDependencies": { "typebox": ">= 1.1.0" }, "optionalPeers": ["typebox"] }, "sha512-EGx81nhFP1GE94coJsz94FLzdxWrnkNCJdfdX44rbd7pVcAotWzDlBJUC7yy1Ae7d7dYKpoTtZ1jCAIz2IVtfA=="],
 
