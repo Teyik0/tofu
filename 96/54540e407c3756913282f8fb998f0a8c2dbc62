@@ -1,0 +1,22 @@
+tests/instance.test.ts
+  s_3f691299908d2a::t_2434090525eef2 2,79,268-270
+  s_3f691299908d2a::t_0501c01ec5b89a 308
+tests/automation.test.ts
+  s_3f691299908d2a::t_00fda1bb396b8a 880
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9654540e407c3756913282f8fb998f0a8c2dbc62",
+  "prompts": {},
+  "sessions": {
+    "s_3f691299908d2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a114fc-8806-7523-8a94-1f44bb9fc711",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
