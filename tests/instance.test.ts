@@ -271,12 +271,15 @@ test("hot reload keeps the original profile and database together until process 
   const signal = join(context.directory, "hot-ready.json");
   const source = join(import.meta.dir, "../src/server.ts");
   const nextDataDir = join(context.directory, "hot-release");
+  // Publish readiness atomically so polling never reads a partially written JSON file.
   const program = (iteration: number, dataDir: string, profile: string) =>
-    `process.env.TOFU_DATA_DIR = ${JSON.stringify(dataDir)};
+    `import { rename } from "node:fs/promises";
+process.env.TOFU_DATA_DIR = ${JSON.stringify(dataDir)};
 process.env.TOFU_PROFILE = ${JSON.stringify(profile)};
 const serverModule = await import(${JSON.stringify(source)});
 await serverModule.startServer();
-await Bun.write(${JSON.stringify(signal)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + serverModule.default.server.port}));`;
+await Bun.write(${JSON.stringify(`${signal}.tmp`)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + serverModule.default.server.port}));
+await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
   await Bun.write(entry, program(1, config.dataDir, "dev"));
   const dev = launch(config, entry);
   try {
