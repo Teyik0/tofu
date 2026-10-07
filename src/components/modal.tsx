@@ -4,6 +4,7 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import { api } from "../client";
 import type { DashboardState, Destination, DestinationIconName, TorrentDetail } from "../types";
 import { request } from "./api";
+import { useDashboard } from "./app-shell";
 import { DestinationIconPicker } from "./destination-icon";
 import { TorrentFileInput } from "./torrent-file-input";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -39,7 +40,10 @@ import {
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 
-export type ModalKind = FormModalKind | { type: "automation"; destinationId: string };
+export type ModalKind =
+  | FormModalKind
+  | { type: "automation"; destinationId: string }
+  | { type: "deleteDestination"; destination: Destination };
 export type FormModalKind =
   | { type: "add"; destinationId: string }
   | { type: "drop"; files: File[] }
@@ -102,7 +106,17 @@ function ModalFrame({
   );
 }
 
-function DeleteDestinationModal({
+/** Deletes a tab and returns the tab to show when the visible tab no longer exists. */
+export async function deleteDestination(id: string, active: string | null) {
+  const { removed } = await request<{ ok: true; removed: string }>(
+    `/destinations/${id}`,
+    "DELETE",
+    undefined
+  );
+  return active === id || active === removed ? "default" : null;
+}
+
+export function DeleteDestinationModal({
   destination,
   cancel,
   close,
@@ -113,14 +127,17 @@ function DeleteDestinationModal({
   close: () => void;
   done: (id: string | null, destinationId: string | null) => Promise<void>;
 }) {
+  const { activeDestination, data } = useDashboard();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fallback = data.destinations.find((item) =>
+    destination.id === "default" ? item.id !== "default" : item.id === "default"
+  );
   const remove = async () => {
     setBusy(true);
     setError(null);
     try {
-      await request(`/destinations/${destination.id}`, "DELETE", undefined);
-      await done(null, null);
+      await done(null, await deleteDestination(destination.id, activeDestination));
       close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to delete the tab");
@@ -135,7 +152,7 @@ function DeleteDestinationModal({
           cancel();
         }
       }}
-      description="Torrents and automation rules will be reassigned to the default tab. Existing files stay in their current folders."
+      description={`Torrents and automation rules will be reassigned to ${fallback?.name ?? "the default tab"}${destination.id === "default" ? ", which becomes the default tab" : ""}. Existing files stay in their current folders.`}
       remove
       title={`Delete tab ${destination.name}?`}
     >
@@ -663,20 +680,18 @@ export function Modal({
           </AlertDialogFooter>
         ) : (
           <DialogFooter className="mt-6">
-            {modal.type === "destination" &&
-              modal.destination &&
-              modal.destination.id !== "default" && (
-                <Button
-                  className="sm:mr-auto"
-                  disabled={busy}
-                  onClick={() => setDeletingDestination(true)}
-                  type="button"
-                  variant="destructive"
-                >
-                  <Trash2Icon data-icon="inline-start" />
-                  Delete tab
-                </Button>
-              )}
+            {modal.type === "destination" && modal.destination && data.destinations.length > 1 && (
+              <Button
+                className="sm:mr-auto"
+                disabled={busy}
+                onClick={() => setDeletingDestination(true)}
+                type="button"
+                variant="destructive"
+              >
+                <Trash2Icon data-icon="inline-start" />
+                Delete tab
+              </Button>
+            )}
             <Button disabled={busy} onClick={close} type="button" variant="outline">
               Cancel
             </Button>

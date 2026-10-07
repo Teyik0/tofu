@@ -3,10 +3,251 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Elysia } from "elysia";
+import { DesktopUpdateInstaller } from "../src/server/desktop-update-installer";
+import { TorrentEngine } from "../src/server/engine";
 import { createTofuSync } from "../src/server/sync";
 import { UpdatesService } from "../src/server/updates";
 import { createUpdatesApi } from "../src/server/updates-api";
-import { json, waitFor } from "./helpers";
+import { fixture, json, network, waitFor } from "./helpers";
+
+test("an update restart saves a real peer transfer and recovers when the native handoff fails", async () => {
+  const context = await fixture(256 * 1024, []);
+  let reopened: TorrentEngine | null = null;
+  const response = await context.request(
+    "/torrents",
+    json({ paused: false, source: context.magnet })
+  );
+  expect(response.status).toBe(200);
+  const added = await response.json();
+  await waitFor(
+    async () => context.engine.get(added.id).detail,
+    (detail) => detail.progress === 1
+  );
+  const destination = context.engine.get(added.id).detail.savePath;
+  const source = join(destination, context.seed.name);
+  let allowQuit = false;
+  const installer = new DesktopUpdateInstaller({
+    allowQuit: (allowed) => {
+      allowQuit = allowed;
+    },
+    recover: async () => {
+      reopened = await TorrentEngine.open({
+        dataDir: join(context.directory, "state"),
+        downloadPath: join(context.directory, "downloads"),
+        network,
+      });
+    },
+    shutdown: () => context.engine.close(),
+    updater: {
+      applyUpdate: () => {
+        expect(allowQuit).toBe(true);
+        return Promise.resolve();
+      },
+      getStatusHistory: () => [],
+      updateInfo: () => ({
+        error: "Unable to start update helper",
+        hash: "new",
+        updateAvailable: true,
+        updateReady: true,
+        version: "0.2.0",
+      }),
+    },
+  });
+  try {
+    await expect(installer.install()).rejects.toThrow("Unable to start update helper");
+    expect(allowQuit).toBe(false);
+    expect(await Bun.file(source).bytes()).toEqual(context.bytes);
+    const restored = reopened as TorrentEngine | null;
+    expect(restored).not.toBeNull();
+    await waitFor(
+      async () => restored?.get(added.id).detail,
+      (detail) => detail?.progress === 1
+    );
+  } finally {
+    await (reopened as TorrentEngine | null)?.close();
+    await context.close();
+  }
+});
+
+test("desktop updates prepare in app and only restart after an explicit install action", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "tofu-update-native-"));
+  const sync = await createTofuSync(join(folder, "sync"));
+  let ready = false;
+  let installed = false;
+  let downloads = 0;
+  let finish: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const github = Bun.serve({
+    fetch: () =>
+      Response.json({
+        assets: [{ id: 17, name: "Tofu-0.2.0-macos-arm64.dmg" }],
+        draft: false,
+        prerelease: false,
+        tag_name: "v0.2.0",
+      }),
+    hostname: "127.0.0.1",
+    port: 0,
+  });
+  const updates = await UpdatesService.open({
+    apiOrigin: `http://127.0.0.1:${github.port}`,
+    arch: "arm64",
+    dataDir: folder,
+    native: {
+      applyUpdate: () => {
+        installed = true;
+        return Promise.resolve();
+      },
+      checkForUpdate: async () => ({
+        error: "",
+        hash: "new",
+        updateAvailable: true,
+        updateReady: ready,
+        version: "0.2.0",
+      }),
+      downloadUpdate: async () => {
+        downloads += 1;
+        await gate;
+        ready = true;
+      },
+      onStatusChange: () => undefined,
+      updateInfo: () => ({
+        error: "",
+        hash: "new",
+        updateAvailable: true,
+        updateReady: ready,
+        version: "0.2.0",
+      }),
+    },
+    notify: () => undefined,
+    platform: "darwin",
+    version: "0.1.0",
+  });
+  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const call = (path: string) =>
+    app.handle(new Request(`http://localhost/updates${path}`, json({})));
+  try {
+    expect((await call("/install")).status).toBe(409);
+    const checked = await (await call("/check")).json();
+    expect(checked.automatic).toBe(true);
+    expect(checked.status).toBe("available");
+    expect((await call("/prepare")).status).toBe(200);
+    expect(updates.snapshot().status).toBe("downloading");
+    expect((await call("/prepare")).status).toBe(200);
+    expect(downloads).toBe(1);
+    expect((await (await call("/check")).json()).status).toBe("downloading");
+    expect((await call("/install")).status).toBe(409);
+    expect(installed).toBe(false);
+    finish();
+    await waitFor(
+      async () => updates.snapshot(),
+      (state) => state.status === "ready"
+    );
+    expect((await call("/install")).status).toBe(200);
+    expect(updates.snapshot().status).toBe("restarting");
+    await waitFor(async () => installed, Boolean);
+  } finally {
+    finish();
+    updates.close();
+    sync.close();
+    github.stop(true);
+    await rm(folder, { force: true, recursive: true });
+  }
+});
+
+test("failed native downloads can be retried and scheduled checks preserve the prepared version", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "tofu-update-retry-"));
+  const sync = await createTofuSync(join(folder, "sync"));
+  let fail = true;
+  let checks = 0;
+  let downloads = 0;
+  let progress: ((entry: import("electrobun/main").UpdateStatusEntry) => void) | null = null;
+  const info = {
+    error: "",
+    hash: "new",
+    updateAvailable: true,
+    updateReady: false,
+    version: "0.2.0",
+  };
+  const github = Bun.serve({
+    fetch: () => {
+      checks += 1;
+      return Response.json({
+        assets: [{ id: 17, name: "Tofu-0.2.0-macos-arm64.dmg" }],
+        draft: false,
+        prerelease: false,
+        tag_name: "v0.2.0",
+      });
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  });
+  const updates = await UpdatesService.open({
+    apiOrigin: `http://127.0.0.1:${github.port}`,
+    arch: "arm64",
+    dataDir: folder,
+    native: {
+      applyUpdate: () => Promise.reject(new Error("Cannot start helper")),
+      checkForUpdate: async () => info,
+      downloadUpdate: () => {
+        downloads += 1;
+        progress?.({
+          details: { progress: 42 },
+          message: "Downloading",
+          status: "download-progress",
+          timestamp: Date.now(),
+        });
+        expect(updates.snapshot().progress).toBe(42);
+        info.error = fail ? "Connection interrupted" : "";
+        info.updateReady = !fail;
+        return Promise.resolve();
+      },
+      onStatusChange: (callback) => {
+        progress = callback;
+      },
+      updateInfo: () => info,
+    },
+    notify: () => undefined,
+    platform: "darwin",
+    version: "0.1.0",
+  });
+  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const call = (path: string) =>
+    app.handle(new Request(`http://localhost/updates${path}`, json({})));
+  try {
+    await call("/check");
+    await call("/prepare");
+    await waitFor(
+      async () => updates.snapshot(),
+      (state) => state.status === "available"
+    );
+    expect(updates.snapshot().error).toBe("Connection interrupted");
+    expect(updates.snapshot().progress).toBeNull();
+    fail = false;
+    await call("/prepare");
+    await waitFor(
+      async () => updates.snapshot(),
+      (state) => state.status === "ready"
+    );
+    await call("/check");
+    expect(updates.snapshot().status).toBe("ready");
+    expect(checks).toBe(1);
+    expect(downloads).toBe(2);
+    await call("/install");
+    expect((await call("/install")).status).toBe(409);
+    await waitFor(
+      async () => updates.snapshot(),
+      (state) => state.status === "ready"
+    );
+    expect(updates.snapshot().error).toBe("Cannot start helper");
+  } finally {
+    updates.close();
+    sync.close();
+    github.stop(true);
+    await rm(folder, { force: true, recursive: true });
+  }
+});
 
 test("update checks require no signed-in access", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-access-"));

@@ -227,6 +227,34 @@ async function tabDeletionWorkflow(config: {
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
     check("Deletion preserves exact downloaded bytes", hash === config.expectedHash);
+    const quick = (await (
+      await fetch("/api/destinations", {
+        body: JSON.stringify({
+          downloadPath: `${original.settings.downloadPath}/quick`,
+          name: "Quick delete",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      })
+    ).json()) as import("../src/types").Destination;
+    const quickDelete = 'button[aria-label="Delete tab Quick delete"]';
+    await wait(() => !!document.querySelector(quickDelete));
+    document.querySelector<HTMLButtonElement>(quickDelete)!.click();
+    await wait(() => !!document.querySelector('[role="alertdialog"][data-open]'));
+    click("Cancel");
+    await wait(() => !document.querySelector('[role="alertdialog"][data-open]'));
+    check(
+      "Sidebar Delete asks for confirmation before deleting a tab",
+      (await state()).destinations.some((item) => item.id === quick.id)
+    );
+    document
+      .querySelector<HTMLButtonElement>(quickDelete)!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    await wait(async () => !(await state()).destinations.some((item) => item.id === quick.id));
+    check(
+      "Shift-clicking sidebar Delete removes the tab without a dialog",
+      !document.querySelector('[role="alertdialog"][data-open]')
+    );
     check("No JavaScript errors", errors.length === 0);
     await fetch(config.reportUrl, {
       body: JSON.stringify({ checks, errors, passed: true }),
@@ -1037,6 +1065,22 @@ async function nativeWorkflow(config: {
       document.querySelectorAll(".plugin-card").length === 5 &&
         (await automationState()).plugins.every((plugin) => !plugin.enabled)
     );
+    document.querySelector<HTMLButtonElement>("#plugin-jev")!.click();
+    await wait(() => !!document.querySelector('[role="alert"]'));
+    check(
+      "Enabling Jev without a key shows an inline error and focuses its API key field",
+      [
+        document
+          .querySelector("#key-jev")!
+          .closest("article")!
+          .querySelector('[role="alert"]')
+          ?.textContent?.includes("API key") === true,
+        document.activeElement?.id === "key-jev",
+        document.querySelector("#key-jev")!.getAttribute("aria-invalid") === "true",
+        document.querySelector("#plugin-jev")!.getAttribute("aria-checked") === "false",
+        (await automationState()).plugins.every((plugin) => !plugin.enabled),
+      ].every(Boolean)
+    );
     document.querySelector<HTMLInputElement>("#plugin-nyaa")!.click();
     await wait(async () =>
       (await automationState()).plugins.some((plugin) => plugin.id === "nyaa" && plugin.enabled)
@@ -1119,6 +1163,25 @@ async function nativeWorkflow(config: {
       "Jev key saved without exposing it in public state",
       !JSON.stringify(await automationState()).includes("native-test-secret")
     );
+    const toggleJev = async (enabled: boolean, name: string) => {
+      await wait(() => !document.querySelector("#plugin-jev")!.hasAttribute("data-disabled"));
+      document.querySelector<HTMLButtonElement>("#plugin-jev")!.click();
+      await wait(async () =>
+        (await automationState()).plugins.some((plugin) =>
+          [plugin.id === "jev", plugin.enabled === enabled, plugin.hasApiKey].every(Boolean)
+        )
+      );
+      await wait(
+        () =>
+          document.querySelector("#plugin-jev")!.getAttribute("aria-checked") === String(enabled)
+      );
+      check(
+        name,
+        !document.querySelector("#key-jev")!.closest("article")!.querySelector('[role="alert"]')
+      );
+    };
+    await toggleJev(true, "Jev enables with its saved key and clears the inline error");
+    await toggleJev(false, "Jev disables without losing its saved key");
     click("Back");
     await wait(() => !!document.querySelector(".add-button"));
     click("Automations");
@@ -1493,11 +1556,15 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       mediaId: 10,
       progress: 0,
       seasonYear: 2026,
-      siteUrl: null,
+      siteUrl: "https://anilist.co/anime/10",
       status: "CURRENT",
       title: "Native Example",
     },
   ];
+  const releaseSearch = Promise.withResolvers<void>();
+  let pluginNavigation = Promise.withResolvers<void>();
+  const pluginState = Promise.withResolvers<void>();
+  let openedAniListUrl: string | null = null;
   const fixtureFetch: typeof window.fetch = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       let url: string;
@@ -1509,10 +1576,24 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         ({ url } = input);
       }
       const path = new URL(url, location.origin).pathname;
+      if (path === "/api/anilist/open") {
+        openedAniListUrl = (JSON.parse(String(init?.body)) as { url: string }).url;
+        return Response.json({ opened: true, url: openedAniListUrl });
+      }
+      if (
+        path === "/_furin/data" &&
+        new URL(url, location.origin).searchParams.get("path") === "/plugins"
+      ) {
+        await pluginNavigation.promise;
+      }
+      if (path === "/api/automation") {
+        await pluginState.promise;
+      }
       if (path === "/api/anilist" && (!init?.method || init.method === "GET")) {
         return Response.json(sample);
       }
       if (path === "/api/anilist/entries/10/releases") {
+        await releaseSearch.promise;
         return Response.json({
           errors: [],
           releases: [
@@ -1590,6 +1671,24 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     );
     const pluginsOrigin = location.pathname;
     button("Plugins").click();
+    await wait(() => !!document.querySelector(".plugins-page"));
+    button("Sources").click();
+    await wait(
+      () => document.querySelector(".settings-topbar h1")?.textContent?.includes("Sources") === true
+    );
+    check(
+      "Plugins opens and its sections respond before navigation data arrives",
+      location.pathname === pluginsOrigin &&
+        !!document.querySelector('[aria-label="Loading plugins"]')
+    );
+    pluginNavigation.resolve();
+    await wait(() => location.pathname === "/plugins");
+    check(
+      "Completing plugin navigation preserves the selected section",
+      document.querySelector(".settings-topbar h1")?.textContent?.includes("Sources") === true
+    );
+    pluginState.resolve();
+    button("Installed").click();
     await wait(() => !!document.querySelector("#plugin-nyaa"));
     check("Plugins opens as a dedicated native page", location.pathname === "/plugins");
     check("Plugins has no modal overlay", document.querySelector("[role=dialog]") === null);
@@ -1626,6 +1725,16 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     button("Back").click();
     await wait(() => !!document.querySelector(".add-button"));
     check("Plugins returns to the originating library", location.pathname === pluginsOrigin);
+    pluginNavigation = Promise.withResolvers<void>();
+    button("Plugins").click();
+    await wait(() => !!document.querySelector(".plugins-page"));
+    button("Back").click();
+    await wait(() => !!document.querySelector(".add-button"));
+    pluginNavigation.resolve();
+    check(
+      "Back remains available during plugin navigation",
+      !document.querySelector(".plugins-page") && location.pathname === pluginsOrigin
+    );
     button("Automations").click();
     await wait(() => !!document.querySelector("[role=dialog]"));
     const tab = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(
@@ -1676,6 +1785,11 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     );
     document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!.click();
     await wait(() => !document.querySelector('[role="dialog"]'));
+    // Native WebKit can suspend transitions while the test window is obscured.
+    const sidebarMotion = document.createElement("style");
+    sidebarMotion.textContent =
+      '[data-slot="sidebar-wrapper"] *, [data-slot="sidebar-wrapper"] *::before, [data-slot="sidebar-wrapper"] *::after { transition: none !important; }';
+    document.head.append(sidebarMotion);
     document.querySelector<HTMLAnchorElement>('a[href="/anilist"]')!.click();
     await wait(() => location.pathname === "/anilist" && !!document.querySelector("#anime-search"));
     check(
@@ -1684,6 +1798,7 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         .height === regularTopbarHeight
     );
     check("AniList opens as a dedicated Furin page", !!document.querySelector(".anilist-library"));
+    await wait(() => highlightedShortcut().length === 1);
     check(
       "Navigating to AniList moves the shortcut highlight",
       highlightedShortcut().length === 1 &&
@@ -1694,11 +1809,6 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       '.sidebar-brand-row button[aria-label="Toggle sidebar"]'
     )!;
     check("AniList keeps the sidebar toggle next to the Tofu logo", !!sidebarToggle);
-    // Native WebKit can suspend transitions while the test window is obscured.
-    const sidebarMotion = document.createElement("style");
-    sidebarMotion.textContent =
-      '[data-slot="sidebar-wrapper"] *, [data-slot="sidebar-wrapper"] *::before, [data-slot="sidebar-wrapper"] *::after { transition: none !important; }';
-    document.head.append(sidebarMotion);
     sidebarToggle.focus();
     sidebarToggle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     sidebarToggle.click();
@@ -1784,24 +1894,35 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       .click();
     await wait(() => document.querySelectorAll(".anime-episode-row").length === 3);
     check(
-      "Anime cards open a modal with release proposals",
-      document.querySelector(".anime-modal")?.textContent?.includes("Download") === true &&
-        document.querySelector('[data-slot="dialog-title"]')?.textContent === "Native Example"
+      "Episodes appear before release matching finishes",
+      document.querySelector('[data-slot="dialog-title"]')?.textContent === "Native Example" &&
+        document.querySelector(".anime-modal")?.textContent?.includes("No release found") === false
     );
-    const mark = (episode: number) =>
-      document
+    document.querySelector<HTMLAnchorElement>(".anime-external-link")!.click();
+    await wait(() => openedAniListUrl !== null);
+    check(
+      "The anime link requests the system browser without leaving the episode dialog",
+      openedAniListUrl === "https://anilist.co/anime/10" &&
+        !!document.querySelector(".anime-modal") &&
+        location.pathname === "/anilist"
+    );
+    await wait(() => !document.querySelector<HTMLInputElement>("#anime-episode-2")!.disabled);
+    const mark = async (episode: number) => {
+      const checkbox = document
         .querySelector<HTMLInputElement>(`#anime-episode-${episode}`)!
         .closest('[data-slot="field"]')!
-        .querySelector<HTMLElement>('[role="checkbox"]')!
-        .click();
-    mark(2);
+        .querySelector<HTMLElement>('[role="checkbox"]')!;
+      await wait(() => !checkbox.hasAttribute("data-disabled"));
+      checkbox.click();
+    };
+    await mark(2);
     await wait(() => document.querySelector<HTMLInputElement>("#anime-episode-2")!.checked);
     check(
       "Native UI preserves out-of-order episode completion",
       document.querySelector('[data-slot="dialog-description"]')?.textContent?.includes("0 / 3") ===
         true
     );
-    mark(1);
+    await mark(1);
     await wait(
       () =>
         document
@@ -1809,6 +1930,29 @@ async function anilistWorkflow(config: { reportUrl: string }) {
           ?.textContent?.includes("2 / 3") === true
     );
     check("Native UI displays consecutive episode progress", true);
+    releaseSearch.resolve();
+    await wait(
+      () =>
+        document.querySelector(".anime-release-name")?.textContent ===
+        "Native Example - 01 VOSTFR 1080p"
+    );
+    check(
+      "Release proposals appear without losing episode completion",
+      !!button("Download") &&
+        document.querySelector<HTMLInputElement>("#anime-episode-1")!.checked &&
+        document.querySelector<HTMLInputElement>("#anime-episode-2")!.checked
+    );
+    const releaseName = document.querySelector<HTMLElement>(".anime-release-name")!;
+    releaseName.focus();
+    await wait(() => !!document.querySelector('[data-slot="tooltip-content"][data-open]'));
+    check(
+      "The release name shows its full text in a shadcn tooltip on keyboard focus",
+      !releaseName.hasAttribute("title") &&
+        document.querySelector('[data-slot="tooltip-content"][data-open]')?.textContent?.trim() ===
+          "Native Example - 01 VOSTFR 1080p"
+    );
+    button("Download").focus();
+    await wait(() => !document.querySelector('[data-slot="tooltip-content"][data-open]'));
     const animeAutomation = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[role="tab"]')
     ).find((element) => element.textContent?.trim() === "Automation")!;

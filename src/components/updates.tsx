@@ -17,13 +17,21 @@ import {
 } from "./ui/field";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
-function useUpdateDownload() {
+function useUpdateAction(state: UpdateState | undefined) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const download = async () => {
     setBusy(true);
     setError(null);
     try {
+      if (state?.automatic) {
+        await request<UpdateState>(
+          state.status === "ready" ? "/updates/install" : "/updates/prepare",
+          "POST",
+          {}
+        );
+        return;
+      }
       const result = await request<{ opened: boolean }>("/updates/open-download", "POST", {});
       if (!result.opened) {
         window.location.assign("/api/updates/download");
@@ -38,6 +46,17 @@ function useUpdateDownload() {
 }
 
 function statusText(state: UpdateState) {
+  if (state.status === "downloading") {
+    return state.progress === null
+      ? "Preparing update…"
+      : `Downloading update… ${Math.round(state.progress)}%`;
+  }
+  if (state.status === "ready") {
+    return `Version ${state.latestVersion} is ready. Restart to install; your downloads and settings are preserved.`;
+  }
+  if (state.status === "restarting") {
+    return "Saving downloads and restarting to install the update…";
+  }
   if (state.status === "available") {
     return `Version ${state.latestVersion} is available.`;
   }
@@ -75,13 +94,19 @@ export function SidebarUpdateAction() {
   const { data: live, error: loadingError } = useQuery(api.api.updates.get);
   const data = live && "status" in live ? live : undefined;
   const check = useMutation(api.api.updates.check.post);
-  const download = useUpdateDownload();
+  const download = useUpdateAction(data);
   const checking = check.isPending || data?.status === "checking";
   const spin = useSpinLatch(checking);
   const available = data?.status === "available";
+  const ready = data?.status === "ready";
+  const updating = data?.status === "downloading" || data?.status === "restarting";
   let label = "Check for updates";
-  if (download.busy) {
+  if (updating) {
+    label = statusText(data);
+  } else if (download.busy) {
     label = "Starting download…";
+  } else if (ready) {
+    label = "Restart to Update";
   } else if (spin.spinning) {
     label = "Checking for updates…";
   } else if (available) {
@@ -89,10 +114,10 @@ export function SidebarUpdateAction() {
   }
   const error = download.error ?? check.error?.value.detail ?? data?.error;
   const activate = () => {
-    if (!data || spin.spinning || download.busy) {
+    if (!data || spin.spinning || download.busy || updating) {
       return;
     }
-    if (available) {
+    if (available || ready) {
       void download.download();
     } else {
       spin.latch();
@@ -105,16 +130,16 @@ export function SidebarUpdateAction() {
         <TooltipTrigger
           render={
             <Button
-              aria-busy={spin.spinning || download.busy}
+              aria-busy={spin.spinning || download.busy || updating}
               aria-label={label}
               className="rounded-full"
-              disabled={!data || spin.spinning || download.busy}
+              disabled={!data || spin.spinning || download.busy || updating}
               onClick={activate}
               size="icon"
               type="button"
-              variant={available ? "secondary" : "ghost"}
+              variant={available || ready ? "secondary" : "ghost"}
             >
-              {download.busy ? (
+              {download.busy || updating ? (
                 <LoaderCircleIcon className="motion-safe:animate-spin" />
               ) : available && !spin.spinning ? (
                 <span className="relative flex">
@@ -151,7 +176,7 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
   const { data: live, error: loadingError } = useQuery(api.api.updates.get);
   const data = live && "status" in live ? live : undefined;
   const check = useMutation(api.api.updates.check.post);
-  const download = useUpdateDownload();
+  const download = useUpdateAction(data);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const checking = check.isPending || data?.status === "checking";
@@ -167,11 +192,17 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
     }
   };
   const available = data?.status === "available";
+  const ready = data?.status === "ready";
+  const updating = data?.status === "downloading" || data?.status === "restarting";
   let checkLabel = "Check for Updates";
-  if (download.busy) {
+  if (data?.status === "restarting") {
+    checkLabel = "Restarting…";
+  } else if (download.busy || data?.status === "downloading") {
     checkLabel = "Downloading…";
+  } else if (ready) {
+    checkLabel = "Restart to Update";
   } else if (available) {
-    checkLabel = "Download";
+    checkLabel = data.automatic ? "Download Update" : "Download";
   } else if (checking) {
     checkLabel = "Checking…";
   } else if (data?.status === "current") {
@@ -196,15 +227,18 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
             </FieldDescription>
           </FieldContent>
           <Button
-            disabled={disabled || busy || download.busy || checking}
+            aria-busy={busy || download.busy || checking || updating}
+            disabled={disabled || busy || download.busy || checking || updating}
             onClick={() =>
-              available ? void download.download() : void action(() => check.mutateAsync())
+              available || ready ? void download.download() : void action(() => check.mutateAsync())
             }
             size="sm"
             type="button"
-            variant={available ? "default" : "outline"}
+            variant={available || ready ? "default" : "outline"}
           >
-            {available ? (
+            {updating || download.busy ? (
+              <LoaderCircleIcon className="motion-safe:animate-spin" data-icon="inline-start" />
+            ) : available ? (
               <DownloadIcon data-icon="inline-start" />
             ) : (
               <RefreshCwIcon

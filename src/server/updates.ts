@@ -1,5 +1,6 @@
 import { chmod, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
+import type { Updater } from "electrobun/main";
 import { desktopTarget, installerName } from "../platform";
 import type { UpdateState } from "../types";
 import { UserError } from "./engine";
@@ -11,6 +12,10 @@ interface UpdateOptions {
   apiOrigin: string;
   arch: string;
   dataDir: string;
+  native?: Pick<
+    typeof Updater,
+    "checkForUpdate" | "downloadUpdate" | "applyUpdate" | "updateInfo" | "onStatusChange"
+  >;
   notify: (version: string) => void;
   platform: string;
   version: string;
@@ -89,6 +94,8 @@ export class UpdatesService {
   private mutations: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | undefined;
   private initial: ReturnType<typeof setTimeout> | undefined;
+  private preparation: Promise<void> | null = null;
+  private restart: ReturnType<typeof setTimeout> | undefined;
   private readonly snapshotState: UpdateState;
 
   private constructor(options: UpdateOptions, state: State) {
@@ -96,14 +103,27 @@ export class UpdatesService {
     this.path = join(options.dataDir, "release-access.json");
     this.state = state;
     this.snapshotState = {
+      automatic: Boolean(options.native),
       checkedAt: null,
       currentVersion: options.version,
       downloadName: null,
       error: null,
       latestVersion: null,
+      progress: null,
       releaseUrl: null,
       status: "idle",
     };
+    this.observeNative();
+  }
+  private observeNative() {
+    this.options.native?.onStatusChange((entry) => {
+      if (entry.status === "download-progress" && this.snapshotState.status === "downloading") {
+        this.snapshotState.progress = entry.details?.progress ?? null;
+      }
+      if (entry.status === "error") {
+        this.snapshotState.error = entry.details?.errorMessage ?? entry.message;
+      }
+    });
   }
   static async open(options: UpdateOptions) {
     await mkdir(options.dataDir, { recursive: true });
@@ -128,6 +148,7 @@ export class UpdatesService {
     if (this.timer) {
       return;
     }
+    this.observeNative();
     this.initial = setTimeout(() => {
       void this.check();
     }, 10_000);
@@ -143,6 +164,8 @@ export class UpdatesService {
   close() {
     clearInterval(this.timer);
     clearTimeout(this.initial);
+    clearTimeout(this.restart);
+    this.options.native?.onStatusChange(null);
     this.timer = undefined;
   }
   private async persist() {
@@ -160,6 +183,9 @@ export class UpdatesService {
     return next;
   }
   check(): Promise<UpdateState> {
+    if (["downloading", "ready", "restarting"].includes(this.snapshotState.status)) {
+      return Promise.resolve(this.snapshot());
+    }
     this.pending ??= this.serial(() => this.readLatest()).finally(() => {
       this.pending = null;
     });
@@ -216,6 +242,18 @@ export class UpdatesService {
       }
       this.snapshotState.downloadName = this.asset.name;
       this.snapshotState.status = "available";
+      if (this.options.native) {
+        const info = await this.options.native.checkForUpdate();
+        if (info.error) {
+          throw new Error(info.error);
+        }
+        if (info.version !== version || !info.updateAvailable) {
+          throw new Error(
+            "The update bundle does not match the latest release. Check again later."
+          );
+        }
+        this.snapshotState.status = info.updateReady ? "ready" : "available";
+      }
       if (this.state.notifiedVersion !== version) {
         this.options.notify(version);
         this.state.notifiedVersion = version;
@@ -225,6 +263,56 @@ export class UpdatesService {
       this.snapshotState.status = "error";
       this.snapshotState.error = error instanceof Error ? error.message : "Unable to verify";
     }
+    return this.snapshot();
+  }
+  prepare() {
+    const { native } = this.options;
+    if (!native) {
+      throw new UserError("In-app updates require the installed desktop app", { status: 409 });
+    }
+    if (this.snapshotState.status === "downloading" || this.snapshotState.status === "ready") {
+      return this.snapshot();
+    }
+    if (this.pending || this.snapshotState.status !== "available") {
+      throw new UserError("Check for updates before downloading an update", { status: 409 });
+    }
+    Object.assign(this.snapshotState, { error: null, progress: null, status: "downloading" });
+    this.preparation = native
+      .downloadUpdate()
+      .then(() => {
+        const info = native.updateInfo();
+        if (info.error || !info.updateReady || info.version !== this.snapshotState.latestVersion) {
+          throw new Error(info.error || "The update could not be prepared");
+        }
+        this.snapshotState.status = "ready";
+        this.snapshotState.progress = null;
+      })
+      .catch((error: unknown) => {
+        this.snapshotState.status = "available";
+        this.snapshotState.progress = null;
+        this.snapshotState.error =
+          error instanceof Error ? error.message : "Unable to prepare update";
+      })
+      .finally(() => {
+        this.preparation = null;
+      });
+    return this.snapshot();
+  }
+  install() {
+    const { native } = this.options;
+    if (!native || this.preparation || this.snapshotState.status !== "ready") {
+      throw new UserError("Download an update before restarting", { status: 409 });
+    }
+    this.snapshotState.status = "restarting";
+    this.snapshotState.error = null;
+    // Let the HTTP response and its synchronized state reach the WebView first.
+    this.restart = setTimeout(() => {
+      void native.applyUpdate().catch((error: unknown) => {
+        this.snapshotState.status = native.updateInfo().updateReady ? "ready" : "available";
+        this.snapshotState.error =
+          error instanceof Error ? error.message : "Unable to install update";
+      });
+    }, 250);
     return this.snapshot();
   }
   private compatibleInstaller(latest: Release, version: string) {

@@ -41,13 +41,24 @@ export interface SettingsInput extends Omit<Settings, "runInBackground" | "theme
 }
 
 export interface UpdateState {
+  automatic: boolean;
   checkedAt: number | null;
   currentVersion: string;
   downloadName: string | null;
   error: string | null;
   latestVersion: string | null;
+  progress: number | null;
   releaseUrl: string | null;
-  status: "idle" | "checking" | "available" | "current" | "no-release" | "error";
+  status:
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "ready"
+    | "restarting"
+    | "current"
+    | "no-release"
+    | "error";
 }
 
 export interface DesktopState {
@@ -55,6 +66,11 @@ export interface DesktopState {
   trayVisible: boolean;
   webviews: number;
   windows: number;
+}
+
+export interface AniListOpenResult {
+  opened: boolean;
+  url: string;
 }
 
 export interface TorrentDefaults {

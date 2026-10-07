@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { BrowserWindow, Tray as NativeTray } from "electrobun/main";
 import type { DesktopState, InstanceProfile } from "../types";
+import { DesktopUpdateInstaller } from "./desktop-update-installer";
 import { type TorrentEngine, UserError } from "./engine";
 
 export class DesktopController {
@@ -12,6 +13,8 @@ export class DesktopController {
   private readonly smokeScript: string | null;
   private readonly name: string;
   private quitting = false;
+  private installing = false;
+  private readonly updateInstaller: DesktopUpdateInstaller;
 
   constructor(options: {
     sdk: typeof import("electrobun/main");
@@ -22,9 +25,18 @@ export class DesktopController {
     profile: InstanceProfile;
     checkUpdates: () => Promise<unknown>;
     shutdown: () => Promise<void>;
+    recover: () => Promise<void>;
   }) {
     this.sdk = options.sdk;
     const { default: Electrobun, Tray, Utils } = this.sdk;
+    this.updateInstaller = new DesktopUpdateInstaller({
+      allowQuit: (allowed) => {
+        this.quitting = allowed;
+      },
+      recover: options.recover,
+      shutdown: options.shutdown,
+      updater: this.sdk.Updater,
+    });
     this.url = options.url;
     this.engine = options.engine;
     this.smokeScript = options.smokeScript;
@@ -64,6 +76,11 @@ export class DesktopController {
     });
     Electrobun.events.on("reopen", () => this.open());
     Electrobun.events.on("before-quit", (event: { response: { allow: boolean } | undefined }) => {
+      // biome-ignore lint/suspicious/noUnnecessaryConditions: an update request mutates these flags before native quit callbacks.
+      if (this.installing && !this.quitting) {
+        event.response = { allow: false };
+        return;
+      }
       // biome-ignore lint/suspicious/noUnnecessaryConditions: native callbacks mutate this flag between quit events.
       if (this.quitting) {
         return;
@@ -140,5 +157,17 @@ export class DesktopController {
   }
   openDownload() {
     return { opened: this.sdk.Utils.openExternal(`${this.url}/api/updates/download`) };
+  }
+  async installUpdate() {
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: concurrent update and native quit requests mutate these flags.
+    if (this.installing || this.quitting) {
+      throw new UserError("Tofu is already shutting down", { status: 409 });
+    }
+    this.installing = true;
+    try {
+      await this.updateInstaller.install();
+    } finally {
+      this.installing = false;
+    }
   }
 }

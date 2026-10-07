@@ -1800,10 +1800,66 @@ input[type="file"]::file-selector-button {
   height: 36px;
   font-size: 12px;
 }
-.destination-sidebar [data-slot="sidebar-menu-action"] {
-  top: 8px;
-  right: 7px;
+/* Hover actions take the place of the torrent count instead of overlapping it. */
+.destination-sidebar .sidebar-thread-link {
+  padding-right: 32px;
+}
+.destination-sidebar .sidebar-thread-actions {
+  position: absolute;
+  top: 18px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+}
+.destination-sidebar
+  [data-slot="sidebar-menu-item"]:is(:hover, :focus-within)
+  .sidebar-thread-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.destination-sidebar
+  [data-slot="sidebar-menu-item"]:is(:hover, :focus-within)
+  .sidebar-thread-link {
+  padding-right: 60px;
+}
+.destination-sidebar .sidebar-thread-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.destination-sidebar .sidebar-thread-action > svg {
+  width: 14px;
+  height: 14px;
+}
+.destination-sidebar .sidebar-thread-action:is(:hover, :focus-visible) {
   background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+  outline: none;
+}
+.destination-sidebar .sidebar-thread-delete:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--destructive) 16%, transparent);
+  color: var(--destructive);
+}
+/* Holding Shift arms the immediate delete, so it reads as destructive before the click. */
+.destination-sidebar .sidebar-thread-delete[data-immediate] {
+  background: var(--destructive);
+  color: var(--background);
+}
+.destination-sidebar .sidebar-thread-delete:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 /* The context-menu wrapper breaks the peer selectors that position the badge. */
 .destination-sidebar [data-slot="sidebar-menu-badge"] {
@@ -1813,7 +1869,7 @@ input[type="file"]::file-selector-button {
   color: var(--muted-foreground);
 }
 .destination-sidebar
-  [data-slot="sidebar-menu-item"]:hover:has([data-slot="sidebar-menu-action"])
+  [data-slot="sidebar-menu-item"]:is(:hover, :focus-within)
   [data-slot="sidebar-menu-badge"] {
   opacity: 0;
 }
@@ -1884,7 +1940,10 @@ input[type="file"]::file-selector-button {
 [data-collapsible="icon"] [data-slot="sidebar-footer"] {
   padding-inline: 0;
 }
-[data-collapsible="icon"] [data-sidebar="menu-button"] {
+[data-collapsible="icon"] [data-sidebar="menu-button"],
+[data-collapsible="icon"]
+  [data-slot="sidebar-menu-item"]:is(:hover, :focus-within)
+  .sidebar-thread-link {
   margin-inline: auto;
   justify-content: center;
   gap: 0;
@@ -1923,6 +1982,7 @@ input[type="file"]::file-selector-button {
 [data-collapsible="icon"] [data-sidebar="menu-button"] > span,
 [data-collapsible="icon"] [data-slot="sidebar-menu-badge"],
 [data-collapsible="icon"] [data-slot="sidebar-menu-action"],
+[data-collapsible="icon"] .sidebar-thread-actions,
 [data-collapsible="icon"] [data-slot="sidebar-group-action"],
 [data-collapsible="icon"] [data-slot="sidebar-group-label"] {
   display: none;
@@ -2571,6 +2631,10 @@ input[type="file"]::file-selector-button {
   color: var(--primary);
 }
 .anime-card > strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   font-size: 13px;
   line-height: 1.6;
   font-weight: 650;

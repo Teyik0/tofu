@@ -1,4 +1,4 @@
-import { PencilIcon, PinIcon, PinOffIcon, ShapesIcon } from "lucide-react";
+import { PencilIcon, PinIcon, PinOffIcon, ShapesIcon, Trash2Icon } from "lucide-react";
 import { type ReactElement, useState } from "react";
 import type { Destination } from "../types";
 import { request } from "./api";
@@ -22,7 +22,7 @@ export function DestinationMenu({
   destination: Destination;
   open: (modal: ModalKind) => void;
 }) {
-  const { refresh } = useDashboard();
+  const { data, refresh } = useDashboard();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toggle = async () => {
@@ -59,6 +59,15 @@ export function DestinationMenu({
               <PencilIcon />
               Edit thread…
             </ContextMenuItem>
+            {data.destinations.length > 1 && (
+              <ContextMenuItem
+                onClick={() => open({ destination, type: "deleteDestination" })}
+                variant="destructive"
+              >
+                <Trash2Icon />
+                Delete thread…
+              </ContextMenuItem>
+            )}
           </ContextMenuGroup>
         </ContextMenuContent>
       </ContextMenu>

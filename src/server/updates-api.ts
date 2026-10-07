@@ -7,6 +7,8 @@ export function createUpdatesApi(updates: () => UpdatesService, sync: FurinSyncO
     .guard({ sync: false })
     .get("", { sync: { id: "tofu.updates", scope: {} } }, () => updates().snapshot())
     .post("/check", () => updates().check())
+    .post("/prepare", () => updates().prepare())
+    .post("/install", () => updates().install())
     .get("/download", () => updates().download());
 }
 

@@ -1,13 +1,14 @@
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
 import { furin } from "@teyik0/furin";
-import { Elysia, t } from "elysia";
+import { Elysia } from "elysia";
 import { version } from "../package.json";
 import { createApi } from "./server/api";
 import { DesktopUrlOpener } from "./server/desktop-opening";
 import { registerDesktopProtocol } from "./server/desktop-protocol";
 import { TorrentEngine, UserError } from "./server/engine";
 import { readAniListClient } from "./server/feeds/anilist-client";
+import { createAniListOpeningApi } from "./server/feeds/anilist-opening-api";
 import { AutomationService } from "./server/feeds/service";
 import { acquireInstance } from "./server/instance";
 import { pluginEndpoints } from "./server/plugins/registry";
@@ -34,20 +35,14 @@ const app = new Elysia()
     createApi(getEngine, syncOptions, getAutomation, { desktop: getDesktop, updates: getUpdates })
   )
   .get("/api/instance", () => instance)
-  .post(
-    "/api/anilist/open",
-    { body: t.Object({ url: t.String({ maxLength: 2000 }) }), sync: false },
-    async ({ body }) => {
-      const url = new URL(body.url);
-      if (url.origin !== "https://anilist.co" || url.pathname !== "/api/v2/oauth/authorize") {
-        throw new UserError("Invalid AniList connection URL", { status: 400 });
-      }
-      if (getEngine().mode !== "desktop") {
-        return { opened: false, url: url.href };
-      }
-      const { Utils } = await import("electrobun/main");
-      return { opened: Utils.openExternal(url.href), url: url.href };
-    }
+  .use(
+    createAniListOpeningApi({
+      isDesktop: () => getEngine().mode === "desktop",
+      openExternal: async (url) => {
+        const { Utils } = await import("electrobun/main");
+        return Utils.openExternal(url);
+      },
+    })
   )
   .post("/api/directory", { sync: false }, async () => {
     if (getEngine().mode !== "desktop") {
@@ -112,7 +107,7 @@ async function launchServer() {
         },
       })
     : null;
-  if (sdk && opening) {
+  if (sdk && opening && !runtime.desktop) {
     const openUrl = (callbackUrl: string) => {
       void opening
         .open(callbackUrl)
@@ -173,12 +168,22 @@ async function launchServer() {
     apiOrigin: "https://api.github.com",
     arch: process.arch,
     dataDir,
+    native:
+      sdk && instance.profile === "release"
+        ? {
+            applyUpdate: () => getDesktop().installUpdate(),
+            checkForUpdate: sdk.Updater.checkForUpdate,
+            downloadUpdate: sdk.Updater.downloadUpdate,
+            onStatusChange: sdk.Updater.onStatusChange,
+            updateInfo: sdk.Updater.updateInfo,
+          }
+        : undefined,
     notify: (latest) => {
       if (desktop) {
         void import("electrobun/main")
           .then(({ Utils }) =>
             Utils.showNotification({
-              body: `Open ${instance.name} to download the new version.`,
+              body: `Open ${instance.name} to update to the new version.`,
               title: `${instance.name} : Tofu ${latest} is available`,
             })
           )
@@ -227,6 +232,9 @@ async function launchServer() {
   process.on("SIGTERM", shutdown);
   if (!sdk) {
     return;
+  }
+  if (runtime.desktop) {
+    return runtime.desktop;
   }
   const { ApplicationMenu } = sdk;
   ApplicationMenu.setApplicationMenu([
@@ -287,6 +295,15 @@ async function launchServer() {
     engine: getEngine,
     name: instance.name,
     profile: instance.profile,
+    recover: async () => {
+      runtime.engine = undefined;
+      engine = undefined;
+      runtime.automation = undefined;
+      runtime.sync = undefined;
+      runtime.lease = undefined;
+      closing = false;
+      await launchServer();
+    },
     sdk,
     shutdown: dispose,
     smokeScript,

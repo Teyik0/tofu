@@ -4,6 +4,21 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ## [Unreleased]
 
+## [0.2.1]
+
+### Added
+
+- In-app desktop update downloads and restart installation through Electrobun, with torrent state persistence and recovery when the update helper fails.
+- Sidebar tab deletion with confirmation and an explicit Shift-click shortcut, including support for deleting the default tab while preserving torrents and automation rules.
+
+### Fixed
+
+- Jev activation without an API key now shows an inline error and focuses the credential field; activation and deactivation preserve saved credentials.
+- Plugins navigation responds while route data loads and preserves the selected section and return destination.
+- AniList episodes and watched controls remain available while release discovery runs; full release titles appear in accessible tooltips.
+- Native AniList links open in the system browser without leaving the episode dialog.
+- Release publication validates native update metadata and archives for every supported target.
+
 ## [0.2.0]
 
 ### Added

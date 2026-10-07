@@ -224,7 +224,7 @@ test("deleting a tab preserves real transfers and files and persists their defau
   }
 });
 
-test("deleting tabs protects the default destination and rejects unknown or already deleted tabs", async () => {
+test("deleting tabs keeps one tab and rejects unknown or already deleted tabs", async () => {
   const context = await fixture(4096, []);
   try {
     expect((await context.request("/destinations/default", { method: "DELETE" })).status).toBe(409);
@@ -243,6 +243,68 @@ test("deleting tabs protects the default destination and rejects unknown or alre
     ).toBe(404);
     expect(context.engine.snapshot(null).destinations.map((item) => item.id)).toEqual(["default"]);
   } finally {
+    await context.close();
+  }
+});
+
+test("deleting the default tab hands its role to the next tab without moving real transfers", async () => {
+  const context = await fixture(65_536, []);
+  let restarted: TorrentEngine | null = null;
+  try {
+    const downloads = join(context.directory, "downloads");
+    const series = join(context.directory, "series");
+    const destination = (await (
+      await context.request(
+        "/destinations",
+        json({ downloadPath: series, icon: "tv", name: "Series", pinned: true })
+      )
+    ).json()) as Destination;
+    const { id } = (await (
+      await context.request("/torrents", json({ paused: false, source: context.magnet }))
+    ).json()) as { id: string };
+    await waitFor(
+      async () => context.engine.detail(id),
+      (detail) => detail.status === "seeding"
+    );
+    const response = await context.request("/destinations/default", { method: "DELETE" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, removed: destination.id });
+    const state = (await (
+      await context.request(`/state?selected=${id}`, undefined)
+    ).json()) as DashboardState;
+    expect(state.destinations).toEqual([
+      { downloadPath: series, icon: "tv", id: "default", name: "Series", pinned: true },
+    ]);
+    expect(state.settings.downloadPath).toBe(series);
+    expect(state.detail).toMatchObject({
+      destinationId: "default",
+      savePath: downloads,
+      status: "seeding",
+    });
+    expect(
+      new Uint8Array(
+        await (await context.request(`/torrents/${id}/files/0/content`, undefined)).arrayBuffer()
+      )
+    ).toEqual(context.bytes);
+    expect((await context.request("/destinations/default", { method: "DELETE" })).status).toBe(409);
+    await context.request(`/torrents/${id}/pause`, json({}));
+    await context.engine.close();
+    restarted = await TorrentEngine.open({
+      dataDir: join(context.directory, "state"),
+      downloadPath: downloads,
+      network,
+    });
+    expect(restarted.snapshot(id).destinations).toEqual(state.destinations);
+    expect(restarted.detail(id)).toMatchObject({
+      destinationId: "default",
+      savePath: downloads,
+      status: "paused",
+    });
+    expect(new Uint8Array(await Bun.file(join(downloads, "source.bin")).arrayBuffer())).toEqual(
+      context.bytes
+    );
+  } finally {
+    await restarted?.close();
     await context.close();
   }
 });

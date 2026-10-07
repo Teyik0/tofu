@@ -14,19 +14,24 @@ import { useTheme } from "../hooks/use-theme";
 import type { DashboardState } from "../types";
 import { AutomationCenter } from "./automation-center";
 import { DestinationSidebar } from "./destination-sidebar";
-import { Modal, type ModalKind } from "./modal";
+import { DeleteDestinationModal, Modal, type ModalKind } from "./modal";
+import { PluginsPage } from "./plugins-page";
 import { TorrentDrop } from "./torrent-drop";
 import { SidebarInset, SidebarProvider } from "./ui/sidebar";
 import { TooltipProvider } from "./ui/tooltip";
 
 interface DashboardContextValue {
   activeDestination: string | null;
+  closePlugins: () => void;
   data: DashboardState;
   open: Dispatch<SetStateAction<ModalKind | null>>;
+  openPlugins: () => void;
+  pluginsNavigationError: string | null;
   refresh: () => Promise<void>;
   selectedId: string | undefined;
   setSelected: Dispatch<SetStateAction<string | null>>;
   settingsBackPath: string;
+  showDestination: (destinationId: string | null) => Promise<void>;
 }
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 export function useDashboard() {
@@ -56,6 +61,28 @@ export function AppShell({
           ? decodeURIComponent(path.slice("/library/destinations/".length))
           : "default";
   const router = useRouter();
+  const [pluginsOrigin, setPluginsOrigin] = useState<string | null>(null);
+  const [pluginsNavigationError, setPluginsNavigationError] = useState<string | null>(null);
+  const showingPlugins = path === "/plugins" || pluginsOrigin === path;
+  const openPlugins = () => {
+    setPluginsOrigin(path);
+    setPluginsNavigationError(null);
+    void router.navigate({ to: "/plugins" }).catch((cause) => {
+      if (cause && typeof cause === "object" && "name" in cause && cause.name === "AbortError") {
+        return;
+      }
+      setPluginsNavigationError(cause instanceof Error ? cause.message : "Unable to open plugins");
+    });
+  };
+  const closePlugins = () => {
+    setPluginsOrigin(null);
+    setPluginsNavigationError(null);
+  };
+  useEffect(() => {
+    if (path === "/plugins") {
+      setPluginsOrigin(null);
+    }
+  }, [path]);
   const [settingsBackPath, setSettingsBackPath] = useState("/library/all");
   useEffect(() => {
     if (path !== "/settings" && path !== "/plugins") {
@@ -79,22 +106,11 @@ export function AppShell({
     (torrent) => activeDestination === null || torrent.destinationId === activeDestination
   );
   const selectedId = visible.find((torrent) => torrent.id === selected)?.id ?? visible[0]?.id;
-  const done = async (id: string | null, destinationId: string | null) => {
-    if (id) {
-      setSelected(id);
-    }
-    if (modal?.type === "remove" && modal.torrent.id === selectedId) {
-      setSelected(null);
-    }
-    const targetDestination =
-      destinationId ??
-      (modal?.type === "destination" && modal.destination?.id === activeDestination
-        ? "default"
-        : null);
-    if (targetDestination && targetDestination !== activeDestination) {
+  const showDestination = async (destinationId: string | null) => {
+    if (destinationId && destinationId !== activeDestination) {
       try {
         await router.navigate({
-          params: { id: targetDestination },
+          params: { id: destinationId },
           resetScroll: false,
           to: "/library/destinations/:id",
         });
@@ -110,16 +126,30 @@ export function AppShell({
       await refresh();
     }
   };
+  const done = async (id: string | null, destinationId: string | null) => {
+    if (id) {
+      setSelected(id);
+    }
+    if (modal?.type === "remove" && modal.torrent.id === selectedId) {
+      setSelected(null);
+    }
+    await showDestination(destinationId);
+  };
+  const page = showingPlugins ? <PluginsPage /> : children;
   return (
     <DashboardContext.Provider
       value={{
         activeDestination,
+        closePlugins,
         data: dashboard,
         open: setModal,
+        openPlugins,
+        pluginsNavigationError,
         refresh,
         selectedId,
         setSelected,
         settingsBackPath,
+        showDestination,
       }}
     >
       <TooltipProvider>
@@ -127,14 +157,21 @@ export function AppShell({
           className="app-shell"
           style={{ "--sidebar-width": "190px", "--sidebar-width-icon": "52px" } as CSSProperties}
         >
-          {path !== "/settings" && path !== "/plugins" && (
+          {path !== "/settings" && !showingPlugins && (
             <DestinationSidebar active={activeDestination} data={dashboard} open={setModal} />
           )}
-          <SidebarInset className="min-w-0 overflow-hidden">{children}</SidebarInset>
+          <SidebarInset className="min-w-0 overflow-hidden">{page}</SidebarInset>
           <TorrentDrop />
           {modal !== null &&
             (modal.type === "automation" ? (
               <AutomationCenter close={() => setModal(null)} destinationId={modal.destinationId} />
+            ) : modal.type === "deleteDestination" ? (
+              <DeleteDestinationModal
+                cancel={() => setModal(null)}
+                close={() => setModal(null)}
+                destination={modal.destination}
+                done={done}
+              />
             ) : (
               <Modal
                 close={() => setModal(null)}

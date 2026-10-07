@@ -107,9 +107,9 @@ export function createApi(
       },
       ({ params, body }) => engine().updateDestinationPresentation(params.id, body)
     )
-    .delete("/destinations/:id", ({ params }) => {
-      const result = engine().removeDestination(params.id);
-      automation?.().reassignDestination(params.id);
+    .delete("/destinations/:id", async ({ params }) => {
+      const result = await engine().removeDestination(params.id);
+      automation?.().reassignDestination(result.removed);
       return result;
     })
     .get(
