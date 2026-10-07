@@ -171,7 +171,7 @@ test("development does not claim an existing database whose channel is unknown",
   }
 }, 30_000);
 
-test.each(["platform prebuilds", "no uTP prebuild"])(
+test.each(["platform prebuilds", "no uTP prebuild", "no uTP prebuild with colors"])(
   "importing the server with %s for build inspection does not create user databases",
   async (prebuilds) => {
     const context = await fixture(1024, []);
@@ -182,12 +182,13 @@ test.each(["platform prebuilds", "no uTP prebuild"])(
         cwd: join(import.meta.dir, ".."),
         env: {
           ...process.env,
+          FORCE_COLOR: prebuilds === "no uTP prebuild with colors" ? "1" : "0",
           TOFU_DATA_DIR: dataDir,
           TOFU_MODE: "server",
           TOFU_PROFILE: "dev",
-          ...(prebuilds === "no uTP prebuild"
-            ? { UTP_NATIVE_PREBUILD: join(context.directory, "unavailable-utp-native") }
-            : {}),
+          ...(prebuilds === "platform prebuilds"
+            ? {}
+            : { UTP_NATIVE_PREBUILD: join(context.directory, "unavailable-utp-native") }),
         },
         stderr: "pipe",
         stdout: "ignore",
@@ -195,7 +196,7 @@ test.each(["platform prebuilds", "no uTP prebuild"])(
     );
     const stderr = new Response(child.stderr).text();
     try {
-      const output = (await stderr).replace(optionalUtpNotice, "");
+      const output = Bun.stripANSI(await stderr).replace(optionalUtpNotice, "");
       expect({ exit: await child.exited, output }).toEqual({ exit: 0, output: "" });
       expect(
         await Promise.all(
