@@ -2,7 +2,20 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import desktopConfig from "../electrobun.config";
 import { readBundleIdentity } from "../src/server/instance";
+
+test("the Windows PNG icon fits the dimensions supported by ICO", async () => {
+  const path = join(import.meta.dir, "..", desktopConfig.build.win.icon);
+  const png = Buffer.from(await Bun.file(path).arrayBuffer());
+  expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  const width = png.readUInt32BE(16);
+  const height = png.readUInt32BE(20);
+  expect(width).toBeGreaterThan(0);
+  expect(height).toBeGreaterThan(0);
+  expect(width).toBeLessThanOrEqual(256);
+  expect(height).toBeLessThanOrEqual(256);
+});
 
 test.each([
   {

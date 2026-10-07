@@ -44,7 +44,7 @@ export default {
     win: {
       bundleCEF: false,
       defaultRenderer: "native",
-      icon: "assets/tofu-icon.png",
+      icon: "assets/tofu.iconset/icon_256x256.png",
     },
   },
   runtime: { exitOnLastWindowClosed: false },
