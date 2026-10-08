@@ -25,6 +25,7 @@ export class DesktopController {
     smokeScript: string | null;
     name: string;
     profile: InstanceProfile;
+    publicDir: string;
     checkUpdates: () => Promise<unknown>;
     shutdown: () => Promise<void>;
     prepareUpdate: () => Promise<void>;
@@ -48,9 +49,8 @@ export class DesktopController {
     this.tray = new Tray({
       height: 18,
       image: join(
-        import.meta.dir,
-        "../furin",
-        process.platform === "darwin" ? "public/tray-template.png" : "public/icon.png"
+        options.publicDir,
+        process.platform === "darwin" ? "tray-template.png" : "icon.png"
       ),
       template: process.platform === "darwin",
       title: options.profile === "dev" ? "DEV" : "",

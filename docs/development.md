@@ -4,6 +4,8 @@
 
 Use Bun for all commands. `bun run setup` prepares the Electrobun SDK through Hutch and installs the prebuilt WebTorrent native addon. No separate torrent service is required.
 
+`bun run dev:desktop` starts the native app from source with React/CSS HMR, retaining the window and component state. Backend and native host edits perform a controlled restart and restore persisted transfers; unsaved UI state across that restart is not preserved. Quit with Ctrl-C. `bun run test:hmr` verifies this flow in the real WebView with temporary data and real peers.
+
 `bun run build:desktop` builds for the current OS and architecture. `bun run desktop` launches its native executable:
 
 | Target | Development bundle |

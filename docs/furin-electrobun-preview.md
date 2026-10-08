@@ -1,6 +1,6 @@
 # Furin Electrobun integration
 
-Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `b41f29c71a499e958ee9e33902d2e781f480e56d`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
+Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `11783aca93c2350f7cfbc6a438caa6a6b6abfa62`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
 
 ## Architecture
 
@@ -15,8 +15,14 @@ Tofu owns its tray, menus, protocol events, window reopening and updater behavio
 - Public `@teyik0/furin-electrobun/host` capabilities, including awaited initialization, idempotent bounded shutdown, private native session access and fresh window bootstraps.
 - Optional `hostEntry` for applications with existing native integration.
 - Typed SDK additions for URL schemes, file associations, platform icons, signing, helper files, Bun externals and release feeds. Sources resolve from the application root; the Furin artifact remains owned by the packager.
-- Development SDK packaging through `build --env=dev`; custom hosts currently use build output, while the standard host retains its supervised dev workflow.
+- Development SDK packaging through `build --env=dev` and source development through `dev`. The custom host uses the consuming Bun configuration, source server entry and supervised native lifecycle; the standard host retains its separate helper workflow.
 - CI publishes both core and Electrobun with a pinned publisher, Bun packing and repository-qualified URLs. Bun packing resolves `catalog:` references, fixing clean consumer installs. See [Bun catalogs](https://bun.sh/docs/pm/catalogs#publishing).
+
+## Native development
+
+Run `bun run dev:desktop` to open Tofu on its source app with Furin Fast Refresh. The host imports the SDK before restoring the consuming CWD, then loads the source server through the development context. React/CSS edits preserve the document and native PID. Backend/host edits drain and replace the native process, reacquire the profile lease and restore durable state. No additional native RPC bridge is introduced. The compiled development bundle remains available through `bun run build:desktop` and `bun run desktop`.
+
+`bun run test:hmr` exercises the real native window with temporary state and a controlled draft. It verifies React and CSS refresh without losing that draft, document or host, then downloads from a real peer, pauses and checks the exact SHA-256 after a backend restart. The test briefly creates its own source route and appends a server comment, restoring both when it finishes. Smoke-script injection remains explicit in the test environment.
 
 ## Session handling in Tofu
 

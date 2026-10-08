@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import {
   type DesktopAppModule,
   type DesktopBackend,
+  getDesktopDevelopment,
   startDesktopBackend,
 } from "@teyik0/furin-electrobun/host";
 import { DesktopController } from "./server/desktop";
@@ -12,6 +13,7 @@ import { writeServerInfo } from "./server/server-info";
 
 process.env.TOFU_MODE = "desktop";
 const sdk = await import("electrobun/main");
+const development = await getDesktopDevelopment();
 const { runtime, instance, getAutomation, getEngine, getDesktop, getUpdates } = await import(
   "./server/runtime"
 );
@@ -57,7 +59,7 @@ if (sdk && opening && !runtime.desktop) {
 
 let module: DesktopAppModule | undefined;
 let activeBackend: DesktopBackend | undefined;
-const artifact = join(import.meta.dir, "../furin/app.js");
+const artifact = development?.serverEntry ?? join(import.meta.dir, "../furin/app.js");
 try {
   const backend = await startDesktopBackend(
     async () => {
@@ -65,7 +67,7 @@ try {
       return module;
     },
     instance.dataDir,
-    "build"
+    development ? "dev" : "build"
   );
   activeBackend = backend;
   await writeServerInfo(backend.origin, backend.cookie);
@@ -130,6 +132,9 @@ try {
     name: instance.name,
     prepareUpdate: () => module?.onShutdown?.() ?? Promise.resolve(),
     profile: instance.profile,
+    publicDir: development
+      ? join(process.cwd(), "public")
+      : join(import.meta.dir, "../furin/public"),
     recover: async () => {
       await module?.onStartup?.(new AbortController().signal);
       await writeServerInfo(backend.origin, backend.cookie);
@@ -143,6 +148,7 @@ try {
     await backend.stop();
     sdk.Utils.quit(0);
   };
+  await development?.ready(backend, shutdown);
   process.on("SIGINT", () => {
     shutdown().catch(console.error);
   });

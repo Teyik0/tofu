@@ -8,6 +8,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ### Added
 
+- Native source development with React/CSS HMR and controlled backend restarts through Furin Electrobun.
 - In-app desktop update downloads and restart installation through Electrobun, with torrent state persistence and recovery when the update helper fails.
 - Sidebar tab deletion with confirmation and an explicit Shift-click shortcut, including support for deleting the default tab while preserving torrents and automation rules.
 
