@@ -1,6 +1,6 @@
 # Furin Electrobun integration
 
-Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `11783aca93c2350f7cfbc6a438caa6a6b6abfa62`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
+Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `44cc7afd042a2aa12e025208b594fd53f05d6166`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
 
 ## Architecture
 
@@ -34,4 +34,4 @@ Each newly created window or OS browser receives a fresh, single-use bootstrap. 
 
 The public API migration test starts the real Tofu app through the package, checks unauthenticated rejection and authenticated SSR, downloads from a real peer with identical SHA-256 and restores a paused torrent after restart. Native background validation destroys and reopens the actual WebView while the real transfer completes. Native opening checks cover torrent files, magnets and OAuth forwarding. The coexistence test extracts the stable archive into its temporary directory, runs both native profiles together and verifies isolated preferences, a real transfer and independent shutdown. Development and release packaging pass, including the macOS DMG signature check. Type checking, formatting, public API tests and desktop packaging are required alongside the Git hooks.
 
-The full native smoke workflow still reaches its 90-second WebView timeout observed before this migration. Windows and Linux native UI behavior require their own platform validation. No stable release, merge or system-default torrent association change is part of this update.
+The full native smoke workflow completes its functional assertions, including Jev validation, but its final JavaScript error check reports an unhandled fetch `AbortError` during navigation. Windows and Linux native UI behavior require their own platform validation. No stable release, merge or system-default torrent association change is part of this update.
