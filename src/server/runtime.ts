@@ -19,6 +19,7 @@ const host = globalThis as typeof globalThis & {
     updates?: UpdatesService;
     desktop?: DesktopController;
     lease?: Awaited<ReturnType<typeof acquireInstance>>;
+    sdk?: typeof import("electrobun/main");
   };
 };
 host.tofuRuntime ??= {};
@@ -73,4 +74,11 @@ export function getDesktop() {
     throw new UserError("The desktop app is starting", { status: 503 });
   }
   return runtime.desktop;
+}
+
+export function getNativeSdk() {
+  if (!runtime.sdk) {
+    throw new UserError("The native host is starting", { status: 503 });
+  }
+  return runtime.sdk;
 }

@@ -1,11 +1,7 @@
-import { rename } from "node:fs/promises";
-import { join } from "node:path";
 import { furin } from "@teyik0/furin";
-import { Elysia } from "elysia";
+import { createDesktopApp } from "@teyik0/furin-electrobun/server";
 import { version } from "../package.json";
 import { createApi } from "./server/api";
-import { DesktopUrlOpener } from "./server/desktop-opening";
-import { registerDesktopProtocol } from "./server/desktop-protocol";
 import { TorrentEngine, UserError } from "./server/engine";
 import { readAniListClient } from "./server/feeds/anilist-client";
 import { createAniListOpeningApi } from "./server/feeds/anilist-opening-api";
@@ -18,18 +14,20 @@ import {
   getAutomation,
   getDesktop,
   getEngine,
+  getNativeSdk,
   getUpdates,
   instance,
   runtime,
   syncOptions,
 } from "./server/runtime";
+import { writeServerInfo } from "./server/server-info";
 import { createTofuSync } from "./server/sync";
 import { UpdatesService } from "./server/updates";
 
 let { engine } = runtime;
 let closing = false;
 
-const app = new Elysia()
+const app = createDesktopApp()
   .use(createRequestGuard())
   .use(
     createApi(getEngine, syncOptions, getAutomation, { desktop: getDesktop, updates: getUpdates })
@@ -38,9 +36,9 @@ const app = new Elysia()
   .use(
     createAniListOpeningApi({
       isDesktop: () => getEngine().mode === "desktop",
-      openExternal: async (url) => {
-        const { Utils } = await import("electrobun/main");
-        return Utils.openExternal(url);
+      openExternal: (url) => {
+        const { Utils } = getNativeSdk();
+        return Promise.resolve(Utils.openExternal(url));
       },
     })
   )
@@ -48,7 +46,7 @@ const app = new Elysia()
     if (getEngine().mode !== "desktop") {
       throw new UserError("Enter the folder path on the server", { status: 409 });
     }
-    const { Utils } = await import("electrobun/main");
+    const { Utils } = getNativeSdk();
     const paths = await Utils.openFileDialog({
       allowsMultipleSelection: false,
       canChooseDirectory: true,
@@ -57,34 +55,37 @@ const app = new Elysia()
     });
     return { path: paths[0] ?? null };
   })
-  .post("/api/torrents/:id/reveal", { sync: false }, async ({ params }) => {
+  .post("/api/torrents/:id/reveal", { sync: false }, ({ params }) => {
     if (getEngine().mode !== "desktop") {
       throw new UserError("The folder is on the machine hosting Tofu", { status: 409 });
     }
-    const { Utils } = await import("electrobun/main");
+    const { Utils } = getNativeSdk();
     return { opened: Utils.openPath(getEngine().get(params.id).detail.savePath) };
   })
   .use(await furin({ pagesDir: "./src/pages", sync: syncOptions }));
 
 export default app;
 
-export async function startServer() {
+export async function onStartup(signal: AbortSignal) {
+  closing = false;
   try {
-    return await launchServer();
+    signal.throwIfAborted();
+    await initialize(signal);
+    signal.throwIfAborted();
   } catch (error) {
-    await dispose();
+    closing = false;
+    await onShutdown();
     throw error;
   }
 }
 
-async function dispose() {
+export async function onShutdown() {
   if (closing) {
     return;
   }
   closing = true;
   runtime.updates?.close();
   clearInterval(runtime.timer);
-  app.server?.stop(true);
   await runtime.publishing;
   try {
     await runtime.automation?.close();
@@ -92,55 +93,22 @@ async function dispose() {
   } finally {
     runtime.sync?.close();
     await runtime.lease?.close();
+    runtime.engine = undefined;
+    engine = undefined;
+    runtime.automation = undefined;
+    runtime.sync = undefined;
+    runtime.lease = undefined;
+    runtime.updates = undefined;
   }
 }
 
-async function launchServer() {
+async function initialize(signal: AbortSignal) {
   const { desktop } = instance;
-  const sdk = desktop ? await import("electrobun/main") : null;
-  const opening = sdk
-    ? new DesktopUrlOpener({
-        authorize: (callbackUrl) => getAutomation().anilist.receiveAuthorizationUrl(callbackUrl),
-        engine: getEngine,
-        show: () => {
-          getDesktop().open();
-        },
-      })
-    : null;
-  if (sdk && opening && !runtime.desktop) {
-    const openUrl = (callbackUrl: string) => {
-      void opening
-        .open(callbackUrl)
-        .catch((error: unknown) => {
-          if (
-            error instanceof UserError &&
-            error.message ===
-              "AniList authorization was declined. Connect again when you are ready."
-          ) {
-            return;
-          }
-          console.error("Unable to open link");
-          return sdk.Utils.showMessageBox({
-            detail: error instanceof Error ? error.message : "Unexpected error",
-            message: "Unable to open link",
-            title: instance.name,
-            type: "error",
-          });
-        })
-        .catch(console.error);
-    };
-    sdk.default.events.on("open-url", (event: { data: { url: string } }) =>
-      openUrl(event.data.url)
-    );
-    const initialUrl = process.env.TOFU_OPEN_URL;
-    delete process.env.TOFU_OPEN_URL;
-    if (initialUrl) {
-      openUrl(initialUrl);
-    }
-    await registerDesktopProtocol(instance);
-  }
+  const sdk = desktop ? getNativeSdk() : null;
   runtime.lease ??= await acquireInstance(instance);
+  signal.throwIfAborted();
   runtime.sync ??= await createTofuSync(dataDir);
+  signal.throwIfAborted();
   const { sync } = runtime;
   engine =
     runtime.engine ??
@@ -150,6 +118,7 @@ async function launchServer() {
       network: { maxConns: 100, userAgent: `Tofu/${version}`, utp: false },
     }));
   runtime.engine = engine;
+  signal.throwIfAborted();
   const anilistClient = await readAniListClient(
     instance.profile,
     process.env.TOFU_ANILIST_CLIENT_ID,
@@ -162,6 +131,7 @@ async function launchServer() {
     engine: getEngine,
     now: Date.now,
   });
+  signal.throwIfAborted();
   void runtime.automation.start().catch(console.error);
   engine.mode = desktop ? "desktop" : "server";
   runtime.updates ??= await UpdatesService.open({
@@ -180,19 +150,18 @@ async function launchServer() {
         : undefined,
     notify: (latest) => {
       if (desktop) {
-        void import("electrobun/main")
-          .then(({ Utils }) =>
-            Utils.showNotification({
-              body: `Open ${instance.name} to update to the new version.`,
-              title: `${instance.name} : Tofu ${latest} is available`,
-            })
-          )
-          .catch(console.error);
+        Promise.resolve(
+          getNativeSdk().Utils.showNotification({
+            body: `Open ${instance.name} to update to the new version.`,
+            title: `${instance.name} : Tofu ${latest} is available`,
+          })
+        ).catch(console.error);
       }
     },
     platform: process.platform,
     version,
   });
+  signal.throwIfAborted();
   runtime.updates.start();
   clearInterval(runtime.timer);
   runtime.timer = setInterval(() => {
@@ -206,109 +175,28 @@ async function launchServer() {
     }
   }, 1000);
   runtime.timer.unref();
-  app.listen({
-    hostname: "127.0.0.1",
-    maxRequestBodySize: 9 * 1024 * 1024,
-    port: instance.port,
-  });
-  const url = `http://127.0.0.1:${app.server?.port}`;
-  await Bun.write(
-    join(dataDir, "server.json.tmp"),
-    JSON.stringify({ mode: engine.mode, pid: process.pid, profile: instance.profile, url }),
-    { mode: 0o600 }
-  );
-  await rename(join(dataDir, "server.json.tmp"), join(dataDir, "server.json"));
-  console.log(`${instance.name} is ready : ${url} (data: ${dataDir})`);
-  const shutdown = async () => {
-    await dispose();
-    process.exit(0);
-  };
-  if (runtime.shutdown) {
-    process.off("SIGINT", runtime.shutdown);
-    process.off("SIGTERM", runtime.shutdown);
-  }
-  runtime.shutdown = shutdown;
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-  if (!sdk) {
-    return;
-  }
-  if (runtime.desktop) {
-    return runtime.desktop;
-  }
-  const { ApplicationMenu } = sdk;
-  ApplicationMenu.setApplicationMenu([
-    {
-      label: instance.name,
-      submenu: [
-        { label: `About ${instance.name}`, role: "about" },
-        ...(process.platform === "darwin" && instance.profile === "release"
-          ? [{ action: "set-default-torrent-app", label: "Set as default torrent app" }]
-          : []),
-        { type: "divider" },
-        { accelerator: "CmdOrCtrl+Q", label: `Quit ${instance.name}`, role: "quit" },
-      ],
-    },
-    {
-      label: "Edit",
-      submenu: [
-        { role: "undo" },
-        { role: "redo" },
-        { type: "divider" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { role: "selectAll" },
-      ],
-    },
-  ]);
-  ApplicationMenu.on("application-menu-clicked", (event) => {
-    if ((event as { data: { action: string } }).data.action !== "set-default-torrent-app") {
-      return;
+}
+
+export async function startServer() {
+  try {
+    await onStartup(new AbortController().signal);
+    app.listen({ hostname: "127.0.0.1", maxRequestBodySize: 9 * 1024 * 1024, port: instance.port });
+    const url = `http://127.0.0.1:${app.server?.port}`;
+    await writeServerInfo(url, undefined);
+    const shutdown = async () => {
+      await app.stop(true);
+      await onShutdown();
+      process.exit(0);
+    };
+    if (runtime.shutdown) {
+      process.off("SIGINT", runtime.shutdown);
+      process.off("SIGTERM", runtime.shutdown);
     }
-    void import("./server/desktop-associations")
-      .then(({ setDefaultTorrentApp }) => setDefaultTorrentApp(instance.profile))
-      .then(() =>
-        sdk.Utils.showMessageBox({
-          detail: "Tofu will open .torrent files and magnet links.",
-          message: "Tofu is your default torrent app",
-          title: instance.name,
-          type: "info",
-        })
-      )
-      .catch((error: unknown) =>
-        sdk.Utils.showMessageBox({
-          detail: error instanceof Error ? error.message : "Unexpected error",
-          message: "Unable to change default torrent app",
-          title: instance.name,
-          type: "error",
-        })
-      )
-      .catch(console.error);
-  });
-  const smokeScript = process.env.TOFU_SMOKE_SCRIPT
-    ? await Bun.file(process.env.TOFU_SMOKE_SCRIPT).text()
-    : null;
-  const { DesktopController } = await import("./server/desktop");
-  runtime.desktop ??= new DesktopController({
-    checkUpdates: () => getUpdates().check(),
-    engine: getEngine,
-    name: instance.name,
-    profile: instance.profile,
-    recover: async () => {
-      runtime.engine = undefined;
-      engine = undefined;
-      runtime.automation = undefined;
-      runtime.sync = undefined;
-      runtime.lease = undefined;
-      closing = false;
-      await launchServer();
-    },
-    sdk,
-    shutdown: dispose,
-    smokeScript,
-    url,
-  });
-  opening?.ready();
-  return runtime.desktop;
+    runtime.shutdown = shutdown;
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  } catch (error) {
+    await onShutdown();
+    throw error;
+  }
 }

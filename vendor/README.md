@@ -1,14 +1,12 @@
-# Furin Electrobun preview
+# Furin PR #163 packages
 
-`furin-pr163-a74cd57.tgz` contains the core preview from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `a74cd57c321adb97beb69c8180344632f5829d8a`.
+These temporary local packages are built from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `b41f29c71a499e958ee9e33902d2e781f480e56d`:
 
-Source archive: <https://pkg.pr.new/Teyik0/furin/@teyik0/furin@a74cd57>.
+| Archive | Package version | SHA-256 |
+| --- | --- | --- |
+| `furin-pr163-b41f29c.tgz` | `@teyik0/furin@0.7.0-alpha.3` | `335fff9fe3817602a7c8b25d14812606c1a4d671278bee7f7d34d3836e31206c` |
+| `furin-electrobun-pr163-b41f29c.tgz` | `@teyik0/furin-electrobun@0.7.0-alpha.2` | `30c8b7e2d5dd578907d93c9437349bfed36d1222937f30e1e8ce2dfdd565e79c` |
 
-The published preview contains unresolved `catalog:` dependencies. The only change to its extracted package is replacing those references in `package.json` with the versions from that commit's root catalog, then repacking with `bun pm pack`. Source files, generated declarations, bundles, README, and MIT license are unchanged. This temporary archive keeps clean, frozen installations working until Furin publishes normalized previews.
+Run `bun install --frozen-lockfile` and `bun run build` in that checkout, then `bun pm pack` from `packages/core` and `packages/electrobun`. Bun packing normalizes the upstream catalog references into semver ranges. No source or bundle is patched after packaging. Both archives include their MIT license.
 
-- Original archive SHA-256: `2eb71354ae95b345d4ae77e8f5e6dba5c906a3fc73691649ed4bd5a201a6f522`.
-- Normalized archive SHA-256: `ab722252b712bb8e71d7ad80927bebd6750db2899c817a72ffb6795658c6bfaa`.
-
-Catalog replacements: `elysia` → `2.0.0-beta.21`, `evlog` → `^2.29.0`, `exact-mirror` → `1.2.6`, `react` and `react-dom` → `19.3.0`, `typebox` → `1.3.34`, and `@types/react` and `@types/react-dom` → `^19.3.0`.
-
-Replace this archive dependency with the published preview URL once both installation and `bun install --frozen-lockfile` succeed in a fresh directory. The optional Electrobun integration package is not vendored or installed.
+The PR workflow now publishes both packages with Bun packing and repository-qualified preview URLs. Tofu retains local archives as requested; a published preview may replace them after a fresh frozen installation and native validation pass. The [integration report](../docs/furin-electrobun-preview.md) describes the host boundary and remaining platform limits.

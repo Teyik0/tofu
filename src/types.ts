@@ -1,5 +1,14 @@
 export type InstanceProfile = "dev" | "release";
 
+export interface ServerInfo {
+  /** Private native session; stored only in the owner's descriptor. */
+  cookie?: string;
+  mode: "desktop" | "server";
+  pid: number;
+  profile: InstanceProfile;
+  url: string;
+}
+
 export interface DesktopTarget {
   arch: "arm64" | "x64";
   platform: "macos" | "win" | "linux";

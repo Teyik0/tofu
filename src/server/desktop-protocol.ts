@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { InstanceConfig, InstanceProfile } from "../types";
+import type { InstanceConfig, InstanceProfile, ServerInfo } from "../types";
 
 const invalidDesktopPath = /[\r\n\0]/;
 const invalidWindowsPath = /["\r\n\0]/;
@@ -29,7 +29,7 @@ export async function forwardNativeAuthorization(options: {
   if (!(await file.exists())) {
     return false;
   }
-  const descriptor = (await file.json()) as { mode: string; profile: string; url: string };
+  const descriptor = (await file.json()) as ServerInfo;
   const address = new URL(descriptor.url);
   if (
     descriptor.mode !== "desktop" ||
@@ -47,6 +47,7 @@ export async function forwardNativeAuthorization(options: {
   let response: Response;
   try {
     response = await fetch(new URL("/api/instance", address), {
+      headers: descriptor.cookie ? { cookie: descriptor.cookie } : undefined,
       redirect: "error",
       signal: AbortSignal.timeout(3000),
     });
@@ -63,13 +64,17 @@ export async function forwardNativeAuthorization(options: {
   }
   const result = await fetch(new URL("/api/anilist/callback", address), {
     body: JSON.stringify({ url: options.url }),
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(descriptor.cookie ? { cookie: descriptor.cookie } : {}),
+    },
     method: "POST",
     redirect: "error",
     signal: AbortSignal.timeout(120_000),
   });
   // Bring the existing window forward even when authorization expired.
   await fetch(new URL("/api/desktop/open", address), {
+    headers: descriptor.cookie ? { cookie: descriptor.cookie } : undefined,
     method: "POST",
     redirect: "error",
     signal: AbortSignal.timeout(3000),

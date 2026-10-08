@@ -2,8 +2,9 @@
 import { dirname, join } from "node:path";
 import { Server as Tracker } from "bittorrent-tracker";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
-import type { AniListState, DashboardState } from "../src/types";
+import type { AniListState, DashboardState, ServerInfo } from "../src/types";
 import { fixture, json, waitFor } from "../tests/helpers";
+import { nativeRequest } from "./native-request";
 
 if (process.platform !== "darwin") {
   throw new Error("Native file associations are currently supported on macOS");
@@ -27,7 +28,7 @@ const dataDir = join(file.directory, "native-state");
 const downloadPath = join(file.directory, "native-downloads");
 const torrentPath = join(file.directory, "Open torrent #1.torrent");
 await Bun.write(torrentPath, file.seed.torrentFile);
-let server: { pid: number; url: string } | null = null;
+let server: ServerInfo | null = null;
 const checks: string[] = [];
 
 async function open(args: string[]) {
@@ -36,6 +37,13 @@ async function open(args: string[]) {
   if (code !== 0) {
     throw new Error(error);
   }
+}
+
+function request(url: string, init?: RequestInit) {
+  if (!server) {
+    throw new Error("The native instance is unavailable");
+  }
+  return nativeRequest(server, url, init);
 }
 
 try {
@@ -60,7 +68,7 @@ try {
   server = await waitFor(
     async () => {
       const info = Bun.file(join(dataDir, "server.json"));
-      return (await info.exists()) ? ((await info.json()) as { pid: number; url: string }) : null;
+      return (await info.exists()) ? ((await info.json()) as ServerInfo) : null;
     },
     (value) => value !== null
   );
@@ -68,12 +76,12 @@ try {
     throw new Error("Native server did not start");
   }
   const base = server.url;
-  const state = async () => (await (await fetch(`${base}/api/state`)).json()) as DashboardState;
+  const state = async () => (await (await request(`${base}/api/state`)).json()) as DashboardState;
   const downloaded = async (id: string, bytes: Uint8Array) => {
     await waitFor(state, (value) =>
       value.torrents.some((torrent) => torrent.id === id && torrent.status === "seeding")
     );
-    const content = await fetch(`${base}/api/torrents/${id}/files/0/content`);
+    const content = await request(`${base}/api/torrents/${id}/files/0/content`);
     if (
       !content.ok ||
       Bun.SHA256.hash(await content.arrayBuffer(), "hex") !== Bun.SHA256.hash(bytes, "hex")
@@ -88,11 +96,11 @@ try {
   await downloaded(magnet.seed.infoHash, magnet.bytes);
   checks.push("A magnet link reaches the running app and downloads exact bytes");
 
-  const configured = (await (await fetch(`${base}/api/anilist`)).json()) as AniListState;
+  const configured = (await (await request(`${base}/api/anilist`)).json()) as AniListState;
   if (configured.clientId !== "52735" || configured.redirectUri !== "tofu-dev://oauth/anilist") {
     throw new Error("The development bundle must use its own AniList client and callback");
   }
-  const authorization = await fetch(`${base}/api/anilist/connect`, { method: "POST" });
+  const authorization = await request(`${base}/api/anilist/connect`, { method: "POST" });
   const authorizeUrl = new URL(((await authorization.json()) as { url: string }).url);
   if (authorizeUrl.searchParams.get("client_id") !== "52735") {
     throw new Error("The native authorization URL must use AniList development client 52735");
@@ -105,25 +113,25 @@ try {
   callback.hash = new URLSearchParams({ error: "access_denied", state: oauthState }).toString();
   await open(["-a", bundle, "-u", callback.href]);
   await waitFor(
-    async () => (await (await fetch(`${base}/api/anilist`)).json()) as AniListState,
+    async () => (await (await request(`${base}/api/anilist`)).json()) as AniListState,
     (value) =>
       !value.authorizationPending && value.authorizationError?.includes("declined") === true
   );
   checks.push("A native AniList callback reaches the running app and validates the pending state");
 
-  await fetch(`${base}/api/settings`, {
+  await request(`${base}/api/settings`, {
     ...json({ ...(await state()).settings, runInBackground: true }),
     method: "PUT",
   });
-  await fetch(`${base}/api/torrents/${file.seed.infoHash}/pause`, { method: "POST" });
-  await fetch(`${base}/api/desktop/background`, { method: "POST" });
+  await request(`${base}/api/torrents/${file.seed.infoHash}/pause`, { method: "POST" });
+  await request(`${base}/api/desktop/background`, { method: "POST" });
   await waitFor(
-    async () => (await (await fetch(`${base}/api/desktop`)).json()) as { background: boolean },
+    async () => (await (await request(`${base}/api/desktop`)).json()) as { background: boolean },
     (value) => value.background
   );
   await open(["-a", bundle, torrentPath]);
   await waitFor(
-    async () => (await (await fetch(`${base}/api/desktop`)).json()) as { background: boolean },
+    async () => (await (await request(`${base}/api/desktop`)).json()) as { background: boolean },
     (value) => !value.background
   );
   const reopened = await state();

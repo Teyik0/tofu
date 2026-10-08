@@ -1,4 +1,5 @@
-import { mkdir, rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { cp, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { version } from "../package.json";
 import { hostDesktopTarget, installerExtension, installerName } from "../src/platform";
@@ -22,7 +23,9 @@ if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPE
   process.env.ELECTROBUN_DEVELOPER_ID = "-";
   console.log("Using free ad hoc macOS signing; first launch requires manual approval.");
 }
-await command(["node_modules/@teyik0/furin/src/cli/index.ts", "build", "--target", "bun"], root);
+if (Bun.argv[2] !== "desktop" && !release) {
+  await command(["node_modules/@teyik0/furin/src/cli/index.ts", "build", "--target", "bun"], root);
+}
 if (Bun.argv[2] === "desktop" || release) {
   await command(["--bun", "node_modules/electrobun/bin/electrobun.cjs", "prepare"], root);
   const runtime = join(root, "runtime");
@@ -56,12 +59,17 @@ if (Bun.argv[2] === "desktop" || release) {
   await command(
     [
       "--bun",
-      "node_modules/electrobun/bin/electrobun.cjs",
+      "node_modules/@teyik0/furin-electrobun/src/cli.ts",
       "build",
       release ? "--env=stable" : "--env=dev",
     ],
     root
   );
+  const generated = join(root, ".furin/electrobun");
+  await cp(join(generated, "build"), join(root, "build"), { recursive: true });
+  if (existsSync(join(generated, "artifacts"))) {
+    await cp(join(generated, "artifacts"), join(root, "artifacts"), { recursive: true });
+  }
   if (release) {
     const directory = join(root, "artifacts");
     const target = hostDesktopTarget();

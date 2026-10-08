@@ -13,7 +13,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ### Changed
 
-- Use the Furin Electrobun PR #163 core preview through a temporary archive with normalized dependencies, while retaining Tofu's native host.
+- Use local core and Electrobun packages from Furin PR #163: Furin packages and guards the in-process backend, while Tofu retains native menus, background transfers, protocol handling and update recovery.
 
 ### Fixed
 

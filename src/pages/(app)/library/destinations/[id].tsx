@@ -6,8 +6,6 @@ import { route as app } from "../../_route";
 
 export const route = defineRoute()
   .config({ layout: app, mode: "ssr", params: t.Object({ id: t.String() }) })
-  .loader(({ dashboard, request, params }) =>
-    loadTorrentPage(dashboard, new URL(request.url).origin, params.id)
-  )
+  .loader(({ dashboard, request, params }) => loadTorrentPage(dashboard, request, params.id))
   .head(() => ({ meta: [{ title: "Your downloads — Tofu" }] }))
   .page(App);
