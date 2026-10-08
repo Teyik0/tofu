@@ -1,6 +1,6 @@
 # Furin Electrobun integration
 
-Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `88dcf453d68a4a4d92762cece40522433684e503`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
+Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `dd9edb4bda9c2726ea3add56f25bbeb6a27f8fdb`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ Tofu owns its tray, menus, protocol events, window reopening and updater behavio
 
 ## Native development
 
-Run `bun run dev:desktop` to open Tofu on its source app with Furin Fast Refresh. The host imports the SDK before restoring the consuming CWD, then loads the source server through the development context. Frontend edits preserve the document and native PID, including frontend-only TypeScript helpers. The supervisor follows literal runtime imports of the server and host, including backend JSX/TSX and transitive imports. Computed import paths are outside that graph. Backend/host edits drain and replace the native process, reacquire the profile lease and restore durable state. No additional native RPC bridge is introduced. The compiled development bundle remains available through `bun run build:desktop` and `bun run desktop`.
+Run `bun run dev:desktop` to open Tofu on its source app with Furin Fast Refresh. The host imports the SDK before restoring the consuming CWD, then loads the source server through the development context. Frontend edits preserve the document and native PID, including frontend-only TypeScript helpers. Before launching each backend, the supervisor collects literal runtime imports of the server and host through a non-writing Bun build. This includes backend JSX/TSX and transitive imports, and avoids stale ownership after renaming an extensionless import target. Computed import paths are outside that graph. Backend/host edits drain and replace the native process, reacquire the profile lease and restore durable state. No additional native RPC bridge is introduced. The compiled development bundle remains available through `bun run build:desktop` and `bun run desktop`.
 
 `bun run test:hmr` exercises the real native window with temporary state and a controlled draft. It verifies React and CSS refresh without losing that draft, document or host, then downloads from a real peer, pauses and checks the exact SHA-256 after a backend restart. The test briefly creates its own source route and appends a server comment without rewriting a prior source snapshot. Cleanup removes only its comment and route, preserving other source edits. Smoke-script injection remains explicit in the test environment.
 

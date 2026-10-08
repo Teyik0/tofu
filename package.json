@@ -37,8 +37,8 @@
   "dependencies": {
     "@base-ui/react": "1.8.0",
     "@elysia/eden": "2.0.0-beta.5",
-    "@teyik0/furin": "file:vendor/furin-pr163-88dcf45.tgz",
-    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-88dcf45.tgz",
+    "@teyik0/furin": "file:vendor/furin-pr163-dd9edb4.tgz",
+    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-dd9edb4.tgz",
     "bun-plugin-tailwind": "0.1.2",
     "class-variance-authority": "0.7.1",
     "cn": "^0.4.0",
