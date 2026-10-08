@@ -1,6 +1,6 @@
 # Furin Electrobun integration
 
-Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `44cc7afd042a2aa12e025208b594fd53f05d6166`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
+Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `88dcf453d68a4a4d92762cece40522433684e503`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
 
 ## Architecture
 
@@ -16,13 +16,13 @@ Tofu owns its tray, menus, protocol events, window reopening and updater behavio
 - Optional `hostEntry` for applications with existing native integration.
 - Typed SDK additions for URL schemes, file associations, platform icons, signing, helper files, Bun externals and release feeds. Sources resolve from the application root; the Furin artifact remains owned by the packager.
 - Development SDK packaging through `build --env=dev` and source development through `dev`. The custom host uses the consuming Bun configuration, source server entry and supervised native lifecycle; the standard host retains its separate helper workflow.
-- CI publishes both core and Electrobun with a pinned publisher, Bun packing and repository-qualified URLs. Bun packing resolves `catalog:` references, fixing clean consumer installs. See [Bun catalogs](https://bun.sh/docs/pm/catalogs#publishing).
+- CI publishes both core and Electrobun with a pinned publisher, Bun packing and repository-qualified URLs. The stable workflow publishes both packages after validation. Bun packing resolves `catalog:` references, fixing clean consumer installs. See [Bun catalogs](https://bun.sh/docs/pm/catalogs#publishing).
 
 ## Native development
 
-Run `bun run dev:desktop` to open Tofu on its source app with Furin Fast Refresh. The host imports the SDK before restoring the consuming CWD, then loads the source server through the development context. React/CSS edits preserve the document and native PID. Backend/host edits drain and replace the native process, reacquire the profile lease and restore durable state. No additional native RPC bridge is introduced. The compiled development bundle remains available through `bun run build:desktop` and `bun run desktop`.
+Run `bun run dev:desktop` to open Tofu on its source app with Furin Fast Refresh. The host imports the SDK before restoring the consuming CWD, then loads the source server through the development context. Frontend edits preserve the document and native PID, including frontend-only TypeScript helpers. The supervisor follows literal runtime imports of the server and host, including backend JSX/TSX and transitive imports. Computed import paths are outside that graph. Backend/host edits drain and replace the native process, reacquire the profile lease and restore durable state. No additional native RPC bridge is introduced. The compiled development bundle remains available through `bun run build:desktop` and `bun run desktop`.
 
-`bun run test:hmr` exercises the real native window with temporary state and a controlled draft. It verifies React and CSS refresh without losing that draft, document or host, then downloads from a real peer, pauses and checks the exact SHA-256 after a backend restart. The test briefly creates its own source route and appends a server comment, restoring both when it finishes. Smoke-script injection remains explicit in the test environment.
+`bun run test:hmr` exercises the real native window with temporary state and a controlled draft. It verifies React and CSS refresh without losing that draft, document or host, then downloads from a real peer, pauses and checks the exact SHA-256 after a backend restart. The test briefly creates its own source route and appends a server comment without rewriting a prior source snapshot. Cleanup removes only its comment and route, preserving other source edits. Smoke-script injection remains explicit in the test environment.
 
 ## Session handling in Tofu
 
@@ -34,4 +34,4 @@ Each newly created window or OS browser receives a fresh, single-use bootstrap. 
 
 The public API migration test starts the real Tofu app through the package, checks unauthenticated rejection and authenticated SSR, downloads from a real peer with identical SHA-256 and restores a paused torrent after restart. Native background validation destroys and reopens the actual WebView while the real transfer completes. Native opening checks cover torrent files, magnets and OAuth forwarding. The coexistence test extracts the stable archive into its temporary directory, runs both native profiles together and verifies isolated preferences, a real transfer and independent shutdown. Development and release packaging pass, including the macOS DMG signature check. Type checking, formatting, public API tests and desktop packaging are required alongside the Git hooks.
 
-The full native smoke workflow completes its functional assertions, including Jev validation, but its final JavaScript error check reports an unhandled fetch `AbortError` during navigation. Windows and Linux native UI behavior require their own platform validation. No stable release, merge or system-default torrent association change is part of this update.
+The full native smoke workflow passes, including Jev validation and the final check for JavaScript errors. Route-frame cancellation rejects deferred consumers without leaking a second unhandled rejection from background cleanup. A separate native HMR run also verifies that a source edit made while validation is running survives both the backend restart and cleanup. Windows and Linux native UI behavior require their own platform validation. No stable release, merge or system-default torrent association change is part of this update.

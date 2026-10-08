@@ -1,5 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Observe real native refresh and restart events sequentially.
-import { mkdir, rm } from "node:fs/promises";
+import { appendFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { DashboardState, ServerInfo } from "../src/types";
 import { fixture, json, waitFor } from "../tests/helpers";
@@ -21,7 +21,6 @@ for (const path of [page, stylesheet]) {
 }
 const context = await fixture(65_536, []);
 const serverSource = join(root, "src/server.ts");
-const originalServer = await Bun.file(serverSource).text();
 const restartMarker = "\n// Native HMR validation restart.\n";
 const observations: Observation[] = [];
 const collector = Bun.serve({
@@ -169,7 +168,7 @@ try {
     (state) => state.torrents.some((torrent) => torrent.id === id && torrent.status === "seeding")
   );
   await nativeRequest(initial, `/api/torrents/${id}/pause`, { method: "POST" });
-  await Bun.write(serverSource, `${originalServer}${restartMarker}`);
+  await appendFile(serverSource, restartMarker);
   await observe((item) => item.document !== first.document);
   const restarted: ServerInfo = await Bun.file(descriptor).json();
   if (restarted.pid === initial.pid) {
