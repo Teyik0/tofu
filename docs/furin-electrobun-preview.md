@@ -1,6 +1,6 @@
 # Furin Electrobun integration
 
-Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `dd9edb4bda9c2726ea3add56f25bbeb6a27f8fdb`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
+Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `8db5ea2decf622aec895d16bc69ea19bdb92ece7`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
 
 ## Architecture
 
