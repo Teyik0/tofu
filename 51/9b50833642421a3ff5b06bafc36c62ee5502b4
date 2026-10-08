@@ -1,0 +1,25 @@
+package.json
+  s_a0a481a34b8480::t_155588b8fa47dd 40-41
+docs/furin-electrobun-preview.md
+  s_a0a481a34b8480::t_155588b8fa47dd 3
+bun.lock
+  s_a0a481a34b8480::t_1fa6ff6d45926a 10-11,239,241
+vendor/README.md
+  s_a0a481a34b8480::t_e3a1a1187d66a4 3,7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "519b50833642421a3ff5b06bafc36c62ee5502b4",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
