@@ -1,0 +1,125 @@
+bun.lock
+  s_a0a481a34b8480::t_15bde3b2e1de7f 10-11,239,241
+docs/development.md
+  s_a0a481a34b8480::t_c1947aaea02687 49,65
+docs/furin-electrobun-preview.md
+  s_a0a481a34b8480::t_715476b079bea3 3,7,9,27-30
+docs/plugin-architecture.md
+  s_a0a481a34b8480::t_acf331ca8e94c9 1-35
+furin.config.ts
+  s_a0a481a34b8480::t_f0d9ab66992987 2,4,9-30
+package.json
+  s_a0a481a34b8480::t_abc8071bd41d47 40-41
+scripts/build.ts
+  s_a0a481a34b8480::t_23dc0c7c247333 5
+scripts/demo.ts
+  s_a0a481a34b8480::t_01f386ca51e7de 7
+scripts/desktop-protocol.ts
+  s_a0a481a34b8480::t_b5dde079cde3cb 2-3
+scripts/native-coexist.ts
+  s_a0a481a34b8480::t_98814b1de18e56 3
+src/api.ts
+  s_a0a481a34b8480::t_fd6f49948fafa6 1-65
+src/api/core-api.ts
+  s_a0a481a34b8480::t_ccacf4530e7815 1,4-5,8-11,14-39
+src/api/core.ts
+  s_a0a481a34b8480::t_2b56212809ad08 1-53
+src/api/feeds/anilist-api.ts
+  s_a0a481a34b8480::t_9e707083340401 1,3-4,6-10,124
+src/api/feeds/automation-api.ts
+  s_a0a481a34b8480::t_c7c5ae73c531a9 1-21
+src/api/feeds/discovery-api.ts
+  s_a0a481a34b8480::t_14f0bb3c158b0a 1-39
+src/api/feeds/schemas.ts
+  s_91fb1436775985::t_713f96d8203195 1-59
+src/api/lifecycle.ts
+  s_a0a481a34b8480::t_75316f3034c250 1-119
+src/api/plugins/jev-api.ts
+  s_a0a481a34b8480::t_cc0b709018864a 1-3,5-18,20-22
+src/api/plugins/management-api.ts
+  s_a0a481a34b8480::t_8d483b502d289e 1-24
+src/api/runtime.ts
+  s_a0a481a34b8480::t_2fcf2867dad32b 14,40
+src/client.ts
+  s_a0a481a34b8480::t_ba0ba37a93bf25 2
+src/desktop-host.ts
+  s_a0a481a34b8480::t_6da46c8692c7ef 2-6,10-22,24-55,58-59,91,120,122,126,134
+src/pages/(app)/library/all.tsx
+  s_a0a481a34b8480::t_34f6f07260f44f 2
+src/pages/(app)/library/destinations/[id].tsx
+  s_a0a481a34b8480::t_8b60af5b0a4664 3
+src/pages/(app)/library/index.tsx
+  s_a0a481a34b8480::t_9899ab962c728f 2
+src/server.ts
+  s_a0a481a34b8480::t_bd35eee2975895 2-7,9-11,18-22,35
+tests/anilist-client.test.ts
+  s_a0a481a34b8480::t_ebb9656e39f37d 5
+tests/anilist-library.test.ts
+  s_91fb1436775985::t_004a143bd08a3c 3-4
+tests/anilist-oauth.test.ts
+  s_a0a481a34b8480::t_1b659f82b400a1 3-6
+tests/anilist-opening.test.ts
+  s_a0a481a34b8480::t_d4be4d0b1c8d9b 2
+tests/anilist-threads.test.ts
+  s_a0a481a34b8480::t_6606c9f085f774 5-6
+tests/anilist.test.ts
+  s_a0a481a34b8480::t_2ae82bcad6e7a7 4-5
+tests/api-plugins.test.ts
+  s_a0a481a34b8480::t_85b8bb7b81f68a 1-23
+tests/automation.test.ts
+  s_a0a481a34b8480::t_37acf7a3fed224 5-8
+tests/desktop-associations.test.ts
+  s_a0a481a34b8480::t_bed3ce139e9124 3
+tests/desktop-opening.test.ts
+  s_a0a481a34b8480::t_13fb513cb42f79 5
+tests/desktop-protocol.test.ts
+  s_a0a481a34b8480::t_bb0d546275efb8 5
+tests/destinations.test.ts
+  s_a0a481a34b8480::t_11bd46e4a992c3 5-6,541
+tests/discovery.test.ts
+  s_a0a481a34b8480::t_8d0041ccf1c67a 4-5
+tests/engine.test.ts
+  s_a0a481a34b8480::t_079acea8be644a 7-9
+tests/helpers.ts
+  s_a0a481a34b8480::t_bc5ac6169a201e 7-9
+tests/instance.test.ts
+  s_a0a481a34b8480::t_352b61eabd5bd5 4
+tests/persistence.test.ts
+  s_a0a481a34b8480::t_65565e2a678658 3-4
+tests/platform.test.ts
+  s_a0a481a34b8480::t_c5360e2e4e99a0 6
+tests/sync.test.ts
+  s_a0a481a34b8480::t_b602cebe5dffb0 4
+tests/theme.test.ts
+  s_a0a481a34b8480::t_09830548cad500 4-5
+tests/updates.test.ts
+  s_a0a481a34b8480::t_689fb98782f3a0 6-10
+tests/upgrades.test.ts
+  s_a0a481a34b8480::t_556b98910a81eb 5-6
+vendor/README.md
+  s_a0a481a34b8480::t_f3a069a5470031 3,7-8,10,12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d7ff001f250a0d722fbd601ca0a226e5234478b8",
+  "prompts": {},
+  "sessions": {
+    "s_91fb1436775985": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a121f0-9a35-71c2-ba9d-be3f5a135445",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
