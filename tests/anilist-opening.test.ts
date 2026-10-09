@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createAniListOpeningApi } from "../src/server/feeds/anilist-opening-api";
+import { createAniListOpeningApi } from "../src/api/feeds/anilist-opening-api";
 import { json } from "./helpers";
 
 test("AniList anime links open in the desktop system browser", async () => {

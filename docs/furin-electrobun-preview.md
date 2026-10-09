@@ -1,12 +1,12 @@
 # Furin Electrobun integration
 
-Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `8db5ea2decf622aec895d16bc69ea19bdb92ece7`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
+Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `914e82a8c4ccf02899d1d062caa4527adcec5f07`. [Archive provenance](../vendor/README.md) records the pinned local packages and checksums.
 
 ## Architecture
 
-`furin-electrobun build` produces the inert `app.js`, copies its external dependency closure and prepares the Hutch SDK project. `furin.desktop.config.ts` selects `src/desktop-host.ts` through the new `hostEntry` option. That host calls the public `startDesktopBackend()` API with Tofu's existing data directory. The backend lives in the same Bun process as the SDK; WebTorrent remains on Bun.
+`furin-electrobun build` produces the inert `app.js`, copies its external dependency closure and prepares the Hutch SDK project. The `desktop` section of `furin.config.ts` selects `src/desktop-host.ts` through the new `hostEntry` option. That host uses `runDesktopHost()` with Tofu's existing data directory. The package selects the source or compiled app, publishes development readiness and drains the backend on failures, signals and quit. The backend lives in the same Bun process as the SDK; WebTorrent remains on Bun.
 
-The app exports `onStartup(signal)` and `onShutdown`. Initialization acquires the instance lease before opening the journal, engine, automations and updater; the private listener opens after initialization completes. Shutdown persists transfers and closes resources. Native update preparation drains durable services while retaining the listener so an unsuccessful helper handoff can restore services with the same session. Normal quit stops the backend through Furin.
+The app installs `desktopApp({ onStartup, onShutdown, restrictWebToLoopback: true })` on its original Elysia root. Lifecycle functions live in `src/api/lifecycle.ts` and also support updater recovery. Initialization acquires the instance lease before opening the journal, engine, automations and updater; the private listener opens after initialization completes. Shutdown persists transfers and closes resources. Native update preparation drains durable services while retaining the listener so an unsuccessful helper handoff can restore services with the same session. Normal quit stops the backend through Furin.
 
 Tofu owns its tray, menus, protocol events, window reopening and updater behavior. The alternative of replacing those with a generic framework window would discard existing native behavior. The small host entrypoint and typed SDK additions preserve it without adding torrent-specific framework APIs. This follows the artifact/deployment boundary used by [Next.js standalone output](https://nextjs.org/docs/app/api-reference/config/next-config-js/output) and [TanStack Start hosting](https://tanstack.com/start/latest/docs/framework/react/guide/hosting).
 
@@ -23,6 +23,10 @@ Tofu owns its tray, menus, protocol events, window reopening and updater behavio
 Run `bun run dev:desktop` to open Tofu on its source app with Furin Fast Refresh. The host imports the SDK before restoring the consuming CWD, then loads the source server through the development context. Frontend edits preserve the document and native PID, including frontend-only TypeScript helpers. Before launching each backend, the supervisor collects literal runtime imports of the server and host through a non-writing Bun build. This includes backend JSX/TSX and transitive imports, and avoids stale ownership after renaming an extensionless import target. Computed import paths are outside that graph. Backend/host edits drain and replace the native process, reacquire the profile lease and restore durable state. No additional native RPC bridge is introduced. The compiled development bundle remains available through `bun run build:desktop` and `bun run desktop`.
 
 `bun run test:hmr` exercises the real native window with temporary state and a controlled draft. It verifies React and CSS refresh without losing that draft, document or host, then downloads from a real peer, pauses and checks the exact SHA-256 after a backend restart. The test briefly creates its own source route and appends a server comment without rewriting a prior source snapshot. Cleanup removes only its comment and route, preserving other source edits. Smoke-script injection remains explicit in the test environment.
+
+## API composition
+
+`src/server.ts` mounts `.use(api)`. `src/api.ts` composes the route-free core dependency and the core, Jev, AniList, automation, discovery and configuration HTTP modules. See the [plugin architecture](plugin-architecture.md) for the future extension boundary.
 
 ## Session handling in Tofu
 

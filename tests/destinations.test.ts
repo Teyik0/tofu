@@ -2,8 +2,8 @@ import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
 import type { DashboardState, Destination } from "../src/types";
 import { fixture, json, network, waitFor } from "./helpers";
 
@@ -538,7 +538,7 @@ test("bulk pause targets the visible torrent IDs rather than every destination",
 test("editing a destination persists its identity and changes future adds without moving files", async () => {
   const context = await fixture(65_536, []);
   const other = await fixture(65_536, []);
-  let restarted: import("../src/server/engine").TorrentEngine | null = null;
+  let restarted: import("../src/api/engine").TorrentEngine | null = null;
   try {
     const path = join(context.directory, "original");
     const destination = (await (

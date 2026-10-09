@@ -2,8 +2,8 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { AutomationService } from "../src/server/feeds/service";
+import { createApi } from "../src/api";
+import { AutomationService } from "../src/api/feeds/service";
 import type {
   AniListState,
   AniListSubscription,

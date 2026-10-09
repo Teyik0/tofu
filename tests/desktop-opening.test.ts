@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Server as Tracker } from "bittorrent-tracker";
-import { DesktopTorrentOpener } from "../src/server/desktop-opening";
+import { DesktopTorrentOpener } from "../src/api/desktop-opening";
 import type { DashboardState } from "../src/types";
 import { fixture, waitFor } from "./helpers";
 

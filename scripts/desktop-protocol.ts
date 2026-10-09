@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
-import { forwardNativeAuthorization } from "../src/server/desktop-protocol";
-import { currentInstanceConfig } from "../src/server/instance";
+import { forwardNativeAuthorization } from "../src/api/desktop-protocol";
+import { currentInstanceConfig } from "../src/api/instance";
 
 try {
   const [, , dataDir, url] = Bun.argv;

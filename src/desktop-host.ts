@@ -1,75 +1,62 @@
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import {
-  type DesktopAppModule,
-  type DesktopBackend,
-  getDesktopDevelopment,
-  startDesktopBackend,
-} from "@teyik0/furin-electrobun/host";
-import { DesktopController } from "./server/desktop";
-import { DesktopUrlOpener } from "./server/desktop-opening";
-import { registerDesktopProtocol } from "./server/desktop-protocol";
-import { writeServerInfo } from "./server/server-info";
+import { runDesktopHost } from "@teyik0/furin-electrobun/host";
+import { DesktopController } from "./api/desktop";
+import { DesktopUrlOpener } from "./api/desktop-opening";
+import { registerDesktopProtocol } from "./api/desktop-protocol";
+import { writeServerInfo } from "./api/server-info";
 
 process.env.TOFU_MODE = "desktop";
 const sdk = await import("electrobun/main");
-const development = await getDesktopDevelopment();
-const { runtime, instance, getAutomation, getEngine, getDesktop, getUpdates } = await import(
-  "./server/runtime"
-);
-runtime.sdk = sdk;
-const opening = sdk
-  ? new DesktopUrlOpener({
-      authorize: (callbackUrl) => getAutomation().anilist.receiveAuthorizationUrl(callbackUrl),
-      engine: getEngine,
-      show: () => {
-        getDesktop().open();
-      },
-    })
-  : null;
-if (sdk && opening && !runtime.desktop) {
-  const openUrl = (callbackUrl: string) => {
-    void opening
-      .open(callbackUrl)
-      .catch((error: unknown) => {
-        if (
-          error instanceof Error &&
-          error.message === "AniList authorization was declined. Connect again when you are ready."
-        ) {
-          return;
-        }
-        console.error("Unable to open link");
-        return sdk.Utils.showMessageBox({
-          detail: error instanceof Error ? error.message : "Unexpected error",
-          message: "Unable to open link",
-          title: instance.name,
-          type: "error",
-        });
-      })
-      .catch(console.error);
-  };
-  sdk.default.events.on("open-url", (event: { data: { url: string } }) => openUrl(event.data.url));
-  const initialUrl = process.env.TOFU_OPEN_URL;
-  delete process.env.TOFU_OPEN_URL;
-  if (initialUrl) {
-    openUrl(initialUrl);
-  }
-  await registerDesktopProtocol(instance);
-}
 
-let module: DesktopAppModule | undefined;
-let activeBackend: DesktopBackend | undefined;
-const artifact = development?.serverEntry ?? join(import.meta.dir, "../furin/app.js");
-try {
-  const backend = await startDesktopBackend(
-    async () => {
-      module = (await import(pathToFileURL(artifact).href)) as DesktopAppModule;
-      return module;
-    },
-    instance.dataDir,
-    development ? "dev" : "build"
+await runDesktopHost(sdk, async ({ startBackend }) => {
+  const { runtime, instance, getAutomation, getEngine, getDesktop, getUpdates } = await import(
+    "./api/runtime"
   );
-  activeBackend = backend;
+  runtime.sdk = sdk;
+  const opening = sdk
+    ? new DesktopUrlOpener({
+        authorize: (callbackUrl) => getAutomation().anilist.receiveAuthorizationUrl(callbackUrl),
+        engine: getEngine,
+        show: () => {
+          getDesktop().open();
+        },
+      })
+    : null;
+  if (sdk && opening && !runtime.desktop) {
+    const openUrl = (callbackUrl: string) => {
+      void opening
+        .open(callbackUrl)
+        .catch((error: unknown) => {
+          if (
+            error instanceof Error &&
+            error.message ===
+              "AniList authorization was declined. Connect again when you are ready."
+          ) {
+            return;
+          }
+          console.error("Unable to open link");
+          return sdk.Utils.showMessageBox({
+            detail: error instanceof Error ? error.message : "Unexpected error",
+            message: "Unable to open link",
+            title: instance.name,
+            type: "error",
+          });
+        })
+        .catch(console.error);
+    };
+    sdk.default.events.on("open-url", (event: { data: { url: string } }) =>
+      openUrl(event.data.url)
+    );
+    const initialUrl = process.env.TOFU_OPEN_URL;
+    delete process.env.TOFU_OPEN_URL;
+    if (initialUrl) {
+      openUrl(initialUrl);
+    }
+    await registerDesktopProtocol(instance);
+  }
+
+  const { onStartup, onShutdown } = await import("./api/lifecycle");
+  const { backend } = await startBackend({ dataDir: instance.dataDir });
   await writeServerInfo(backend.origin, backend.cookie);
   const { ApplicationMenu } = sdk;
   ApplicationMenu.setApplicationMenu([
@@ -101,7 +88,7 @@ try {
     if ((event as { data: { action: string } }).data.action !== "set-default-torrent-app") {
       return;
     }
-    void import("./server/desktop-associations")
+    void import("./api/desktop-associations")
       .then(({ setDefaultTorrentApp }) => setDefaultTorrentApp(instance.profile))
       .then(() =>
         sdk.Utils.showMessageBox({
@@ -130,13 +117,13 @@ try {
     checkUpdates: () => getUpdates().check(),
     engine: getEngine,
     name: instance.name,
-    prepareUpdate: () => module?.onShutdown?.() ?? Promise.resolve(),
+    prepareUpdate: onShutdown,
     profile: instance.profile,
-    publicDir: development
+    publicDir: process.env.FURIN_DESKTOP_DEV
       ? join(process.cwd(), "public")
       : join(import.meta.dir, "../furin/public"),
     recover: async () => {
-      await module?.onStartup?.(new AbortController().signal);
+      await onStartup(new AbortController().signal);
       await writeServerInfo(backend.origin, backend.cookie);
     },
     sdk,
@@ -144,22 +131,4 @@ try {
     smokeScript,
   });
   opening?.ready();
-  const shutdown = async () => {
-    await backend.stop();
-    sdk.Utils.quit(0);
-  };
-  await development?.ready(backend, shutdown);
-  process.on("SIGINT", () => {
-    shutdown().catch(console.error);
-  });
-  process.on("SIGTERM", () => {
-    shutdown().catch(console.error);
-  });
-} catch (error) {
-  console.error("Tofu desktop startup failed", error);
-  try {
-    await activeBackend?.stop();
-  } finally {
-    sdk.Utils.quit(1);
-  }
-}
+});

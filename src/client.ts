@@ -1,5 +1,5 @@
 import { createClient } from "@teyik0/furin/client";
-import type { createApi } from "./server/api";
+import type { createApi } from "./api";
 
 export function createTofuClient(origin: string, request?: Request) {
   const cookie =

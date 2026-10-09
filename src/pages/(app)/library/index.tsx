@@ -1,6 +1,6 @@
 import { defineRoute } from "@teyik0/furin";
+import { loadTorrentPage } from "../../../api/page-data";
 import { App } from "../../../components/app";
-import { loadTorrentPage } from "../../../server/page-data";
 import { route as app } from "../_route";
 
 export const route = defineRoute()

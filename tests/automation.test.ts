@@ -2,10 +2,10 @@
 import { afterAll, expect, test } from "bun:test";
 import { chmod, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
-import { AutomationService } from "../src/server/feeds/service";
-import { pluginEndpoints } from "../src/server/plugins/registry";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
+import { AutomationService } from "../src/api/feeds/service";
+import { pluginEndpoints } from "../src/api/plugins/registry";
 import type { AutomationState } from "../src/types";
 import { fixture, json, network, waitFor } from "./helpers";
 

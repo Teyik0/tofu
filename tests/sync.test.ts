@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createSyncChangesPlugin } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
-import { createTofuSync } from "../src/server/sync";
+import { createTofuSync } from "../src/api/sync";
 import { fixture } from "./helpers";
 
 test("live engine updates are recoverable through the Furin Sync journal", async () => {

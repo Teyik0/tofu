@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { version } from "../package.json";
+import { resolveAniListClient } from "../src/api/feeds/anilist-client";
 import { hostDesktopTarget, installerExtension, installerName } from "../src/platform";
-import { resolveAniListClient } from "../src/server/feeds/anilist-client";
 
 const root = join(import.meta.dir, "..");
 async function command(args: string[], cwd: string) {

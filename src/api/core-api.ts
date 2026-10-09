@@ -1,40 +1,43 @@
-import { type FurinSyncOptions, furinSync } from "@teyik0/furin/sync";
+import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, t } from "elysia";
 import { destinationIconNames } from "../types";
-import type { DesktopController } from "./desktop";
-import { type TorrentEngine, UserError } from "./engine";
-import { createAutomationApi } from "./feeds/api";
-import type { AutomationService } from "./feeds/service";
-import { createRequestGuard } from "./request-guard";
-import type { UpdatesService } from "./updates";
+import { type CoreDependencies, createCore } from "./core";
+import { UserError } from "./engine";
 import { createUpdatesApi } from "./updates-api";
 
-export function createApi(
-  engine: () => TorrentEngine,
-  sync: FurinSyncOptions,
-  automation?: () => AutomationService,
-  services?: { updates: () => UpdatesService; desktop: () => DesktopController }
-) {
-  return new Elysia({ prefix: "/api" })
-    .use(createRequestGuard())
+export function createCoreApi(dependencies: CoreDependencies) {
+  const { engine, sync, automation, services } = dependencies;
+  return new Elysia({ name: "tofu-core-api", prefix: "/api" })
+    .use(createCore(dependencies))
     .use(furinSync(sync))
     .guard({ sync: false })
-    .error(({ error, set }) => {
-      set.status =
-        error instanceof Error && "status" in error && typeof error.status === "number"
-          ? error.status
-          : 500;
-      return { error: error instanceof Error ? error.message : "Unexpected error" };
+    .get("/instance", () => {
+      if (!services?.instance) {
+        throw new UserError("Instance configuration unavailable", { status: 503 });
+      }
+      return services.instance();
     })
-    .use(
-      createAutomationApi(
-        automation ??
-          (() => {
-            throw new UserError("Automations unavailable", { status: 503 });
-          }),
-        sync
-      )
-    )
+    .post("/directory", async () => {
+      if (engine().mode !== "desktop" || !services?.nativeSdk) {
+        throw new UserError("Enter the folder path on the server", { status: 409 });
+      }
+      const { Utils } = services.nativeSdk();
+      const paths = await Utils.openFileDialog({
+        allowsMultipleSelection: false,
+        canChooseDirectory: true,
+        canChooseFiles: false,
+        startingFolder: engine().settings.downloadPath,
+      });
+      return { path: paths[0] ?? null };
+    })
+    .post("/torrents/:id/reveal", ({ params }) => {
+      if (engine().mode !== "desktop" || !services?.nativeSdk) {
+        throw new UserError("The folder is on the machine hosting Tofu", { status: 409 });
+      }
+      return {
+        opened: services.nativeSdk().Utils.openPath(engine().get(params.id).detail.savePath),
+      };
+    })
     .get("/health", () => ({ ready: Boolean(engine()) }))
     .use(
       createUpdatesApi(

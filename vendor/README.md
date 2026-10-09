@@ -1,12 +1,12 @@
 # Furin PR #163 packages
 
-These temporary local packages are built from [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `8db5ea2decf622aec895d16bc69ea19bdb92ece7`:
+These temporary local archives are downloaded from the immutable published preview for [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit `914e82a8c4ccf02899d1d062caa4527adcec5f07`:
 
 | Archive | Package version | SHA-256 |
 | --- | --- | --- |
-| `furin-pr163-8db5ea2.tgz` | `@teyik0/furin@0.7.0-alpha.5` | `b0ec7f60f0afee8f72c73d480ec0a8246306627ae0960ada63a733581c27442a` |
-| `furin-electrobun-pr163-8db5ea2.tgz` | `@teyik0/furin-electrobun@0.7.0-alpha.5` | `72834a0cae90ce7b644218ff2c59db42367accf5b5cc7f399c92f8a60b726a43` |
+| `furin-pr163-914e82a.tgz` | `@teyik0/furin@0.7.0-alpha.5` | `1c9bb37bd5036fac6c608844d228a291b53c8086bb1a948460c2ca68d99339e2` |
+| `furin-electrobun-pr163-914e82a.tgz` | `@teyik0/furin-electrobun@0.7.0-alpha.5` | `893070301d150f4ceb97790f3c8c3e73f5e655a93200408c13b965e15e85830d` |
 
-Run `bun install --frozen-lockfile` and `bun run build` in that checkout, then `bun pm pack` from `packages/core` and `packages/electrobun`. Bun packing normalizes the upstream catalog references into semver ranges. No source or bundle is patched after packaging. Both archives include their MIT license.
+The downloads are `https://pkg.pr.new/Teyik0/furin/@teyik0/furin@914e82a` and `https://pkg.pr.new/Teyik0/furin/@teyik0/furin-electrobun@914e82a`. Published manifests contain resolved semver ranges, including Elysia, and no `catalog:` references. Both packages include their MIT license. No manifest, source or bundle is patched after download.
 
-The PR workflow publishes both packages with Bun packing and repository-qualified preview URLs. The stable release workflow also publishes Electrobun after the core. Tofu retains local archives as requested; a published preview may replace them after a fresh frozen installation and native validation pass. The [integration report](../docs/furin-electrobun-preview.md) describes the host boundary and remaining platform limits.
+The preview uses unified desktop configuration, `desktopApp()` lifecycle callbacks and `runDesktopHost()`. Tofu retains immutable local archives for reproducible installation. The [integration report](../docs/furin-electrobun-preview.md) describes the native boundary and validation.
