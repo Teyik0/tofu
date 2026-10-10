@@ -1,0 +1,26 @@
+README.md
+  s_fedfaad7545ed5::t_55e846e347b075 75
+scripts/native-smoke.ts
+  s_fedfaad7545ed5::t_55e846e347b075 31,43-62
+  s_fedfaad7545ed5::t_75e5cf964c81f9 30,32-39,42,63-66
+tests/desktop-config.test.ts
+  s_fedfaad7545ed5::t_97c17a81236ba4 69
+  s_fedfaad7545ed5::t_28a742de736101 2-3,51-68,70-78
+  s_fedfaad7545ed5::t_c230a2b252d0c7 79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c734468c54f188ceba5f6fa8b532e93eb3da6310",
+  "prompts": {},
+  "sessions": {
+    "s_fedfaad7545ed5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1271b-2a42-75f3-9f3c-7f473fc79c26",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
