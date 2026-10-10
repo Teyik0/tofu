@@ -1,0 +1,36 @@
+src/desktop-host.ts
+  s_fedfaad7545ed5::t_bd8959ac83579b 4,12
+package.json
+  s_fedfaad7545ed5::t_eeb052708f308a 3
+src/api/modules/desktop/host-sdk.ts
+  s_fedfaad7545ed5::t_2506135e7aaf69 1-3,19
+  s_fedfaad7545ed5::t_bd8959ac83579b 4-18
+tests/desktop-update-host.test.ts
+  s_fedfaad7545ed5::t_2506135e7aaf69 1,3-8,30-61,63-85,88-99,101-117
+  s_fedfaad7545ed5::t_999fad7fef89e3 13-19,25-29,86-87,100
+  s_fedfaad7545ed5::t_35dbea9398a604 2,9-12
+  s_fedfaad7545ed5::t_6ead759a24ab84 20
+  s_fedfaad7545ed5::t_09f0ec6b70dda3 21-24
+  s_fedfaad7545ed5::t_64f4152b9e1f6e 62
+CHANGELOG.md
+  s_fedfaad7545ed5::t_e9d5db93a4995f 6-11
+  s_fedfaad7545ed5::t_eeb052708f308a 5
+src/api/modules/desktop/service.ts
+  s_fedfaad7545ed5::t_0608b81bc1a509 85-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d8ef9bf0fa0c7b33845dd6703e7ff03ee88d6822",
+  "prompts": {},
+  "sessions": {
+    "s_fedfaad7545ed5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1271b-2a42-75f3-9f3c-7f473fc79c26",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
