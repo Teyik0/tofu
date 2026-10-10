@@ -1,0 +1,55 @@
+src/components/automation-inbox.tsx
+  s_e830586d962d7a::t_94f429276b76e5 185,196-200
+src/components/anilist-library.tsx
+  s_e830586d962d7a::t_6202e916122d2b 413,417-422,466,471-473
+src/components/automation-fields.tsx
+  s_e830586d962d7a::t_5b008f207fd3d9 43,349
+tests/automation-inbox.test.ts
+  s_e830586d962d7a::t_ac7b8739edcb00 10-18,20-64,76-81,84-93,95
+  s_e830586d962d7a::t_a313627a8cf858 1-9,19,65-67,74,97-99
+  s_e830586d962d7a::t_796aa5bb164f83 68-73,75,82-83,94,96
+src/api/feeds/rules.ts
+  s_e830586d962d7a::t_67986e52d412ef 14
+  s_e830586d962d7a::t_79f74475c7725b 21,59-69,82
+tests/automation.test.ts
+  s_e830586d962d7a::t_c19bc097d270ca 2
+  s_e830586d962d7a::t_c8213826b33dfa 3,21-56,62-69
+  s_e830586d962d7a::t_6d46bcc3072e78 57-61,70
+  s_e830586d962d7a::t_f3ea3c09e8ac9d 71
+src/api/feeds/service.ts
+  s_e830586d962d7a::t_f879a8878b0f89 1089-1100
+tests/automation-preferences.test.ts
+  s_e830586d962d7a::t_e1e618a970c62d 87-101
+  s_e830586d962d7a::t_231bfff04dbc37 80-81
+scripts/native-smoke.ts
+  s_e830586d962d7a::t_21ce50f5726e98 1270-1275,1279,1306
+  s_e830586d962d7a::t_8134b37b86830e 1630-1631
+  s_e830586d962d7a::t_d78caa264067c7 1276-1278,1938-1941,1948-1949,1954-1957,1976-1978,2000-2001
+  s_e830586d962d7a::t_ad791ebabe8800 1723-1745
+  s_e830586d962d7a::t_bc2a7d81f75ba0 1925-1932,1934
+  s_e830586d962d7a::t_4a831444977f07 1951,1967,1983,2003
+  s_e830586d962d7a::t_07bbac8fbd8565 1616
+  s_e830586d962d7a::t_0086695f86394a 1952,1968,1984,2004
+  s_e830586d962d7a::t_22a0ab13971f44 1970-1973,1975,1980,1982,1985-1986,1988-1999,2002
+  s_e830586d962d7a::t_21264d588fc294 2063-2064
+  s_e830586d962d7a::t_0253108b3d84bd 1979,1981,1987
+  s_e830586d962d7a::t_7d1f48e70eff84 1935-1937,1942-1947,1950,1953,1969
+  s_e830586d962d7a::t_4b470b26435ae4 1933
+  s_e830586d962d7a::t_46195e2c35674a 1632-1633
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "07fdb326ddd7859e192ee002066670be2668576d",
+  "prompts": {},
+  "sessions": {
+    "s_e830586d962d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12427-b542-7021-8787-49df9e8fbe28",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
