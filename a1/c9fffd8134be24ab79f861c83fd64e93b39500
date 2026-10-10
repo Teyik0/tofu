@@ -1,0 +1,41 @@
+tests/database.ts
+  s_807678f85853ef::t_ae4413b7b43f50 8
+src/api/modules/torrents/service.ts
+  s_807678f85853ef::t_ae4413b7b43f50 266,1373
+tests/destinations.test.ts
+  s_807678f85853ef::t_ae4413b7b43f50 284
+src/api/modules/automation/service.ts
+  s_807678f85853ef::t_ae4413b7b43f50 189,1282
+tests/database-startup.test.ts
+  s_807678f85853ef::t_5bf3b35e575bdf 45,53-54
+  s_807678f85853ef::t_ae4413b7b43f50 115,136
+  s_807678f85853ef::t_876cae4ae05ac1 34-44,46-52,55-56
+  s_807678f85853ef::t_848c770ae8a11f 3,7-8,10,13-32
+  s_807678f85853ef::t_dd17fec72919c6 33
+tests/automation.test.ts
+  s_807678f85853ef::t_ae4413b7b43f50 66
+src/api/lib/db.ts
+  s_807678f85853ef::t_ae4413b7b43f50 27
+tests/automation-preferences.test.ts
+  s_807678f85853ef::t_ae4413b7b43f50 70
+CHANGELOG.md
+  s_807678f85853ef::t_876cae4ae05ac1 41
+src/api/lib/lifecycle.ts
+  s_807678f85853ef::t_ae4413b7b43f50 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1c9fffd8134be24ab79f861c83fd64e93b39500",
+  "prompts": {},
+  "sessions": {
+    "s_807678f85853ef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a126ec-19de-7c63-9436-f99151a96f2b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
