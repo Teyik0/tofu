@@ -2,7 +2,7 @@
 
 ## Runtime and builds
 
-Use Bun for all commands. `bun run setup` installs the prebuilt WebTorrent native addon and generates Tofu's worker, protocol helper and AniList configuration. The desktop commands call `furin-electrobun` directly; its CLI prepares Hutch, builds Furin and packages the app. Build once before typechecking so the SDK types are available. No separate torrent service is required.
+Use Bun 1.4.3 or newer for all commands; `bun check` requires this version. CI and releases pin Bun 1.4.3. `bun run setup` installs the prebuilt WebTorrent native addon and generates Tofu's worker, protocol helper and AniList configuration. Build commands run the pinned Furin CLI entrypoints directly with Bun, bypassing `node_modules/.bin` launcher failures on Windows instead of adding custom build wrappers. The Electrobun CLI prepares Hutch, builds Furin and packages the app. Build once before typechecking so the SDK types are available. No separate torrent service is required.
 
 `bun run dev:desktop` starts the native app from source with React/CSS HMR, retaining the window and component state. Backend and native host edits perform a controlled restart and restore persisted transfers; unsaved UI state across that restart is not preserved. Quit with Ctrl-C. `bun run test:hmr` verifies this flow in the real WebView with temporary data and real peers.
 

@@ -16,11 +16,11 @@
   "scripts": {
     "bench:ui": "bun scripts/native-latency.ts",
     "prebuild": "bun run setup",
-    "build": "bun run codegen && furin build --target bun",
+    "build": "bun run codegen && bun node_modules/@teyik0/furin/src/cli/index.ts build --target bun",
     "prebuild:desktop": "TOFU_RELEASE=0 bun run setup",
-    "build:desktop": "bun run codegen && TOFU_RELEASE=0 furin-electrobun build --env=dev",
+    "build:desktop": "bun run codegen && TOFU_RELEASE=0 bun node_modules/@teyik0/furin-electrobun/src/cli.ts build --env=dev",
     "prebuild:release": "TOFU_RELEASE=1 bun run setup",
-    "build:release": "bun run codegen && TOFU_RELEASE=1 furin-electrobun build --env=stable",
+    "build:release": "bun run codegen && TOFU_RELEASE=1 bun node_modules/@teyik0/furin-electrobun/src/cli.ts build --env=stable",
     "postbuild:release": "bun scripts/release.ts artifacts",
     "codegen": "bun scripts/anilist-codegen.ts",
     "codegen:check": "bun scripts/anilist-codegen.ts --check",
@@ -30,7 +30,7 @@
     "desktop": "bun scripts/desktop.ts",
     "dev": "bun run codegen && TOFU_PROFILE=dev bun --hot src/server.ts",
     "predev:desktop": "TOFU_RELEASE=0 bun run setup",
-    "dev:desktop": "bun run codegen && TOFU_RELEASE=0 TOFU_PROFILE=dev furin-electrobun dev",
+    "dev:desktop": "bun run codegen && TOFU_RELEASE=0 TOFU_PROFILE=dev bun node_modules/@teyik0/furin-electrobun/src/cli.ts dev",
     "fix": "ultracite fix",
     "iup": "bun update --interactive --recursive",
     "prepare": "lefthook install",
@@ -83,5 +83,8 @@
     "shadcn": "4.21.4",
     "typescript": "7.0.2",
     "ultracite": "7.12.4"
+  },
+  "engines": {
+    "bun": ">=1.4.3"
   }
 }

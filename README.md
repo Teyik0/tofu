@@ -28,7 +28,7 @@ See the [release guide](docs/releases.md) for updates and signing details. macOS
 
 ## 🚀 Run from source
 
-You need **Bun 1.4+**. macOS also requires **Xcode Command Line Tools**. Linux requires GTK 3, WebKitGTK 4.1, Ayatana AppIndicator, and librsvg; see the [development guide](docs/development.md).
+You need **Bun 1.4.3+** for the built-in `bun check` type checker. macOS also requires **Xcode Command Line Tools**. Linux requires GTK 3, WebKitGTK 4.1, Ayatana AppIndicator, and librsvg; see the [development guide](docs/development.md).
 
 ```sh
 git clone https://github.com/Teyik0/Tofu.git
