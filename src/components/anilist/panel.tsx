@@ -120,7 +120,7 @@ function AniListConnection({
               }
               const { url } = authorization;
               setAuthorizationUrl(url);
-              await afterMutation?.();
+              await (afterMutation ?? reload)();
               const result = await openAuthorization.mutateAsync({ url });
               if (result && "url" in result) {
                 setAuthorizationUrl(result.url);
@@ -148,7 +148,7 @@ function AniListConnection({
               action(async () => {
                 await cancelAuthorization.mutateAsync();
                 setAuthorizationUrl(null);
-                await afterMutation?.();
+                await (afterMutation ?? reload)();
               })
             }
             variant="outline"
@@ -177,7 +177,7 @@ function AniListConnection({
                 await configure.mutateAsync(configuration);
                 await enablePlugin.mutateAsync({ enabled: true });
                 await loadList.mutateAsync();
-                await afterMutation?.();
+                await (afterMutation ?? reload)();
               })
             }
           >
@@ -405,7 +405,7 @@ export const AniListPanel = ({
               onClick={() =>
                 action(async () => {
                   await loadList.mutateAsync();
-                  await afterMutation?.();
+                  await (afterMutation ?? reload)();
                   unprepare();
                 })
               }
@@ -449,7 +449,7 @@ export const AniListPanel = ({
                         action(async () => {
                           unprepare();
                           await selectEntry.mutateAsync(entry.mediaId, checked === true);
-                          await afterMutation?.();
+                          await (afterMutation ?? reload)();
                         })
                       }
                     />
@@ -602,7 +602,7 @@ export const AniListPanel = ({
                     }
                     await syncSubscription.mutateAsync(subscription.id);
                     unprepare();
-                    await afterMutation?.();
+                    await (afterMutation ?? reload)();
                   })
                 }
               >
@@ -687,7 +687,7 @@ export const AniListPanel = ({
                 onClick={() =>
                   action(async () => {
                     await syncSubscription.mutateAsync(subscription.id);
-                    await afterMutation?.();
+                    await (afterMutation ?? reload)();
                   })
                 }
                 size="sm"
@@ -705,7 +705,7 @@ export const AniListPanel = ({
                   onClick={() =>
                     action(async () => {
                       await toggleSubscription.mutateAsync(subscription.id, !subscription.enabled);
-                      await afterMutation?.();
+                      await (afterMutation ?? reload)();
                     })
                   }
                   size="icon-sm"
@@ -722,7 +722,7 @@ export const AniListPanel = ({
                   onClick={() =>
                     action(async () => {
                       await removeSubscription.mutateAsync(subscription.id);
-                      await afterMutation?.();
+                      await (afterMutation ?? reload)();
                     })
                   }
                   size="icon-sm"

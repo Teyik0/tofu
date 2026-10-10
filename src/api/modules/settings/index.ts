@@ -1,9 +1,8 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
-import { partial } from "valibot";
 import { sync } from "../../../sync";
 import { contextPlugin } from "../../lib/context";
-import { settingsSchema } from "./model";
+import { settingsPatchSchema, settingsSchema } from "./model";
 
 export const settingsPlugin = new Elysia({ name: "tofu-settings-api" })
   .use(contextPlugin)
@@ -17,6 +16,6 @@ export const settingsPlugin = new Elysia({ name: "tofu-settings-api" })
     },
     ({ application, body }) => application.engine.updateSettings(body)
   )
-  .patch("/settings", { body: partial(settingsSchema) }, ({ application, body }) =>
+  .patch("/settings", { body: settingsPatchSchema }, ({ application, body }) =>
     application.engine.updateSettings(body)
   );

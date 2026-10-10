@@ -27,7 +27,7 @@ test("Jev excludes scores below 75 percent from previews and automation decision
         });
       }
       return new Response(
-        `<rss><channel>${[1, 2, 3, 4].map((episode) => `<item><guid>episode-${episode}</guid><title>Example - 0${episode} VF 1080p</title><link>${context.magnet.replaceAll("&", "&amp;")}</link></item>`).join("")}</channel></rss>`
+        `<rss><channel>${[1, 2, 3, 4, 5].map((episode) => `<item><guid>episode-${episode}</guid><title>Example - 0${episode} ${episode === 5 ? "VOSTFR" : "VF"} 1080p</title><link>${context.magnet.replaceAll("&", "&amp;")}</link></item>`).join("")}</channel></rss>`
       );
     },
     hostname: "127.0.0.1",

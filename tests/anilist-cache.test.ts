@@ -4,7 +4,7 @@ import { furin } from "@teyik0/furin";
 import { AutomationService } from "../src/api/modules/automation/service";
 import type { AniListState } from "../src/types";
 import { createTestApi } from "./api-fixture";
-import { fixture, json } from "./helpers";
+import { fixture, json, waitFor } from "./helpers";
 
 function collection(title: string) {
   return {
@@ -244,6 +244,106 @@ test("AniList serves fresh cache and shares concurrent refreshes", async () => {
   }
 });
 
+test.each([true, false])(
+  "AniList preserves completed=%s episode progress across a restart without refreshing",
+  async (completed) => {
+    const context = await fixture(1024, []);
+    let requests = 0;
+    const upstream = Bun.serve({
+      async fetch(incoming) {
+        requests += 1;
+        const body = (await incoming.json()) as {
+          query: string;
+          variables: { progress: number };
+        };
+        if (body.query.includes("Viewer")) {
+          return Response.json({ data: { Viewer: { id: 42, name: "ExampleUser" } } });
+        }
+        if (body.query.includes("SaveProgress")) {
+          return Response.json({
+            data: { SaveMediaListEntry: { progress: body.variables.progress } },
+          });
+        }
+        return Response.json({
+          data: {
+            MediaListCollection: {
+              hasNextChunk: false,
+              lists: [
+                {
+                  entries: [
+                    {
+                      media: { id: 10, title: { romaji: "Cached anime" } },
+                      progress: completed ? 0 : 1,
+                      status: "CURRENT",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        });
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    });
+    const endpoint = upstream.url.origin;
+    const options = {
+      dataDir: join(context.directory, "feeds"),
+      endpoints: {
+        anilist: endpoint,
+        c411: endpoint,
+        jev: endpoint,
+        nyaa: endpoint,
+        tsundere: endpoint,
+      },
+      engine: () => context.engine,
+      now: Date.now,
+    };
+    let service = await AutomationService.open(options);
+    let api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
+    const request = (path: string, init: RequestInit | undefined) =>
+      api.handle(new Request(`http://localhost/api${path}`, init));
+    try {
+      await request("/plugins/anilist", {
+        ...json({ apiKey: "token", enabled: true }),
+        method: "PUT",
+      });
+      expect((await request("/anilist/list", json({}))).status).toBe(200);
+      const updated = await request("/anilist/entries/10/episodes/1", {
+        ...json({ completed }),
+        method: "PUT",
+      });
+      expect(updated.status).toBe(200);
+      expect(((await updated.json()) as AniListState).entries[0]).toMatchObject({
+        completedEpisodes: completed ? [1] : [],
+        progress: completed ? 1 : 0,
+      });
+      expect(requests).toBe(4);
+      await service.close();
+      service = await AutomationService.open(options);
+      api = await createTestApi(
+        () => context.engine,
+        context.sync.options,
+        () => service
+      );
+      const restored = await request("/anilist", undefined);
+      expect(((await restored.json()) as AniListState).entries[0]).toMatchObject({
+        completedEpisodes: completed ? [1] : [],
+        progress: completed ? 1 : 0,
+      });
+      expect(requests).toBe(4);
+    } finally {
+      await service.close();
+      upstream.stop(true);
+      await context.close();
+    }
+  }
+);
+
 test("AniList returns stale entries immediately, refreshes after the response and keeps them offline", async () => {
   const context = await fixture(4096, []);
   let now = 1_000_000;
@@ -303,7 +403,10 @@ test("AniList returns stale entries immediately, refreshes after the response an
     });
     const cached = await request("/anilist", undefined);
     expect((await cached.json()).entries[0].title).toBe("Anime 1000000");
-    await Bun.sleep(50);
+    await waitFor(
+      async () => requests,
+      (requestCount) => requestCount >= 3
+    );
     expect(requests).toBe(3);
     const pending = request("/anilist/refresh", json({}));
     try {

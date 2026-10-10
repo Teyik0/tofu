@@ -8,9 +8,69 @@ import { pluginEndpoints } from "../src/api/modules/plugins/service";
 import { createAutomationMutations } from "../src/lib/automation-mutations";
 import type { AutomationDraft, AutomationState } from "../src/types";
 import { createTestApi } from "./api-fixture";
-import { fixture, waitFor } from "./helpers";
+import { fixture, json, waitFor } from "./helpers";
 
-test.each(["success", "rejection"])(
+test("a direct automation GET refreshes the state observed by useQuery", async () => {
+  const context = await fixture(1024, []);
+  const service = await AutomationService.open({
+    dataDir: join(context.directory, "feeds"),
+    endpoints: pluginEndpoints,
+    engine: () => context.engine,
+    now: Date.now,
+  });
+  const app = await createTestApi(
+    () => context.engine,
+    context.sync.options,
+    () => service
+  );
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { location: new URL("http://localhost/") },
+  });
+  const client = createClient<Api>("http://localhost", {
+    fetcher: (input, init) => app.handle(new Request(input, init)),
+  }).api;
+  const read = () => {
+    let data: AutomationState | undefined;
+    function Panel() {
+      const query = useQuery(client.automation.get);
+      if (query.data && "preferences" in query.data) {
+        ({ data } = query);
+      }
+      return null;
+    }
+    renderToStaticMarkup(<Panel />);
+    if (!data) {
+      throw new Error("Automation state was not loaded");
+    }
+    return data;
+  };
+  try {
+    await client.automation.get();
+    const previous = read().preferences;
+    const response = await app.handle(
+      new Request("http://localhost/api/automation/preferences", {
+        ...json({ ...previous, waitMinutes: 47 }),
+        method: "PUT",
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(read().preferences.waitMinutes).toBe(previous.waitMinutes);
+    await client.automation.get();
+    expect(read().preferences.waitMinutes).toBe(47);
+  } finally {
+    if (previousWindow) {
+      Object.defineProperty(globalThis, "window", previousWindow);
+    } else {
+      Reflect.deleteProperty(globalThis, "window");
+    }
+    await service.close();
+    await context.close();
+  }
+});
+
+test.each(["success", "rejection", "normalization"])(
   "automation preferences update immediately and reconcile after %s",
   async (outcome) => {
     const context = await fixture(1024, []);
@@ -38,6 +98,13 @@ test.each(["success", "rejection"])(
         if (request.method === "PUT") {
           started.resolve();
           await release.promise;
+          if (outcome === "normalization") {
+            return app.handle(
+              new Request(request, {
+                body: JSON.stringify({ ...(await request.json()), waitMinutes: 30 }),
+              })
+            );
+          }
         }
         return app.handle(request);
       },
@@ -57,14 +124,22 @@ test.each(["success", "rejection"])(
     try {
       await client.automation.get();
       const initial = read();
-      const changed = { ...initial, waitMinutes: outcome === "success" ? 35 : 2000 };
+      const changed = { ...initial, waitMinutes: outcome === "rejection" ? 2000 : 35 };
       const pending = createAutomationMutations(client).savePreferences(changed);
       await started.promise;
       expect(read()).toEqual(changed);
       release.resolve();
       const result = await pending;
-      expect(result.error === null).toBe(outcome === "success");
-      const expected = outcome === "success" ? changed : initial;
+      expect(result.error === null).toBe(outcome !== "rejection");
+      let expected = changed;
+      if (outcome === "rejection") {
+        expected = initial;
+      } else if (outcome === "normalization") {
+        expected = { ...changed, waitMinutes: 30 };
+      }
+      if (outcome === "normalization") {
+        expect(read()).toEqual(expected);
+      }
       expect(await waitFor(read, (value) => value.waitMinutes === expected.waitMinutes)).toEqual(
         expected
       );

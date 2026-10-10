@@ -8,14 +8,12 @@ function usePluginForm(dailyLimit: number): PluginForm {
     initialInput: { apiKey: "", dailyLimit: String(dailyLimit) },
     schema: pluginFormSchema,
   });
+  const dirty = isDirty(form, { path: ["dailyLimit"] });
   useEffect(() => {
-    if (
-      !isDirty(form, { path: ["dailyLimit"] }) &&
-      getInput(form, { path: ["dailyLimit"] }) !== String(dailyLimit)
-    ) {
+    if (!dirty && getInput(form, { path: ["dailyLimit"] }) !== String(dailyLimit)) {
       reset(form, { initialInput: String(dailyLimit), path: ["dailyLimit"] });
     }
-  }, [dailyLimit, form]);
+  }, [dailyLimit, dirty, form]);
   return form;
 }
 

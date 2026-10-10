@@ -15,6 +15,17 @@ export function useSettingsAction() {
   const updateSettings = useMutation(api.settings.patch);
   const refresh = useRefresh();
   const setTheme = useSetAtom(themeAtom);
+  const saveSettings = async (patch: NonNullable<Parameters<typeof api.settings.patch>[0]>) => {
+    const settings = await updateSettings.mutateAsync(patch);
+    if (!settings) {
+      throw new Error("Unable to update settings");
+    }
+    if (patch.theme !== undefined && settings && "theme" in settings) {
+      startTransition(() => setTheme(settings.theme));
+    }
+    await refresh();
+    return settings;
+  };
   const [actionError, dispatchAction, busy] = useActionState<string | null, SettingsCommand>(
     async (_previous, command) => {
       try {
@@ -32,11 +43,7 @@ export function useSettingsAction() {
         } else {
           patch = command.settings;
         }
-        const settings = await updateSettings.mutateAsync(patch);
-        if (patch.theme !== undefined && settings && "theme" in settings) {
-          startTransition(() => setTheme(settings.theme));
-        }
-        await refresh();
+        await saveSettings(patch);
         return null;
       } catch (cause) {
         return cause instanceof Error ? cause.message : "Unable to update settings";
@@ -44,5 +51,10 @@ export function useSettingsAction() {
     },
     null
   );
-  return { busy, dispatchAction, error: busy ? null : actionError };
+  return {
+    busy: busy || updateSettings.isPending,
+    dispatchAction,
+    error: busy || updateSettings.isPending ? null : actionError,
+    saveSettings,
+  };
 }

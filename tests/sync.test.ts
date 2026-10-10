@@ -1,71 +1,57 @@
 import { expect, test } from "bun:test";
-import { join } from "node:path";
 import { createSyncChangesPlugin, furinSync } from "@teyik0/furin/sync";
-import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
-import { migrateSqliteSync } from "@teyik0/furin/sync/sqlite";
 import { sql } from "drizzle-orm";
 import { integer, sqliteTable } from "drizzle-orm/sqlite-core";
 import { Elysia } from "elysia";
-import { createDatabase } from "../src/api/lib/db";
 import { publishEngineChanges } from "../src/api/lib/lifecycle";
 import { openTestDatabase } from "./database";
 import { fixture } from "./helpers";
 
 const counter = sqliteTable("sync_counter", { value: integer().notNull() });
 
-test("the legacy journal migrates once without losing replay responses or changing its original file", async () => {
+test("the shared journal preserves replay responses and changes across restarts", async () => {
   const context = await fixture(1024, []);
-  const legacyPath = join(context.directory, "sync.sqlite");
-  const legacy = createDatabase(legacyPath);
-  migrateSqliteSync(legacy.$client);
-  const options = {
-    adapter: drizzleSyncAdapter({ db: legacy, namespace: "tofu" }),
-    principal: () => "local",
-  };
+  let current = await openTestDatabase(context.directory);
   const request = () =>
-    new Request("http://localhost/legacy", {
-      headers: { "idempotency-key": "legacy-write" },
+    new Request("http://localhost/replay", {
+      headers: { "idempotency-key": "persistent-write" },
       method: "POST",
     });
   const original = new Elysia()
-    .use(furinSync(options))
-    .use(createSyncChangesPlugin(options))
-    .post("/legacy", { sync: { invalidate: { path: "/", type: "layout" } } }, ({ mutation }) =>
+    .use(furinSync(current.options))
+    .use(createSyncChangesPlugin(current.options))
+    .post("/replay", { sync: { invalidate: { path: "/", type: "layout" } } }, ({ mutation }) =>
       mutation(() => ({ count: 1 }))
     );
-  let current: Awaited<ReturnType<typeof openTestDatabase>> | undefined;
   try {
     expect(await (await original.handle(request())).json()).toEqual({ count: 1 });
     const page = await (
       await original.handle("http://localhost/_furin/sync/changes?after=0")
     ).json();
-    legacy.$client.close();
-    const originalBytes = await Bun.file(legacyPath).bytes();
+    await current.close();
     current = await openTestDatabase(context.directory);
-    const migrated = new Elysia()
+    const reopened = new Elysia()
       .use(furinSync(current.options))
       .use(createSyncChangesPlugin(current.options))
-      .post("/legacy", { sync: { invalidate: { path: "/", type: "layout" } } }, ({ mutation }) =>
+      .post("/replay", { sync: { invalidate: { path: "/", type: "layout" } } }, ({ mutation }) =>
         mutation(() => ({ count: 100 }))
       );
-    expect(await (await migrated.handle(request())).json()).toEqual({ count: 1 });
+    expect(await (await reopened.handle(request())).json()).toEqual({ count: 1 });
     expect(
-      await (await migrated.handle("http://localhost/_furin/sync/changes?after=0")).json()
+      await (await reopened.handle("http://localhost/_furin/sync/changes?after=0")).json()
     ).toEqual(page);
-    expect(await Bun.file(legacyPath).bytes()).toEqual(originalBytes);
     await publishEngineChanges(current.options);
     const latest = await (
-      await migrated.handle("http://localhost/_furin/sync/changes?after=0")
+      await reopened.handle("http://localhost/_furin/sync/changes?after=0")
     ).json();
-    await current?.close();
+    await current.close();
     current = await openTestDatabase(context.directory);
     const restarted = new Elysia().use(createSyncChangesPlugin(current.options));
     expect(
       await (await restarted.handle("http://localhost/_furin/sync/changes?after=0")).json()
     ).toEqual(latest);
   } finally {
-    await current?.close();
-    legacy.$client.close();
+    await current.close();
     await context.close();
   }
 });

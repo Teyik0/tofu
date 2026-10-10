@@ -2,6 +2,25 @@ import { expect, test } from "bun:test";
 import { Elysia } from "elysia";
 import { fixture, json } from "./helpers";
 
+test("moving downloads requires a destination path", async () => {
+  const context = await fixture(4096, []);
+  try {
+    const invalid = await context.request("/settings", {
+      ...json({ moveFiles: true }),
+      method: "PATCH",
+    });
+    expect(invalid.status).toBe(422);
+    const valid = await context.request("/settings", {
+      ...json({ downloadLimit: 1024 }),
+      method: "PATCH",
+    });
+    expect(valid.status).toBe(200);
+    expect(context.engine.settings.downloadLimit).toBe(1024);
+  } finally {
+    await context.close();
+  }
+});
+
 test("the API rejects untrusted hosts even when their Origin matches", async () => {
   const context = await fixture(16_384, []);
   try {

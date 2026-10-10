@@ -109,7 +109,7 @@ test("pinning and changing icons preserve live transfers and older clients retai
   }
 });
 
-test("legacy thread databases gain unpinned folder icons without rewriting names, folders or transfers", async () => {
+test("default thread icons and pinning persist without changing names, folders or transfers", async () => {
   const context = await fixture(8192, []);
   let restarted: TorrentEngine | null = null;
   try {
@@ -119,6 +119,7 @@ test("legacy thread databases gain unpinned folder icons without rewriting names
         json({ downloadPath: join(context.directory, "saved"), name: "My saved thread" })
       )
     ).json()) as Destination;
+    expect(destination).toMatchObject({ icon: "folder", pinned: false });
     const { id } = (await (
       await context.request(
         "/torrents",
@@ -133,13 +134,6 @@ test("legacy thread databases gain unpinned folder icons without rewriting names
       (state) => state.detail?.status === "seeding"
     );
     await context.engine.close();
-    const database = createDatabase(join(context.directory, "state/feeds.sqlite"));
-    try {
-      database.run(sql`ALTER TABLE destinations DROP COLUMN pinned`);
-      database.run(sql`ALTER TABLE destinations DROP COLUMN icon`);
-    } finally {
-      database.$client.close();
-    }
     restarted = await TorrentEngine.open({
       dataDir: join(context.directory, "state"),
       downloadPath: join(context.directory, "downloads"),

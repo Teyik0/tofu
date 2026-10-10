@@ -116,3 +116,29 @@ test("the typed client keeps API failures outside success data and preserves the
     await context.close();
   }
 });
+
+test("startup can recover from a failure without stopping the retained application host", async () => {
+  const context = await fixture(4096, []);
+  const host = new ApplicationHost();
+  const core = await new (createBaseContext(context.api))().store.applicationHost.core;
+  const app = new Elysia().use(apiPlugin).state((store) => ({ ...store, applicationHost: host }));
+  try {
+    await expect(
+      host.prepare(() => Promise.reject(new Error("Startup failed")), new AbortController().signal)
+    ).rejects.toThrow("Startup failed");
+    expect((await app.handle("http://localhost/api/health")).status).toBe(503);
+    await expect(
+      host.prepare(() => {
+        throw new Error("Synchronous startup failure");
+      }, new AbortController().signal)
+    ).rejects.toThrow("Synchronous startup failure");
+    const prepared = await host.prepare(() => Promise.resolve(core), new AbortController().signal);
+    host.activate(prepared, { kind: "server" });
+    expect(await host.core).toBe(core);
+    expect((await host.application).engine).toBe(context.engine);
+    expect((await app.handle("http://localhost/api/health")).status).toBe(200);
+  } finally {
+    await host.stop();
+    await context.close();
+  }
+});

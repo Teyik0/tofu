@@ -24,10 +24,11 @@ export const anilistOpeningPlugin = new Elysia({ name: "tofu-anilist-opening", p
       if (application.platform.kind !== "desktop") {
         return { opened: false, url: url.href };
       }
+      const { utils } = application.platform;
       if (
-        !(await Promise.resolve(application.platform.utils.openExternal(url.href)).catch(
-          () => false
-        ))
+        !(await Promise.resolve()
+          .then(() => utils.openExternal(url.href))
+          .catch(() => false))
       ) {
         throw new UserError("Unable to open AniList in your browser", { status: 502 });
       }

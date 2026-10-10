@@ -16,7 +16,11 @@ export function destinationFromPath(path: string) {
   if (path === "/anilist") {
     return "anilist";
   }
-  return path.startsWith("/thread/") ? decodeURIComponent(path.slice("/thread/".length)) : null;
+  try {
+    return path.startsWith("/thread/") ? decodeURIComponent(path.slice("/thread/".length)) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function isSupersededNavigation(cause: unknown) {
@@ -55,10 +59,11 @@ export async function showDestination(
 }
 
 export function backToWorkspace(router: Router, path: string) {
+  const destination = destinationFromPath(path);
   return ignoreSuperseded(
-    path.startsWith("/thread/")
+    path.startsWith("/thread/") && destination !== null
       ? router.navigate({
-          params: { id: decodeURIComponent(path.slice("/thread/".length)) },
+          params: { id: destination },
           resetScroll: false,
           to: "/thread/:id",
         })

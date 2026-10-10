@@ -46,6 +46,20 @@ test("AniList opening reports a rejected native browser launch", async () => {
   expect(await response.json()).toEqual({ error: "Unable to open AniList in your browser" });
 });
 
+test("AniList opening reports a synchronous native browser launch failure", async () => {
+  const app = await createTestAniListOpeningApi({
+    isDesktop: () => true,
+    openExternal: () => {
+      throw new Error("Native launch failed synchronously");
+    },
+  });
+  const response = await app.handle(
+    new Request("http://localhost/api/anilist/open", json({ url: "https://anilist.co/anime/10" }))
+  );
+  expect(response.status).toBe(502);
+  expect(await response.json()).toEqual({ error: "Unable to open AniList in your browser" });
+});
+
 test.each([{}, { url: 10 }, { url: "a".repeat(2001) }])(
   "AniList opening rejects an invalid request body with a validation status: %j",
   async (body) => {

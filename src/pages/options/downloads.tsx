@@ -32,7 +32,7 @@ export const route = defineRoute()
   .head(() => ({ meta: [{ title: "Download settings — Tofu" }] }))
   .page(() => {
     const { dashboard: data } = getRouteApi("/options/downloads").useLoaderData();
-    const { busy, dispatchAction, error: serverError } = useSettingsAction();
+    const { busy, dispatchAction, error: serverError, saveSettings } = useSettingsAction();
     const optionsForm = useForm({
       initialInput: { moveFiles: false },
       schema: pick(settingsSchema, ["moveFiles"]),
@@ -42,24 +42,25 @@ export const route = defineRoute()
     const folder = useAutosaveField(
       settingsSchema.entries.downloadPath,
       data.settings.downloadPath,
-      (downloadPath) => {
-        startTransition(() =>
-          dispatchAction({ settings: { downloadPath, moveFiles }, type: "update" })
-        );
+      async (downloadPath) => {
+        const settings = await saveSettings({ downloadPath, moveFiles });
+        return settings.downloadPath;
       }
     );
     const download = useAutosaveField(
       bandwidthInputSchema,
       data.settings.downloadLimit === -1 ? "" : String(data.settings.downloadLimit / 1024),
-      (downloadLimit) => {
-        startTransition(() => dispatchAction({ settings: { downloadLimit }, type: "update" }));
+      async (downloadLimit) => {
+        const settings = await saveSettings({ downloadLimit });
+        return settings.downloadLimit === -1 ? "" : String(settings.downloadLimit / 1024);
       }
     );
     const upload = useAutosaveField(
       bandwidthInputSchema,
       data.settings.uploadLimit === -1 ? "" : String(data.settings.uploadLimit / 1024),
-      (uploadLimit) => {
-        startTransition(() => dispatchAction({ settings: { uploadLimit }, type: "update" }));
+      async (uploadLimit) => {
+        const settings = await saveSettings({ uploadLimit });
+        return settings.uploadLimit === -1 ? "" : String(settings.uploadLimit / 1024);
       }
     );
     const error = folder.error ?? download.error ?? upload.error ?? serverError;

@@ -1,7 +1,7 @@
 import type { SyncRuntimeOptions, TransactionalSyncAdapter } from "@teyik0/furin/sync";
 import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import { version } from "../../../package.json";
-import type { CoreApplication } from "../../types";
+import type { CoreApplication, EnginePort } from "../../types";
 import { readAniListClient } from "../modules/anilist/client";
 import { AutomationService } from "../modules/automation/service";
 import { pluginEndpoints } from "../modules/plugins/service";
@@ -105,6 +105,7 @@ export async function openCoreApplication(signal: AbortSignal): Promise<CoreAppl
       adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),
       principal: () => "local",
     };
+    const publishChanges = createEngineChangePublisher(sync, engine);
     let timer: ReturnType<typeof setInterval> | null = null;
     let publishing: Promise<void> | null = null;
     let started = false;
@@ -131,7 +132,7 @@ export async function openCoreApplication(signal: AbortSignal): Promise<CoreAppl
         void automation.start().catch(console.error);
         updates.start();
         timer = setInterval(() => {
-          publishing ??= publishEngineChanges(sync)
+          publishing ??= publishChanges()
             .catch(console.error)
             .finally(() => {
               publishing = null;
@@ -153,6 +154,26 @@ export async function openCoreApplication(signal: AbortSignal): Promise<CoreAppl
     }
     throw error;
   }
+}
+
+export function createEngineChangePublisher(
+  options: SyncRuntimeOptions<TransactionalSyncAdapter<DatabaseTransaction, "sync">>,
+  engine: Pick<EnginePort, "snapshot">
+) {
+  const fingerprint = () => {
+    const { destinations, session, settings, torrents } = engine.snapshot(null, false);
+    // History appends timestamped samples even while idle; current speeds are in the session.
+    return JSON.stringify({ destinations, session, settings, torrents });
+  };
+  let previous = fingerprint();
+  return async () => {
+    const current = fingerprint();
+    if (current === previous) {
+      return;
+    }
+    await publishEngineChanges(options);
+    previous = current;
+  };
 }
 
 // Worker events originate outside HTTP mutations and still need durable invalidations.

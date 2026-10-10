@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   integer,
   literal,
   maxLength,
@@ -8,6 +9,7 @@ import {
   number,
   object,
   optional,
+  partial,
   pipe,
   string,
   toNumber,
@@ -26,6 +28,14 @@ export const settingsSchema = object({
   theme: optional(union([literal("system"), literal("light"), literal("dark")])),
   uploadLimit: pipe(integerInput, bandwidthLimit),
 });
+
+export const settingsPatchSchema = pipe(
+  partial(settingsSchema),
+  check(
+    (settings) => settings.moveFiles === undefined || settings.downloadPath !== undefined,
+    "A download folder is required when moveFiles is provided"
+  )
+);
 
 export const bandwidthInputSchema = union([
   pipe(

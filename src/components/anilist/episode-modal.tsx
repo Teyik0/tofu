@@ -167,6 +167,7 @@ function EpisodeRow({
                 onCheckedChange={(checked) =>
                   action(async () => {
                     await completeEpisode.mutateAsync(episode, checked === true);
+                    await refresh();
                   })
                 }
               />

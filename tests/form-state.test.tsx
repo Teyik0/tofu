@@ -1,11 +1,41 @@
 import { expect, test } from "bun:test";
 import { getInput, reset, setInput, validate } from "@formisch/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { bandwidthInputSchema } from "../src/api/modules/settings/model";
 import { useAutomationDraftForm } from "../src/hooks/use-automation-draft-form";
+import { useAutosaveField } from "../src/hooks/use-autosave-field";
 import { usePluginForms } from "../src/hooks/use-plugin-forms";
 import { usePreferencesForm } from "../src/hooks/use-preferences-form";
 import { confirmPluginConfiguration } from "../src/lib/plugin-forms";
 import type { AutomationDraft, AutomationPreferences, PluginForms } from "../src/types";
+import { waitFor } from "./helpers";
+
+test("an autosaved bandwidth input becomes canonical and does not save again on blur", async () => {
+  let editor: ReturnType<typeof useAutosaveField<number>> | undefined;
+  let writes = 0;
+  function Bandwidth() {
+    editor = useAutosaveField(bandwidthInputSchema, "0", (value) => {
+      writes += 1;
+      return Promise.resolve(String(value / 1024));
+    });
+    return null;
+  }
+  renderToStaticMarkup(<Bandwidth />);
+  if (!editor) {
+    throw new Error("The bandwidth editor did not render");
+  }
+  const field = editor;
+  field.field.onChange("1.234");
+  field.onBlur();
+  await waitFor(
+    () => field.field.input,
+    (value) => value === "1.234375"
+  );
+  expect(field.field.isDirty).toBe(false);
+  field.onBlur();
+  await Bun.sleep(0);
+  expect(writes).toBe(1);
+});
 
 const preferences: AutomationPreferences = {
   automatic: true,

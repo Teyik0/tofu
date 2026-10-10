@@ -7,12 +7,13 @@ import { fixture, network } from "./helpers";
 
 test("startup readiness rejects a stopped worker even when its summaries are cached", async () => {
   const context = await fixture(4096, []);
-  const engine = await WorkerTorrentEngine.open({
-    dataDir: join(context.directory, "worker-state"),
-    downloadPath: join(context.directory, "worker-downloads"),
-    network,
-  });
+  let engine: WorkerTorrentEngine | undefined;
   try {
+    engine = await WorkerTorrentEngine.open({
+      dataDir: join(context.directory, "worker-state"),
+      downloadPath: join(context.directory, "worker-downloads"),
+      network,
+    });
     const application = { db: context.sync.db, engine };
     await assertApplicationReady(application);
     await engine.close();
@@ -20,8 +21,11 @@ test("startup readiness rejects a stopped worker even when its summaries are cac
       "The torrent engine is shutting down"
     );
   } finally {
-    await engine.close();
-    await context.close();
+    try {
+      await engine?.close();
+    } finally {
+      await context.close();
+    }
   }
 });
 

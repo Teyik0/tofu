@@ -109,8 +109,6 @@ export function catalogVariables(filters: AniListCatalogFilters): CatalogQueryVa
     format: enumValue(filters.format, mediaFormats),
     genre_in: filters.genres?.length ? filters.genres : undefined,
     genre_not_in: filters.excludedGenres?.length ? filters.excludedGenres : undefined,
-    isLicensed:
-      filters.doujin && filters.doujin !== "any" ? filters.doujin === "exclude" : undefined,
     licensedById: filters.streamingOn,
     page: filters.page ?? 1,
     search: filters.search?.trim() || undefined,

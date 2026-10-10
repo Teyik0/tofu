@@ -347,7 +347,12 @@ export function Modal({
         savedDestination = target;
       } else if (modal.type === "add") {
         const result = file
-          ? await upload.mutateAsync({ destinationId, file, paused: String(paused), trackers })
+          ? await upload.mutateAsync({
+              destinationId,
+              file,
+              paused: paused ? "true" : "false",
+              trackers,
+            })
           : await addTorrent.mutateAsync({
               destinationId,
               paused,

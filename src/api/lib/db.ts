@@ -4,11 +4,7 @@ import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import {
-  migrateAutomationDatabase,
-  migrateLegacyTorrents,
-  migrateSyncDatabase,
-} from "../../db/migrations";
+import { initializeDatabase } from "../../db/migrations";
 import { schema } from "../../db/schema";
 
 export function createDatabase(path: string) {
@@ -24,9 +20,7 @@ export async function openDatabase(directory: string) {
   const path = join(directory, "feeds.sqlite");
   const connection = createDatabase(path);
   try {
-    migrateAutomationDatabase(connection);
-    await migrateSyncDatabase(connection, join(directory, "sync.sqlite"));
-    await migrateLegacyTorrents(connection, join(directory, "tofu.sqlite"));
+    initializeDatabase(connection);
     await chmod(path, 0o600);
     return connection;
   } catch (error) {
@@ -36,16 +30,11 @@ export async function openDatabase(directory: string) {
 }
 
 export function assertDatabaseReady(connection: TofuDatabase) {
-  const migration = connection.get<[number]>(
-    sql`SELECT count(*) FROM tofu_migrations
-      WHERE id IN ('sync-in-feeds', 'torrents-in-feeds') HAVING count(*) = 2`
-  );
-  if (!migration) {
-    throw new Error("The database migrations are incomplete");
+  for (const table of Object.values(schema)) {
+    connection.select().from(table).limit(0).all();
   }
   connection.run(sql`SELECT 1 FROM
-    plugins, automations, decisions, judgements, releases, preferences, anilist,
-    config, torrents, destinations, furin_sync_mutations, furin_sync_streams, furin_sync_changes
+    furin_sync_mutations, furin_sync_streams, furin_sync_changes
     LIMIT 0`);
 }
 

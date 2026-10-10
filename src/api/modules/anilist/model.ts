@@ -65,7 +65,13 @@ export const selectionSchema = object({
 export const aniListConfigurationSchema = object({
   clientId: optional(pipe(string(), maxLength(50))),
   clientSecret: optional(pipe(string(), maxLength(4096))),
-  redirectUri: optional(pipe(string(), maxLength(500))),
+  redirectUri: optional(
+    pipe(
+      string(),
+      maxLength(500),
+      check((value) => URL.canParse(value), "Enter a valid callback URL")
+    )
+  ),
   userName: pipe(string(), maxLength(100)),
 });
 

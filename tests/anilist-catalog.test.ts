@@ -135,7 +135,6 @@ test("AniList catalog browses trending anime without an account and keeps person
       format: "TV",
       genre_in: ["Action"],
       genre_not_in: ["Horror"],
-      isLicensed: true,
       licensedById: 7,
       page: 2,
       search: "Example",
@@ -149,6 +148,7 @@ test("AniList catalog browses trending anime without an account and keeps person
       tag_in: ["Space"],
       tag_not_in: ["Gore"],
     });
+    expect(requests[1]?.variables).not.toHaveProperty("isLicensed");
     const invalid = await api.handle(
       new Request(
         "http://localhost/api/anilist/catalog",

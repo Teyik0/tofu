@@ -18,7 +18,7 @@ import { SidebarUpdateAction } from "../../components/updates";
 import { usePluginForms } from "../../hooks/use-plugin-forms";
 import { readData } from "../../lib/api-data";
 import { api } from "../../lib/client";
-import { backToWorkspace } from "../../lib/navigation";
+import { backToWorkspace, isSupersededNavigation } from "../../lib/navigation";
 import { settingsBackPathAtom } from "../../state/workspace";
 import { route as root } from "../root";
 
@@ -42,7 +42,7 @@ export const route = defineRoute()
           await router.refresh();
           return null;
         } catch (cause) {
-          if (cause instanceof Error && cause.name === "AbortError") {
+          if (isSupersededNavigation(cause)) {
             return null;
           }
           return cause instanceof Error ? cause.message : "Unable to refresh plugins";

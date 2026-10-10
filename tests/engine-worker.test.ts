@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { databaseMigrationsPlugin } from "../scripts/database-migrations";
 import { WorkerTorrentEngine } from "../src/api/modules/torrents/worker-client";
 import type { DashboardState, TorrentDetail } from "../src/types";
 import { createTestApi } from "./api-fixture";
@@ -22,6 +23,7 @@ test.each(["source", "bundle", "host"])(
         const result = await Bun.build({
           entrypoints: [join(import.meta.dir, "../src/api/modules/torrents/worker-client.ts")],
           outdir,
+          plugins: [databaseMigrationsPlugin],
           target: "bun",
         });
         if (!result.success) {
@@ -119,11 +121,18 @@ test("isolated engine lifecycle preserves files and public errors across restart
 
 test("health and summaries stay responsive during peer handshakes", async () => {
   const context = await fixture(64 * 1024, []);
+  await using resources = new AsyncDisposableStack();
+  resources.defer(() => context.close());
   type PeerSocket = Awaited<ReturnType<typeof Bun.connect>>;
   const sockets = new Set<PeerSocket>();
   const handshakes = new Set<PeerSocket>();
-  const peers = Array.from({ length: 40 }, () =>
-    Bun.listen({
+  resources.defer(() => {
+    for (const socket of sockets) {
+      socket.terminate();
+    }
+  });
+  const peers = Array.from({ length: 40 }, () => {
+    const peer = Bun.listen({
       hostname: "127.0.0.1",
       port: 0,
       socket: {
@@ -137,46 +146,36 @@ test("health and summaries stay responsive during peer handshakes", async () => 
           sockets.add(socket);
         },
       },
-    })
-  );
+    });
+    resources.defer(() => peer.stop(true));
+    return peer;
+  });
   const engine = await WorkerTorrentEngine.open({
     dataDir: join(context.directory, "worker-state"),
     downloadPath: join(context.directory, "worker-downloads"),
     network: { ...network, maxConns: 100 },
   });
+  resources.defer(() => engine.close());
   const api = await createTestApi(() => engine, context.sync.options);
   const request = (path: string, init: RequestInit | undefined) =>
     api.handle(new Request(`http://localhost/api${path}`, init));
-  try {
-    const added = await request("/torrents", json({ paused: false, source: context.magnet }));
-    const { id } = (await added.json()) as { id: string };
-    const started = performance.now();
-    const connecting = Promise.all(
-      peers.map((peer) =>
-        request(`/torrents/${id}/peers`, json({ peer: `127.0.0.1:${peer.port}` }))
-      )
-    );
-    await Bun.sleep(20);
-    const responses = await Promise.all([
-      request("/health", undefined),
-      request("/state?detail=false", undefined),
-    ]);
-    expect(responses.map((response) => response.status)).toEqual([200, 200]);
-    expect(performance.now() - started).toBeLessThan(500);
-    const results = await connecting;
-    expect(results.every((response) => response.status === 200)).toBe(true);
-    await waitFor(
-      async () => handshakes.size,
-      (count) => count >= peers.length
-    );
-  } finally {
-    for (const socket of sockets) {
-      socket.terminate();
-    }
-    for (const peer of peers) {
-      peer.stop(true);
-    }
-    await engine.close();
-    await context.close();
-  }
+  const added = await request("/torrents", json({ paused: false, source: context.magnet }));
+  const { id } = (await added.json()) as { id: string };
+  const started = performance.now();
+  const connecting = Promise.all(
+    peers.map((peer) => request(`/torrents/${id}/peers`, json({ peer: `127.0.0.1:${peer.port}` })))
+  );
+  await Bun.sleep(20);
+  const responses = await Promise.all([
+    request("/health", undefined),
+    request("/state?detail=false", undefined),
+  ]);
+  expect(responses.map((response) => response.status)).toEqual([200, 200]);
+  expect(performance.now() - started).toBeLessThan(500);
+  const results = await connecting;
+  expect(results.every((response) => response.status === 200)).toBe(true);
+  await waitFor(
+    async () => handshakes.size,
+    (count) => count >= peers.length
+  );
 });

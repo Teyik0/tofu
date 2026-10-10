@@ -32,6 +32,7 @@ export const route = defineRoute()
     const router = useRouter();
     useEffect(() => {
       if (path === "/options" && window.location.hash === "#updates") {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
         void router.navigate({ replace: true, to: "/options/updates" });
       }
     }, [path, router.navigate]);

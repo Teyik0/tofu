@@ -40,7 +40,7 @@ export class ApplicationHost implements ApplicationProvider {
       once: true,
       signal: controller.signal,
     });
-    this.#starting ??= this.#initialize(open);
+    this.#starting ??= Promise.resolve().then(() => this.#initialize(open));
     return this.#starting;
   }
 
@@ -57,6 +57,13 @@ export class ApplicationHost implements ApplicationProvider {
     } catch (error) {
       this.#coreReady.reject(error);
       this.#applicationReady.reject(error);
+      this.#starting = null;
+      if (!this.#stopping) {
+        this.#controller.abort(error);
+        this.#controller = new AbortController();
+        this.#coreReady = this.#deferred<CoreApplication>();
+        this.#applicationReady = this.#deferred<Application>();
+      }
       this.#current = { phase: "stopped" };
       throw error;
     }

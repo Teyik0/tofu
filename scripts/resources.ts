@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveAniListClient } from "../src/api/modules/anilist/client";
+import { databaseMigrationsPlugin } from "./database-migrations";
 
 const root = join(import.meta.dir, "..");
 const runtime = join(root, "runtime");
@@ -10,6 +11,7 @@ const worker = await Bun.build({
   external: ["webtorrent", "parse-torrent"],
   naming: "engine-worker.worker",
   outdir: runtime,
+  plugins: [databaseMigrationsPlugin],
   target: "bun",
 });
 if (!worker.success) {

@@ -32,8 +32,8 @@ export const route = defineRoute()
                 <FieldContent>
                   <FieldLabel htmlFor="run-in-background">Run in background</FieldLabel>
                   <FieldDescription>
-                    Keep transfers and automations running when you close the window. Use the menu
-                    bar icon to reopen Tofu. Quit Tofu stops the server.
+                    Keep transfers and automations running when you close the window. Use the system
+                    tray icon to reopen Tofu. Quit Tofu stops the server.
                   </FieldDescription>
                 </FieldContent>
                 <Switch
@@ -62,7 +62,7 @@ export const route = defineRoute()
                 <FieldContent>
                   <FieldLabel>Background mode</FieldLabel>
                   <FieldDescription>
-                    Hide the window and keep Tofu running in the menu bar.
+                    Hide the window and keep Tofu running in the system tray.
                   </FieldDescription>
                 </FieldContent>
                 <Button

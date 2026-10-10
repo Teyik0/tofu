@@ -24,8 +24,11 @@
     "postbuild:release": "bun scripts/release.ts artifacts",
     "codegen": "bun scripts/anilist-codegen.ts",
     "codegen:check": "bun scripts/anilist-codegen.ts --check",
+    "codegen:routes": "bun scripts/route-types.ts",
     "codegen:schema": "bun scripts/anilist-schema.ts",
     "commitlint": "bun --bun node_modules/@commitlint/cli/cli.js",
+    "db:check": "bun --bun drizzle-kit check",
+    "db:generate": "bun --bun drizzle-kit generate",
     "demo": "bun scripts/demo.ts",
     "desktop": "bun scripts/desktop.ts",
     "dev": "bun run codegen && TOFU_PROFILE=dev bun --hot src/server.ts",
@@ -41,7 +44,7 @@
     "test:background": "bun run codegen && bun scripts/native-background.ts",
     "test:coexist": "bun run codegen && bun scripts/native-coexist.ts",
     "test:native": "bun scripts/native-smoke.ts",
-    "tscheck": "bun run codegen && bun check"
+    "tscheck": "bun run codegen && bun run codegen:routes && bun check"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -78,6 +81,7 @@
     "@types/react-dom": "19.3.0",
     "@types/webtorrent": "3.0.0",
     "bittorrent-tracker": "11.2.3",
+    "drizzle-kit": "0.31.11",
     "electrobun": "2.0.2",
     "lefthook": "2.2.1",
     "shadcn": "4.21.4",

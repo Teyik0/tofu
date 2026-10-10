@@ -1,8 +1,90 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { UserError } from "../src/api/lib/errors";
+import { createAniListSdk } from "../src/api/modules/anilist/graphql/transport";
 import { AutomationService } from "../src/api/modules/automation/service";
 import { createTestApi } from "./api-fixture";
 import { fixture, json } from "./helpers";
+
+test.each(["invalid JSON", "network failure"])(
+  "AniList catalog reports a controlled upstream error for %s",
+  async (failure) => {
+    const context = await fixture(1024, []);
+    const provider = Bun.serve({
+      fetch: () => new Response('{"data":', { headers: { "content-type": "application/json" } }),
+      hostname: "127.0.0.1",
+      port: 0,
+    });
+    const endpoint = provider.url.origin;
+    if (failure === "network failure") {
+      provider.stop(true);
+    }
+    const service = await AutomationService.open({
+      dataDir: join(context.directory, "feeds"),
+      endpoints: {
+        anilist: endpoint,
+        c411: endpoint,
+        jev: endpoint,
+        nyaa: endpoint,
+        tsundere: endpoint,
+      },
+      engine: () => context.engine,
+      now: Date.now,
+    });
+    const api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
+    try {
+      const response = await api.handle(
+        new Request("http://localhost/api/anilist/catalog", json({}))
+      );
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: "AniList unavailable" });
+    } finally {
+      await service.close();
+      provider.stop(true);
+      await context.close();
+    }
+  }
+);
+
+test.each(["TimeoutError", "AbortError"])(
+  "AniList request cancellation distinguishes %s from upstream failure",
+  async (reasonName) => {
+    const arrived = Promise.withResolvers<void>();
+    const blocked = Promise.withResolvers<Response>();
+    const provider = Bun.serve({
+      fetch() {
+        arrived.resolve();
+        return blocked.promise;
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    });
+    const controller = new AbortController();
+    const sdk = createAniListSdk(provider.url.origin, () => "");
+    const pending = sdk.Catalog({ page: 1 }, { signal: controller.signal });
+    try {
+      await arrived.promise;
+      controller.abort(new DOMException("Request stopped", reasonName));
+      if (reasonName === "TimeoutError") {
+        await expect(pending).rejects.toBeInstanceOf(UserError);
+        await expect(pending).rejects.toMatchObject({
+          message: "AniList unavailable",
+          status: 502,
+        });
+      } else {
+        await expect(pending).rejects.toBe(controller.signal.reason);
+      }
+    } finally {
+      blocked.resolve(Response.json({ data: null }));
+      provider.stop(true);
+      await pending.catch(() => undefined);
+    }
+  }
+);
 
 test("AniList catalog handles nullable schema fields without inventing metadata", async () => {
   const context = await fixture(1024, []);
@@ -179,7 +261,7 @@ test("closing the service aborts an in-flight generated SDK request", async () =
   }
 });
 
-test("nullable AniList episode progress never replaces a valid persisted library with zero", async () => {
+test("AniList skips unknown episode progress while refreshing and persisting usable entries", async () => {
   const context = await fixture(1024, []);
   let progress: number | null = 2;
   const provider = Bun.serve({
@@ -197,6 +279,11 @@ test("nullable AniList episode progress never replaces a valid persisted library
                       {
                         media: { id: 7, title: { romaji: "Example" } },
                         progress,
+                        status: "CURRENT",
+                      },
+                      {
+                        media: { id: 8, title: { romaji: "Usable entry" } },
+                        progress: 3,
                         status: "CURRENT",
                       },
                     ],
@@ -240,11 +327,12 @@ test("nullable AniList episode progress never replaces a valid persisted library
     expect(loaded.status).toBe(200);
     expect((await loaded.json()).entries).toMatchObject([
       { mediaId: 7, progress: 2, title: "Example" },
+      { mediaId: 8, progress: 3, title: "Usable entry" },
     ]);
     progress = null;
-    const failed = await request("/anilist/list", json({}));
-    expect(failed.status).toBe(502);
-    expect(await failed.text()).toContain("did not return episode progress");
+    const refreshed = await request("/anilist/list", json({}));
+    expect(refreshed.status).toBe(200);
+    expect((await refreshed.json()).entries).toMatchObject([{ mediaId: 8, progress: 3 }]);
     await service.close();
     service = await AutomationService.open(options);
     api = await createTestApi(
@@ -253,7 +341,7 @@ test("nullable AniList episode progress never replaces a valid persisted library
       () => service
     );
     const cached = await request("/anilist", undefined);
-    expect((await cached.json()).entries).toMatchObject([{ mediaId: 7, progress: 2 }]);
+    expect((await cached.json()).entries).toMatchObject([{ mediaId: 8, progress: 3 }]);
   } finally {
     await service.close();
     provider.stop(true);

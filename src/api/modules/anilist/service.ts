@@ -83,7 +83,7 @@ function collectEntries(
         continue;
       }
       if (entry.progress === null) {
-        throw new UserError("AniList did not return episode progress", { status: 502 });
+        continue;
       }
       const media = catalogMedia(entry.media);
       const aliases = media.aliases.slice(0, 30);
@@ -349,7 +349,10 @@ export class AniListService {
           this.oauthState = null;
           const controller = new AbortController();
           this.requests.add(controller);
-          const timeout = setTimeout(() => controller.abort(), 15_000);
+          const timeout = setTimeout(
+            () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+            15_000
+          );
           try {
             const response = await fetch(this.options.tokenEndpoint, {
               body: JSON.stringify({
@@ -424,7 +427,10 @@ export class AniListService {
     const variables = catalogVariables(filters);
     const controller = new AbortController();
     this.requests.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+      15_000
+    );
     try {
       const { Page: page } = await this.sdk.Catalog(variables, {
         accessToken: "",
@@ -455,7 +461,10 @@ export class AniListService {
     }
     const controller = new AbortController();
     this.requests.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+      15_000
+    );
     try {
       const result = await this.sdk.CatalogOptions(
         {},
@@ -487,7 +496,10 @@ export class AniListService {
   private async authorize(token: string, current: () => boolean) {
     const controller = new AbortController();
     this.requests.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+      15_000
+    );
     try {
       const { Viewer: identity } = await this.sdk.Viewer(
         {},
@@ -564,7 +576,10 @@ export class AniListService {
     }
     const controller = new AbortController();
     this.requests.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+      15_000
+    );
     try {
       const identity = token
         ? (await this.sdk.Viewer({}, { accessToken: token, signal: controller.signal })).Viewer
@@ -720,7 +735,10 @@ export class AniListService {
     }
     const controller = new AbortController();
     this.requests.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+      15_000
+    );
     try {
       const { Viewer } = await this.sdk.Viewer({}, { accessToken, signal: controller.signal });
       if (Viewer?.id !== accountId || this.options.token() !== accessToken) {
@@ -747,6 +765,10 @@ export class AniListService {
       this.entries = this.entries.map((item) =>
         item.mediaId === mediaId ? { ...item, progress } : item
       );
+      if (this.cache) {
+        this.cache = { ...this.cache, entries: this.entries };
+        this.writeState("list-cache", JSON.stringify(this.cache));
+      }
       const rule = this.animeRule(mediaId);
       if (rule) {
         await this.options.save(rule.id, { ...rule, afterEpisode: progress });

@@ -62,7 +62,6 @@ import {
   catalogSortOptions,
   compareBrowseMedia,
   countryOptions,
-  doujinOptions,
   GenreTagFilter,
   matchesBrowseFilters,
   noBrowseFilters,
@@ -451,7 +450,6 @@ export const AniListLibrary = () => {
       { key: "airingStatus", options: airingOptions },
       { key: "countryOfOrigin", options: countryOptions },
       { key: "source", options: sourceOptions },
-      { key: "doujin", options: doujinOptions },
       {
         key: "streamingOn",
         options:
@@ -459,12 +457,7 @@ export const AniListLibrary = () => {
           [],
       },
     ].flatMap((field) => {
-      const key = field.key as
-        | "airingStatus"
-        | "countryOfOrigin"
-        | "source"
-        | "doujin"
-        | "streamingOn";
+      const key = field.key as "airingStatus" | "countryOfOrigin" | "source" | "streamingOn";
       return filters[key] === "any"
         ? []
         : [
@@ -683,6 +676,7 @@ export const AniListLibrary = () => {
                     onClick={() =>
                       action(async () => {
                         await savePreferences.mutateAsync({ visibleStatuses: [] });
+                        await refresh();
                       })
                     }
                   >
@@ -704,6 +698,7 @@ export const AniListLibrary = () => {
                                 ? [...state.visibleStatuses, value]
                                 : state.visibleStatuses.filter((item) => item !== value),
                             });
+                            await refresh();
                           });
                         }
                       }}

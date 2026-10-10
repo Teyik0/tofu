@@ -7,7 +7,7 @@ const PageError = ({ reset }: ErrorProps) => (
   <main className="main">
     <Alert className="connection-banner">
       <AlertCircleIcon />
-      <AlertTitle>The Tofu engine is unavailable</AlertTitle>
+      <AlertTitle>Unable to load this page</AlertTitle>
       <AlertDescription>
         <p>The data could not be loaded.</p>
         <Button onClick={reset} variant="outline">

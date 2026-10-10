@@ -1,3 +1,4 @@
+import { EdenFetchError } from "@elysia/eden";
 import { useMutation } from "@teyik0/furin/client";
 import { useSetAtom } from "jotai";
 import { DownloadIcon } from "lucide-react";
@@ -36,7 +37,19 @@ export function TorrentDrop({ activeDestination }: { activeDestination: string |
         setSelected(result.id);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to add the torrent");
+      const value: unknown = cause instanceof EdenFetchError ? cause.value : null;
+      setError(
+        value && typeof value === "object" && "error" in value && typeof value.error === "string"
+          ? value.error
+          : value &&
+              typeof value === "object" &&
+              "detail" in value &&
+              typeof value.detail === "string"
+            ? value.detail
+            : cause instanceof Error
+              ? cause.message
+              : "Unable to add the torrent"
+      );
     } finally {
       await refresh();
     }

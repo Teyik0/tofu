@@ -38,6 +38,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 - Keep saved theme preferences available during server rendering and propagate preference changes across windows without a separate theme bootstrap script or JavaScript media listener.
 - Align CI and release builds on Bun 1.4.3, matching the minimum version required by `bun check`.
 - Run Furin and Electrobun CLI entrypoints directly with Bun to bypass Windows binary launcher remapping failures.
+- Generate Furin route and asset declarations before type checking on clean checkouts, without starting the development server.
 
 ## [0.2.1]
 

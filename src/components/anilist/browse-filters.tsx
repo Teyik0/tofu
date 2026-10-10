@@ -61,11 +61,6 @@ export const sourceOptions = [
   { label: "Multimedia Project", value: "MULTIMEDIA_PROJECT" },
   { label: "Picture Book", value: "PICTURE_BOOK" },
 ];
-export const doujinOptions = [
-  { label: "Any", value: "any" },
-  { label: "Only doujin", value: "only" },
-  { label: "Exclude doujin", value: "exclude" },
-] satisfies { label: string; value: NonNullable<AniListCatalogFilters["doujin"]> }[];
 export interface BrowseFilters {
   airingStatus: string;
   countryOfOrigin: string;
@@ -131,7 +126,6 @@ export function matchesBrowseFilters(media: AniListMedia, filters: BrowseFilters
     (filters.streamingOn === "any" || media.streamingOn?.includes(Number(filters.streamingOn))) &&
     (filters.countryOfOrigin === "any" || media.countryOfOrigin === filters.countryOfOrigin) &&
     (filters.source === "any" || media.source === filters.source) &&
-    (filters.doujin === "any" || media.isLicensed === (filters.doujin === "exclude")) &&
     filters.tags.every((tag) => media.tags?.some((item) => item.name === tag && item.rank >= 18)) &&
     !filters.excludedGenres.some((genre) => media.genres.includes(genre)) &&
     !filters.excludedTags.some((tag) =>
@@ -241,11 +235,14 @@ export function GenreTagFilter({
               .map((tag) => (
                 <DropdownMenuCheckboxItem
                   checked={filters.tags.includes(tag.name)}
+                  disabled={filters.tags.length >= 30 && !filters.tags.includes(tag.name)}
                   key={tag.name}
                   onCheckedChange={(checked) =>
                     update({
                       tags: checked
-                        ? [...filters.tags, tag.name]
+                        ? filters.tags.length < 30 && !filters.tags.includes(tag.name)
+                          ? [...filters.tags, tag.name]
+                          : filters.tags
                         : filters.tags.filter((item) => item !== tag.name),
                     })
                   }
@@ -395,17 +392,6 @@ export function BrowseAdvancedFilters({
           </div>
         </Field>
       ))}
-      <Field className="anilist-filter">
-        <FieldLabel htmlFor="anilist-doujin">Doujin</FieldLabel>
-        <OptionSelect
-          className="anilist-filter-trigger"
-          disabled={false}
-          id="anilist-doujin"
-          onValueChange={(doujin) => update({ doujin })}
-          options={doujinOptions}
-          value={filters.doujin}
-        />
-      </Field>
       <ExclusionFilter
         label="Exclude Genres"
         onChange={(excludedGenres) => update({ excludedGenres })}

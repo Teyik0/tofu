@@ -921,7 +921,8 @@ export class AutomationService {
       }))
     );
     const candidates = evaluated.filter(
-      (candidate) => candidate.probability === null || candidate.probability >= 0.75
+      (candidate) =>
+        !candidate.reason && (candidate.probability === null || candidate.probability >= 0.75)
     );
     return {
       ...result,

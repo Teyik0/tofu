@@ -272,7 +272,7 @@ test("hot reload keeps the original profile and database together until process 
   const source = join(import.meta.dir, "../src/server.ts");
   const serverProgram = (await Bun.file(source).text()).replaceAll(
     'from "./',
-    `from "${join(import.meta.dir, "../src")}/`
+    `from "${join(import.meta.dir, "../src").replaceAll("\\", "/")}/`
   );
   const nextDataDir = join(context.directory, "hot-release");
   // Publish readiness atomically so polling never reads a partially written JSON file.

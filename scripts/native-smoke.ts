@@ -8,6 +8,10 @@ import { Server as Tracker } from "bittorrent-tracker";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import WebTorrent, { type Torrent } from "webtorrent";
+import { acquireInstance, resolveInstanceConfig } from "../src/api/lib/instance";
+import { AutomationService } from "../src/api/modules/automation/service";
+import { pluginEndpoints } from "../src/api/modules/plugins/service";
+import { TorrentEngine } from "../src/api/modules/torrents/service";
 import { Button } from "../src/components/ui/button";
 import { Input } from "../src/components/ui/input";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
@@ -15,6 +19,14 @@ import type { ThemePreference } from "../src/types";
 
 const root = join(import.meta.dir, "..");
 const folder = await mkdtemp(join(tmpdir(), "tofu-native-"));
+if (process.env.TOFU_NATIVE_WORKFLOW === "anilist-catalog") {
+  try {
+    await seedAniListCatalog(folder);
+  } catch (error) {
+    await rm(folder, { force: true, recursive: true });
+    throw error;
+  }
+}
 const source = join(folder, "Real Tofu test.bin");
 const payload = randomBytes(256 * 1024);
 await Bun.write(source, payload);
@@ -293,6 +305,14 @@ const native = Bun.spawn([desktopLauncher(root, hostDesktopTarget(), "dev")], {
 });
 const nativeStdout = new Response(native.stdout).text();
 const nativeStderr = new Response(native.stderr).text();
+void native.exited.then(async (code) => {
+  resolveReport(
+    JSON.stringify({
+      error: `The native host exited with code ${code}: ${await nativeStderr}`,
+      passed: false,
+    })
+  );
+});
 const timeout = setTimeout(
   () =>
     resolveReport(
@@ -324,6 +344,86 @@ try {
     await new Promise<void>((resolve) => tracker.close(resolve));
   }
   await rm(folder, { force: true, recursive: true });
+}
+
+async function seedAniListCatalog(directory: string) {
+  const resources = new AsyncDisposableStack();
+  const nativeFetch = globalThis.fetch;
+  try {
+    const lease = await acquireInstance(
+      resolveInstanceConfig({
+        dataDir: join(directory, "state"),
+        desktop: true,
+        downloadPath: join(directory, "downloads"),
+        homeDir: directory,
+        platform: process.platform,
+        port: "0",
+        profile: "dev",
+      })
+    );
+    resources.defer(() => lease.close());
+    const engine = await TorrentEngine.open({
+      dataDir: join(directory, "state"),
+      downloadPath: join(directory, "downloads"),
+      network: {
+        dht: false,
+        lsd: false,
+        natPmp: false,
+        natUpnp: false,
+        tracker: false,
+        utp: false,
+      },
+    });
+    resources.defer(() => engine.close());
+    const service = await AutomationService.open({
+      dataDir: join(directory, "state"),
+      endpoints: pluginEndpoints,
+      engine: () => engine,
+      now: Date.now,
+    });
+    resources.defer(() => service.close());
+    // Retain the packaged provider's cache identity while seeding through its public service.
+    globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (new URL(request.url).origin !== "https://graphql.anilist.co") {
+        return nativeFetch(input, init);
+      }
+      const body = (await request.json()) as { query: string };
+      return Response.json({
+        data: body.query.includes("Viewer")
+          ? { Viewer: { id: 42, name: "NativeUser" } }
+          : {
+              MediaListCollection: {
+                hasNextChunk: false,
+                lists: [
+                  {
+                    entries: [
+                      {
+                        media: {
+                          episodes: 12,
+                          genres: ["Drama"],
+                          id: 10,
+                          status: "RELEASING",
+                          studios: { nodes: [{ name: "Native Studio" }] },
+                          synonyms: [],
+                          title: { romaji: "Native Library" },
+                        },
+                        progress: 3,
+                        status: "CURRENT",
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+      });
+    }, nativeFetch);
+    service.configure("anilist", { apiKey: "native-catalog-token", enabled: true });
+    await service.anilist.list();
+  } finally {
+    globalThis.fetch = nativeFetch;
+    await resources.disposeAsync();
+  }
 }
 
 async function tabDeletionWorkflow(config: {
@@ -2315,7 +2415,6 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         "yearMin",
         "episodesMin",
         "durationMin",
-        "doujin",
       ].every((key) => !!document.getElementById(`anilist-${key}`))
     );
     await pickOption("#anilist-airingStatus", "Airing");
@@ -2703,7 +2802,11 @@ async function pluginsWorkflow(config: { reportUrl: string }) {
     await wait(async () =>
       (await state()).plugins.some((plugin) => plugin.id === "tsundere" && plugin.enabled)
     );
-    check("Another plugin saves before the previous request completes", true);
+    check(
+      "Another plugin saves before the previous request completes",
+      (await state()).plugins.some((plugin) => plugin.id === "tsundere" && plugin.enabled) &&
+        (await state()).plugins.some((plugin) => plugin.id === "nyaa" && !plugin.enabled)
+    );
     release.resolve();
     await wait(() => !(toggle("nyaa").disabled || toggle("tsundere").disabled));
     check(
@@ -2798,6 +2901,9 @@ async function pluginsWorkflow(config: { reportUrl: string }) {
     const previousCheck = toggle("nyaa")
       .closest("article")!
       .querySelector(".automation-caption")?.textContent;
+    const previousCheckedAt = (await state()).plugins.find(
+      (plugin) => plugin.id === "nyaa"
+    )?.checkedAt;
     toggle("nyaa")
       .closest("article")!
       .querySelector<HTMLButtonElement>(".plugins-plugin-actions button")!
@@ -2814,8 +2920,20 @@ async function pluginsWorkflow(config: { reportUrl: string }) {
       (await state()).plugins.some((plugin) => plugin.id === "tsundere" && plugin.enabled)
     );
     connection.resolve();
-    await wait(() => !!toggle("nyaa").closest("article")!.querySelector(".automation-caption"));
-    check("Connection results are shown after the API confirms them", true);
+    const connectionConfirmed = async () => {
+      const plugin = (await state()).plugins.find((item) => item.id === "nyaa");
+      return (
+        plugin?.checkedAt !== null &&
+        plugin?.checkedAt !== undefined &&
+        plugin.checkedAt !== previousCheckedAt &&
+        toggle("nyaa")
+          .closest("article")!
+          .querySelector(".automation-caption")
+          ?.textContent?.includes(new Date(plugin.checkedAt).toLocaleTimeString("en-US")) === true
+      );
+    };
+    await wait(connectionConfirmed);
+    check("Connection results are shown after the API confirms them", await connectionConfirmed());
     click("Intelligence");
     await wait(
       () => location.pathname === "/plugins/intelligence" && !!document.querySelector("#key-jev")
@@ -2826,7 +2944,10 @@ async function pluginsWorkflow(config: { reportUrl: string }) {
     );
     document.querySelector<HTMLFormElement>("#plugin-form-jev")!.requestSubmit();
     await wait(() => document.querySelector<HTMLInputElement>("#key-jev")?.value === "");
-    check("A successful form action clears the submitted credential", true);
+    check(
+      "A successful form action clears the submitted credential",
+      document.querySelector<HTMLInputElement>("#key-jev")?.value === ""
+    );
     check(
       "The next save persists the edited limit",
       (await state()).plugins.find((plugin) => plugin.id === "jev")?.dailyLimit === 43
@@ -3079,10 +3200,8 @@ async function anilistCatalogWorkflow(config: { reportUrl: string }) {
       throw new Error(name);
     }
   };
-  const nativeFetch = window.fetch.bind(window);
-  const sample = (await (
-    await nativeFetch("/api/anilist")
-  ).json()) as import("../src/types").AniListState;
+  const originalFetch = window.fetch;
+  const nativeFetch = originalFetch.bind(window);
   const media: import("../src/types").AniListMedia = {
     airingStatus: "RELEASING",
     aliases: ["Native Catalog"],
@@ -3100,18 +3219,6 @@ async function anilistCatalogWorkflow(config: { reportUrl: string }) {
     studios: ["Native Studio"],
     title: "Native Catalog",
   };
-  sample.entries = [
-    {
-      ...media,
-      aliases: ["Native Library"],
-      automationId: null,
-      completedEpisodes: [1, 2, 3],
-      mediaId: 10,
-      progress: 3,
-      status: "CURRENT",
-      title: "Native Library",
-    },
-  ];
   const catalogRequests: import("../src/types").AniListCatalogFilters[] = [];
   window.fetch = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -3125,13 +3232,6 @@ async function anilistCatalogWorkflow(config: { reportUrl: string }) {
       }
       const address = new URL(target, location.origin);
       const path = address.pathname;
-      if (path === "/api/anilist") {
-        return Response.json(sample);
-      }
-      if (path === "/api/anilist/preferences") {
-        Object.assign(sample, JSON.parse(String(init?.body)));
-        return Response.json(sample);
-      }
       if (path === "/api/anilist/catalog/options") {
         return Response.json({
           genres: ["Drama", "Action"],
@@ -3200,7 +3300,6 @@ async function anilistCatalogWorkflow(config: { reportUrl: string }) {
         "yearMin",
         "episodesMin",
         "durationMin",
-        "doujin",
       ].every((key) => !!document.getElementById(`anilist-${key}`))
     );
     await openMenu("#anilist-airingStatus");
@@ -3254,12 +3353,12 @@ async function anilistCatalogWorkflow(config: { reportUrl: string }) {
       document.querySelector(".anime-card")?.textContent?.includes("3 / 12 watched") === true
     );
     check("No native JavaScript errors", errors.length === 0);
-    await fetch(config.reportUrl, {
+    await nativeFetch(config.reportUrl, {
       body: JSON.stringify({ checks, errors, passed: true }),
       method: "POST",
     });
   } catch (error) {
-    await fetch(config.reportUrl, {
+    await nativeFetch(config.reportUrl, {
       body: JSON.stringify({
         checks,
         error: String(error),
@@ -3269,5 +3368,7 @@ async function anilistCatalogWorkflow(config: { reportUrl: string }) {
       }),
       method: "POST",
     });
+  } finally {
+    window.fetch = originalFetch;
   }
 }

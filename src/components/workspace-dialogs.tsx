@@ -16,16 +16,12 @@ export function WorkspaceDialogs({
   const router = useRouter();
   const [modal, open] = useAtom(modalAtom);
   const [selected, setSelected] = useAtom(selectedTorrentAtom);
-  const visible = dashboard.torrents.filter(
-    (torrent) => activeDestination === null || torrent.destinationId === activeDestination
-  );
-  const selectedId = visible.find((torrent) => torrent.id === selected)?.id ?? visible[0]?.id;
   const close = () => open(null);
   const done = async (id: string | null, destinationId: string | null) => {
     if (id) {
       setSelected(id);
     }
-    if (modal?.type === "remove" && modal.torrent.id === selectedId) {
+    if (modal?.type === "remove" && modal.torrent.id === selected) {
       setSelected(null);
     }
     await showDestination(router, destinationId, activeDestination);

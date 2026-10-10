@@ -76,6 +76,7 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
                           dailyLimit: configuration.dailyLimit ?? current.dailyLimit,
                           enabled: configuration.enabled,
                           error: null,
+                          hasApiKey: Boolean(configuration.apiKey?.trim()) || current.hasApiKey,
                         }
                       : current
                   ),
@@ -125,6 +126,10 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
     });
   };
   const save = (enabled: boolean) => {
+    if (!enabled) {
+      void run({ configuration: { enabled: false }, type: "configure" });
+      return;
+    }
     void handleSubmit(form, (configuration) => configurePlugin(configuration, enabled))();
   };
   const dirty = key.trim() !== "" || limit !== String(plugin.dailyLimit);
@@ -143,7 +148,7 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
         </FieldContent>
         <Switch
           aria-describedby={error || plugin.error ? errorId : undefined}
-          aria-label={`Enable ${plugin.name}`}
+          aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.name}`}
           checked={plugin.enabled}
           disabled={busy}
           id={`plugin-${plugin.id}`}

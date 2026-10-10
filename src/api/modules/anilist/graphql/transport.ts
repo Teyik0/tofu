@@ -27,6 +27,15 @@ export function createAniListSdk(endpoint: string, token: () => string) {
           variables: variables as Variables | undefined,
         });
       } catch (cause) {
+        if (
+          options?.signal.aborted &&
+          !(
+            options.signal.reason instanceof DOMException &&
+            options.signal.reason.name === "TimeoutError"
+          )
+        ) {
+          throw cause;
+        }
         if (cause instanceof ClientError) {
           const message =
             cause.response.status >= 400
@@ -36,7 +45,8 @@ export function createAniListSdk(endpoint: string, token: () => string) {
           // biome-ignore lint/style/useErrorCause: ClientError contains sensitive upstream request and response data.
           throw new UserError(message, { status: 502 });
         }
-        throw cause;
+        // biome-ignore lint/style/useErrorCause: Transport errors may contain upstream request details or credentials.
+        throw new UserError("AniList unavailable", { status: 502 });
       }
     }
   );

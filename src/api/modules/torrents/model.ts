@@ -1,6 +1,7 @@
 import {
   array,
   boolean,
+  check,
   file,
   forward,
   is,
@@ -12,6 +13,7 @@ import {
   object,
   optional,
   partialCheck,
+  picklist,
   pipe,
   string,
   union,
@@ -19,24 +21,32 @@ import {
 import type { FormModalKind } from "../../../types";
 import { updateDestinationSchema } from "../destinations/model";
 
+export const trackersSchema = object({
+  urls: pipe(array(pipe(string(), maxLength(2048))), maxLength(100)),
+});
+
 export const createTorrentSchema = object({
   destinationId: optional(string()),
   downloadPath: optional(string()),
   paused: boolean(),
   source: pipe(string(), minLength(1), maxLength(65_536)),
-  trackers: optional(array(string())),
+  trackers: optional(trackersSchema.entries.urls),
 });
 
 export const uploadTorrentSchema = object({
   destinationId: optional(string()),
   downloadPath: optional(string()),
   file: pipe(file(), maxSize(8_388_608)),
-  paused: string(),
-  trackers: optional(string()),
-});
-
-export const trackersSchema = object({
-  urls: pipe(array(pipe(string(), maxLength(2048))), maxLength(100)),
+  paused: picklist(["true", "false"]),
+  trackers: optional(
+    pipe(
+      string(),
+      check(
+        (value) => is(trackersSchema.entries.urls, value.split("\n")),
+        "Enter at most 100 tracker URLs of at most 2048 characters"
+      )
+    )
+  ),
 });
 
 export const removeTorrentSchema = object({ deleteFiles: boolean() });

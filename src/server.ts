@@ -39,9 +39,10 @@ if (import.meta.main) {
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
   } catch (error) {
-    await onShutdown();
     if (app.server) {
       await app.stop(true);
+    } else {
+      await onShutdown();
     }
     throw error;
   }

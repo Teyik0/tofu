@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-test("a clean checkout generates the AniList SDK before type checking and reproduces it offline", async () => {
+test("a clean checkout generates the AniList SDK and route declarations before type checking", async () => {
   const directory = await mkdtemp(join(tmpdir(), "tofu-codegen-"));
   const graphqlPath = "src/api/modules/anilist/graphql";
   const snapshot = join(import.meta.dir, "..", graphqlPath);
@@ -33,36 +33,54 @@ test("a clean checkout generates the AniList SDK before type checking and reprod
       "bunfig.toml",
       ".gitignore",
       "scripts/anilist-codegen.ts",
+      "scripts/route-types.ts",
     ].map((file) => cp(join(import.meta.dir, "..", file), join(directory, file)))
   );
   await Bun.write(
     join(directory, "tsconfig.json"),
     JSON.stringify({
       compilerOptions: {
+        allowImportingTsExtensions: true,
+        jsx: "react-jsx",
         module: "Preserve",
         moduleResolution: "Bundler",
+        noEmit: true,
         skipLibCheck: true,
         strict: true,
         target: "ESNext",
         types: ["bun"],
       },
-      include: ["src"],
+      include: ["src", "furin-env.d.ts"],
     })
+  );
+  await mkdir(join(directory, "src/pages"));
+  await Bun.write(
+    join(directory, "src/pages/root.tsx"),
+    'import { defineRootRoute } from "@teyik0/furin";\nexport const route = defineRootRoute().config({ mode: "ssr" }).layout(({ children }) => children);\n'
+  );
+  await Bun.write(
+    join(directory, "src/pages/index.tsx"),
+    'import { defineRoute } from "@teyik0/furin";\nimport { route as root } from "./root";\nexport const route = defineRoute().config({ layout: root, mode: "ssr" }).loader(() => ({ title: "Catalog" })).page(() => null);\n'
   );
   await Bun.write(
     join(directory, "src/check.ts"),
-    'import type { CatalogQueryVariables } from "./api/modules/anilist/graphql/generated";\nexport const variables: CatalogQueryVariables = { page: 1 };\n'
+    'import { getRouteApi } from "@teyik0/furin/client";\nimport type { CatalogQueryVariables } from "./api/modules/anilist/graphql/generated";\nexport const variables: CatalogQueryVariables = { page: 1 };\nexport const readTitle = (): string => getRouteApi("/").useLoaderData().title;\n'
   );
   const run = (script: string) => {
     const child = Bun.spawn([process.execPath, "run", script], {
       cwd: directory,
       stderr: "pipe",
-      stdout: "ignore",
+      stdout: "pipe",
     });
-    return Promise.all([child.exited, new Response(child.stderr).text()]);
+    return Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]).then(([code, output, error]) => [code, `${output}\n${error}`] as const);
   };
   try {
     expect(await Bun.file(join(directory, graphqlPath, "generated.ts")).exists()).toBe(false);
+    expect(await Bun.file(join(directory, "furin-env.d.ts")).exists()).toBe(false);
     const [validExit, validError] = await run("tscheck");
     expect(validExit, validError).toBe(0);
     const output = await Bun.file(join(directory, graphqlPath, "generated.ts")).text();

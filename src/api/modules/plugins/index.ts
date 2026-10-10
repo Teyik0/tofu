@@ -11,6 +11,7 @@ export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
   .use(furinInvalidate())
   .guard({
     invalidate: [
+      { path: "/", type: "layout" },
       { path: "/plugins", type: "layout" },
       { path: "/anilist", type: "page" },
     ],

@@ -2,6 +2,7 @@ import { defineConfig } from "@teyik0/furin/config";
 import { defineDesktopConfig } from "@teyik0/furin-electrobun";
 import tailwind from "bun-plugin-tailwind";
 import { version } from "./package.json";
+import { databaseMigrationsPlugin } from "./scripts/database-migrations";
 
 const release = process.env.TOFU_RELEASE === "1";
 process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
@@ -33,6 +34,7 @@ export default defineConfig({
           "LICENSE.md": "bun/LICENSE.md",
           "runtime/anilist-client.json": "bun/anilist-client.json",
           "runtime/desktop-protocol.js": "bun/desktop-protocol.js",
+          "src/db/drizzle": "bun/drizzle",
         },
         linux: { icon: "public/tofu-icon.png" },
         mac: {
@@ -52,6 +54,7 @@ export default defineConfig({
     window: { height: 940, width: 1400 },
   }),
   plugins: [
+    databaseMigrationsPlugin,
     {
       name: tailwind.name,
       setup(builder) {
