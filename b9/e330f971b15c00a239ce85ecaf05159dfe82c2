@@ -1,0 +1,22 @@
+CHANGELOG.md
+  s_807678f85853ef::t_c0c87ba584278e 44
+tests/anilist-transport.test.ts
+  s_807678f85853ef::t_c0c87ba584278e 53-55,222-224
+  s_807678f85853ef::t_c7421f18fa081a 225-265,267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b9e330f971b15c00a239ce85ecaf05159dfe82c2",
+  "prompts": {},
+  "sessions": {
+    "s_807678f85853ef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a126ec-19de-7c63-9436-f99151a96f2b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
