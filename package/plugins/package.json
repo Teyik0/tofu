@@ -1,0 +1,36 @@
+{
+  "name": "@tofu/plugins",
+  "version": "0.0.0",
+  "description": "Experimental trusted plugin SDK for Tofu",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./domain": "./src/domain.ts",
+    "./domain-schemas": "./src/domain-schemas.ts",
+    "./automation-read-api": "./src/automation-read-api.ts",
+    "./server": "./src/server.ts",
+    "./client": "./src/client.ts",
+    "./routes": {
+      "types": "./src/routes.ts",
+      "browser": "./src/routes.client.ts",
+      "default": "./src/routes.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/server.ts --target=bun --packages=external --outdir=dist && bun build ./src/client.ts --target=browser --packages=external --outdir=dist/client",
+    "test": "bun test tests",
+    "tscheck": "bun x tsc --noEmit"
+  },
+  "dependencies": {
+    "@teyik0/furin": "file:../../vendor/furin-pr163-914e82a.tgz",
+    "elysia": "catalog:",
+    "evlog": "catalog:",
+    "react": "catalog:",
+    "typebox": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

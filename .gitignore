@@ -6,6 +6,11 @@ node_modules/
 build/
 artifacts/
 runtime/
+dist/
+.tofu-plugins/
+apps/tofu/src/plugin-generated/server.ts
+apps/tofu/src/plugin-generated/client.ts
+apps/tofu/src/pages/(app)/(extensions)/
 furin-env.d.ts
 *.log
 *.tsbuildinfo

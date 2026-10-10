@@ -1,0 +1,18 @@
+import { createPreview } from "./preview";
+
+const { app, close } = await createPreview("./.tofu-dev/settings");
+export default app;
+
+if (import.meta.main) {
+  const port = Number(process.env.PORT ?? 3000);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error("PORT must be an integer from 0 to 65535");
+  }
+  app.listen({ port, hostname: "127.0.0.1" });
+  console.log(`Plugin preview: http://127.0.0.1:${app.server?.port}`);
+  process.on("SIGTERM", async () => {
+    await app.stop();
+    await close();
+    process.exit(0);
+  });
+}

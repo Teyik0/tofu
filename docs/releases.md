@@ -21,8 +21,8 @@ Versions shipped before the in-app updater was implemented require one final man
 ## GitHub Actions pipeline
 
 - **Checks** validates types, lint, tests with real peers, and the desktop build on every push to main or pull request, using parallel native runners for all four release targets.
-- **Release** builds and tests on macOS ARM64, Windows x64, and Linux x64/ARM64. A `vX.Y.Z` tag matching `package.json` exactly publishes the installers, Electrobun archives and metadata, and `SHA256SUMS` to the repository's releases. Publication requires all four installers. The native version comes from the same package.json. Electrobun 2.0.2 and Hutch do not distribute a macOS Intel runtime; upstream support is required before adding an x64 runner.
-- Tests run exactly `bun test --parallel --isolate --bail` in both workflows. Bun downloads and the Hutch toolchain are cached per OS, architecture, Bun version and dependency lockfile. Superseded check runs are cancelled.
+- **Release** builds and tests on macOS ARM64, Windows x64, and Linux x64/ARM64. A `vX.Y.Z` tag matching `apps/tofu/package.json` exactly publishes the installers, Electrobun archives and metadata, and `SHA256SUMS` to the repository's releases. Publication requires all four installers. The native version comes from the same desktop package manifest. Electrobun 2.0.2 and Hutch do not distribute a macOS Intel runtime; upstream support is required before adding an x64 runner.
+- Workspace tests run through `bun run test`; the desktop test script uses `bun test --parallel --isolate --bail --timeout 30000`. Bun downloads and the Hutch toolchain are cached per OS, architecture, Bun version and dependency lockfile. Superseded check runs are cancelled.
 - A manual **Release** run tests the build and retains artifacts for seven days without publishing a release. Native UI tests require a graphical session; macOS is the locally validated native platform until the other platforms pass their own UI smoke tests.
 
 | Target | Runner | Installer |
@@ -34,7 +34,7 @@ Versions shipped before the in-app updater was implemented require one final man
 
 The ZIP and Linux archive retain Electrobun's installer payload structure; renaming an extracted Windows executable would separate it from the sidecar files it needs. Signing and notarization are configured only on the macOS runner.
 
-To prepare a version, update package.json, run `bun run tscheck`, `bun run fix`, `bun run test`, `bun run build:desktop`, `bun run test:native`, and `bun run test:background`, then commit and push the matching tag. Follow the project's Git hooks before committing and pushing. `bun run build:release` produces the installer for the current platform locally.
+To prepare a version, update `apps/tofu/package.json`, run `bun run tscheck`, `bun run fix`, `bun run test`, `bun run build:desktop`, `bun run test:native`, and `bun run test:background`, then commit and push the matching tag. Follow the project's Git hooks before committing and pushing. `bun run build:release` produces the installer for the current platform locally.
 
 ## Free macOS distribution
 

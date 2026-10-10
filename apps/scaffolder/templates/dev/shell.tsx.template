@@ -1,0 +1,19 @@
+import { useState } from "react";
+import { ui } from "../src/client";
+import { context } from "./fixtures";
+
+export function PreviewShell({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const action = ui.threadActions[0];
+  const Dialog = action.dialog;
+  return <main>
+    <header>
+      <h1>Tofu plugin developer preview</h1>
+      <p>This controlled shell uses an empty fixture thread and no torrent engine.</p>
+      <nav><a href="/">Overview</a> · <a href="/greeting">Greeting page</a></nav>
+      <button type="button" onClick={() => setOpen(true)}>{action.label}</button>
+    </header>
+    {open ? <Dialog {...context} torrents={[]} close={() => setOpen(false)} /> : null}
+    {children}
+  </main>;
+}

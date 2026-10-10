@@ -1,0 +1,27 @@
+import { furin } from "@teyik0/furin";
+import { createCore, createPluginApi, createPluginRuntime } from "@tofu/plugins/server";
+import { createPlugin } from "../src/server";
+import { dashboard, thread } from "./fixtures";
+import { createPreviewSync } from "./sync";
+
+export async function createPreview(directory: string) {
+  const core = createCore({ dashboard: () => dashboard, thread: (id: string) => id === thread.id ? thread : null });
+  const plugin = createPlugin(core);
+  const sync = await createPreviewSync(directory);
+  const runtime = createPluginRuntime({ sync: sync.options });
+  async function close() {
+    await runtime.dispose();
+    sync.close();
+  }
+  try {
+    await runtime.installDefinition({ definition: plugin, directory });
+    await runtime.enable(plugin.id);
+    const app = createPluginApi({ sync: sync.options })
+      .all("/api/plugins/*", { sync: false, parse: "none" }, ({ request }) => runtime.handle(request))
+      .use(await furin({ pagesDir: "./dev/pages", sync: sync.options }));
+    return { app, runtime, close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}

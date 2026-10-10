@@ -1,0 +1,56 @@
+{
+  "name": "@tofu/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared Tofu UI components",
+  "type": "module",
+  "exports": {
+    "./alert-dialog": "./src/ui/alert-dialog.tsx",
+    "./tabs": "./src/ui/tabs.tsx",
+    "./input-group": "./src/ui/input-group.tsx",
+    "./progress": "./src/ui/progress.tsx",
+    "./sheet": "./src/ui/sheet.tsx",
+    "./field": "./src/ui/field.tsx",
+    "./label": "./src/ui/label.tsx",
+    "./empty": "./src/ui/empty.tsx",
+    "./tooltip": "./src/ui/tooltip.tsx",
+    "./alert": "./src/ui/alert.tsx",
+    "./switch": "./src/ui/switch.tsx",
+    "./radio-group": "./src/ui/radio-group.tsx",
+    "./dialog": "./src/ui/dialog.tsx",
+    "./badge": "./src/ui/badge.tsx",
+    "./sidebar": "./src/ui/sidebar.tsx",
+    "./separator": "./src/ui/separator.tsx",
+    "./button": "./src/ui/button.tsx",
+    "./checkbox": "./src/ui/checkbox.tsx",
+    "./dropdown-menu": "./src/ui/dropdown-menu.tsx",
+    "./select": "./src/ui/select.tsx",
+    "./textarea": "./src/ui/textarea.tsx",
+    "./input": "./src/ui/input.tsx",
+    "./skeleton": "./src/ui/skeleton.tsx",
+    "./context-menu": "./src/ui/context-menu.tsx",
+    "./action-tooltip": "./src/action-tooltip.tsx",
+    "./option-select": "./src/option-select.tsx",
+    "./automation-fields": "./src/automation-fields.tsx",
+    "./sidebar-toggle": "./src/sidebar-toggle.tsx",
+    "./format": "./src/format.ts",
+    "./use-now": "./src/use-now.ts",
+    "./use-mobile": "./src/use-mobile.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/ui/button.tsx --target=browser --packages=external --outdir=dist",
+    "tscheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@base-ui/react": "catalog:",
+    "@tofu/plugins": "workspace:*",
+    "class-variance-authority": "catalog:",
+    "cn": "catalog:",
+    "lucide-react": "catalog:",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

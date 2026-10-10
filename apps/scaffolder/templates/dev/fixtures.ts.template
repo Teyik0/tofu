@@ -1,0 +1,17 @@
+import type { DashboardState, Destination } from "@tofu/plugins/domain";
+import type { ThreadContext } from "@tofu/plugins";
+
+// Explicit developer fixtures: this harness has no torrent engine or live transfer statistics.
+export const thread: Destination = {
+  id: "preview-thread", name: "Preview thread", icon: "folder", pinned: true,
+  downloadPath: "./.tofu-dev/downloads",
+};
+export const dashboard: DashboardState = {
+  destinations: [thread], detail: null, history: [], torrents: [],
+  settings: { downloadLimit: 0, uploadLimit: 0, downloadPath: thread.downloadPath,
+    runInBackground: false, theme: "system" },
+  session: { active: 0, dhtNodes: 0, downloadSpeed: 0, uploadSpeed: 0,
+    engine: "Developer fixture (no engine)", freeSpace: null, mode: "server", peers: 0,
+    port: 0, received: 0, uploaded: 0, startedAt: 0 },
+};
+export const context: ThreadContext = { thread, dashboard, settings: dashboard.settings };

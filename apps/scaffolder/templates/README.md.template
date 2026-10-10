@@ -1,0 +1,27 @@
+# {{id}}
+
+Experimental Tofu plugin, developed with Bun and the pinned Furin preview.
+
+```sh
+bun install
+bun run tscheck
+bun run build
+bun test
+bun run dev
+```
+
+Open the printed loopback URL (port 3000 by default; set `PORT` to change it). The developer host renders a real Furin document and thread layout, mounts the plugin's Elysia API through the SDK runtime, and offers the existing-thread action and settings UI. Its empty dashboard is an explicit developer fixture; it runs no torrent engine. Persistent example settings live in `.tofu-dev/settings` and survive restarts.
+
+`src/server/index.ts` exports `createPlugin(core)`, which returns the single `definePlugin` object holding API, UI, settings, and an API-key authentication descriptor. Its Elysia API uses `.use(core)` to access host capabilities. The host owns the engine; plugins receive its capability facade. Settings use a TypeBox schema and typed persistent storage, with global defaults and optional thread overrides.
+
+`src/client/index.tsx` exports only `ui`: a pinnable native page factory, an existing-thread dialog action, and a settings panel. The page receives the actual host `threadLayout`, calls `defineRoute().config({ layout: threadLayout })`, and inherits promised `thread`, `dashboard`, and `settings` in its loader. The browser imports SDK `createClient`, `useQuery`, and `useMutation` directly; its API type import is erased. Keep backend implementations and credentials in server modules.
+
+The API uses `createPluginApi(context)` with the host's real Furin Sync options. Settings reads declare the `{{id}}.settings` query identity, and saves invalidate that same identity so `useMutation` refreshes subscribed `useQuery` results. The preview owns a Bun SQLite sync adapter, shares it with the plugin runtime and Furin's browser event transport, and closes it with the runtime. Direct mutation requests must include an `Idempotency-Key`; the mutation hook supplies one automatically.
+
+Authentication descriptors describe the connection UI; they do not implement authentication. The fixture preview deliberately supplies no credential adapter. A Tofu host can inject its backend `PluginAuth` adapter during installation; read credentials with `context.auth?.credentials.get(name)` only on Bun, and expose public connection status rather than credentials. Use a provider's documented OAuth authorization URL, token URL, scopes, and PKCE requirement if replacing the API-key descriptor with OAuth.
+
+The `tofuPlugin` manifest pins experimental API version `0.0.0`. Its server entry is built into `dist/server/index.js`; its client entry remains source so the Tofu host can compile the native route factory using Furin. `bun run build` also compiles the fixture host through the real Furin compiler. The separate `dist/client` boundary bundle is a smoke check; the host consumes the source entry and performs its own compilation.
+
+The installed Furin preview requires page contributions in its route graph at build time. `dev/pages/(thread)/greeting.tsx` is an example of a generated page adapter. Tofu must rebuild/restart when this graph changes; runtime installation alone cannot add already compiled browser routes. A physical `_route.tsx` constructs the host layout with native `defineRoute` so both Furin's development and production transforms can process it. SDK route context types remain type-only imports.
+
+The scaffolder snapshots the local SDK into `.tofu-sdk` with concrete dependency versions and includes the pinned Furin tarball in `.tofu-vendor`. These local files make a clean external install possible while the SDK is unpublished. To upgrade, regenerate from the chosen SDK checkout and review changes; this snapshot does not track later SDK edits automatically. Before distributing the plugin, arrange compatible SDK/Furin dependencies for your target Tofu host and include the declared source client and built server entries. The generated private package is a developer starting point, not a claim of published SDK compatibility.

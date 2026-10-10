@@ -1,0 +1,28 @@
+{
+  "name": "@tofu/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun x --no-install furin build",
+    "dev": "bun --hot src/server.ts",
+    "start": "bun .furin/build/bun/server.js",
+    "test": "bun test tests --timeout 30000",
+    "tscheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@teyik0/furin": "file:../../vendor/furin-pr163-914e82a.tgz",
+    "elysia": "catalog:",
+    "evlog": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "three": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/three": "catalog:",
+    "typescript": "catalog:"
+  }
+}

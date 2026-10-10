@@ -1,6 +1,8 @@
 # Plugins and automation
 
-Open **Plugins** in the sidebar to enable integrations. All plugins start disabled. C411 and Jev require personal API keys. Credentials stay on the Bun side and are excluded from public state; they are stored locally without encryption.
+The built-in integrations below remain optional. AniList is packaged as the official `@tofu/anilist` SDK plugin. Developers can also create experimental trusted local plugins using `apps/scaffolder` and `package/plugins`; see [Plugin architecture](plugin-architecture.md) for installation, native pages, settings, authentication, and lifecycle details. The documentation site runs with `bun run dev:docs` and includes a guided plugin tutorial at `/docs/plugins`.
+
+Open **Plugins** in the sidebar to enable integrations. Built-in discovery integrations start disabled; explicitly trusted local SDK plugins start enabled unless their saved preference disables them. C411 and Jev require personal API keys. Credentials stay on the Bun side and are excluded from public state; they are stored locally without encryption.
 
 ## Sources
 

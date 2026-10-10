@@ -1,0 +1,72 @@
+import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createClient } from "@tofu/plugins/client";
+import type { createAPI } from "../src/server";
+import { createCore, createPluginRuntime } from "@tofu/plugins/server";
+import { createPlugin } from "../src/server";
+import { dashboard, thread } from "../dev/fixtures";
+import { createPreview } from "../dev/preview";
+import { createPreviewSync } from "../dev/sync";
+
+const core = createCore({ dashboard: () => dashboard, thread: (id: string) => id === thread.id ? thread : null });
+const url = "http://localhost/api/plugins/{{id}}";
+
+test("plugin settings persist across disable and restart with independent thread overrides", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-settings-"));
+  const sync = await createPreviewSync(directory);
+  let runtime = createPluginRuntime({ sync: sync.options });
+  try {
+    await runtime.installDefinition({ definition: createPlugin(core), directory });
+    await runtime.enable("{{id}}");
+    const update = await runtime.handle(new Request(`${url}/settings?threadId=${thread.id}`, {
+      method: "PATCH", headers: { "content-type": "application/json", "Idempotency-Key": "thread-greeting" }, body: JSON.stringify({ greeting: "Thread greeting" }),
+    }));
+    expect(update.status).toBe(200);
+    await runtime.disable("{{id}}");
+    expect((await runtime.handle(new Request(`${url}/status`))).status).toBe(404);
+    await runtime.dispose();
+    runtime = createPluginRuntime({ sync: sync.options });
+    await runtime.installDefinition({ definition: createPlugin(core), directory });
+    await runtime.enable("{{id}}");
+    const global = await runtime.handle(new Request(`${url}/settings`));
+    expect(await global.json()).toEqual({ greeting: "Hello from your plugin" });
+    const local = await runtime.handle(new Request(`${url}/settings?threadId=${thread.id}`));
+    expect(local.headers.get("x-furin-query")).toContain("{{id}}.settings");
+    expect(await local.json()).toEqual({ greeting: "Thread greeting" });
+  } finally {
+    await runtime.dispose();
+    sync.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the native Furin preview renders the plugin inside its injected thread shell", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-preview-"));
+  const { app, close } = await createPreview(directory);
+  try {
+    app.listen({ port: 0, hostname: "127.0.0.1" });
+    const origin = `http://127.0.0.1:${app.server?.port}`;
+    const client = createClient<ReturnType<typeof createAPI>>(`${origin}/api/plugins/{{id}}`);
+    const status = await client.status.get();
+    expect(status.error).toBeNull();
+    expect(status.data?.threadCount).toBe(1);
+    const updated = await client.settings.patch({ greeting: "Updated through the Furin client" }, { query: { threadId: thread.id }, headers: { "Idempotency-Key": "preview-greeting" } });
+    expect(updated.error).toBeNull();
+    expect(new Headers(updated.headers).get("x-furin-queries")).toContain("{{id}}.settings");
+    const loaded = await client.settings.get({ query: { threadId: thread.id } });
+    expect(loaded.data?.greeting).toBe("Updated through the Furin client");
+    const response = await fetch(`${origin}/greeting`);
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain("Tofu plugin developer preview");
+    expect(html).toContain("Preview thread");
+    expect(html).toContain("Edit greeting");
+    expect(html).toContain("/_furin/sync");
+  } finally {
+    await app.stop();
+    await close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 30_000);
