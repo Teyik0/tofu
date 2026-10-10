@@ -1,0 +1,236 @@
+scripts/resources.ts
+  s_feb5ae99045589::t_3ec1262329096a 4,14
+scripts/route-types.ts
+  s_feb5ae99045589::t_6c7de8253519b5 2,6-8
+  s_64197781378797::t_77d23545ebb621 1,3-5,9-13
+tests/engine-sync.test.ts
+  s_80c24c8adedafa::t_e6daded7e41c3d 1-2,4,6-15,22-36
+  s_80c24c8adedafa::t_aa0bf8356d981a 5,16-21
+src/lib/automation-mutations.ts
+  s_80c24c8adedafa::t_67e72655da56c8 81
+  s_80c24c8adedafa::t_12f6e2e5a979c7 7,74-75,82-86
+src/hooks/use-preferences-form.ts
+  s_80c24c8adedafa::t_ded3a955617486 8,10,13
+src/hooks/use-settings-action.ts
+  s_80c24c8adedafa::t_337dbf08fe7ad1 20-22
+  s_80c24c8adedafa::t_dd0499efaca7be 18-19,23-28,46,54-59
+src/pages/options/_route.tsx
+  s_80c24c8adedafa::t_ded3a955617486 35
+scripts/native-smoke.ts
+  s_80c24c8adedafa::t_a0b6f2630e7cc5 11,308-315,353-364,2809,2950
+  s_80c24c8adedafa::t_93feb51f969e2d 2904-2906
+  s_80c24c8adedafa::t_9cfbb26a8e2eec 22-29,427
+  s_80c24c8adedafa::t_2bc4d03cb0aed0 12-14,349-352,365-426,3371
+  s_80c24c8adedafa::t_10081c2824f334 428,2805-2808,2923-2936,2947-2949,3203-3204,3356,3361,3372
+tests/destinations.test.ts
+  s_feb5ae99045589::t_71394f9911d0eb 112,122
+src/api/modules/health/index.ts
+  s_80c24c8adedafa::t_5f68f15725a751 1-9
+tests/automation-title-fallback.test.ts
+  s_80c24c8adedafa::t_5438c5966ebcc9 30
+.github/workflows/ci.yml
+  s_80c24c8adedafa::t_2e3d9d70e5b654 34,38,45,49,51,53,55,57
+  s_80c24c8adedafa::t_3015ffad76498e 2,12,24
+src/api/lib/lifecycle.ts
+  s_80c24c8adedafa::t_c05bfe8ce777af 4,108,135,159-162,169,171-176
+  s_80c24c8adedafa::t_f78697d554f6d2 163-168,170
+  s_80c24c8adedafa::t_51627c65cd186d 177-178
+src/api/modules/settings/index.ts
+  s_80c24c8adedafa::t_74341ebf42d4fb 5,19
+.github/workflows/release.yml
+  s_80c24c8adedafa::t_5e56c02b02926e 69,71,73,81
+  s_80c24c8adedafa::t_3ae316c98154a1 83,85,87,95,97,105
+  s_80c24c8adedafa::t_4bb5dd0e53d7f9 84,86
+  s_80c24c8adedafa::t_f930bcb27dc22d 2,5,12,15,19,40,46,50,54,58,65,109,123,127,133
+src/components/plugins/plugin-card.tsx
+  s_feb5ae99045589::t_6c7de8253519b5 79
+  s_80c24c8adedafa::t_ded3a955617486 129-132,151
+src/pages/plugins/_route.tsx
+  s_80c24c8adedafa::t_ded3a955617486 21,45
+src/components/anilist/browse-filters.tsx
+  s_80c24c8adedafa::t_f49a65fd820970 238,243-245
+src/hooks/use-plugin-forms.ts
+  s_80c24c8adedafa::t_ded3a955617486 11,16
+  s_feb5ae99045589::t_6c7de8253519b5 13
+CHANGELOG.md
+  s_64197781378797::t_77d23545ebb621 41
+src/api/index.ts
+  s_80c24c8adedafa::t_5f68f15725a751 10,18
+tests/anilist-cache.test.ts
+  s_80c24c8adedafa::t_c15255cd654920 247-270,282-291,299-302,308-327,333-346
+  s_80c24c8adedafa::t_58d00ef2ca27c3 406-407,409
+  s_80c24c8adedafa::t_6d68c40ed1d51d 408
+  s_80c24c8adedafa::t_782ebe95e4f175 7
+  s_feb5ae99045589::t_6c7de8253519b5 271-281,292-298,303-307,328-332
+src/api/modules/automation/model.ts
+  s_80c24c8adedafa::t_68cd45fc6fb281 5,15
+  s_feb5ae99045589::t_6c7de8253519b5 86-122
+src/components/anilist/panel.tsx
+  s_80c24c8adedafa::t_37b665ba7e97be 123,151,180,408,452,605,690,708,725
+tests/anilist-catalog.test.ts
+  s_80c24c8adedafa::t_e77b6e78bc0433 151
+src/api/modules/torrents/model.ts
+  s_80c24c8adedafa::t_a15b28d73cd8e9 40
+  s_feb5ae99045589::t_6c7de8253519b5 41-49
+  s_80c24c8adedafa::t_1425181ab91f5b 4,16,24-27,33
+tests/schema-contracts.test.ts
+  s_80c24c8adedafa::t_a3250bc105d6a6 7,90-94,121
+  s_80c24c8adedafa::t_e7ab8916c927b9 140-143,162-163
+  s_80c24c8adedafa::t_36b612c3e20071 4-5
+  s_80c24c8adedafa::t_301ad8d1dc9144 122-124,130-139,167
+  s_80c24c8adedafa::t_3da348b86bd5f5 3,8-29
+  s_feb5ae99045589::t_6c7de8253519b5 95-120,125-129,144-161,164-166
+tests/instance.test.ts
+  s_80c24c8adedafa::t_b19402e064fb97 275
+src/hooks/use-autosave-field.ts
+  s_80c24c8adedafa::t_dd0499efaca7be 2,8,15,21-33,36,40
+tests/browse-filters.test.ts
+  s_80c24c8adedafa::t_5c5ebbf149fc17 1-17
+tests/readiness.test.ts
+  s_80c24c8adedafa::t_ddf7cecc07686e 10,12-16,24-28
+src/db/drizzle/0000_initial.sql
+  s_feb5ae99045589::t_ef1dc4ae12234c 2-5,7-10,12-16,18-21,23-26,28-31,33-36,38-41,43-49,51-53
+  s_feb5ae99045589::t_93a07a9348193c 1,6,11,17,22,27,32,37,42,50
+src/components/anilist/episode-modal.tsx
+  s_80c24c8adedafa::t_ded3a955617486 170
+src/api/modules/plugins/index.ts
+  s_80c24c8adedafa::t_b19402e064fb97 14
+src/api/modules/anilist/opening.ts
+  s_80c24c8adedafa::t_8018b5284785a0 27,30
+  s_80c24c8adedafa::t_4ee4f756ea9c35 29,31
+src/components/torrent-drop.tsx
+  s_80c24c8adedafa::t_f49a65fd820970 1,40-43,48-52
+  s_feb5ae99045589::t_6c7de8253519b5 44-47
+tests/database-startup.test.ts
+  s_feb5ae99045589::t_bf4ef7db970c69 72-80,82-84,95-100
+  s_feb5ae99045589::t_5d57b842cc40ea 5,85-94
+  s_feb5ae99045589::t_3ec1262329096a 81
+  s_feb5ae99045589::t_139756bdc76f5a 6,8,43-46,54-55,61
+  s_feb5ae99045589::t_53ff45e65ec0fb 47,52,62-65
+  s_feb5ae99045589::t_7d7e4b2f554b43 10,12-42
+tests/anilist-opening.test.ts
+  s_80c24c8adedafa::t_ce37db5136c0c0 49-62
+src/components/modal.tsx
+  s_80c24c8adedafa::t_337dbf08fe7ad1 350-353,355
+  s_80c24c8adedafa::t_758f0c9cb31eb5 354
+src/pages/error.tsx
+  s_80c24c8adedafa::t_ded3a955617486 10
+package.json
+  s_64197781378797::t_77d23545ebb621 27,30-31,47
+  s_80c24c8adedafa::t_8dc93b6a67c1a8 84
+src/server.ts
+  s_80c24c8adedafa::t_4bb5dd0e53d7f9 44-45
+src/api/lib/db.ts
+  s_feb5ae99045589::t_c59192035748b3 7,23,33-34,37
+src/api/modules/settings/model.ts
+  s_80c24c8adedafa::t_74341ebf42d4fb 3,12,32-38
+  s_feb5ae99045589::t_07ef077146244c 39
+src/lib/navigation.ts
+  s_80c24c8adedafa::t_6c56359fb15ef9 19-23,62,64,66
+src/components/anilist/library.tsx
+  s_feb5ae99045589::t_6c7de8253519b5 460
+  s_80c24c8adedafa::t_ded3a955617486 679,701
+tests/automation-optimistic.test.tsx
+  s_80c24c8adedafa::t_ff92e783d6e6e1 21-25,39,52-57
+  s_80c24c8adedafa::t_6d68c40ed1d51d 134-139
+  s_80c24c8adedafa::t_777d0ec5897f0b 102-106
+  s_80c24c8adedafa::t_6824e850c3f0d6 73,101,107,127,133,140-142
+  s_80c24c8adedafa::t_cea8166b125bc3 11,13-20,26-38,40-51,58-71
+  s_80c24c8adedafa::t_fa1033334e8860 72
+src/api/modules/automation/service.ts
+  s_80c24c8adedafa::t_6602513963ef9d 924-925
+tests/sync.test.ts
+  s_feb5ae99045589::t_d4f9df7d5c18f9 12,14,16-17,21-23,31,33,36,39,41,45,47,54
+tests/engine-worker.test.ts
+  s_feb5ae99045589::t_c44e9c0a76c7af 5,26
+  s_80c24c8adedafa::t_ddf7cecc07686e 124-125,129-135,149-152,158
+  s_80c24c8adedafa::t_777d0ec5897f0b 162-180
+tests/anilist-transport.test.ts
+  s_80c24c8adedafa::t_6c55a1e0788b78 264,284-288,330,333-335,344
+  s_80c24c8adedafa::t_28405ff7a0916c 3-4,9-23,31-33,39,43-67,69-73,78-87
+  s_80c24c8adedafa::t_58d00ef2ca27c3 24-30,34-38,40-42,74-77
+  s_80c24c8adedafa::t_68ea47f9a288be 68
+  s_80c24c8adedafa::t_facf53ab40a7cd 88
+drizzle.config.ts
+  s_feb5ae99045589::t_40472d608723fe 1-7
+tests/anilist-codegen.test.ts
+  s_64197781378797::t_77d23545ebb621 36
+  s_64197781378797::t_0afdba1dea1161 44,58,62
+  s_64197781378797::t_051c904b02c7b6 73,75-79
+  s_64197781378797::t_0361ae9e934953 6,53,56-57,60-61,64,83
+  s_64197781378797::t_af657605c21758 43,47,59,63,67
+src/api/lib/application-host.ts
+  s_80c24c8adedafa::t_66ae14693fa283 43,60-66
+tests/form-state.test.tsx
+  s_80c24c8adedafa::t_6d68c40ed1d51d 17,19
+  s_80c24c8adedafa::t_3d4a97a91a89d4 6,11-16,18,20-29,34-38
+  s_80c24c8adedafa::t_777d0ec5897f0b 4,30-33
+src/pages/options/downloads.tsx
+  s_80c24c8adedafa::t_dd0499efaca7be 35,45-47,53-55,61-63
+tests/validation.test.ts
+  s_80c24c8adedafa::t_f8335d1dcf5bd3 5-23
+src/api/modules/anilist/service.ts
+  s_80c24c8adedafa::t_58d00ef2ca27c3 352-355,430-433,464-467,499-502,579-582,738-741
+  s_80c24c8adedafa::t_b5178c63103de1 86
+  s_80c24c8adedafa::t_c2f901ceebd97d 768-771
+src/db/migrations.ts
+  s_80c24c8adedafa::t_089b68afb4a07b 2
+  s_feb5ae99045589::t_fad9dbcf58b6cb 1,4,9-10
+  s_feb5ae99045589::t_7b73d121741c3e 7
+furin.config.ts
+  s_feb5ae99045589::t_3ec1262329096a 5,37,57
+src/api/modules/anilist/model.ts
+  s_feb5ae99045589::t_6c7de8253519b5 68-74
+tests/application-context.test.ts
+  s_80c24c8adedafa::t_1ef283e681e630 130-134
+  s_80c24c8adedafa::t_a019bc94b448f9 119-129,135-144
+src/pages/options/index.tsx
+  s_80c24c8adedafa::t_ded3a955617486 35-36,65
+src/api/modules/anilist/graphql/transport.ts
+  s_80c24c8adedafa::t_58d00ef2ca27c3 32-35
+  s_80c24c8adedafa::t_99f4b6429465d4 30-31,36-38,48-49
+tests/navigation.test.ts
+  s_80c24c8adedafa::t_43d6b69dfc1020 1-8
+src/components/workspace-dialogs.tsx
+  s_80c24c8adedafa::t_ded3a955617486 24
+scripts/database-migrations.ts
+  s_feb5ae99045589::t_3ec1262329096a 1-18
+bun.lock
+  s_feb5ae99045589::t_602a136be6efea 42,180-181,192-247,836-837,880-881,966-967,988-989,1418-1419,1584-1585,1728-1729,1844-1845,1870-1913,1972-2023
+src/db/drizzle/meta/0000_snapshot.json
+  s_80c24c8adedafa::t_7741796bf8c166 1-288
+src/db/drizzle/meta/_journal.json
+  s_80c24c8adedafa::t_5a930f6f9d9b63 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6caa6442b21b1299d8d9f7fa9dafc3ae58d95e6a",
+  "prompts": {},
+  "sessions": {
+    "s_64197781378797": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a126bf-bb76-7682-8ae8-5ba0e6796d2e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_80c24c8adedafa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a126c9-2c6f-7972-9607-c5b99da7c4f3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_feb5ae99045589": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a126c7-0881-72d3-98f4-f1041bad974b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
