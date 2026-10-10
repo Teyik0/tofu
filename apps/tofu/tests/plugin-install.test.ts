@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { cp, mkdtemp, rename, rm, symlink } from "node:fs/promises";
+import { cp, mkdtemp, realpath, rename, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateSqliteSync, sqliteSyncAdapter } from "@teyik0/furin/sync/sqlite";
@@ -15,7 +15,7 @@ import {
 } from "../scripts/plugin-packages";
 
 test("local plugin installation requires explicit trust before any module can run", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-install-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-plugin-install-")));
   try {
     const source = join(directory, "package");
     const marker = join(directory, "executed.txt");
@@ -82,7 +82,7 @@ async function createPackage(source: string, pagePath: string, greeting: string)
 }
 
 test("trusted packages are pinned and compiled into managed native route and separate registry imports", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-installed-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-plugin-installed-")));
   const source = join(directory, "package");
   const host = join(directory, "host");
   try {
@@ -125,7 +125,7 @@ test("trusted packages are pinned and compiled into managed native route and sep
 });
 
 test("changed installed package files are rejected before their client code executes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-integrity-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-plugin-integrity-")));
   const source = join(directory, "package");
   const host = join(directory, "host");
   const marker = join(directory, "executed.txt");
@@ -209,7 +209,7 @@ async function runCommand(args: string[], cwd: string): Promise<void> {
 }
 
 test("a scaffolded plugin compiles in a native host and runs from a relocated desktop cache", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-real-install-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-plugin-real-install-")));
   const project = join(directory, "plugin");
   const host = join(directory, "host");
   const workspace = join(import.meta.dir, "../../..");
@@ -325,7 +325,7 @@ test("a scaffolded plugin compiles in a native host and runs from a relocated de
 }, 120_000);
 
 test("additional local dependencies install without running package scripts or changing the source pin", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-dependencies-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-plugin-dependencies-")));
   const source = join(directory, "package");
   const host = join(directory, "host");
   const marker = join(directory, "scripts-ran.txt");
@@ -373,7 +373,7 @@ test("additional local dependencies install without running package scripts or c
 });
 
 test("upgrades require both trust and replacement while page traversal is rejected", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-upgrade-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-plugin-upgrade-")));
   const source = join(directory, "package");
   const host = join(directory, "host");
   try {
@@ -412,7 +412,7 @@ test("upgrades require both trust and replacement while page traversal is reject
 });
 
 test("official plugin identities are reserved before copying or executing local packages", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-reserved-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-plugin-reserved-")));
   const source = join(directory, "package");
   const host = join(directory, "host");
   const marker = join(directory, "executed.txt");
@@ -439,7 +439,7 @@ test("official plugin identities are reserved before copying or executing local 
 });
 
 test("managed plugin pages cannot overwrite developer-authored routes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tofu-plugin-route-collision-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-plugin-route-collision-")));
   const source = join(directory, "package");
   const host = join(directory, "host");
   const page = join(host, "src/pages/(app)/(extensions)/extensions/example/greeting.tsx");

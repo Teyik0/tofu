@@ -10,7 +10,7 @@ const credentialSchema = Type.Object({
   version: Type.Literal(1),
 });
 
-/** Private host-owned storage; file permissions provide local OS isolation, not encryption. */
+/** Backend-only plaintext storage; POSIX modes restrict access, while Windows inherits directory ACLs. */
 export async function createCredentialStore(options: {
   directory: string;
   pluginId: string;

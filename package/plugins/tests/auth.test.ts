@@ -26,10 +26,12 @@ test("API key authentication persists privately and exposes only safe status", a
     expect(JSON.stringify(auth.status())).not.toContain("private-api-key");
     const restoredCredentials = await createCredentialStore(options);
     expect(await restoredCredentials.get("api-key")).toBe("private-api-key");
-    // biome-ignore lint/suspicious/noBitwiseOperators: Mask file permission bits to verify private credential storage.
-    expect((await stat(join(directory, "key-plugin", "credentials.json"))).mode & 0o777).toBe(
-      0o600
-    );
+    if (process.platform !== "win32") {
+      // biome-ignore lint/suspicious/noBitwiseOperators: POSIX permission bits verify owner-only credential storage; Windows uses ACLs.
+      expect((await stat(join(directory, "key-plugin", "credentials.json"))).mode & 0o777).toBe(
+        0o600
+      );
+    }
     const restoredAuth = await createApiKeyAuth({ credentials: restoredCredentials });
     expect(restoredAuth.status().authenticated).toBe(true);
     await restoredAuth.disconnect();

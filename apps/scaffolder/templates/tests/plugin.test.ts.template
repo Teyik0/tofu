@@ -57,6 +57,8 @@ test("the native Furin preview renders the plugin inside its injected thread she
     expect(new Headers(updated.headers).get("x-furin-queries")).toContain("{{id}}.settings");
     const loaded = await client.settings.get({ query: { threadId: thread.id } });
     expect(loaded.data?.greeting).toBe("Updated through the Furin client");
+    const global = await client.settings.get();
+    expect(global.data?.greeting).toBe("Hello from your plugin");
     const response = await fetch(`${origin}/greeting`);
     const html = await response.text();
     expect(response.status).toBe(200);

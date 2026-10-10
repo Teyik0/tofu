@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import {
   createClient as furinClient,
   useMutation as furinMutation,
@@ -14,7 +15,7 @@ test("plugin query hooks share the host Furin contexts through direct exports", 
 
 test("the SDK browser entry excludes credential storage and server runtime code", async () => {
   const result = await Bun.build({
-    entrypoints: [new URL("../src/client.ts", import.meta.url).pathname],
+    entrypoints: [fileURLToPath(new URL("../src/client.ts", import.meta.url))],
     packages: "external",
     target: "browser",
   });

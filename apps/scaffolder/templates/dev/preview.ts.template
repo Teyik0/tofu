@@ -17,7 +17,12 @@ export async function createPreview(directory: string) {
     await runtime.installDefinition({ definition: plugin, directory });
     await runtime.enable(plugin.id);
     const app = createPluginApi({ sync: sync.options })
-      .all("/api/plugins/*", { sync: false, parse: "none" }, ({ request }) => runtime.handle(request))
+      .guard({ sync: false })
+      .mount("/api/plugins", (request) => {
+        const url = new URL(request.url);
+        url.pathname = `/api/plugins${url.pathname === "/" ? "" : url.pathname}`;
+        return runtime.handle(new Request(url, request));
+      })
       .use(await furin({ pagesDir: "./dev/pages", sync: sync.options }));
     return { app, runtime, close };
   } catch (error) {
