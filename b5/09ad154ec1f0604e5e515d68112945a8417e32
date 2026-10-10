@@ -1,0 +1,25 @@
+src/api/feeds/rules.ts
+  s_e830586d962d7a::t_905d5fa1ee6246 14
+tests/helpers.ts
+  s_e830586d962d7a::t_9063ce25f54d10 27-32
+tests/automation.test.ts
+  s_e830586d962d7a::t_9063ce25f54d10 59-60
+tests/automation-preferences.test.ts
+  s_e830586d962d7a::t_7a196eb341a819 87-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b509ad154ec1f0604e5e515d68112945a8417e32",
+  "prompts": {},
+  "sessions": {
+    "s_e830586d962d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12427-b542-7021-8787-49df9e8fbe28",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
