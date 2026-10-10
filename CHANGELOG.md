@@ -4,6 +4,11 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ## [Unreleased]
 
+### Added
+
+- AniList trending anime browsing when no personal lists are selected, with paginated catalog search, genres and tags, advanced filters, and additional sorting options.
+- AniList cover previews with next-episode countdowns or publication dates, scores, studios, and genres.
+
 ## [0.2.1]
 
 ### Added

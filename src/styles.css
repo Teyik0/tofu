@@ -2917,6 +2917,61 @@ h2 {
   border-radius: 10px;
   box-shadow: 0 10px 30px var(--panel-shadow);
 }
+.anilist-browse-advanced {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px 24px;
+}
+.anilist-range {
+  display: flex;
+  gap: 8px;
+}
+.anilist-range input {
+  height: 40px;
+}
+.anime-preview-popup {
+  width: min(320px, calc(100vw - 32px));
+  padding: 20px;
+}
+.anime-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.anime-preview-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+  font-size: 14px;
+}
+.anime-preview-heading > span {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.anime-preview-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.anime-preview-details > strong {
+  color: var(--primary);
+}
+.anime-preview-details > span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.anime-preview-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 700px) {
+  .anilist-browse-advanced {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .anilist-filter {
   display: flex;
   flex-direction: column;

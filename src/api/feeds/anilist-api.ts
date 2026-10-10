@@ -1,6 +1,8 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, t } from "elysia";
+import type { AniListCatalogFilters } from "../../types";
 import { type CoreDependencies, createCore, unavailableAutomation } from "../core";
+import { catalogSchema } from "./anilist-catalog";
 import { draft, listStatus, organization } from "./schemas";
 
 export function createAniListApi(dependencies: CoreDependencies) {
@@ -11,6 +13,10 @@ export function createAniListApi(dependencies: CoreDependencies) {
     .use(furinSync(sync))
     .guard({ sync: false })
     .get("/anilist", () => service().anilist.snapshot())
+    .post("/anilist/catalog", { body: catalogSchema }, ({ body }) =>
+      service().anilist.catalog(body as AniListCatalogFilters)
+    )
+    .get("/anilist/catalog/options", () => service().anilist.catalogOptions())
     .post(
       "/anilist/entries/:mediaId/releases",
       { params: t.Object({ mediaId: t.Numeric({ minimum: 1, multipleOf: 1 }) }) },
