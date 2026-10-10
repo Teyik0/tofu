@@ -2,13 +2,16 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { forwardNativeAuthorization } from "../src/server/desktop-protocol";
+import { forwardNativeAuthorization } from "../src/api/desktop-protocol";
 
 test("the protocol helper forwards OAuth to the matching running instance without starting another engine", async () => {
   const directory = await mkdtemp(join(tmpdir(), "tofu-protocol-"));
   const received: string[] = [];
   const server = Bun.serve({
     async fetch(request) {
+      if (request.headers.get("cookie") !== "furin_desktop_test=secret") {
+        return new Response("Forbidden", { status: 403 });
+      }
       const path = new URL(request.url).pathname;
       if (path === "/api/instance") {
         return Response.json({ dataDir: directory, profile: "release" });
@@ -25,7 +28,12 @@ test("the protocol helper forwards OAuth to the matching running instance withou
   try {
     await Bun.write(
       join(directory, "server.json"),
-      JSON.stringify({ mode: "desktop", profile: "release", url: server.url.origin })
+      JSON.stringify({
+        cookie: "furin_desktop_test=secret",
+        mode: "desktop",
+        profile: "release",
+        url: server.url.origin,
+      })
     );
     const input = "tofu://oauth/anilist#access_token=example&state=nonce";
     expect(

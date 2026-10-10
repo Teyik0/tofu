@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { readTorrentDefaults, setDefaultTorrentApp } from "../src/server/desktop-associations";
+import { readTorrentDefaults, setDefaultTorrentApp } from "../src/api/desktop-associations";
 
 test("development cannot change the user's default torrent application", async () => {
   await expect(setDefaultTorrentApp("dev")).rejects.toThrow(

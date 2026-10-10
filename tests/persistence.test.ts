@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
 import type { DashboardState } from "../src/types";
 import { fixture, json, network, waitFor } from "./helpers";
 

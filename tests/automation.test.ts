@@ -1,11 +1,13 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: exercise ordered public API mutations and real transfer lifecycle.
+
+import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { chmod, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
-import { AutomationService } from "../src/server/feeds/service";
-import { pluginEndpoints } from "../src/server/plugins/registry";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
+import { AutomationService } from "../src/api/feeds/service";
+import { pluginEndpoints } from "../src/api/plugins/registry";
 import type { AutomationState } from "../src/types";
 import { fixture, json, network, waitFor } from "./helpers";
 
@@ -15,6 +17,57 @@ const catalog = Bun.serve({
   port: 0,
 });
 afterAll(() => catalog.stop(true));
+
+test("automation resumes recurring AniList sync after a startup database write failure", async () => {
+  const context = await fixture(1024, []);
+  let clock = Date.now();
+  const upstream = Bun.serve({
+    async fetch(request) {
+      const { query } = (await request.json()) as { query: string };
+      return Response.json({
+        data: query.includes("Viewer")
+          ? { Viewer: { id: 42, name: "ExampleUser" } }
+          : { MediaListCollection: { hasNextChunk: false, lists: [] } },
+      });
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  });
+  const dataDir = join(context.directory, "feeds");
+  const service = await AutomationService.open({
+    dataDir,
+    endpoints: { ...pluginEndpoints, anilist: upstream.url.href },
+    engine: () => context.engine,
+    now: () => clock,
+  });
+  const writer = new Database(join(dataDir, "feeds.sqlite"));
+  try {
+    service.configure("anilist", { apiKey: "startup-test-token", enabled: true });
+    service.anilist.subscribe({
+      enabled: true,
+      intervalMinutes: 15,
+      organization: { mode: "shared" },
+      statuses: ["CURRENT"],
+      template: await service.interpret("Example", "default"),
+    });
+    writer.exec("BEGIN IMMEDIATE");
+    await expect(service.start()).rejects.toThrow("database is locked");
+    writer.exec("ROLLBACK");
+    clock += 60_001;
+    const subscription = await waitFor(
+      async () => service.anilist.snapshot().subscriptions[0],
+      (value) => value?.lastSyncAt === clock,
+      20_000
+    );
+    expect(subscription?.lastSyncAt).toBe(clock);
+    expect(subscription?.error).toBeNull();
+  } finally {
+    writer.close();
+    await service.close();
+    upstream.stop(true);
+    await context.close();
+  }
+}, 45_000);
 
 test("pattern rules exclude existing releases and still download newly published episodes", async () => {
   const context = await fixture(4096, []);

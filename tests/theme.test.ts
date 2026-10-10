@@ -1,8 +1,8 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: exercise sequential user preference changes through the public API.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
 import { fixture, json, network } from "./helpers";
 
 test("appearance defaults to system and a saved theme survives restart and older clients", async () => {

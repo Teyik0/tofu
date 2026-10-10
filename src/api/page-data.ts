@@ -5,7 +5,7 @@ import type { DashboardState, TorrentDetail } from "../types";
 
 export async function loadTorrentPage(
   dashboard: Promise<DashboardState>,
-  origin: string,
+  request: Request,
   destinationId: string | null
 ) {
   const state = await dashboard;
@@ -21,7 +21,7 @@ export async function loadTorrentPage(
     )?.id ?? null;
   const initialDetail: Promise<TorrentDetail | null> = initialTorrentId
     ? (async () => {
-        const { data, error } = await createTofuClient(origin)
+        const { data, error } = await createTofuClient(new URL(request.url).origin, request)
           .api.torrents({ id: initialTorrentId })
           .get();
         if (error || !data || !("id" in data)) {

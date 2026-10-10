@@ -1,22 +1,26 @@
 import { useQuery } from "@teyik0/furin/client";
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
   CheckIcon,
+  HistoryIcon,
+  InboxIcon,
+  ListChecksIcon,
   LoaderCircleIcon,
+  PauseIcon,
+  PencilIcon,
   PlayIcon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
-  TrashIcon,
+  SlidersHorizontalIcon,
+  Trash2Icon,
   ZapIcon,
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { api } from "../client";
 import type {
-  AutomationCriterion,
   AutomationDecision,
   AutomationDraft,
+  AutomationPreferences,
   AutomationRule,
   AutomationState,
   DiscoveryResult,
@@ -25,44 +29,36 @@ import type {
   SourcePluginId,
 } from "../types";
 import { ActionTooltip } from "./action-tooltip";
+import { AniListIcon } from "./anilist-icon";
 import { AniListPanel } from "./anilist-panel";
 import { request } from "./api";
 import { useDashboard } from "./app-shell";
-import { bytes } from "./format";
+import { PreferenceFields, RuleFields, sourceNames } from "./automation-fields";
+import { AutomationInbox, isPending, ReleaseLine, useNow } from "./automation-inbox";
+import { relative } from "./format";
+import { OptionSelect } from "./option-select";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "./ui/field";
-import { Input } from "./ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { Field, FieldLabel } from "./ui/field";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
 import { Skeleton } from "./ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Textarea } from "./ui/textarea";
 
-const sourceNames: Record<SourcePluginId, string> = {
-  c411: "C411",
-  nyaa: "Nyaa",
-  tsundere: "Tsundere-Raws",
-};
-const criterionNames: Record<AutomationCriterion, string> = {
-  codec: "Codec",
-  language: "Language",
-  resolution: "Resolution",
-  source: "Source",
-};
+export type AutomationSection =
+  | "inbox"
+  | "rules"
+  | "anilist"
+  | "discover"
+  | "history"
+  | "preferences";
 const ruleStatuses: Record<AutomationRule["status"], string> = {
   active: "Active",
-  error: "Needs review",
+  error: "Needs attention",
   paused: "Paused",
   running: "Checking…",
   "source-disabled": "Plugin disabled",
@@ -70,10 +66,10 @@ const ruleStatuses: Record<AutomationRule["status"], string> = {
 const decisionStatuses: Record<AutomationDecision["status"], string> = {
   added: "Added",
   adding: "Adding",
-  error: "Error",
-  ignored: "Ignored",
+  error: "Could not be added",
+  ignored: "Skipped",
   review: "Needs confirmation",
-  waiting: "Waiting",
+  waiting: "Waiting for a better version",
 };
 type Action = (task: () => Promise<void>) => void;
 type Preview = DiscoveryResult & {
@@ -84,18 +80,22 @@ type Preview = DiscoveryResult & {
     uncertain: boolean;
   }[];
 };
-const list = (value: string) =>
-  value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 
-function QuietEmpty({ title, description }: { title: string; description: string }) {
+function QuietEmpty({
+  title,
+  description,
+  icon,
+}: {
+  title: string;
+  description: string;
+  icon: typeof ZapIcon;
+}) {
+  const Glyph = icon;
   return (
-    <Empty>
+    <Empty className="automation-empty">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <ZapIcon />
+          <Glyph />
         </EmptyMedia>
         <EmptyTitle>{title}</EmptyTitle>
         <EmptyDescription>{description}</EmptyDescription>
@@ -104,303 +104,154 @@ function QuietEmpty({ title, description }: { title: string; description: string
   );
 }
 
-function OrderEditor<T extends string>({
-  values,
-  names,
-  onChange,
-  label,
+function SectionHeading({
+  title,
+  description,
+  children,
 }: {
-  values: T[];
-  names: Record<T, string>;
-  onChange: (values: T[]) => void;
-  label: string;
+  title: string;
+  description: string;
+  children?: ReactNode;
 }) {
-  const move = (index: number, direction: number) => {
-    const next = [...values];
-    const value = next[index];
-    const other = next[index + direction];
-    if (value === undefined || other === undefined) {
-      return;
-    }
-    next[index] = other;
-    next[index + direction] = value;
-    onChange(next);
-  };
   return (
-    <Field>
-      <FieldLabel>{label}</FieldLabel>
-      <div className="priority-list">
-        {values.map((value, index) => (
-          <div className="priority-item" key={value}>
-            <span className="priority-number">{index + 1}</span>
-            <span>{names[value]}</span>
-            <div className="ml-auto flex gap-1">
-              <ActionTooltip>
-                <Button
-                  aria-label={`Monter ${names[value]}`}
-                  disabled={index === 0}
-                  onClick={() => move(index, -1)}
-                  size="icon-xs"
-                  type="button"
-                  variant="ghost"
-                >
-                  <ArrowUpIcon />
-                </Button>
-              </ActionTooltip>
-              <ActionTooltip>
-                <Button
-                  aria-label={`Descendre ${names[value]}`}
-                  disabled={index === values.length - 1}
-                  onClick={() => move(index, 1)}
-                  size="icon-xs"
-                  type="button"
-                  variant="ghost"
-                >
-                  <ArrowDownIcon />
-                </Button>
-              </ActionTooltip>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Field>
-  );
-}
-
-export function RuleFields({
-  draft,
-  onChange,
-  identity,
-}: {
-  draft: AutomationDraft;
-  onChange: (draft: AutomationDraft) => void;
-  identity?: ReactNode;
-}) {
-  const set = <K extends keyof AutomationDraft>(key: K, value: AutomationDraft[K]) =>
-    onChange({ ...draft, [key]: value });
-  return (
-    <FieldGroup>
-      {identity ?? (
-        <div className="automation-field-grid">
-          <Field>
-            <FieldLabel htmlFor="automation-title">Exact name or fallback pattern</FieldLabel>
-            <Input
-              id="automation-title"
-              onChange={(event) => set("title", event.target.value)}
-              required
-              value={draft.title}
-            />
-            <FieldDescription>
-              Check the extracted title. It is also used for matching without Jev.
-            </FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="automation-matcher">Matching</FieldLabel>
-            <Select
-              items={[
-                { label: "Exact title name", value: "exact" },
-                { label: "Release name pattern", value: "pattern" },
-                { label: "Jev + exact fallback", value: "jev" },
-              ]}
-              onValueChange={(value) => set("matchMode", value as AutomationDraft["matchMode"])}
-              value={draft.matchMode}
-            >
-              <SelectTrigger className="w-full" id="automation-matcher">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  <SelectItem value="exact">Exact title name</SelectItem>
-                  <SelectItem value="pattern">Release name pattern</SelectItem>
-                  <SelectItem value="jev">Jev + exact fallback</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-      )}
-      <div className="automation-field-grid">
-        <Field>
-          <FieldLabel htmlFor="automation-language">
-            Accepted languages, in priority order
-          </FieldLabel>
-          <Input
-            id="automation-language"
-            onChange={(event) =>
-              set(
-                "languages",
-                list(event.target.value).map((value) => value.toUpperCase())
-              )
-            }
-            placeholder="VF, MULTI or VOSTFR"
-            value={draft.languages.join(", ")}
-          />
-          <FieldDescription>
-            Empty = all. MULTI does not guarantee French subtitles.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="automation-resolution">Resolutions, in priority order</FieldLabel>
-          <Input
-            id="automation-resolution"
-            onChange={(event) =>
-              set(
-                "resolutions",
-                list(event.target.value).map((value) => value.toLowerCase())
-              )
-            }
-            placeholder="1080p, 720p"
-            value={draft.resolutions.join(", ")}
-          />
-          <FieldDescription>
-            One value = required. Multiple values = allowed fallbacks.
-          </FieldDescription>
-        </Field>
-      </div>
-      <div className="automation-field-grid">
-        <Field>
-          <FieldLabel htmlFor="automation-codec">Accepted codecs, in priority order</FieldLabel>
-          <Input
-            id="automation-codec"
-            onChange={(event) => set("codecs", list(event.target.value))}
-            placeholder="H.265, H.264, AV1"
-            value={draft.codecs.join(", ")}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="automation-season">Season</FieldLabel>
-          <Input
-            id="automation-season"
-            min="1"
-            onChange={(event) =>
-              set("season", event.target.value ? Number(event.target.value) : null)
-            }
-            placeholder="All"
-            type="number"
-            value={draft.season ?? ""}
-          />
-        </Field>
-      </div>
-      <div className="automation-field-grid">
-        <OrderEditor
-          label="Source priority"
-          names={sourceNames}
-          onChange={(value) => set("sources", value)}
-          values={draft.sources}
-        />
-        <OrderEditor
-          label="Criteria order"
-          names={criterionNames}
-          onChange={(value) => set("priority", value)}
-          values={draft.priority}
-        />
-      </div>
-      <Field>
-        <FieldLabel>Sources used</FieldLabel>
-        <div className="flex flex-wrap gap-4">
-          {(Object.keys(sourceNames) as SourcePluginId[]).map((id) => (
-            <Field key={id} orientation="horizontal">
-              <Checkbox
-                checked={draft.sources.includes(id)}
-                id={`source-${id}`}
-                onCheckedChange={(value) =>
-                  set(
-                    "sources",
-                    value === true
-                      ? [...draft.sources, id]
-                      : draft.sources.filter((source) => source !== id)
-                  )
-                }
-              />
-              <FieldLabel htmlFor={`source-${id}`}>{sourceNames[id]}</FieldLabel>
-            </Field>
-          ))}
-        </div>
-      </Field>
-      <div className="automation-field-grid">
-        <Field>
-          <FieldLabel htmlFor="automation-interval">Check every (minutes)</FieldLabel>
-          <Input
-            id="automation-interval"
-            max="1440"
-            min="1"
-            onChange={(event) => set("intervalMinutes", Number(event.target.value))}
-            type="number"
-            value={draft.intervalMinutes}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="automation-wait">Wait for a better version (minutes)</FieldLabel>
-          <Input
-            id="automation-wait"
-            max="1440"
-            min="0"
-            onChange={(event) => set("waitMinutes", Number(event.target.value))}
-            type="number"
-            value={draft.waitMinutes}
-          />
-          <FieldDescription>
-            0 = immediate. The ideal combination starts without waiting. A fallback version stays
-            monitored and will be replaced by a better one according to your priorities.
-          </FieldDescription>
-        </Field>
-      </div>
-      <div className="automation-checks">
-        {(
-          [
-            { key: "automatic", label: "Download automatically" },
-            { key: "includeExisting", label: "Include existing releases" },
-            { key: "excludePacks", label: "Exclude packs and complete collections" },
-            { key: "paused", label: "Add torrents paused" },
-            {
-              key: "deleteReplacedFiles",
-              label: "Delete old files after replacement",
-            },
-            { key: "enabled", label: "Enable this automation" },
-          ] as const
-        ).map((option) => (
-          <Field key={option.key} orientation="horizontal">
-            <Checkbox
-              checked={draft[option.key] === true}
-              id={`automation-${option.key}`}
-              onCheckedChange={(value) => set(option.key, value === true)}
-            />
-            <FieldLabel htmlFor={`automation-${option.key}`}>{option.label}</FieldLabel>
-          </Field>
-        ))}
-      </div>
-      <FieldDescription>
-        The old version is removed once the new one finishes downloading. Its files are kept unless
-        you select the deletion option. An ideal match is no longer reevaluated; new episodes remain
-        monitored.
-      </FieldDescription>
-    </FieldGroup>
-  );
-}
-
-function ReleaseRow({ release, children }: { release: FeedRelease; children?: React.ReactNode }) {
-  return (
-    <div className="feed-release">
-      <div className="min-w-0">
-        <strong title={release.title}>{release.title}</strong>
-        <div className="feed-release-meta">
-          <Badge variant="outline">{sourceNames[release.sourceId]}</Badge>
-          <span>{release.resolution ?? "—"}</span>
-          <span>{release.language ?? "—"}</span>
-          <span>{bytes(release.size)}</span>
-          <span>{release.seeders === null ? "—" : release.seeders} sources</span>
-        </div>
+    <div className="automation-section-title">
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
       </div>
       {children}
     </div>
   );
 }
 
+function ruleDraft(rule: AutomationRule): AutomationDraft {
+  return {
+    afterEpisode: rule.afterEpisode,
+    aliases: rule.aliases,
+    automatic: rule.automatic,
+    codecs: rule.codecs,
+    deleteReplacedFiles: rule.deleteReplacedFiles,
+    destinationId: rule.destinationId,
+    enabled: rule.enabled,
+    excludePacks: rule.excludePacks,
+    includeExisting: rule.includeExisting,
+    intervalMinutes: rule.intervalMinutes,
+    languages: rule.languages,
+    matchMode: rule.matchMode,
+    paused: rule.paused,
+    priority: rule.priority,
+    query: rule.query,
+    resolutions: rule.resolutions,
+    season: rule.season,
+    sources: rule.sources,
+    title: rule.title,
+    waitMinutes: rule.waitMinutes,
+  };
+}
+
+function RuleCard({
+  rule,
+  pending,
+  busy,
+  now,
+  run,
+  edit,
+  toggle,
+  remove,
+  openInbox,
+}: {
+  rule: AutomationRule;
+  pending: number;
+  busy: boolean;
+  now: number;
+  run: () => void;
+  edit: () => void;
+  toggle: () => void;
+  remove: () => void;
+  openInbox: () => void;
+}) {
+  return (
+    <article className="rule-card" data-rule-status={rule.status}>
+      <div className="rule-card-heading">
+        <span aria-hidden="true" className="rule-card-dot" />
+        <div className="rule-card-title">
+          <strong title={rule.title}>{rule.title}</strong>
+          {rule.query && rule.query !== rule.title ? <p>{rule.query}</p> : null}
+        </div>
+        <Badge variant="outline">{ruleStatuses[rule.status]}</Badge>
+      </div>
+      <ul className="rule-card-summary">
+        <li>{rule.languages.join(" → ") || "Any language"}</li>
+        <li>{rule.resolutions.join(" → ") || "Any resolution"}</li>
+        <li>{rule.sources.map((id) => sourceNames[id]).join(" → ")}</li>
+        {rule.season === null ? null : <li>Season {rule.season}</li>}
+        <li>{rule.automatic ? "Downloads automatically" : "Asks before downloading"}</li>
+        {rule.waitMinutes > 0 ? <li>Waits {rule.waitMinutes} min for better</li> : null}
+      </ul>
+      {pending > 0 ? (
+        <button className="rule-card-pending" onClick={openInbox} type="button">
+          <InboxIcon aria-hidden="true" />
+          {pending} release{pending > 1 ? "s" : ""} waiting in the Inbox
+        </button>
+      ) : null}
+      {rule.error !== null && (
+        <Alert>
+          <AlertDescription>{rule.error}</AlertDescription>
+        </Alert>
+      )}
+      <footer className="rule-card-footer">
+        <span>
+          {rule.lastRunAt ? `Checked ${relative(rule.lastRunAt, now)}` : "Not checked yet"}
+          {rule.enabled && rule.nextRunAt
+            ? ` · next ${relative(Math.max(rule.nextRunAt, now), now)}`
+            : ""}
+        </span>
+        <div className="rule-card-actions">
+          <Button disabled={busy || !rule.enabled} onClick={run} size="sm" variant="outline">
+            <RefreshCwIcon data-icon="inline-start" />
+            Check now
+          </Button>
+          <ActionTooltip>
+            <Button aria-label={`Edit ${rule.title}`} onClick={edit} size="icon-sm" variant="ghost">
+              <PencilIcon />
+            </Button>
+          </ActionTooltip>
+          <ActionTooltip>
+            <Button
+              aria-label={`${rule.enabled ? "Pause" : "Resume"} ${rule.title}`}
+              disabled={busy}
+              onClick={toggle}
+              size="icon-sm"
+              variant="ghost"
+            >
+              {rule.enabled ? <PauseIcon /> : <PlayIcon />}
+            </Button>
+          </ActionTooltip>
+          <ActionTooltip>
+            <Button
+              aria-label={`Delete the automation ${rule.title}`}
+              className="danger-text"
+              disabled={busy}
+              onClick={remove}
+              size="icon-sm"
+              variant="ghost"
+            >
+              <Trash2Icon />
+            </Button>
+          </ActionTooltip>
+        </div>
+      </footer>
+    </article>
+  );
+}
+
 export function AutomationCenter({
   destinationId,
+  section,
   close,
 }: {
   destinationId: string;
+  section: AutomationSection;
   close: () => void;
 }) {
   const { data: dashboard, refresh } = useDashboard();
@@ -408,7 +259,7 @@ export function AutomationCenter({
   const [saved, setSaved] = useState<AutomationState | null>(null);
   const state: AutomationState | null =
     live && "plugins" in live && (!saved || live.updatedAt > saved.updatedAt) ? live : saved;
-  const [tab, setTab] = useState("automations");
+  const [tab, setTab] = useState<AutomationSection>(section);
   const [target, setTarget] = useState(destinationId);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<AutomationDraft | null>(null);
@@ -417,14 +268,18 @@ export function AutomationCenter({
   const [discovery, setDiscovery] = useState<DiscoveryResult | null>(null);
   const [search, setSearch] = useState("");
   const [excludedSources, setExcludedSources] = useState<SourcePluginId[]>([]);
+  const [preferences, setPreferences] = useState<AutomationPreferences | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const now = useNow(30_000);
   const reload = async () => {
     setSaved(await request<AutomationState>("/automation", "GET", undefined));
   };
   const action: Action = (task) => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     void task()
       .catch((cause) => setError(cause instanceof Error ? cause.message : "An error occurred"))
       .finally(() => setBusy(false));
@@ -436,19 +291,25 @@ export function AutomationCenter({
         plugin.enabled && (plugin.id === "nyaa" || plugin.id === "tsundere" || plugin.id === "c411")
     ) ?? [];
   const selectedSources = activeSources.filter((plugin) => !excludedSources.includes(plugin.id));
-  const naturalSearch =
-    state?.plugins.some((plugin) => plugin.id === "jev" && plugin.enabled && plugin.hasApiKey) ===
-    true;
+  const jev = state?.plugins.find((plugin) => plugin.id === "jev");
+  const naturalSearch = jev?.enabled === true && jev.hasApiKey;
   const rules = state?.automations.filter((rule) => rule.destinationId === target) ?? [];
-  const decisions =
-    state?.decisions.filter((decision) =>
-      rules.some((rule) => rule.id === decision.automationId)
+  const pending = state?.decisions.filter(isPending) ?? [];
+  const history =
+    state?.decisions.filter(
+      (decision) => !isPending(decision) && rules.some((rule) => rule.id === decision.automationId)
     ) ?? [];
+  const editedPreferences = preferences ?? state?.preferences ?? null;
   const reset = () => {
     setDraft(null);
     setEditId(null);
     setQuery("");
     setPreview(null);
+  };
+  const changeTarget = (value: string) => {
+    setTarget(value);
+    reset();
+    setDiscovery(null);
   };
   const interpret = (event: FormEvent) => {
     event.preventDefault();
@@ -478,34 +339,21 @@ export function AutomationCenter({
       }
       await reload();
       await refresh();
+      setNotice(editId ? "Rule saved." : "Automation created and checked once.");
     });
-  const edit = (rule: AutomationRule) => {
-    const fields: AutomationDraft = {
-      afterEpisode: rule.afterEpisode,
-      aliases: rule.aliases,
-      automatic: rule.automatic,
-      codecs: rule.codecs,
-      destinationId: rule.destinationId,
-      enabled: rule.enabled,
-      excludePacks: rule.excludePacks,
-      includeExisting: rule.includeExisting,
-      intervalMinutes: rule.intervalMinutes,
-      languages: rule.languages,
-      matchMode: rule.matchMode,
-      paused: rule.paused,
-      priority: rule.priority,
-      query: rule.query,
-      resolutions: rule.resolutions,
-      season: rule.season,
-      sources: rule.sources,
-      title: rule.title,
-      waitMinutes: rule.waitMinutes,
-    };
-    setEditId(rule.id);
-    setQuery(rule.query);
-    setDraft(fields);
-    setPreview(null);
-  };
+  const decide = (decision: AutomationDecision, verdict: "approve" | "ignore") =>
+    action(async () => {
+      await request(
+        `/automation-decisions/${encodeURIComponent(decision.id)}/${verdict}`,
+        "POST",
+        {}
+      );
+      await reload();
+      if (verdict === "approve") {
+        await refresh();
+      }
+    });
+  const showThread = tab !== "inbox" && tab !== "preferences";
   return (
     <Dialog
       onOpenChange={(open) => {
@@ -516,545 +364,585 @@ export function AutomationCenter({
       open
     >
       <DialogContent className="automation-dialog">
-        <DialogHeader>
-          <DialogTitle>Sources & automations</DialogTitle>
-          <DialogDescription>
-            Your sources, your priorities. Each rule downloads into its thread folder.
-          </DialogDescription>
-        </DialogHeader>
-        <Tabs onValueChange={setTab} value={tab}>
-          <TabsList variant="line">
-            <TabsTrigger value="discover">
-              <SearchIcon />
-              Discover
-            </TabsTrigger>
-            <TabsTrigger value="automations">
-              <ZapIcon />
-              Automations
-            </TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
-            <TabsTrigger value="anilist">AniList tracking</TabsTrigger>
-          </TabsList>
-          {error || loadingError ? (
-            <Alert>
-              <AlertDescription>{error ?? "Unable to load automations"}</AlertDescription>
-            </Alert>
-          ) : null}
-          {state ? (
-            <>
-              <TabsContent value="anilist">
-                <AniListPanel
-                  action={action}
-                  automations={state.automations}
-                  busy={busy}
-                  destinationField={
-                    <DestinationField
-                      onChange={(value) => {
-                        setTarget(value);
-                        reset();
-                      }}
-                      value={target}
-                    />
-                  }
-                  destinations={dashboard.destinations}
-                  key={target}
-                  plugin={state.plugins.find((plugin) => plugin.id === "anilist")}
-                  reloadPlugins={reload}
-                  renderTemplate={(template, onChange) => (
-                    <RuleFields draft={template} onChange={onChange} />
-                  )}
-                  target={target}
-                />
-              </TabsContent>
-              <TabsContent value="discover">
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    action(async () =>
-                      setDiscovery(
-                        await request<DiscoveryResult>("/discover", "POST", {
-                          query: search,
-                          sources: selectedSources.map((plugin) => plugin.id),
-                        })
-                      )
-                    );
-                  }}
-                >
-                  <FieldGroup>
-                    <FieldSet disabled={busy}>
-                      <FieldLegend variant="label">Sources</FieldLegend>
-                      {activeSources.length ? (
-                        <FieldGroup className="discovery-sources">
-                          <Field orientation="horizontal">
-                            <Checkbox
-                              checked={selectedSources.length === activeSources.length}
-                              disabled={busy}
-                              id="discovery-all-sources"
-                              indeterminate={
-                                selectedSources.length > 0 &&
-                                selectedSources.length < activeSources.length
-                              }
-                              onCheckedChange={(checked) => {
-                                setExcludedSources(
-                                  checked === true ? [] : activeSources.map((plugin) => plugin.id)
-                                );
-                                setDiscovery(null);
-                              }}
-                            />
-                            <FieldLabel htmlFor="discovery-all-sources">All</FieldLabel>
-                          </Field>
-                          {activeSources.map((plugin) => (
-                            <Field key={plugin.id} orientation="horizontal">
-                              <Checkbox
-                                checked={!excludedSources.includes(plugin.id)}
-                                disabled={busy}
-                                id={`discovery-source-${plugin.id}`}
-                                onCheckedChange={(checked) => {
-                                  setExcludedSources((previous) =>
-                                    checked === true
-                                      ? previous.filter((id) => id !== plugin.id)
-                                      : [...previous, plugin.id]
-                                  );
-                                  setDiscovery(null);
-                                }}
-                              />
-                              <FieldLabel htmlFor={`discovery-source-${plugin.id}`}>
-                                {plugin.name}
-                              </FieldLabel>
-                            </Field>
-                          ))}
-                        </FieldGroup>
-                      ) : (
-                        <FieldDescription>
-                          Enable a source in the Plugins tab to search.
-                        </FieldDescription>
-                      )}
-                    </FieldSet>
-                    <div className="automation-search">
-                      <Field>
-                        <FieldLabel htmlFor="feed-search">
-                          {naturalSearch
-                            ? "Natural language search across sources"
-                            : "Keyword search across sources"}
-                        </FieldLabel>
-                        <Input
-                          disabled={busy || !activeSources.length}
-                          id="feed-search"
-                          onChange={(event) => setSearch(event.target.value)}
-                          placeholder={naturalSearch ? "re zero ep9 season4" : "A title, keywords…"}
-                          required
-                          value={search}
-                        />
-                      </Field>
-                      <Button
-                        disabled={busy || !selectedSources.length || !search.trim()}
-                        type="submit"
-                      >
-                        {busy ? (
-                          <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
-                        ) : (
-                          <SearchIcon data-icon="inline-start" />
-                        )}
-                        {busy ? "Searching…" : "Search"}
-                      </Button>
-                    </div>
-                    <FieldDescription>
-                      {naturalSearch
-                        ? "Enter the title, season, and episode in any order. English and Japanese titles are searched automatically."
-                        : "Your keywords are searched as entered. Enable and configure Jev in Plugins to use natural language search."}
-                    </FieldDescription>
-                  </FieldGroup>
-                </form>
-                <DestinationField
-                  onChange={(value) => {
-                    setTarget(value);
-                    reset();
-                  }}
-                  value={target}
-                />
-                {discovery?.search?.warning ? (
-                  <Alert>
-                    <AlertDescription>{discovery.search.warning}</AlertDescription>
-                  </Alert>
-                ) : null}
-                {discovery?.search?.title ? (
-                  <div aria-live="polite" className="discovery-summary">
-                    <strong>{discovery.search.title}</strong>
-                    {discovery.search.season === null ? null : (
-                      <Badge variant="secondary">Season {discovery.search.season}</Badge>
-                    )}
-                    {discovery.search.episode === null ? null : (
-                      <Badge variant="secondary">Episode {discovery.search.episode}</Badge>
-                    )}
-                    <span>
-                      {discovery.releases.length} result{discovery.releases.length > 1 ? "s" : ""}
-                    </span>
-                  </div>
-                ) : null}
-                {discovery?.errors.map((item) => (
-                  <Alert key={item.sourceId}>
-                    <AlertDescription>
-                      {sourceNames[item.sourceId]} : {item.message}
-                    </AlertDescription>
-                  </Alert>
-                ))}
-                {discovery?.releases.map((release) => (
-                  <ReleaseRow key={`${release.sourceId}:${release.id}`} release={release}>
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        action(async () => {
-                          await request("/discover/add", "POST", {
-                            destinationId: target,
-                            id: release.id,
-                            paused: false,
-                            sourceId: release.sourceId,
-                          });
-                          await refresh();
-                        })
-                      }
-                      size="sm"
-                      variant="outline"
-                    >
-                      <PlusIcon data-icon="inline-start" />
-                      Add
-                    </Button>
-                  </ReleaseRow>
-                ))}
-                {!discovery?.releases.length && (
-                  <QuietEmpty
-                    description={
-                      discovery
-                        ? "Try another title or season, or select more sources."
-                        : "Choose your sources and search for a series, season, or episode."
-                    }
-                    title={discovery ? "No releases found" : "One search, multiple sources"}
+        <Tabs
+          className="automation-layout"
+          onValueChange={(value) => setTab(value as AutomationSection)}
+          orientation="vertical"
+          value={tab}
+        >
+          <aside className="automation-nav">
+            <DialogHeader className="automation-brand">
+              <DialogTitle>
+                <ZapIcon aria-hidden="true" />
+                Automations
+              </DialogTitle>
+              <DialogDescription>
+                Tofu watches your sources and downloads new releases into your threads.
+              </DialogDescription>
+            </DialogHeader>
+            <TabsList aria-label="Automation sections" variant="line">
+              <TabsTrigger value="inbox">
+                <InboxIcon />
+                Inbox
+                {pending.length ? <Badge>{pending.length}</Badge> : null}
+              </TabsTrigger>
+              <TabsTrigger value="rules">
+                <ListChecksIcon />
+                Rules
+              </TabsTrigger>
+              <TabsTrigger value="anilist">
+                <AniListIcon />
+                AniList tracking
+              </TabsTrigger>
+              <TabsTrigger value="discover">
+                <SearchIcon />
+                Discover
+              </TabsTrigger>
+              <TabsTrigger value="history">
+                <HistoryIcon />
+                History
+              </TabsTrigger>
+              <TabsTrigger value="preferences">
+                <SlidersHorizontalIcon />
+                Preferences
+              </TabsTrigger>
+            </TabsList>
+          </aside>
+          <div className="automation-main">
+            {showThread ? (
+              <div className="automation-thread">
+                <Field className="automation-target" orientation="horizontal">
+                  <FieldLabel htmlFor="automation-destination">Thread</FieldLabel>
+                  <OptionSelect
+                    disabled={busy}
+                    id="automation-destination"
+                    onValueChange={changeTarget}
+                    options={dashboard.destinations.map((item) => ({
+                      label: item.name,
+                      value: item.id,
+                    }))}
+                    value={target}
                   />
-                )}
-              </TabsContent>
-              <TabsContent value="automations">
-                <DestinationField
-                  onChange={(value) => {
-                    setTarget(value);
-                    reset();
-                  }}
-                  value={target}
-                />
-                <div className="automation-destination-path">{destination?.downloadPath}</div>
-                <form onSubmit={interpret}>
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="automation-query">
-                        What would you like to download?
-                      </FieldLabel>
-                      <Textarea
-                        id="automation-query"
-                        onChange={(event) => {
-                          setQuery(event.target.value);
-                          setDraft(null);
-                          setPreview(null);
-                        }}
-                        placeholder="Download new episodes of Ao Ashi season 2 with VF, prefer 1080p then 720p, with Tsundere-Raws before Nyaa."
-                        required
-                        rows={3}
-                        value={query}
-                      />
-                      <FieldDescription>
-                        {state.plugins.find((plugin) => plugin.id === "jev")?.enabled
-                          ? "Jev interprets your request. Then review the proposed criteria."
-                          : "Without Jev: enter an exact name or pattern and adjust the criteria below."}
-                      </FieldDescription>
-                    </Field>
-                  </FieldGroup>
-                  <div className="automation-form-actions">
-                    <Button disabled={busy || !query.trim()} type="submit" variant="outline">
-                      {busy ? (
-                        <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
-                      ) : (
-                        <ZapIcon data-icon="inline-start" />
-                      )}
-                      Prepare rule
-                    </Button>
-                    {editId !== null && (
-                      <Button onClick={reset} type="button" variant="ghost">
-                        Cancel editing
-                      </Button>
-                    )}
-                  </div>
-                </form>
-                {draft !== null && (
-                  <div className="automation-editor">
-                    <RuleFields
-                      draft={draft}
-                      onChange={(value) => {
-                        setDraft(value);
-                        setPreview(null);
-                      }}
+                </Field>
+                <span className="automation-destination-path" title={destination?.downloadPath}>
+                  {destination?.downloadPath}
+                </span>
+              </div>
+            ) : null}
+            <div className="automation-scroll">
+              {error || loadingError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{error ?? "Unable to load automations"}</AlertDescription>
+                </Alert>
+              ) : null}
+              {notice ? (
+                <Alert>
+                  <CheckIcon />
+                  <AlertDescription>{notice}</AlertDescription>
+                </Alert>
+              ) : null}
+              {state ? (
+                <>
+                  <TabsContent value="inbox">
+                    <SectionHeading
+                      description="Every release Tofu is holding back, across all threads."
+                      title="Inbox"
                     />
-                    <div className="automation-form-actions">
-                      <Button
-                        disabled={busy}
-                        onClick={() =>
-                          action(async () =>
-                            setPreview(
-                              await request<Preview>("/automations/preview", "POST", draft)
-                            )
-                          )
-                        }
-                        variant="outline"
-                      >
-                        Preview matches
-                      </Button>
-                      <Button
-                        disabled={busy || !draft.title.trim() || !draft.sources.length}
-                        onClick={save}
-                      >
-                        <CheckIcon data-icon="inline-start" />
-                        {editId ? "Save changes" : "Create automation"}
-                      </Button>
-                    </div>
-                    {preview !== null && (
-                      <div className="automation-preview">
-                        <span className="automation-caption">
-                          PREVIEW · {preview.candidates.length} RELEASE(S)
-                        </span>
-                        {preview.errors.map((item) => (
-                          <Alert key={item.sourceId}>
-                            <AlertDescription>
-                              {sourceNames[item.sourceId]} : {item.message}
-                            </AlertDescription>
-                          </Alert>
-                        ))}
-                        {preview.candidates.map((candidate) => (
-                          <ReleaseRow
-                            key={`${candidate.release.sourceId}:${candidate.release.id}`}
-                            release={candidate.release}
-                          >
-                            <Badge variant="outline">
-                              {candidate.reason ??
-                                (candidate.uncertain ? "Needs review" : "Matches")}
-                            </Badge>
-                          </ReleaseRow>
-                        ))}
-                        {!preview.candidates.length && (
-                          <p>No releases available for this preview.</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className="automation-section-heading">
-                  <span className="automation-caption">RULES IN THIS THREAD · {rules.length}</span>
-                  <Button disabled={busy} onClick={() => action(reload)} size="sm" variant="ghost">
-                    <RefreshCwIcon data-icon="inline-start" />
-                    Refresh
-                  </Button>
-                </div>
-                {rules.map((rule) => (
-                  <article className="automation-rule" key={rule.id}>
-                    <div className="automation-row-heading">
-                      <strong>{rule.title}</strong>
-                      <Badge variant={rule.status === "active" ? "secondary" : "outline"}>
-                        {ruleStatuses[rule.status]}
-                      </Badge>
-                    </div>
-                    <p>{rule.query}</p>
-                    <div className="feed-release-meta">
-                      <span>{rule.sources.map((id) => sourceNames[id]).join(" → ")}</span>
-                      <span>{rule.resolutions.join(" → ") || "All resolutions"}</span>
-                      <span>{rule.languages.join(" → ") || "All languages"}</span>
-                    </div>
-                    {rule.error !== null && (
-                      <Alert>
-                        <AlertDescription>{rule.error}</AlertDescription>
-                      </Alert>
-                    )}
-                    <div className="automation-rule-actions">
-                      <Button
-                        disabled={busy}
-                        onClick={() =>
-                          action(async () => {
-                            await request(`/automations/${rule.id}/run`, "POST", {});
-                            await reload();
-                            await refresh();
-                          })
-                        }
-                        size="sm"
-                        variant="outline"
-                      >
-                        <PlayIcon data-icon="inline-start" />
-                        Check now
-                      </Button>
-                      <Button onClick={() => edit(rule)} size="sm" variant="ghost">
-                        Modifier
-                      </Button>
-                      <Button
-                        disabled={busy}
-                        onClick={() =>
-                          action(async () => {
-                            await request(`/automations/${rule.id}`, "PUT", {
-                              ...rule,
-                              enabled: !rule.enabled,
-                            });
-                            await reload();
-                          })
-                        }
-                        size="sm"
-                        variant="ghost"
-                      >
-                        {rule.enabled ? "Suspendre" : "Enable"}
-                      </Button>
-                      <ActionTooltip>
+                    <AutomationInbox
+                      approve={(decision) => decide(decision, "approve")}
+                      busy={busy}
+                      destinations={dashboard.destinations}
+                      ignore={(decision) => decide(decision, "ignore")}
+                      openRules={() => setTab("rules")}
+                      state={state}
+                    />
+                  </TabsContent>
+                  <TabsContent value="rules">
+                    <div className="automation-section">
+                      <form className="rule-composer" onSubmit={interpret}>
+                        <label htmlFor="automation-query">
+                          {editId ? "Edit this rule" : "Follow something new"}
+                        </label>
+                        <Textarea
+                          id="automation-query"
+                          onChange={(event) => {
+                            setQuery(event.target.value);
+                            setDraft(null);
+                            setPreview(null);
+                          }}
+                          placeholder="New episodes of Ao Ashi season 2 in VF, 1080p then 720p, Tsundere-Raws before Nyaa"
+                          required
+                          rows={2}
+                          value={query}
+                        />
+                        <div className="rule-composer-footer">
+                          <p>
+                            {jev?.enabled
+                              ? "Jev reads your request."
+                              : "Name a title; add a language, resolution or source if needed."}{" "}
+                            Anything you leave out comes from your{" "}
+                            <button
+                              className="link-button"
+                              onClick={() => setTab("preferences")}
+                              type="button"
+                            >
+                              general preferences
+                            </button>
+                            .
+                          </p>
+                          <div className="rule-composer-actions">
+                            {editId !== null && (
+                              <Button onClick={reset} type="button" variant="ghost">
+                                Cancel editing
+                              </Button>
+                            )}
+                            <Button disabled={busy || !query.trim()} type="submit">
+                              {busy ? (
+                                <LoaderCircleIcon
+                                  className="animate-spin"
+                                  data-icon="inline-start"
+                                />
+                              ) : (
+                                <ZapIcon data-icon="inline-start" />
+                              )}
+                              Prepare rule
+                            </Button>
+                          </div>
+                        </div>
+                      </form>
+                      {draft !== null && (
+                        <section aria-label="Rule settings" className="rule-editor">
+                          <header>
+                            <h3>{editId ? "Edit rule" : "Review the new rule"}</h3>
+                            <p>
+                              Downloads into <strong>{destination?.name}</strong> ·{" "}
+                              {destination?.downloadPath}
+                            </p>
+                          </header>
+                          <RuleFields
+                            draft={draft}
+                            onChange={(value) => {
+                              setDraft(value);
+                              setPreview(null);
+                            }}
+                          />
+                          <footer className="rule-editor-actions">
+                            <Button
+                              disabled={busy}
+                              onClick={() =>
+                                action(async () =>
+                                  setPreview(
+                                    await request<Preview>("/automations/preview", "POST", draft)
+                                  )
+                                )
+                              }
+                              variant="outline"
+                            >
+                              <SearchIcon data-icon="inline-start" />
+                              Preview matches
+                            </Button>
+                            <Button
+                              disabled={busy || !draft.title.trim() || !draft.sources.length}
+                              onClick={save}
+                            >
+                              <CheckIcon data-icon="inline-start" />
+                              {editId ? "Save changes" : "Create automation"}
+                            </Button>
+                          </footer>
+                          {preview !== null && (
+                            <div className="automation-preview">
+                              <h4>
+                                {preview.candidates.length} release
+                                {preview.candidates.length === 1 ? "" : "s"} found right now
+                              </h4>
+                              {preview.errors.map((item) => (
+                                <Alert key={item.sourceId}>
+                                  <AlertDescription>
+                                    {sourceNames[item.sourceId]}: {item.message}
+                                  </AlertDescription>
+                                </Alert>
+                              ))}
+                              {preview.candidates.map((candidate) => (
+                                <div
+                                  className="preview-row"
+                                  data-accepted={!(candidate.reason || candidate.uncertain)}
+                                  key={`${candidate.release.sourceId}:${candidate.release.id}`}
+                                >
+                                  <ReleaseLine release={candidate.release} />
+                                  <Badge variant="outline">
+                                    {candidate.reason ??
+                                      (candidate.uncertain ? "Would ask you" : "Would download")}
+                                  </Badge>
+                                </div>
+                              ))}
+                              {!preview.candidates.length && (
+                                <p className="automation-muted">
+                                  Nothing matches yet. The rule keeps checking for new releases.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </section>
+                      )}
+                      <div className="automation-list-heading">
+                        <h3>
+                          Rules in {destination?.name ?? "this thread"} <span>{rules.length}</span>
+                        </h3>
                         <Button
-                          aria-label={`Remove l’automatisation ${rule.title}`}
                           disabled={busy}
-                          onClick={() =>
+                          onClick={() => action(reload)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <RefreshCwIcon data-icon="inline-start" />
+                          Refresh
+                        </Button>
+                      </div>
+                      {rules.map((rule) => (
+                        <RuleCard
+                          busy={busy}
+                          edit={() => {
+                            setEditId(rule.id);
+                            setQuery(rule.query);
+                            setDraft(ruleDraft(rule));
+                            setPreview(null);
+                          }}
+                          key={rule.id}
+                          now={now}
+                          openInbox={() => setTab("inbox")}
+                          pending={
+                            pending.filter((decision) => decision.automationId === rule.id).length
+                          }
+                          remove={() =>
                             action(async () => {
                               await request(`/automations/${rule.id}`, "DELETE", undefined);
+                              if (editId === rule.id) {
+                                reset();
+                              }
                               await reload();
                             })
                           }
-                          size="icon-sm"
-                          variant="ghost"
-                        >
-                          <TrashIcon />
-                        </Button>
-                      </ActionTooltip>
-                    </div>
-                    <span className="automation-caption">
-                      {rule.lastRunAt
-                        ? `Last check : ${new Date(rule.lastRunAt).toLocaleString("en-US")}`
-                        : "Checked on next startup"}
-                    </span>
-                  </article>
-                ))}
-                {!(rules.length || draft) && (
-                  <QuietEmpty
-                    description="Describe your request, choose your priorities, and let Tofu follow releases for this thread."
-                    title="Your first automation"
-                  />
-                )}
-              </TabsContent>
-              <TabsContent value="history">
-                <DestinationField onChange={setTarget} value={target} />
-                <div className="automation-section-heading">
-                  <span className="automation-caption">DECISIONS IN THIS THREAD</span>
-                  <Button disabled={busy} onClick={() => action(reload)} size="sm" variant="ghost">
-                    <RefreshCwIcon data-icon="inline-start" />
-                    Refresh
-                  </Button>
-                </div>
-                {decisions.map((decision) => (
-                  <div className="automation-history-item" key={decision.id}>
-                    <ReleaseRow release={decision.release}>
-                      <Badge variant={decision.status === "added" ? "secondary" : "outline"}>
-                        {decisionStatuses[decision.status]}
-                      </Badge>
-                    </ReleaseRow>
-                    <p>
-                      {decision.reason}
-                      {decision.probability === null
-                        ? ""
-                        : ` · Jev : ${Math.round(decision.probability * 100)} %`}
-                    </p>
-                    {decision.deadline !== null && decision.status === "waiting" && (
-                      <span className="automation-caption">
-                        Selection scheduled for{" "}
-                        {new Date(decision.deadline).toLocaleTimeString("en-US")}
-                      </span>
-                    )}
-                    {["review", "waiting", "error"].includes(decision.status) && (
-                      <div className="flex gap-2">
-                        <Button
-                          disabled={busy}
-                          onClick={() =>
+                          rule={rule}
+                          run={() =>
                             action(async () => {
-                              await request(
-                                `/automation-decisions/${encodeURIComponent(decision.id)}/approve`,
-                                "POST",
-                                {}
-                              );
+                              await request(`/automations/${rule.id}/run`, "POST", {});
                               await reload();
                               await refresh();
                             })
                           }
-                          size="sm"
-                        >
-                          Download this version
-                        </Button>
-                        <Button
-                          disabled={busy}
-                          onClick={() =>
+                          toggle={() =>
                             action(async () => {
-                              await request(
-                                `/automation-decisions/${encodeURIComponent(decision.id)}/ignore`,
-                                "POST",
-                                {}
-                              );
+                              await request(`/automations/${rule.id}`, "PUT", {
+                                ...ruleDraft(rule),
+                                enabled: !rule.enabled,
+                              });
                               await reload();
                             })
                           }
+                        />
+                      ))}
+                      {!(rules.length || draft) && (
+                        <QuietEmpty
+                          description="Describe what to follow above. Tofu checks your sources and downloads new releases into this thread."
+                          icon={ZapIcon}
+                          title="No rules in this thread yet"
+                        />
+                      )}
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="anilist">
+                    <AniListPanel
+                      action={action}
+                      automations={state.automations}
+                      busy={busy}
+                      destinations={dashboard.destinations}
+                      key={target}
+                      openPreferences={() => setTab("preferences")}
+                      plugin={state.plugins.find((plugin) => plugin.id === "anilist")}
+                      preferences={state.preferences}
+                      reloadPlugins={reload}
+                      target={target}
+                    />
+                  </TabsContent>
+                  <TabsContent value="discover">
+                    <div className="automation-section">
+                      <SectionHeading
+                        description={`Search once across your sources and add a release to ${destination?.name ?? "this thread"}.`}
+                        title="Discover"
+                      />
+                      <form
+                        className="discover-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          action(async () =>
+                            setDiscovery(
+                              await request<DiscoveryResult>("/discover", "POST", {
+                                query: search,
+                                sources: selectedSources.map((plugin) => plugin.id),
+                              })
+                            )
+                          );
+                        }}
+                      >
+                        <Field>
+                          <FieldLabel className="sr-only" htmlFor="feed-search">
+                            {naturalSearch
+                              ? "Natural language search across sources"
+                              : "Keyword search across sources"}
+                          </FieldLabel>
+                          <div className="discover-search">
+                            <InputGroup>
+                              <InputGroupInput
+                                disabled={busy || !activeSources.length}
+                                id="feed-search"
+                                onChange={(event) => setSearch(event.target.value)}
+                                placeholder={
+                                  naturalSearch ? "re zero ep9 season4" : "A title, keywords…"
+                                }
+                                required
+                                value={search}
+                              />
+                              <InputGroupAddon align="inline-start">
+                                <SearchIcon />
+                              </InputGroupAddon>
+                            </InputGroup>
+                            <Button
+                              disabled={busy || !selectedSources.length || !search.trim()}
+                              type="submit"
+                            >
+                              {busy ? (
+                                <LoaderCircleIcon
+                                  className="animate-spin"
+                                  data-icon="inline-start"
+                                />
+                              ) : null}
+                              {busy ? "Searching…" : "Search"}
+                            </Button>
+                          </div>
+                        </Field>
+                        <fieldset className="discover-sources" disabled={busy}>
+                          <legend>Sources</legend>
+                          {activeSources.length ? (
+                            <>
+                              <Field orientation="horizontal">
+                                <Checkbox
+                                  checked={selectedSources.length === activeSources.length}
+                                  disabled={busy}
+                                  id="discovery-all-sources"
+                                  indeterminate={
+                                    selectedSources.length > 0 &&
+                                    selectedSources.length < activeSources.length
+                                  }
+                                  onCheckedChange={(checked) => {
+                                    setExcludedSources(
+                                      checked === true
+                                        ? []
+                                        : activeSources.map((plugin) => plugin.id)
+                                    );
+                                    setDiscovery(null);
+                                  }}
+                                />
+                                <FieldLabel htmlFor="discovery-all-sources">All</FieldLabel>
+                              </Field>
+                              {activeSources.map((plugin) => (
+                                <Field key={plugin.id} orientation="horizontal">
+                                  <Checkbox
+                                    checked={!excludedSources.includes(plugin.id)}
+                                    disabled={busy}
+                                    id={`discovery-source-${plugin.id}`}
+                                    onCheckedChange={(checked) => {
+                                      setExcludedSources((previous) =>
+                                        checked === true
+                                          ? previous.filter((id) => id !== plugin.id)
+                                          : [...previous, plugin.id]
+                                      );
+                                      setDiscovery(null);
+                                    }}
+                                  />
+                                  <FieldLabel htmlFor={`discovery-source-${plugin.id}`}>
+                                    {plugin.name}
+                                  </FieldLabel>
+                                </Field>
+                              ))}
+                            </>
+                          ) : (
+                            <span className="automation-muted">
+                              Enable a source in Plugins to search.
+                            </span>
+                          )}
+                        </fieldset>
+                        <p className="automation-muted">
+                          {naturalSearch
+                            ? "Title, season and episode in any order. English and Japanese titles are searched automatically."
+                            : "Keywords are searched as typed. Enable Jev in Plugins for natural language search."}
+                        </p>
+                      </form>
+                      {discovery?.search?.warning ? (
+                        <Alert>
+                          <AlertDescription>{discovery.search.warning}</AlertDescription>
+                        </Alert>
+                      ) : null}
+                      {discovery?.search?.title ? (
+                        <div aria-live="polite" className="discovery-summary">
+                          <strong>{discovery.search.title}</strong>
+                          {discovery.search.season === null ? null : (
+                            <Badge variant="secondary">Season {discovery.search.season}</Badge>
+                          )}
+                          {discovery.search.episode === null ? null : (
+                            <Badge variant="secondary">Episode {discovery.search.episode}</Badge>
+                          )}
+                          <span>
+                            {discovery.releases.length} result
+                            {discovery.releases.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      ) : null}
+                      {discovery?.errors.map((item) => (
+                        <Alert key={item.sourceId}>
+                          <AlertDescription>
+                            {sourceNames[item.sourceId]}: {item.message}
+                          </AlertDescription>
+                        </Alert>
+                      ))}
+                      {discovery?.releases.length ? (
+                        <div className="release-list">
+                          {discovery.releases.map((release) => (
+                            <div className="preview-row" key={`${release.sourceId}:${release.id}`}>
+                              <ReleaseLine release={release} />
+                              <Button
+                                disabled={busy}
+                                onClick={() =>
+                                  action(async () => {
+                                    await request("/discover/add", "POST", {
+                                      destinationId: target,
+                                      id: release.id,
+                                      paused: false,
+                                      sourceId: release.sourceId,
+                                    });
+                                    await refresh();
+                                    setNotice(`Added to ${destination?.name ?? "the thread"}.`);
+                                  })
+                                }
+                                size="sm"
+                                variant="outline"
+                              >
+                                <PlusIcon data-icon="inline-start" />
+                                Add
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <QuietEmpty
+                          description={
+                            discovery
+                              ? "Try another title or season, or select more sources."
+                              : "Search for a series, a season, or a single episode."
+                          }
+                          icon={SearchIcon}
+                          title={discovery ? "No releases found" : "One search, every source"}
+                        />
+                      )}
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="history">
+                    <div className="automation-section">
+                      <SectionHeading
+                        description="What the rules of this thread downloaded or skipped. Pending releases live in the Inbox."
+                        title="History"
+                      >
+                        <Button
+                          disabled={busy}
+                          onClick={() => action(reload)}
                           size="sm"
                           variant="ghost"
                         >
-                          Ignorer
+                          <RefreshCwIcon data-icon="inline-start" />
+                          Refresh
                         </Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {!decisions.length && (
-                  <QuietEmpty
-                    description="Selected versions, pending choices, and ignored releases will appear here."
-                    title="No decisions yet"
-                  />
-                )}
-              </TabsContent>
-            </>
-          ) : (
-            <Skeleton className="h-40" />
-          )}
+                      </SectionHeading>
+                      {history.length ? (
+                        <div className="release-list">
+                          {history.map((decision) => (
+                            <div
+                              className="history-row"
+                              data-decision={decision.status}
+                              key={decision.id}
+                            >
+                              <ReleaseLine release={decision.release} />
+                              <div className="history-row-status">
+                                <Badge variant="outline">{decisionStatuses[decision.status]}</Badge>
+                                <span>{relative(decision.createdAt, now)}</span>
+                              </div>
+                              <p>{decision.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <QuietEmpty
+                          description="Downloaded and skipped releases will be listed here."
+                          icon={HistoryIcon}
+                          title="Nothing yet"
+                        />
+                      )}
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="preferences">
+                    {editedPreferences ? (
+                      <form
+                        className="automation-section"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          action(async () => {
+                            setSaved(
+                              await request<AutomationState>(
+                                "/automation/preferences",
+                                "PUT",
+                                editedPreferences
+                              )
+                            );
+                            setPreferences(null);
+                            setNotice("Preferences saved. New rules will start from them.");
+                          });
+                        }}
+                      >
+                        <SectionHeading
+                          description="New rules and AniList tracking start from these settings. Existing rules keep their own; edit a rule to change it."
+                          title="General preferences"
+                        />
+                        <PreferenceFields
+                          idPrefix="preferences"
+                          onChange={setPreferences}
+                          value={editedPreferences}
+                        />
+                        <footer className="preferences-actions">
+                          <Button
+                            disabled={busy || preferences === null}
+                            onClick={() => setPreferences(null)}
+                            type="button"
+                            variant="ghost"
+                          >
+                            Discard changes
+                          </Button>
+                          <Button
+                            disabled={busy || preferences === null || !preferences.sources.length}
+                            type="submit"
+                          >
+                            <CheckIcon data-icon="inline-start" />
+                            Save preferences
+                          </Button>
+                        </footer>
+                      </form>
+                    ) : null}
+                  </TabsContent>
+                </>
+              ) : (
+                <Skeleton className="h-40" />
+              )}
+            </div>
+          </div>
         </Tabs>
       </DialogContent>
     </Dialog>
-  );
-}
-function DestinationField({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const { data } = useDashboard();
-  return (
-    <Field className="automation-target">
-      <FieldLabel htmlFor="automation-destination">Destination thread</FieldLabel>
-      <Select
-        items={data.destinations.map((destination) => ({
-          label: destination.name,
-          value: destination.id,
-        }))}
-        onValueChange={(next) => {
-          if (next !== null) {
-            onChange(next);
-          }
-        }}
-        value={value}
-      >
-        <SelectTrigger className="w-full" id="automation-destination">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent alignItemWithTrigger={false}>
-          <SelectGroup>
-            {data.destinations.map((destination) => (
-              <SelectItem key={destination.id} value={destination.id}>
-                {destination.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </Field>
   );
 }

@@ -2,13 +2,14 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { AutomationService } from "../src/server/feeds/service";
+import { createApi } from "../src/api";
+import { AutomationService } from "../src/api/feeds/service";
 import type {
   AniListState,
   AniListSubscription,
   AutomationDraft,
   AutomationState,
+  DashboardState,
   Destination,
 } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
@@ -302,6 +303,53 @@ test("deleting an AniList thread reassigns its rules and subscriptions without r
     expect((await (await context.request("/state", undefined)).json()).destinations).toHaveLength(
       1
     );
+  } finally {
+    await context.close();
+  }
+});
+
+test("deleting the default tab keeps the next tab's rules and subscriptions on that tab after restart", async () => {
+  const context = await setup();
+  try {
+    const destination = (await (
+      await context.request(
+        "/destinations",
+        json({ downloadPath: join(context.directory, "anime"), name: "Anime" })
+      )
+    ).json()) as Destination;
+    const template = (await (
+      await context.request(
+        "/automations/interpret",
+        json({ destinationId: destination.id, query: "Example Nyaa" })
+      )
+    ).json()) as AutomationDraft;
+    const subscription = (await (
+      await context.request(
+        "/anilist/subscriptions",
+        json({
+          enabled: true,
+          intervalMinutes: 15,
+          statuses: ["CURRENT"],
+          template: { ...template, includeExisting: true },
+        })
+      )
+    ).json()) as AniListSubscription;
+    await context.request(`/anilist/subscriptions/${subscription.id}/sync`, json({}));
+    const response = await context.request("/destinations/default", { method: "DELETE" });
+    expect(response.status).toBe(200);
+    await context.restart();
+    const synced = (await (
+      await context.request(`/anilist/subscriptions/${subscription.id}/sync`, json({}))
+    ).json()) as AniListState;
+    expect(synced.subscriptions[0]?.error).toBeNull();
+    expect(synced.subscriptions[0]?.template.destinationId).toBe("default");
+    const state = (await (
+      await context.request("/automation", undefined)
+    ).json()) as AutomationState;
+    expect(state.automations.map((rule) => rule.destinationId)).toEqual(["default"]);
+    expect(
+      ((await (await context.request("/state", undefined)).json()) as DashboardState).destinations
+    ).toEqual([{ ...destination, id: "default" }]);
   } finally {
     await context.close();
   }

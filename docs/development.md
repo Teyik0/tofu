@@ -4,6 +4,8 @@
 
 Use Bun for all commands. `bun run setup` prepares the Electrobun SDK through Hutch and installs the prebuilt WebTorrent native addon. No separate torrent service is required.
 
+`bun run dev:desktop` starts the native app from source with React/CSS HMR, retaining the window and component state. Backend and native host edits perform a controlled restart and restore persisted transfers; unsaved UI state across that restart is not preserved. Quit with Ctrl-C. `bun run test:hmr` verifies this flow in the real WebView with temporary data and real peers.
+
 `bun run build:desktop` builds for the current OS and architecture. `bun run desktop` launches its native executable:
 
 | Target | Development bundle |
@@ -44,6 +46,8 @@ Electrobun → native window, dialogs, and app lifecycle
 
 The torrent engine lives in the Bun process, so downloads outlast HTTP requests. The browser displays state and sends actions. The same API supports desktop and web modes. Electrobun RPC is an alternative, but would require a second transport for web access.
 
+The optional Furin Electrobun package builds the inert application and starts its guarded backend in the SDK process. The `desktop` section of `furin.config.ts` selects Tofu's native host for trays, background windows, protocols and updates. Desktop SSR forwards the incoming session to the same local API; initialization and disposal use `desktopApp()` lifecycle callbacks. See the [integration report](furin-electrobun-preview.md).
+
 Shared application types live in `src/types.ts`. Source plugins and automation also run in Bun and hand selected downloads to the existing engine.
 
 The UI uses official shadcn components with Base UI and the `base-nova` style in `components.json`. RSS feeds use `Bun.XML.parse`, available since Bun 1.4; Tsundere uses JSON. No external XML parser is needed.
@@ -54,11 +58,11 @@ A Bun relay publishes engine invalidations through Furin Sync every second. Engi
 
 ## Dependencies
 
-Furin is installed from the registry at an exact version. Keep `package.json` and `bun.lock` together; no local Furin checkout is required. Eden is pinned through an override for compatibility with Furin Sync.
+Furin core and Electrobun currently use pinned local PR #163 archives under `vendor/`. Keep the archives, `package.json` and `bun.lock` together; no local Furin checkout is required. [Provenance and checksums](../vendor/README.md) identify the upstream commit.
 
 WebTorrent native addons remain external during bundling. `runtime/node_modules` is packaged with the desktop application. The Electrobun SDK stays external during the Furin build and is resolved from `.hutch/devkit` during the native build.
 
-`src/server/webtorrent-stats.ts` bridges tracker and wire information for **WebTorrent 3.0.21**. Rerun tracker and peer tests when updating the engine.
+`src/api/webtorrent-stats.ts` bridges tracker and wire information for **WebTorrent 3.0.21**. Rerun tracker and peer tests when updating the engine.
 
 ## Files and statistics
 

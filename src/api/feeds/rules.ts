@@ -1,4 +1,9 @@
-import type { AutomationDraft, FeedRelease, SourcePluginId } from "../../types";
+import type {
+  AutomationDraft,
+  AutomationPreferences,
+  FeedRelease,
+  SourcePluginId,
+} from "../../types";
 
 const feedExpression1 = /\p{M}/gu;
 const feedExpression2 = /[^\p{L}\p{N}]+/gu;
@@ -6,13 +11,14 @@ const feedExpression3 = /[«"“]([^»"”]+)[»"”]/;
 const feedExpression4 =
   /^(?:t[eé]l[eé]charge(?:r)?|suivre|r[eé]cup[eè]re|download|follow)\s+(?:les\s+|the\s+)?(?:nouveaux\s+|new\s+)?(?:[eé]pisodes\s+(?:de\s+)?|episodes\s+(?:of\s+)?)?/i;
 const feedExpression5 =
-  /\s+(?:(?:saison|season)\s+\d+|(?:en|with|in)\s+(?:VF|VOSTFR|MULTI)|(?:en|with|in)\s+\d{3,4}p|pr[eé]f[eè]re|prefer|avec\s|with\s|sur\s|on\s)|[,;]/i;
+  /\s+(?:(?:saison|season)\s+\d+|(?:en|with|in)\s+(?:VF|VOSTFR|MULTI)|(?:en|with|in)\s+\d{3,4}p|(?:(?:en|with|in)\s+)?(?:x26[45]|h[ .]?26[45]|HEVC|AVC|AV1)\b|pr[eé]f[eè]re|prefer|avec\s|with\s|sur\s|on\s)|[,;]/i;
 const feedExpression6 = /\b(?:2160|1080|900|720|480)p\b/gi;
 const feedExpression7 = /\b(?:VOSTFR|VF|MULTI)\b/gi;
 const feedExpression8 = /tsundere(?:-raws)?/i;
 const feedExpression9 = /nyaa(?:\.si)?/i;
 const feedExpression10 = /c411/i;
 const feedExpression11 = /\b(?:saison|season)\s+(\d+)\b/i;
+const codecExpression = /\b(?:x26[45]|h[ .]?26[45]|HEVC|AVC|AV1)\b/gi;
 
 export function normalizeTitle(value: string) {
   return value
@@ -22,7 +28,25 @@ export function normalizeTitle(value: string) {
     .replace(feedExpression2, " ")
     .trim();
 }
-export function interpretLocally(query: string, destinationId: string): AutomationDraft {
+export const defaultAutomationPreferences: AutomationPreferences = {
+  automatic: true,
+  codecs: [],
+  deleteReplacedFiles: false,
+  excludePacks: true,
+  intervalMinutes: 15,
+  languages: [],
+  paused: false,
+  priority: ["language", "resolution", "source", "codec"],
+  resolutions: [],
+  sources: ["tsundere", "nyaa", "c411"],
+  waitMinutes: 0,
+};
+/** Formats and sources named in the request win over the general preferences. */
+export function interpretLocally(
+  query: string,
+  destinationId: string,
+  preferences: AutomationPreferences
+): AutomationDraft {
   const explicit = query.match(feedExpression3)?.[1];
   const title =
     explicit ?? query.replace(feedExpression4, "").split(feedExpression5)[0]?.trim() ?? query;
@@ -32,6 +56,17 @@ export function interpretLocally(query: string, destinationId: string): Automati
   const languages = [...new Set(query.match(feedExpression7) ?? [])].map((value) =>
     value.toUpperCase()
   );
+  const codecs = [
+    ...new Set(
+      (query.match(codecExpression) ?? []).map((value) => {
+        const token = value.toUpperCase();
+        if (token === "AV1") {
+          return "AV1";
+        }
+        return token === "HEVC" || token.endsWith("265") ? "H.265" : "H.264";
+      })
+    ),
+  ];
   const known: { id: SourcePluginId; expression: RegExp }[] = [
     { expression: feedExpression8, id: "tsundere" },
     { expression: feedExpression9, id: "nyaa" },
@@ -42,26 +77,19 @@ export function interpretLocally(query: string, destinationId: string): Automati
     .filter((source) => source.index >= 0)
     .sort((a, b) => a.index - b.index)
     .map((source) => source.id);
-  const sources: SourcePluginId[] = listed.length ? listed : ["tsundere", "nyaa", "c411"];
   return {
-    automatic: true,
-    codecs: [],
-    deleteReplacedFiles: false,
+    ...preferences,
+    codecs: codecs.length ? codecs : preferences.codecs,
     destinationId,
     enabled: true,
-    excludePacks: true,
     includeExisting: false,
-    intervalMinutes: 15,
-    languages,
+    languages: languages.length ? languages : preferences.languages,
     matchMode: "exact",
-    paused: false,
-    priority: ["language", "resolution", "source", "codec"],
     query,
-    resolutions,
+    resolutions: resolutions.length ? resolutions : preferences.resolutions,
     season: Number(query.match(feedExpression11)?.[1]) || null,
-    sources,
+    sources: listed.length ? listed : preferences.sources,
     title,
-    waitMinutes: 0,
   };
 }
 export function localMatch(rule: AutomationDraft, release: FeedRelease) {

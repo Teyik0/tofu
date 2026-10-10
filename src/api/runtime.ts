@@ -11,6 +11,7 @@ const host = globalThis as typeof globalThis & {
   tofuRuntime?: {
     instance?: Awaited<ReturnType<typeof currentInstanceConfig>>;
     engine?: TorrentEngine;
+    closing?: boolean;
     sync?: Awaited<ReturnType<typeof createTofuSync>>;
     shutdown?: () => Promise<void>;
     timer?: ReturnType<typeof setInterval>;
@@ -19,6 +20,7 @@ const host = globalThis as typeof globalThis & {
     updates?: UpdatesService;
     desktop?: DesktopController;
     lease?: Awaited<ReturnType<typeof acquireInstance>>;
+    sdk?: typeof import("electrobun/main");
   };
 };
 host.tofuRuntime ??= {};
@@ -35,7 +37,7 @@ function syncAdapter() {
 }
 
 // Register routes without opening user databases during Furin's build/AOT inspection.
-// Only startServer opens the durable journal, after acquiring the instance lock.
+// Startup opens the durable journal only after acquiring the instance lock.
 export const syncOptions: FurinSyncOptions = {
   adapter: {
     abortMutation: (input) => syncAdapter().abortMutation(input),
@@ -73,4 +75,11 @@ export function getDesktop() {
     throw new UserError("The desktop app is starting", { status: 503 });
   }
   return runtime.desktop;
+}
+
+export function getNativeSdk() {
+  if (!runtime.sdk) {
+    throw new UserError("The native host is starting", { status: 503 });
+  }
+  return runtime.sdk;
 }

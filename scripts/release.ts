@@ -123,6 +123,37 @@ if (Bun.argv[2] === "validate") {
       throw new Error(`Installer ${name} missing`);
     }
   }
+  await Promise.all(
+    releaseTargets.map(async (target) => {
+      const prefix = `stable-${target.platform}-${target.arch}`;
+      const metadata = `${prefix}-update.json`;
+      if (!paths.includes(metadata)) {
+        throw new Error(`Update metadata ${metadata} missing`);
+      }
+      const archive = `${prefix}-Tofu${target.platform === "macos" ? ".app" : ""}.tar.zst`;
+      const manifest: {
+        schemaVersion?: number;
+        version?: string;
+        identifier?: string;
+        channel?: string;
+        platform?: string;
+        arch?: string;
+        artifact?: { file?: string };
+      } = await Bun.file(join("artifacts", metadata)).json();
+      if (
+        manifest.schemaVersion !== 1 ||
+        manifest.version !== version ||
+        manifest.identifier !== "app.tofu.torrents" ||
+        manifest.channel !== "stable" ||
+        manifest.platform !== target.platform ||
+        manifest.arch !== target.arch ||
+        manifest.artifact?.file !== archive ||
+        !paths.includes(archive)
+      ) {
+        throw new Error(`Invalid update metadata or missing archive for ${prefix}`);
+      }
+    })
+  );
   const checksums = await Promise.all(
     paths.map(
       async (name) =>

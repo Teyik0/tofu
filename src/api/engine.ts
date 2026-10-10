@@ -311,7 +311,7 @@ export class TorrentEngine {
       );
   }
 
-  private storeDestination(destination: Destination) {
+  private writeDestination(destination: Destination) {
     this.db
       .query(
         "INSERT INTO destinations (id, name, downloadPath, pinned, icon) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, downloadPath=excluded.downloadPath, pinned=excluded.pinned, icon=excluded.icon"
@@ -323,6 +323,10 @@ export class TorrentEngine {
         Number(destination.pinned),
         destination.icon
       );
+  }
+
+  private storeDestination(destination: Destination) {
+    this.writeDestination(destination);
     this.destinations.set(destination.id, destination);
     return destination;
   }
@@ -410,27 +414,46 @@ export class TorrentEngine {
     });
   }
 
-  removeDestination(id: string) {
+  async removeDestination(id: string) {
     if (!this.destinations.has(id)) {
       throw new UserError("Tab not found", { status: 404 });
-    }
-    if (id === "default") {
-      throw new UserError("The default tab cannot be deleted", { status: 409 });
     }
     if (this.movingDestinations.size > 0) {
       throw new UserError("Wait for the move to finish before deleting a tab", { status: 409 });
     }
+    // Torrents, rules and preferences fall back to the "default" ID, so deleting that tab moves
+    // the next tab into the default slot and removes the next tab's former ID instead.
+    const removed =
+      id === "default" ? [...this.destinations.keys()].find((key) => key !== "default") : id;
+    const successor = removed === undefined ? undefined : this.destinations.get(removed);
+    if (!(removed && successor)) {
+      throw new UserError("At least one tab is required", { status: 409 });
+    }
+    const reassigned = [...this.entries.values()].filter(
+      (entry) => entry.detail.destinationId === removed
+    );
     this.db.transaction(() => {
-      for (const entry of this.entries.values()) {
-        if (entry.detail.destinationId === id) {
-          entry.detail.destinationId = "default";
-          this.save(entry);
-        }
+      for (const entry of reassigned) {
+        this.save({ ...entry, detail: { ...entry.detail, destinationId: "default" } });
       }
-      this.db.query("DELETE FROM destinations WHERE id = ?").run(id);
+      if (id === "default") {
+        this.writeDestination({ ...successor, id: "default" });
+        this.config("settings", { ...this.settings, downloadPath: successor.downloadPath });
+      }
+      this.db.query("DELETE FROM destinations WHERE id = ?").run(removed);
     })();
-    this.destinations.delete(id);
-    return { ok: true };
+    for (const entry of reassigned) {
+      entry.detail.destinationId = "default";
+    }
+    if (id === "default") {
+      this.destinations.set("default", { ...successor, id: "default" });
+      this.settings.downloadPath = successor.downloadPath;
+    }
+    this.destinations.delete(removed);
+    if (id === "default") {
+      await this.diskSpace();
+    }
+    return { ok: true, removed };
   }
 
   private async moveDestination(destination: Destination) {

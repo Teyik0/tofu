@@ -8,7 +8,7 @@ import {
   PlugIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../client";
 import type { AutomationState, PluginId, PluginState } from "../types";
 import { request } from "./api";
@@ -57,10 +57,34 @@ function PluginCard({
   reload: () => Promise<void>;
 }) {
   const router = useRouter();
+  const { closePlugins } = useDashboard();
   const [key, setKey] = useState("");
   const [limit, setLimit] = useState(String(plugin.dailyLimit));
-  const save = (enabled: boolean) =>
+  const [error, setError] = useState<string | null>(null);
+  const [keyRequired, setKeyRequired] = useState(false);
+  const keyInput = useRef<HTMLInputElement>(null);
+  const keyed = plugin.id === "jev" || plugin.id === "c411";
+  const errorId = `plugin-error-${plugin.id}`;
+  const runAction: Action = (task) =>
     action(async () => {
+      setError(null);
+      try {
+        await task();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Unable to update plugin");
+      }
+    });
+  const save = (enabled: boolean) => {
+    if (enabled && keyed && !plugin.hasApiKey && !key.trim()) {
+      setKeyRequired(true);
+      setError(
+        `Add your ${plugin.id === "jev" ? "TypeSafe" : "C411"} API key before enabling this plugin.`
+      );
+      keyInput.current?.focus();
+      return;
+    }
+    setKeyRequired(false);
+    runAction(async () => {
       await request(`/plugins/${plugin.id}`, "PUT", {
         enabled,
         ...(key.trim() ? { apiKey: key.trim() } : {}),
@@ -69,7 +93,7 @@ function PluginCard({
       setKey("");
       await reload();
     });
-  const keyed = plugin.id === "jev" || plugin.id === "c411";
+  };
   const dirty = key.trim() !== "" || limit !== String(plugin.dailyLimit);
   const formId = `plugin-form-${plugin.id}`;
   return (
@@ -85,6 +109,7 @@ function PluginCard({
           <FieldDescription>{plugin.description}</FieldDescription>
         </FieldContent>
         <Switch
+          aria-describedby={error || plugin.error ? errorId : undefined}
           aria-label={`Enable ${plugin.name}`}
           checked={plugin.enabled}
           disabled={busy}
@@ -101,23 +126,36 @@ function PluginCard({
           }}
         >
           <FieldGroup className="plugins-configuration">
-            <Field className="plugins-credential" orientation="responsive">
+            <Field
+              className="plugins-credential"
+              data-invalid={keyRequired || undefined}
+              orientation="responsive"
+            >
               <FieldContent>
                 <FieldLabel htmlFor={`key-${plugin.id}`}>
                   {`${plugin.id === "jev" ? "TypeSafe" : "C411"} API key`}
                 </FieldLabel>
                 <FieldDescription>
                   {plugin.id === "jev"
-                    ? "Without a key: exact name or pattern. Evaluated titles and metadata are sent to TypeSafe."
+                    ? "A TypeSafe API key is required to enable Jev. Without Jev, use keywords or an exact title or pattern. Evaluated titles and metadata are sent to TypeSafe."
                     : "Available in C411 → API integrations. The key stays on the server."}
                 </FieldDescription>
               </FieldContent>
               <Input
+                aria-describedby={keyRequired ? errorId : undefined}
+                aria-invalid={keyRequired || undefined}
                 autoComplete="off"
                 disabled={busy}
                 id={`key-${plugin.id}`}
-                onChange={(event) => setKey(event.target.value)}
+                onChange={(event) => {
+                  setKey(event.target.value);
+                  if (keyRequired) {
+                    setKeyRequired(false);
+                    setError(null);
+                  }
+                }}
                 placeholder={plugin.hasApiKey ? "Saved · type to replace" : "Your personal key"}
+                ref={keyInput}
                 type="password"
                 value={key}
               />
@@ -151,9 +189,9 @@ function PluginCard({
           Connect your account from the AniList page. No API key is required.
         </FieldDescription>
       )}
-      {plugin.error !== null && (
-        <Alert>
-          <AlertDescription>{plugin.error}</AlertDescription>
+      {(error !== null || plugin.error !== null) && (
+        <Alert id={errorId} variant="destructive">
+          <AlertDescription>{error ?? plugin.error}</AlertDescription>
         </Alert>
       )}
       {(plugin.enabled || keyed || plugin.id === "anilist") && (
@@ -162,7 +200,7 @@ function PluginCard({
             <Button
               disabled={busy}
               onClick={() =>
-                action(async () => {
+                runAction(async () => {
                   await request(`/plugins/${plugin.id}/test`, "POST", {});
                   await reload();
                 })
@@ -175,7 +213,10 @@ function PluginCard({
           )}
           {plugin.id === "anilist" && (
             <Button
-              onClick={() => void router.navigate({ to: "/anilist" })}
+              onClick={() => {
+                closePlugins();
+                void router.navigate({ to: "/anilist" });
+              }}
               size="sm"
               variant="outline"
             >
@@ -206,7 +247,7 @@ function PluginCard({
 
 export function PluginsPage() {
   const router = useRouter();
-  const { settingsBackPath } = useDashboard();
+  const { settingsBackPath, closePlugins, pluginsNavigationError } = useDashboard();
   const { data: live, error: loadingError } = useQuery(api.api.automation.get);
   const [saved, setSaved] = useState<AutomationState | null>(null);
   const state =
@@ -227,6 +268,7 @@ export function PluginsPage() {
       .finally(() => setBusy(false));
   };
   const back = () => {
+    closePlugins();
     if (settingsBackPath.startsWith("/library/destinations/")) {
       void router.navigate({
         params: { id: decodeURIComponent(settingsBackPath.slice("/library/destinations/".length)) },
@@ -285,9 +327,11 @@ export function PluginsPage() {
           <p className="settings-intro">
             Built-in plugins for this device. Enable the sources and integrations you want to use.
           </p>
-          {error || loadingError ? (
+          {error || loadingError || pluginsNavigationError ? (
             <Alert>
-              <AlertDescription>{error ?? "Unable to load plugins"}</AlertDescription>
+              <AlertDescription>
+                {error ?? pluginsNavigationError ?? "Unable to load plugins"}
+              </AlertDescription>
             </Alert>
           ) : null}
           {state ? (

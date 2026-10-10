@@ -1,5 +1,5 @@
 import type { ElectrobunConfig } from "electrobun";
-import { version } from "./package.json";
+import packageJson from "./package.json";
 
 const release = process.env.TOFU_RELEASE === "1";
 
@@ -11,7 +11,7 @@ export default {
     identifier: release ? "app.tofu.torrents" : "app.tofu.torrents.dev",
     name: "Tofu",
     urlSchemes: release ? ["magnet", "tofu"] : ["tofu-dev"],
-    version,
+    version: packageJson.version,
   },
   build: {
     bun: { entrypoint: ".furin/build/bun/server.js", external: ["webtorrent", "parse-torrent"] },
@@ -47,5 +47,6 @@ export default {
       icon: "assets/tofu.iconset/icon_256x256.png",
     },
   },
+  release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },
   runtime: { exitOnLastWindowClosed: false },
 } satisfies ElectrobunConfig;

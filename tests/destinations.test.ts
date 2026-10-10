@@ -2,8 +2,8 @@ import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
 import type { DashboardState, Destination } from "../src/types";
 import { fixture, json, network, waitFor } from "./helpers";
 
@@ -224,7 +224,7 @@ test("deleting a tab preserves real transfers and files and persists their defau
   }
 });
 
-test("deleting tabs protects the default destination and rejects unknown or already deleted tabs", async () => {
+test("deleting tabs keeps one tab and rejects unknown or already deleted tabs", async () => {
   const context = await fixture(4096, []);
   try {
     expect((await context.request("/destinations/default", { method: "DELETE" })).status).toBe(409);
@@ -243,6 +243,115 @@ test("deleting tabs protects the default destination and rejects unknown or alre
     ).toBe(404);
     expect(context.engine.snapshot(null).destinations.map((item) => item.id)).toEqual(["default"]);
   } finally {
+    await context.close();
+  }
+});
+
+test.each(["default", "saved"])(
+  "a failed %s tab deletion preserves destinations, settings and real transfers",
+  async (tab) => {
+    const context = await fixture(8192, []);
+    const database = new Database(join(context.directory, "state/tofu.sqlite"));
+    try {
+      const destination = (await (
+        await context.request(
+          "/destinations",
+          json({ downloadPath: join(context.directory, "series"), name: "Series" })
+        )
+      ).json()) as Destination;
+      const { id } = (await (
+        await context.request(
+          "/torrents",
+          json({ destinationId: destination.id, paused: false, source: context.magnet })
+        )
+      ).json()) as { id: string };
+      const read = async () =>
+        (
+          await context.request(`/state?selected=${id}`, undefined)
+        ).json() as Promise<DashboardState>;
+      const before = await waitFor(read, (state) => state.detail?.status === "seeding");
+      database.exec(
+        "CREATE TRIGGER reject_destination_delete BEFORE DELETE ON destinations BEGIN SELECT RAISE(ABORT, 'Destination deletion failed'); END"
+      );
+      const target = tab === "default" ? "default" : destination.id;
+      const response = await context.request(`/destinations/${target}`, { method: "DELETE" });
+      expect(response.status).toBe(500);
+      const after = await read();
+      expect(after.destinations).toEqual(before.destinations);
+      expect(after.settings.downloadPath).toBe(before.settings.downloadPath);
+      expect(after.detail).toMatchObject({ destinationId: destination.id, status: "seeding" });
+      const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
+      expect(new Uint8Array(await content.arrayBuffer())).toEqual(context.bytes);
+      database.exec("DROP TRIGGER reject_destination_delete");
+      expect((await context.request(`/destinations/${target}`, { method: "DELETE" })).status).toBe(
+        200
+      );
+      expect((await read()).detail?.destinationId).toBe("default");
+    } finally {
+      database.close();
+      await context.close();
+    }
+  }
+);
+
+test("deleting the default tab hands its role to the next tab without moving real transfers", async () => {
+  const context = await fixture(65_536, []);
+  let restarted: TorrentEngine | null = null;
+  try {
+    const downloads = join(context.directory, "downloads");
+    const series = join(context.directory, "series");
+    const destination = (await (
+      await context.request(
+        "/destinations",
+        json({ downloadPath: series, icon: "tv", name: "Series", pinned: true })
+      )
+    ).json()) as Destination;
+    const { id } = (await (
+      await context.request("/torrents", json({ paused: false, source: context.magnet }))
+    ).json()) as { id: string };
+    await waitFor(
+      async () => context.engine.detail(id),
+      (detail) => detail.status === "seeding"
+    );
+    const response = await context.request("/destinations/default", { method: "DELETE" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, removed: destination.id });
+    const state = (await (
+      await context.request(`/state?selected=${id}`, undefined)
+    ).json()) as DashboardState;
+    expect(state.destinations).toEqual([
+      { downloadPath: series, icon: "tv", id: "default", name: "Series", pinned: true },
+    ]);
+    expect(state.settings.downloadPath).toBe(series);
+    expect(state.detail).toMatchObject({
+      destinationId: "default",
+      savePath: downloads,
+      status: "seeding",
+    });
+    expect(
+      new Uint8Array(
+        await (await context.request(`/torrents/${id}/files/0/content`, undefined)).arrayBuffer()
+      )
+    ).toEqual(context.bytes);
+    expect((await context.request("/destinations/default", { method: "DELETE" })).status).toBe(409);
+    await context.request(`/torrents/${id}/pause`, json({}));
+    await context.engine.close();
+    restarted = await TorrentEngine.open({
+      dataDir: join(context.directory, "state"),
+      downloadPath: downloads,
+      network,
+    });
+    expect(restarted.snapshot(id).destinations).toEqual(state.destinations);
+    expect(restarted.detail(id)).toMatchObject({
+      destinationId: "default",
+      savePath: downloads,
+      status: "paused",
+    });
+    expect(new Uint8Array(await Bun.file(join(downloads, "source.bin")).arrayBuffer())).toEqual(
+      context.bytes
+    );
+  } finally {
+    await restarted?.close();
     await context.close();
   }
 });
@@ -476,7 +585,7 @@ test("bulk pause targets the visible torrent IDs rather than every destination",
 test("editing a destination persists its identity and changes future adds without moving files", async () => {
   const context = await fixture(65_536, []);
   const other = await fixture(65_536, []);
-  let restarted: import("../src/server/engine").TorrentEngine | null = null;
+  let restarted: import("../src/api/engine").TorrentEngine | null = null;
   try {
     const path = join(context.directory, "original");
     const destination = (await (

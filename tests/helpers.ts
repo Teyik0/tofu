@@ -4,9 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebTorrent, { type Torrent } from "webtorrent";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
-import { createTofuSync } from "../src/server/sync";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
+import { createTofuSync } from "../src/api/sync";
 
 export const network = {
   dht: false,
@@ -24,8 +24,12 @@ export function json(body: object): RequestInit {
   };
 }
 
-export async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean) {
-  const until = Date.now() + 15_000;
+export async function waitFor<T>(
+  read: () => Promise<T>,
+  ready: (value: T) => boolean,
+  timeoutMs?: number
+) {
+  const until = Date.now() + (timeoutMs ?? 15_000);
   while (Date.now() < until) {
     const value = await read();
     if (ready(value)) {

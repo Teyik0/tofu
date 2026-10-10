@@ -2,8 +2,9 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
-import type { DashboardState, DesktopState } from "../src/types";
+import type { DashboardState, DesktopState, ServerInfo } from "../src/types";
 import { fixture, json, waitFor } from "../tests/helpers";
+import { nativeRequest } from "./native-request";
 
 const root = join(import.meta.dir, "..");
 const context = await fixture(4 * 1024 * 1024, []);
@@ -50,11 +51,11 @@ try {
     throw new Error(report.error);
   }
   checks.push("Preference enabled and saved from the native WebView");
-  const { url }: { url: string } = await Bun.file(
+  const server: ServerInfo = await Bun.file(
     join(context.directory, "native-state/server.json")
   ).json();
   const call = async (path: string, init: RequestInit | undefined) => {
-    const response = await fetch(`${url}/api${path}`, init);
+    const response = await nativeRequest(server, `/api${path}`, init);
     if (!response.ok) {
       throw new Error(`${path}: ${await response.text()}`);
     }
@@ -67,7 +68,7 @@ try {
     ...json({ ...initial.settings, runInBackground: false }),
     method: "PUT",
   });
-  const refused = await fetch(`${url}/api/desktop/background`, json({}));
+  const refused = await nativeRequest(server, "/api/desktop/background", json({}));
   if (refused.status !== 409 || (await desktop()).windows !== 1) {
     throw new Error("Closing must be refused without consent to background mode");
   }

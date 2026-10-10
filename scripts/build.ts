@@ -1,8 +1,9 @@
-import { mkdir, rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { cp, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { version } from "../package.json";
+import { resolveAniListClient } from "../src/api/feeds/anilist-client";
 import { hostDesktopTarget, installerExtension, installerName } from "../src/platform";
-import { resolveAniListClient } from "../src/server/feeds/anilist-client";
 
 const root = join(import.meta.dir, "..");
 async function command(args: string[], cwd: string) {
@@ -12,18 +13,32 @@ async function command(args: string[], cwd: string) {
     stderr: "inherit",
     stdout: "inherit",
   });
-  if ((await child.exited) !== 0) {
+  const interrupt = () => child.kill("SIGINT");
+  const terminate = () => child.kill("SIGTERM");
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", terminate);
+  let status: number;
+  try {
+    status = await child.exited;
+  } finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", terminate);
+  }
+  if (status !== 0) {
     throw new Error(`Command failed : ${args.join(" ")}`);
   }
 }
 const release = Bun.argv[2] === "release";
+const development = Bun.argv[2] === "dev-desktop";
 process.env.TOFU_RELEASE = release ? "1" : "0";
 if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPER_ID) {
   process.env.ELECTROBUN_DEVELOPER_ID = "-";
   console.log("Using free ad hoc macOS signing; first launch requires manual approval.");
 }
-await command(["node_modules/@teyik0/furin/src/cli/index.ts", "build", "--target", "bun"], root);
-if (Bun.argv[2] === "desktop" || release) {
+if (Bun.argv[2] !== "desktop" && !release && !development) {
+  await command(["node_modules/@teyik0/furin/src/cli/index.ts", "build", "--target", "bun"], root);
+}
+if (Bun.argv[2] === "desktop" || release || development) {
   await command(["--bun", "node_modules/electrobun/bin/electrobun.cjs", "prepare"], root);
   const runtime = join(root, "runtime");
   await mkdir(runtime, { recursive: true });
@@ -56,12 +71,20 @@ if (Bun.argv[2] === "desktop" || release) {
   await command(
     [
       "--bun",
-      "node_modules/electrobun/bin/electrobun.cjs",
-      "build",
-      release ? "--env=stable" : "--env=dev",
+      "node_modules/@teyik0/furin-electrobun/src/cli.ts",
+      development ? "dev" : "build",
+      ...(development ? [] : [release ? "--env=stable" : "--env=dev"]),
     ],
     root
   );
+  if (development) {
+    process.exit(0);
+  }
+  const generated = join(root, ".furin/electrobun");
+  await cp(join(generated, "build"), join(root, "build"), { recursive: true });
+  if (existsSync(join(generated, "artifacts"))) {
+    await cp(join(generated, "artifacts"), join(root, "artifacts"), { recursive: true });
+  }
   if (release) {
     const directory = join(root, "artifacts");
     const target = hostDesktopTarget();

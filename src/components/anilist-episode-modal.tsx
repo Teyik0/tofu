@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import type {
   AniListEntry,
+  AniListOpenResult,
   AniListReleases,
   AniListState,
   AutomationDraft,
@@ -17,10 +18,11 @@ import type {
   AutomationState,
   FeedRelease,
 } from "../types";
+import { ActionTooltip } from "./action-tooltip";
 import { AniListCover } from "./anilist-cover";
 import { request } from "./api";
 import { useDashboard } from "./app-shell";
-import { RuleFields } from "./automation-center";
+import { RuleFields } from "./automation-fields";
 import { bytes } from "./format";
 import { OptionSelect } from "./option-select";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -32,8 +34,10 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "./ui/field";
 import { Skeleton } from "./ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 type Action = (task: () => Promise<void>) => void;
+type ReleaseStatus = "searching" | "ready" | "failed";
 
 function EpisodeRow({
   episode,
@@ -41,8 +45,8 @@ function EpisodeRow({
   entry,
   destinationId,
   busy,
+  releaseStatus,
   action,
-  reload,
   onState,
 }: {
   episode: number | null;
@@ -50,8 +54,8 @@ function EpisodeRow({
   entry: AniListEntry;
   destinationId: string;
   busy: boolean;
+  releaseStatus: ReleaseStatus;
   action: Action;
-  reload: () => Promise<void>;
   onState: (state: AniListState) => void;
 }) {
   const { data: dashboard, refresh } = useDashboard();
@@ -71,19 +75,28 @@ function EpisodeRow({
       </div>
       <div className="anime-episode-info">
         <strong>{label}</strong>
-        <span>
-          {torrent
-            ? torrent.progress === 1
-              ? "Downloaded"
-              : `${torrent.status} · ${(torrent.progress * 100).toFixed(1)}%`
-            : releases.length
-              ? `${releases.length} release${releases.length === 1 ? "" : "s"} available`
-              : "No release found"}
-        </span>
-        {release ? (
-          <span className="anime-release-name" title={release.title}>
-            {release.title}
+        {!(torrent || releases.length) && releaseStatus === "searching" ? (
+          <Skeleton aria-hidden="true" className="h-3 w-32" />
+        ) : (
+          <span>
+            {torrent
+              ? torrent.progress === 1
+                ? "Downloaded"
+                : `${torrent.status} · ${(torrent.progress * 100).toFixed(1)}%`
+              : releases.length
+                ? `${releases.length} release${releases.length === 1 ? "" : "s"} available`
+                : releaseStatus === "failed"
+                  ? "Release search unavailable"
+                  : "No release found"}
           </span>
+        )}
+        {release ? (
+          <Tooltip>
+            <TooltipTrigger className="anime-release-name" render={<span />} tabIndex={0}>
+              {release.title}
+            </TooltipTrigger>
+            <TooltipContent>{release.title}</TooltipContent>
+          </Tooltip>
         ) : null}
       </div>
       <div className="anime-episode-controls">
@@ -126,7 +139,6 @@ function EpisodeRow({
                     sourceId: release.sourceId,
                   });
                   await refresh();
-                  await reload();
                 })
               }
               size="sm"
@@ -187,6 +199,8 @@ export function AniListEpisodeModal({
   const [draft, setDraft] = useState<AutomationDraft | null>(rule ?? null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [searchVersion, setSearchVersion] = useState(0);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const action: Action = (task) => {
@@ -199,11 +213,12 @@ export function AniListEpisodeModal({
       )
       .finally(() => setBusy(false));
   };
-  const reload = async () => {
-    setResult(
-      await request<AniListReleases>(`/anilist/entries/${entry.mediaId}/releases`, "POST", {})
-    );
+  const reload = () => {
+    setLoading(true);
+    setReleaseError(null);
+    setSearchVersion((value) => value + 1);
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshing explicitly starts a new release search.
   useEffect(() => {
     let active = true;
     void request<AniListReleases>(`/anilist/entries/${entry.mediaId}/releases`, "POST", {})
@@ -214,7 +229,7 @@ export function AniListEpisodeModal({
       })
       .catch((cause) => {
         if (active) {
-          setError(cause instanceof Error ? cause.message : "Unable to find episodes");
+          setReleaseError(cause instanceof Error ? cause.message : "Unable to find releases");
         }
       })
       .finally(() => {
@@ -225,7 +240,8 @@ export function AniListEpisodeModal({
     return () => {
       active = false;
     };
-  }, [entry.mediaId]);
+  }, [entry.mediaId, searchVersion]);
+  const releaseStatus: ReleaseStatus = loading ? "searching" : releaseError ? "failed" : "ready";
   const numbered = new Map<number, FeedRelease[]>();
   const packs: FeedRelease[] = [];
   for (const release of result?.releases ?? []) {
@@ -283,21 +299,33 @@ export function AniListEpisodeModal({
             </DialogDescription>
           </div>
           {entry.siteUrl ? (
-            <a
-              aria-label={`Open ${entry.title} on AniList`}
-              className="anime-external-link"
-              href={entry.siteUrl}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              <ExternalLinkIcon />
-            </a>
+            <ActionTooltip>
+              <a
+                aria-label={`Open ${entry.title} on AniList`}
+                className="anime-external-link"
+                href={entry.siteUrl}
+                onClick={(event) => {
+                  if (dashboard.session.mode !== "desktop") {
+                    return;
+                  }
+                  event.preventDefault();
+                  const url = event.currentTarget.href;
+                  action(async () => {
+                    await request<AniListOpenResult>("/anilist/open", "POST", { url });
+                  });
+                }}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <ExternalLinkIcon />
+              </a>
+            </ActionTooltip>
           ) : null}
         </div>
         <div className="anime-modal-body">
-          {error ? (
+          {error || releaseError ? (
             <Alert>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{error ?? releaseError}</AlertDescription>
             </Alert>
           ) : null}
           {notice ? <p role="status">{notice}</p> : null}
@@ -324,13 +352,11 @@ export function AniListEpisodeModal({
                     value={destinationId}
                   />
                 </Field>
-                <Button
-                  disabled={busy || loading}
-                  onClick={() => action(reload)}
-                  size="sm"
-                  variant="outline"
-                >
-                  <RefreshCwIcon data-icon="inline-start" />
+                <Button disabled={busy || loading} onClick={reload} size="sm" variant="outline">
+                  <RefreshCwIcon
+                    className={loading ? "motion-safe:animate-spin" : undefined}
+                    data-icon="inline-start"
+                  />
                   Find releases
                 </Button>
               </div>
@@ -338,6 +364,11 @@ export function AniListEpisodeModal({
                 Mark episodes Completed to sync consecutive progress to AniList. Skipped episodes
                 stay marked in Tofu until you catch up. An authenticated account is required.
               </p>
+              {loading ? (
+                <p className="anime-sync-note" role="status">
+                  Finding releases…
+                </p>
+              ) : null}
               {hasSources ? null : (
                 <Alert>
                   <AlertDescription>
@@ -352,13 +383,7 @@ export function AniListEpisodeModal({
                   </AlertDescription>
                 </Alert>
               ))}
-              {loading ? (
-                <div aria-label="Finding episodes" className="anime-episode-list" role="status">
-                  <Skeleton className="h-20" />
-                  <Skeleton className="h-20" />
-                  <Skeleton className="h-20" />
-                </div>
-              ) : episodes.length || packs.length ? (
+              {episodes.length || packs.length ? (
                 <div className="anime-episode-list">
                   {episodes.map((episode) => (
                     <EpisodeRow
@@ -369,8 +394,8 @@ export function AniListEpisodeModal({
                       episode={episode}
                       key={episode}
                       onState={onState}
+                      releaseStatus={releaseStatus}
                       releases={numbered.get(episode) ?? []}
-                      reload={reload}
                     />
                   ))}
                   {packs.map((release) => (
@@ -382,10 +407,16 @@ export function AniListEpisodeModal({
                       episode={null}
                       key={`${release.sourceId}:${release.id}`}
                       onState={onState}
+                      releaseStatus={releaseStatus}
                       releases={[release]}
-                      reload={reload}
                     />
                   ))}
+                </div>
+              ) : loading ? (
+                <div aria-hidden="true" className="anime-episode-list">
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
                 </div>
               ) : (
                 <Empty>

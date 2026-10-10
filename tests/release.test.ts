@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { version } from "../package.json";
 
+const updateMetadataPattern: RegExp = /^stable-(macos|win|linux)-(arm64|x64)-update\.json$/;
+
 async function publish(
   repository: string | undefined,
   tag: string | undefined,
@@ -14,7 +16,23 @@ async function publish(
   const directory = await mkdtemp(join(tmpdir(), "tofu-release-"));
   try {
     await Promise.all(
-      installers.map((name) => Bun.write(join(directory, "artifacts", name), "installer content"))
+      installers.map((name) => {
+        const target: RegExpExecArray | null = updateMetadataPattern.exec(name);
+        const content = target
+          ? JSON.stringify({
+              arch: target[2],
+              artifact: {
+                file: `stable-${target[1]}-${target[2]}-Tofu${target[1] === "macos" ? ".app" : ""}.tar.zst`,
+              },
+              channel: "stable",
+              identifier: "app.tofu.torrents",
+              platform: target[1],
+              schemaVersion: 1,
+              version,
+            })
+          : "installer content";
+        return Bun.write(join(directory, "artifacts", name), content);
+      })
     );
     const commandsPath = join(directory, "github-commands.json");
     if (releaseExists !== undefined) {
@@ -102,8 +120,25 @@ const expectedInstallers = [
   `Tofu-${version}-linux-arm64.tar.gz`,
 ];
 
+test("publication requires native update metadata before contacting GitHub", async () => {
+  const result = await publish("Teyik0/Tofu", `v${version}`, expectedInstallers);
+  expect(result.code).toBe(1);
+  expect(result.error).toContain("Update metadata stable-macos-arm64-update.json missing");
+});
+
+const expectedUpdates = ["macos-arm64", "win-x64", "linux-x64", "linux-arm64"].flatMap((target) => [
+  `stable-${target}-update.json`,
+  `stable-${target}-Tofu${target.startsWith("macos") ? ".app" : ""}.tar.zst`,
+]);
+
 test("publication attaches installers and checksums to an existing release without recreating it", async () => {
-  const result = await publish("Teyik0/tofu", "main", expectedInstallers, true, `v${version}`);
+  const result = await publish(
+    "Teyik0/tofu",
+    "main",
+    [...expectedInstallers, ...expectedUpdates],
+    true,
+    `v${version}`
+  );
   expect({ code: result.code, error: result.error }).toEqual({ code: 0, error: "" });
   expect(result.commands.map((args) => args.slice(0, 2))).toEqual([
     ["release", "view"],
@@ -119,7 +154,12 @@ test("publication attaches installers and checksums to an existing release witho
 });
 
 test("publication creates a release when the validated tag has no release yet", async () => {
-  const result = await publish("Teyik0/tofu", `v${version}`, expectedInstallers, false);
+  const result = await publish(
+    "Teyik0/tofu",
+    `v${version}`,
+    [...expectedInstallers, ...expectedUpdates],
+    false
+  );
   expect({ code: result.code, error: result.error }).toEqual({ code: 0, error: "" });
   expect(result.commands.map((args) => args.slice(0, 2))).toEqual([
     ["release", "view"],

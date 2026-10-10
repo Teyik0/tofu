@@ -7,6 +7,7 @@ import type {
   AniListReleases,
   AutomationDecision,
   AutomationDraft,
+  AutomationPreferences,
   AutomationRule,
   AutomationState,
   DiscoveryResult,
@@ -38,6 +39,7 @@ import {
   compareQuality,
   compareReleases,
   contentKey,
+  defaultAutomationPreferences,
   interpretLocally,
   localMatch,
   preferred,
@@ -83,6 +85,7 @@ export class AutomationService {
   private c411Queue: Promise<void> = Promise.resolve();
   private c411NextAt = 0;
   private readonly discoveryResolver = new DiscoveryResolver();
+  private preferences: AutomationPreferences = defaultAutomationPreferences;
 
   readonly options: AutomationOptions;
   readonly anilist: AniListService;
@@ -99,6 +102,18 @@ export class AutomationService {
       "CREATE TABLE IF NOT EXISTS judgements (id TEXT PRIMARY KEY, value TEXT NOT NULL, createdAt INTEGER NOT NULL)"
     );
     this.db.exec("CREATE TABLE IF NOT EXISTS releases (id TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    this.db.exec(
+      "CREATE TABLE IF NOT EXISTS preferences (id TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    );
+    const storedPreferences = this.db
+      .query<{ value: string }, [string]>("SELECT value FROM preferences WHERE id = ?")
+      .get("automation");
+    if (storedPreferences) {
+      this.preferences = {
+        ...defaultAutomationPreferences,
+        ...(JSON.parse(storedPreferences.value) as Partial<AutomationPreferences>),
+      };
+    }
     for (const plugin of plugins) {
       const row = this.db
         .query<{ value: string }, [string]>("SELECT value FROM plugins WHERE id = ?")
@@ -203,8 +218,16 @@ export class AutomationService {
             : 0,
         hasApiKey: Boolean(apiKey),
       })),
+      preferences: this.preferences,
       updatedAt: this.options.now(),
     };
+  }
+  savePreferences(preferences: AutomationPreferences) {
+    this.preferences = preferences;
+    this.db
+      .query("INSERT OR REPLACE INTO preferences (id, value) VALUES (?, ?)")
+      .run("automation", JSON.stringify(preferences));
+    return this.snapshot();
   }
   private publicRelease(release: FeedRelease) {
     return release.sourceId === "c411"
@@ -443,7 +466,7 @@ export class AutomationService {
     const entry = this.anilist.entry(mediaId);
     const sources = (["nyaa", "tsundere", "c411"] as const).filter((id) => this.isEnabled(id));
     const matcher = {
-      ...interpretLocally(entry.title, "default"),
+      ...interpretLocally(entry.title, "default", defaultAutomationPreferences),
       aliases: entry.aliases,
       excludePacks: false,
     };
@@ -623,7 +646,7 @@ export class AutomationService {
     }
   }
   async interpret(query: string, destinationId: string) {
-    const draft = interpretLocally(query, destinationId);
+    const draft = interpretLocally(query, destinationId, this.preferences);
     const interpretation = interpretationQuestions(draft);
     const result = await this.askJev({ query }, interpretation.questions);
     if (!result) {
@@ -1063,15 +1086,18 @@ export class AutomationService {
       return;
     }
     this.startupState.started = true;
-    await this.anilist.tick(true);
-    await Promise.all(
-      [...this.rules.values()].filter((rule) => rule.enabled).map((rule) => this.run(rule.id))
-    );
-    if (!this.isClosed()) {
-      this.timer = setInterval(() => {
-        void this.tick();
-      }, 15_000);
-      this.timer.unref();
+    try {
+      await this.anilist.tick(true);
+      await Promise.all(
+        [...this.rules.values()].filter((rule) => rule.enabled).map((rule) => this.run(rule.id))
+      );
+    } finally {
+      if (!this.isClosed()) {
+        this.timer = setInterval(() => {
+          void this.tick().catch(console.error);
+        }, 15_000);
+        this.timer.unref();
+      }
     }
   }
   async tick() {

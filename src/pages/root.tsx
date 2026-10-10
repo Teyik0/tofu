@@ -6,7 +6,10 @@ import { themeBootstrap } from "../theme";
 export const route = defineRootRoute()
   .config({ mode: "ssr" })
   .loader(async ({ request }) => {
-    const { data, error } = await createTofuClient(new URL(request.url).origin).api.settings.get();
+    const { data, error } = await createTofuClient(
+      new URL(request.url).origin,
+      request
+    ).api.settings.get();
     if (error || !data || !("theme" in data)) {
       throw new Error("The Tofu preferences are unavailable");
     }

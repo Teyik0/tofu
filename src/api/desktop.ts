@@ -1,6 +1,8 @@
 import { join } from "node:path";
+import { type DesktopBackend, getExternalUrl } from "@teyik0/furin-electrobun/host";
 import type { BrowserWindow, Tray as NativeTray } from "electrobun/main";
 import type { DesktopState, InstanceProfile } from "../types";
+import { DesktopUpdateInstaller } from "./desktop-update-installer";
 import { type TorrentEngine, UserError } from "./engine";
 
 export class DesktopController {
@@ -8,32 +10,47 @@ export class DesktopController {
   private readonly sdk: typeof import("electrobun/main");
   private readonly tray: NativeTray;
   private readonly url: string;
+  private readonly backend: DesktopBackend;
   private readonly engine: () => TorrentEngine;
   private readonly smokeScript: string | null;
   private readonly name: string;
   private quitting = false;
+  private installing = false;
+  private readonly updateInstaller: DesktopUpdateInstaller;
 
   constructor(options: {
     sdk: typeof import("electrobun/main");
-    url: string;
+    backend: DesktopBackend;
     engine: () => TorrentEngine;
     smokeScript: string | null;
     name: string;
     profile: InstanceProfile;
+    publicDir: string;
     checkUpdates: () => Promise<unknown>;
     shutdown: () => Promise<void>;
+    prepareUpdate: () => Promise<void>;
+    recover: () => Promise<void>;
   }) {
     this.sdk = options.sdk;
     const { default: Electrobun, Tray, Utils } = this.sdk;
-    this.url = options.url;
+    this.updateInstaller = new DesktopUpdateInstaller({
+      allowQuit: (allowed) => {
+        this.quitting = allowed;
+      },
+      recover: options.recover,
+      shutdown: options.prepareUpdate,
+      updater: this.sdk.Updater,
+    });
+    this.backend = options.backend;
+    this.url = options.backend.origin;
     this.engine = options.engine;
     this.smokeScript = options.smokeScript;
     this.name = options.name;
     this.tray = new Tray({
       height: 18,
       image: join(
-        import.meta.dir,
-        process.platform === "darwin" ? "public/tray-template.png" : "public/icon.png"
+        options.publicDir,
+        process.platform === "darwin" ? "tray-template.png" : "icon.png"
       ),
       template: process.platform === "darwin",
       title: options.profile === "dev" ? "DEV" : "",
@@ -52,7 +69,7 @@ export class DesktopController {
       if (action === "open-native") {
         this.open();
       } else if (action === "open-web") {
-        Utils.openExternal(this.url);
+        Utils.openExternal(this.backend.createWindowUrl());
       } else if (action === "check-updates") {
         void options
           .checkUpdates()
@@ -64,6 +81,11 @@ export class DesktopController {
     });
     Electrobun.events.on("reopen", () => this.open());
     Electrobun.events.on("before-quit", (event: { response: { allow: boolean } | undefined }) => {
+      // biome-ignore lint/suspicious/noUnnecessaryConditions: an update request mutates these flags before native quit callbacks.
+      if (this.installing && !this.quitting) {
+        event.response = { allow: false };
+        return;
+      }
       // biome-ignore lint/suspicious/noUnnecessaryConditions: native callbacks mutate this flag between quit events.
       if (this.quitting) {
         return;
@@ -102,11 +124,13 @@ export class DesktopController {
       return this.snapshot();
     }
     const window = new this.sdk.BrowserWindow({
+      allowedProtocols: { appData: false, views: false },
       frame: { height: 940, width: 1400, x: 120, y: 80 },
+      navigationRules: JSON.stringify(["^*", `${this.url}/*`, `${this.backend.bootstrapOrigin}/*`]),
       renderer: "native",
       sandbox: true,
       title: this.name,
-      url: this.url,
+      url: this.backend.createWindowUrl(),
     });
     this.window = window;
     window.show();
@@ -118,6 +142,14 @@ export class DesktopController {
       }
     });
     const script = this.smokeScript;
+    const external = (event: { data: { detail: string | { url: string } } }) => {
+      const url = getExternalUrl(event.data.detail, [this.url, this.backend.bootstrapOrigin]);
+      if (url) {
+        this.sdk.Utils.openExternal(url);
+      }
+    };
+    this.sdk.default.events.on(`will-navigate-${window.webviewId}`, external);
+    this.sdk.default.events.on(`new-window-open-${window.webviewId}`, external);
     if (script) {
       window.webview.on("dom-ready", () => window.webview.executeJavascript(script));
     }
@@ -139,6 +171,20 @@ export class DesktopController {
     return { ok: true };
   }
   openDownload() {
-    return { opened: this.sdk.Utils.openExternal(`${this.url}/api/updates/download`) };
+    return {
+      opened: this.sdk.Utils.openExternal(this.backend.createWindowUrl("/api/updates/download")),
+    };
+  }
+  async installUpdate() {
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: concurrent update and native quit requests mutate these flags.
+    if (this.installing || this.quitting) {
+      throw new UserError("Tofu is already shutting down", { status: 409 });
+    }
+    this.installing = true;
+    try {
+      await this.updateInstaller.install();
+    } finally {
+      this.installing = false;
+    }
   }
 }

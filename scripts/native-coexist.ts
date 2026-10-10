@@ -1,17 +1,27 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveInstanceConfig } from "../src/api/instance";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
-import { resolveInstanceConfig } from "../src/server/instance";
-import type { DashboardState, DesktopState, InstanceConfig } from "../src/types";
+import type { DashboardState, DesktopState, InstanceConfig, ServerInfo } from "../src/types";
 import { fixture, json, waitFor } from "../tests/helpers";
+import { nativeRequest } from "./native-request";
 
 const root = join(import.meta.dir, "..");
 const context = await fixture(65_536, []);
 const instances: ReturnType<typeof launch>[] = [];
 const checks: string[] = [];
+const servers = new Map<string, ServerInfo>();
 
-function launch(config: InstanceConfig) {
-  const launcher = desktopLauncher(root, hostDesktopTarget(), config.profile);
+function request(url: string, init?: RequestInit) {
+  const server = servers.get(new URL(url).origin);
+  if (!server) {
+    throw new Error("The native instance is unavailable");
+  }
+  return nativeRequest(server, url, init);
+}
+
+function launch(config: InstanceConfig, bundleRoot: string) {
+  const launcher = desktopLauncher(bundleRoot, hostDesktopTarget(), config.profile);
   const environment = {
     ...process.env,
     TOFU_DATA_DIR: config.dataDir,
@@ -45,8 +55,10 @@ async function ready(instance: ReturnType<typeof launch>) {
       if (!(await file.exists())) {
         return null;
       }
-      const { url } = (await file.json()) as { url: string };
-      const response = await fetch(`${url}/api/desktop`);
+      const server = (await file.json()) as ServerInfo;
+      const { url } = server;
+      servers.set(url, server);
+      const response = await request(`${url}/api/desktop`);
       if (!response.ok) {
         return null;
       }
@@ -62,6 +74,15 @@ async function ready(instance: ReturnType<typeof launch>) {
 }
 
 try {
+  // Stable build launchers are installers. Run only the archive's flat app in a temporary tree.
+  const target = hostDesktopTarget();
+  const metadata: { artifact: { file: string } } = await Bun.file(
+    join(root, `artifacts/stable-${target.platform}-${target.arch}-update.json`)
+  ).json();
+  const releaseRoot = join(context.directory, "native-bundles");
+  const compressed = await Bun.file(join(root, "artifacts", metadata.artifact.file)).arrayBuffer();
+  const archive = new Bun.Archive(await Bun.zstdDecompress(compressed));
+  await archive.extract(join(releaseRoot, `build/stable-${target.platform}-${target.arch}`));
   const options = {
     dataDir: undefined,
     desktop: true,
@@ -70,14 +91,14 @@ try {
     platform: process.platform,
     port: "0",
   };
-  const dev = launch(resolveInstanceConfig({ ...options, profile: "dev" }));
+  const dev = launch(resolveInstanceConfig({ ...options, profile: "dev" }), root);
   instances.push(dev);
-  const release = launch(resolveInstanceConfig({ ...options, profile: "release" }));
+  const release = launch(resolveInstanceConfig({ ...options, profile: "release" }), releaseRoot);
   instances.push(release);
   const [devUrl, releaseUrl] = await Promise.all([ready(dev), ready(release)]);
   const [devInfo, releaseInfo] = await Promise.all(
     [devUrl, releaseUrl].map(
-      async (url) => (await (await fetch(`${url}/api/instance`)).json()) as InstanceConfig
+      async (url) => (await (await request(`${url}/api/instance`)).json()) as InstanceConfig
     )
   );
   if (
@@ -92,13 +113,13 @@ try {
     "Two real native bundles open together, using bundle profiles despite conflicting environment variables"
   );
   const read = async (url: string) =>
-    (await (await fetch(`${url}/api/state`)).json()) as DashboardState;
+    (await (await request(`${url}/api/state`)).json()) as DashboardState;
   const before = await read(devUrl);
-  await fetch(`${devUrl}/api/settings`, {
+  await request(`${devUrl}/api/settings`, {
     ...json({ ...before.settings, runInBackground: true }),
     method: "PUT",
   });
-  const added = await fetch(
+  const added = await request(
     `${devUrl}/api/torrents`,
     json({ paused: false, source: context.magnet })
   );
@@ -110,7 +131,7 @@ try {
     () => read(devUrl),
     (state) => state.torrents[0]?.status === "seeding"
   );
-  const bytes = await (await fetch(`${devUrl}/api/torrents/${id}/files/0/content`)).arrayBuffer();
+  const bytes = await (await request(`${devUrl}/api/torrents/${id}/files/0/content`)).arrayBuffer();
   const stable = await read(releaseUrl);
   if (
     Bun.SHA256.hash(bytes, "hex") !== Bun.SHA256.hash(context.bytes, "hex") ||
@@ -122,7 +143,7 @@ try {
   checks.push("Real transfer with exact SHA-256 and isolated preferences, release intact");
   dev.child.kill("SIGTERM");
   await dev.child.exited;
-  if (!(await fetch(`${releaseUrl}/api/health`)).ok) {
+  if (!(await request(`${releaseUrl}/api/health`)).ok) {
     throw new Error("Quitting development affects release");
   }
   checks.push("Quitting the development bundle leaves release available");
