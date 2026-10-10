@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { version } from "../package.json";
 
@@ -45,6 +47,35 @@ test("the Furin desktop configuration supplies the package version and release u
   );
   expect(iconsExist).toEqual([true, true, true]);
 }, 30_000);
+
+test.skipIf(process.platform !== "darwin")(
+  "native smoke tests reject installers before launching them or creating application state",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "tofu-installer-guard-"));
+    const installer = join(directory, "Tofu.app");
+    try {
+      await Bun.write(join(installer, "Contents/Resources/metadata.json"), "{}");
+      const child = Bun.spawn([process.execPath, "scripts/native-smoke.ts"], {
+        cwd: join(import.meta.dir, ".."),
+        env: {
+          ...process.env,
+          TOFU_DATA_DIR: join(directory, "state"),
+          TOFU_NATIVE_LAUNCHER: join(installer, "Contents/MacOS/launcher"),
+          TOFU_NATIVE_PROFILE: "release",
+        },
+        stderr: "pipe",
+        stdout: "ignore",
+      });
+      const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+      expect(code).toBe(1);
+      expect(error).toContain("not a self-extracting installer");
+      expect(await readdir(directory)).toEqual(["Tofu.app"]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  },
+  30_000
+);
 
 test("the native host bundles its parser instead of requiring backend-only packages", async () => {
   const child = Bun.spawn(

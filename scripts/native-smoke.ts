@@ -18,7 +18,6 @@ import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { InstanceProfile, ThemePreference } from "../src/types";
 
 const root = join(import.meta.dir, "..");
-const folder = await mkdtemp(join(tmpdir(), "tofu-native-"));
 const desktopTarget = hostDesktopTarget();
 const nativeProfile: InstanceProfile =
   process.env.TOFU_NATIVE_PROFILE === "release" ? "release" : "dev";
@@ -28,9 +27,43 @@ const bundle =
   desktopTarget.platform === "macos"
     ? dirname(dirname(dirname(launcher)))
     : dirname(dirname(launcher));
+if (
+  process.env.TOFU_NATIVE_LAUNCHER &&
+  desktopTarget.platform === "macos" &&
+  !(await Bun.file(join(bundle, "Contents/Resources/app/bun/index.js")).exists())
+) {
+  throw new Error(
+    "Native tests require an extracted application bundle, not a self-extracting installer."
+  );
+}
+const folder = await mkdtemp(join(tmpdir(), "tofu-native-"));
 const isolatedBundle = join(folder, basename(bundle));
 // Installed bundles must not resolve missing dependencies from the repository.
-await cp(bundle, isolatedBundle, { dereference: true, recursive: true });
+try {
+  if (nativeProfile === "release" && !process.env.TOFU_NATIVE_LAUNCHER) {
+    const archive = join(
+      root,
+      ".furin/electrobun/artifacts",
+      `stable-${desktopTarget.platform}-${desktopTarget.arch}-Tofu${desktopTarget.platform === "macos" ? ".app" : ""}.tar.zst`
+    );
+    const tarPath = join(folder, "application.tar");
+    await Bun.write(tarPath, Bun.zstdDecompressSync(await Bun.file(archive).bytes()));
+    const extraction = Bun.spawn(["tar", "-xf", tarPath, "-C", folder], {
+      stderr: "pipe",
+      stdout: "ignore",
+    });
+    const error = await new Response(extraction.stderr).text();
+    if ((await extraction.exited) !== 0) {
+      throw new Error(`Unable to extract the release application: ${error}`);
+    }
+    await rm(tarPath);
+  } else {
+    await cp(bundle, isolatedBundle, { dereference: true, recursive: true });
+  }
+} catch (error) {
+  await rm(folder, { force: true, recursive: true });
+  throw error;
+}
 if (process.env.TOFU_NATIVE_WORKFLOW === "anilist-catalog") {
   try {
     await seedAniListCatalog(folder);

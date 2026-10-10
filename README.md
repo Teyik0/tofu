@@ -72,7 +72,7 @@ bun run test:native
 
 `bun run test` runs exactly `bun test --parallel --isolate --bail`. Tests use real peers, local trackers, and temporary folders. The native test also checks the actual desktop interface and requires a graphical session.
 
-Native tests launch an isolated application copy outside the repository. After `bun run build:release`, use `TOFU_NATIVE_PROFILE=release bun run test:native` to test the stable bundle, or additionally set `TOFU_NATIVE_LAUNCHER` to a mounted installer's launcher to test its packaged application. User data remains separate, and the smoke script is injected only by this opt-in test command.
+Native tests launch an isolated application copy outside the repository. After `bun run build:release`, use `TOFU_NATIVE_PROFILE=release bun run test:native` to extract and test the stable update archive, or additionally set `TOFU_NATIVE_LAUNCHER` to an extracted application's launcher. Self-extracting installers are rejected to avoid modifying the installed app. User data remains separate, and the smoke script is injected only by this opt-in test command.
 
 [Architecture & configuration](docs/development.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Benchmarks](BENCHMARK.md)
 
