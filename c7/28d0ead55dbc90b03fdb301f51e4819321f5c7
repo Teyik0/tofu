@@ -1,0 +1,25 @@
+.gitattributes
+  s_807678f85853ef::t_83a226ea4cccfd 1-2
+tests/instance.test.ts
+  s_807678f85853ef::t_047816f6193254 291-293
+  s_807678f85853ef::t_d81e24d56cfc10 290
+CHANGELOG.md
+  s_807678f85853ef::t_83a226ea4cccfd 43
+  s_807678f85853ef::t_047816f6193254 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c728d0ead55dbc90b03fdb301f51e4819321f5c7",
+  "prompts": {},
+  "sessions": {
+    "s_807678f85853ef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a126ec-19de-7c63-9436-f99151a96f2b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
