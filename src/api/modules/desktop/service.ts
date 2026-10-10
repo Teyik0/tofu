@@ -82,8 +82,8 @@ export class DesktopController {
     Electrobun.events.on("reopen", () => this.open());
     Electrobun.events.on("before-quit", (event: { response: { allow: boolean } | undefined }) => {
       // biome-ignore lint/suspicious/noUnnecessaryConditions: an update request mutates these flags before native quit callbacks.
-      if (this.installing && !this.quitting) {
-        event.response = { allow: false };
+      if (this.installing) {
+        event.response = { allow: this.quitting };
         return;
       }
       // biome-ignore lint/suspicious/noUnnecessaryConditions: native callbacks mutate this flag between quit events.

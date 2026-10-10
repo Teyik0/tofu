@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { runDesktopHost } from "@teyik0/furin-electrobun/host";
 import { writeServerInfo } from "./api/lib/server-info";
+import { desktopHostSdk } from "./api/modules/desktop/host-sdk";
 import { DesktopUrlOpener } from "./api/modules/desktop/opening";
 import { registerDesktopProtocol } from "./api/modules/desktop/protocol";
 import { DesktopController } from "./api/modules/desktop/service";
@@ -8,7 +9,7 @@ import { DesktopController } from "./api/modules/desktop/service";
 process.env.TOFU_MODE = "desktop";
 const sdk = await import("electrobun/main");
 
-await runDesktopHost(sdk, async ({ startBackend }) => {
+await runDesktopHost(desktopHostSdk(sdk), async ({ startBackend }) => {
   const { applicationHost, hostIntegration, instance } = await import("./api/lib/host");
   hostIntegration.tofuNativeSdk = sdk;
   const readiness = Promise.withResolvers<DesktopUrlOpener>();
