@@ -8,6 +8,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 - Allow prepared desktop updates to restart after torrent state is saved, without Furin's ordinary quit handler cancelling the native update handoff.
 - Cover update handoff through the real Furin desktop host with a real peer transfer and verify downloaded bytes survive engine shutdown and reopening.
+- Bundle the native host's torrent parser so installed apps start without repository dependencies, and run native smoke tests from an isolated copy of the application.
 
 ## [0.2.2]
 

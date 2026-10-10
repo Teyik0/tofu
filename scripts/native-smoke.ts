@@ -1,9 +1,9 @@
 // biome-ignore-all lint/style/noNonNullAssertion: missing DOM targets must fail this end-to-end test immediately.
 // biome-ignore-all lint/performance/noAwaitInLoops: wait for real native UI and network events.
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { Server as Tracker } from "bittorrent-tracker";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -15,10 +15,22 @@ import { TorrentEngine } from "../src/api/modules/torrents/service";
 import { Button } from "../src/components/ui/button";
 import { Input } from "../src/components/ui/input";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
-import type { ThemePreference } from "../src/types";
+import type { InstanceProfile, ThemePreference } from "../src/types";
 
 const root = join(import.meta.dir, "..");
 const folder = await mkdtemp(join(tmpdir(), "tofu-native-"));
+const desktopTarget = hostDesktopTarget();
+const nativeProfile: InstanceProfile =
+  process.env.TOFU_NATIVE_PROFILE === "release" ? "release" : "dev";
+const launcher =
+  process.env.TOFU_NATIVE_LAUNCHER ?? desktopLauncher(root, desktopTarget, nativeProfile);
+const bundle =
+  desktopTarget.platform === "macos"
+    ? dirname(dirname(dirname(launcher)))
+    : dirname(dirname(launcher));
+const isolatedBundle = join(folder, basename(bundle));
+// Installed bundles must not resolve missing dependencies from the repository.
+await cp(bundle, isolatedBundle, { dereference: true, recursive: true });
 if (process.env.TOFU_NATIVE_WORKFLOW === "anilist-catalog") {
   try {
     await seedAniListCatalog(folder);
@@ -291,13 +303,14 @@ const appearanceMarkup = renderToStaticMarkup(
 const browserScript = `(${workflow.toString()})(${JSON.stringify({ appearanceMarkup, expectedHash: createHash("sha256").update(payload).digest("hex"), magnet, reportUrl: `http://127.0.0.1:${collector.port}`, secondaryTorrentBytes: Array.from(secondarySeed.torrentFile), torrentBytes: Array.from(seed.torrentFile), urls })})`;
 const scriptPath = join(folder, "workflow.js");
 await Bun.write(scriptPath, browserScript);
-const native = Bun.spawn([desktopLauncher(root, hostDesktopTarget(), "dev")], {
-  cwd: root,
+const native = Bun.spawn([join(isolatedBundle, relative(bundle, launcher))], {
+  cwd: folder,
   env: {
     ...process.env,
     TOFU_DATA_DIR: join(folder, "state"),
     TOFU_DOWNLOAD_DIR: join(folder, "downloads"),
     TOFU_MODE: "desktop",
+    TOFU_PROFILE: nativeProfile,
     TOFU_SMOKE_SCRIPT: scriptPath,
   },
   stderr: "pipe",
@@ -358,7 +371,7 @@ async function seedAniListCatalog(directory: string) {
         homeDir: directory,
         platform: process.platform,
         port: "0",
-        profile: "dev",
+        profile: nativeProfile,
       })
     );
     resources.defer(() => lease.close());

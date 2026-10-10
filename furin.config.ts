@@ -29,7 +29,8 @@ export default defineConfig({
         urlSchemes: release ? ["magnet", "tofu"] : ["tofu-dev"],
       },
       build: {
-        bun: { external: ["webtorrent", "parse-torrent"] },
+        // The host has no dependency tree; only the backend packages WebTorrent addons.
+        bun: { external: ["webtorrent"] },
         copy: {
           "LICENSE.md": "bun/LICENSE.md",
           "runtime/anilist-client.json": "bun/anilist-client.json",
