@@ -1,0 +1,41 @@
+import { definePlugin } from "@tofu/plugins";
+import type { PluginContext } from "@tofu/plugins";
+import type { PluginCore } from "@tofu/plugins/server";
+import { createPluginApi } from "@tofu/plugins/server";
+import { Type } from "typebox";
+import { ui } from "../client";
+
+export const settingsSchema = Type.Object({ greeting: Type.String({ maxLength: 200 }) });
+
+export function createAPI(core: PluginCore, context: PluginContext<typeof settingsSchema>) {
+  const { settings, auth } = context;
+  const identity = { id: "{{id}}.settings", scope: {} };
+  return createPluginApi(context)
+    .use(core)
+    .get("/status", ({ core: host }) => ({
+      greeting: settings.get().greeting,
+      threadCount: host.dashboard().destinations.length,
+      authenticated: auth?.status().authenticated ?? false,
+    }))
+    .get("/settings", {
+      query: Type.Object({ threadId: Type.Optional(Type.String()) }),
+      sync: identity,
+    }, ({ query }) => settings.get(query.threadId))
+    .patch("/settings", {
+      body: Type.Partial(settingsSchema),
+      query: Type.Object({ threadId: Type.Optional(Type.String()) }),
+      sync: { invalidate: identity },
+    }, ({ body, query }) => settings.update(body, query.threadId));
+}
+
+export function createPlugin(core: PluginCore) {
+  return definePlugin({
+    id: "{{id}}",
+    name: "{{id}}",
+    version: "0.0.0",
+    api: (context: PluginContext<typeof settingsSchema>) => createAPI(core, context),
+    settings: { schema: settingsSchema, defaults: { greeting: "Hello from your plugin" } },
+    auth: { kind: "api-key", label: "Service API key" },
+    ui,
+  });
+}

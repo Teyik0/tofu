@@ -35,8 +35,8 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            .cache/hutch
-          key: tofu-${{ runner.os }}-${{ runner.arch }}-bun-1.4.2-${{ hashFiles('bun.lock', 'hutch.config.ts') }}
+            apps/tofu/.cache/hutch
+          key: tofu-${{ runner.os }}-${{ runner.arch }}-bun-1.4.2-${{ hashFiles('bun.lock', 'apps/tofu/hutch.config.ts') }}
       - name: Install Linux native dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2

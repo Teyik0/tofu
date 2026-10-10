@@ -1,0 +1,16 @@
+import { Database } from "bun:sqlite";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import type { FurinSyncOptions } from "@teyik0/furin/sync";
+import { migrateSqliteSync, sqliteSyncAdapter } from "@teyik0/furin/sync/sqlite";
+
+export async function createPreviewSync(directory: string) {
+  await mkdir(directory, { recursive: true });
+  const database = new Database(join(directory, "sync.sqlite"), { create: true });
+  migrateSqliteSync(database);
+  const options: FurinSyncOptions = {
+    adapter: sqliteSyncAdapter({ database, namespace: "{{id}}-preview" }),
+    principal: () => "local-developer",
+  };
+  return { options, close: () => database.close() };
+}

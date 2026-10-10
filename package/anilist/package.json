@@ -1,0 +1,35 @@
+{
+  "name": "@tofu/anilist",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Official AniList plugin for Tofu",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./service": "./src/server/service.ts",
+    "./oauth": "./src/server/oauth.ts",
+    "./api": "./src/server/api.ts",
+    "./opening-api": "./src/server/opening-api.ts",
+    "./client": "./src/client.tsx",
+    "./components/*": "./src/components/*.tsx",
+    "./components/anilist-status": "./src/components/anilist-status.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --target=bun --packages=external --outdir=dist",
+    "test": "bun test tests",
+    "tscheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@teyik0/furin": "file:../../vendor/furin-pr163-914e82a.tgz",
+    "@tofu/plugins": "workspace:*",
+    "@tofu/ui": "workspace:*",
+    "elysia": "catalog:",
+    "lucide-react": "catalog:",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

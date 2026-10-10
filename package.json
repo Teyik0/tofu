@@ -1,44 +1,59 @@
 {
-  "name": "tofu",
-  "version": "0.2.1",
+  "name": "@tofu/workspace",
   "private": true,
-  "description": "Torrent client powered by Bun, Furin, and Electrobun",
-  "bugs": {
-    "url": "https://github.com/Teyik0/Tofu/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Teyik0/Tofu.git"
-  },
-  "license": "MIT",
-  "author": "teyik0",
   "type": "module",
-  "scripts": {
-    "bench:ui": "bun scripts/native-latency.ts",
-    "build": "bun scripts/build.ts web",
-    "build:desktop": "bun scripts/build.ts desktop",
-    "build:release": "TOFU_RELEASE=1 bun scripts/build.ts release",
-    "commitlint": "bun --bun node_modules/@commitlint/cli/cli.js",
-    "demo": "bun scripts/demo.ts",
-    "desktop": "bun scripts/desktop.ts",
-    "dev": "TOFU_PROFILE=dev bun --hot scripts/dev.ts",
-    "dev:desktop": "TOFU_RELEASE=0 TOFU_PROFILE=dev bun scripts/build.ts dev-desktop",
-    "fix": "ultracite fix",
-    "prepare": "lefthook install",
-    "setup": "bun scripts/setup.ts",
-    "start": "TOFU_MODE=server bun .furin/build/bun/server.js",
-    "test": "bun test --parallel --isolate --bail --timeout 30000",
-    "test:background": "bun scripts/native-background.ts",
-    "test:coexist": "bun scripts/native-coexist.ts",
-    "test:hmr": "bun scripts/native-hmr.ts",
-    "test:native": "bun scripts/native-smoke.ts",
-    "tscheck": "tsc --noEmit"
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "package/*"
+    ]
   },
-  "dependencies": {
+  "scripts": {
+    "bench:ui": "bun run --filter @tofu/desktop bench:ui",
+    "build": "bun run --filter '@tofu/*' build",
+    "build:desktop": "bun run --filter @tofu/desktop build:desktop",
+    "build:release": "bun run --filter @tofu/desktop build:release",
+    "commitlint": "bun --bun node_modules/@commitlint/cli/cli.js",
+    "demo": "bun run --filter @tofu/desktop demo",
+    "desktop": "bun run --filter @tofu/desktop desktop",
+    "dev": "bun run --filter @tofu/desktop dev",
+    "dev:desktop": "bun run --filter @tofu/desktop dev:desktop",
+    "dev:docs": "bun run --filter @tofu/docs dev",
+    "fix": "ultracite fix",
+    "plugin:generate": "bun apps/tofu/scripts/plugins.ts generate",
+    "plugin:install": "bun apps/tofu/scripts/plugins.ts install",
+    "plugin:list": "bun apps/tofu/scripts/plugins.ts list",
+    "plugin:uninstall": "bun apps/tofu/scripts/plugins.ts uninstall",
+    "prepare": "lefthook install",
+    "setup": "bun run --filter @tofu/desktop setup",
+    "start": "bun run --filter @tofu/desktop start",
+    "test": "bun run --filter '@tofu/*' test",
+    "test:background": "bun run --filter @tofu/desktop test:background",
+    "test:coexist": "bun run --filter @tofu/desktop test:coexist",
+    "test:hmr": "bun run --filter @tofu/desktop test:hmr",
+    "test:native": "bun run --filter @tofu/desktop test:native",
+    "tscheck": "bun run --filter '@tofu/*' tscheck"
+  },
+  "overrides": {
+    "@elysia/eden": "2.0.0-beta.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@commitlint/cli": "catalog:",
+    "@commitlint/config-conventional": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "lefthook": "catalog:",
+    "typescript": "catalog:",
+    "ultracite": "catalog:"
+  },
+  "engines": {
+    "bun": ">=1.4.2"
+  },
+  "catalog": {
     "@base-ui/react": "1.8.0",
     "@elysia/eden": "2.0.0-beta.5",
-    "@teyik0/furin": "file:vendor/furin-pr163-914e82a.tgz",
-    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-914e82a.tgz",
     "bun-plugin-tailwind": "0.1.2",
     "class-variance-authority": "0.7.1",
     "cn": "^0.4.0",
@@ -50,9 +65,7 @@
     "tailwindcss": "4.3.1",
     "tw-animate-css": "1.4.0",
     "typebox": "1.3.34",
-    "webtorrent": "3.0.21"
-  },
-  "devDependencies": {
+    "webtorrent": "3.0.21",
     "@biomejs/biome": "2.5.14",
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
@@ -65,6 +78,11 @@
     "lefthook": "2.1.14",
     "shadcn": "4.21.1",
     "typescript": "7.0.2",
-    "ultracite": "7.12.1"
+    "ultracite": "7.12.1",
+    "node-datachannel": "0.32.3",
+    "@types/parse-torrent": "11.0.1",
+    "three": "0.186.1",
+    "@types/three": "0.186.0",
+    "evlog": "2.30.1"
   }
 }

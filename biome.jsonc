@@ -24,7 +24,11 @@
   },
   "overrides": [
     {
-      "includes": ["src/components/**"],
+      "includes": [
+        "apps/tofu/src/components/**",
+        "package/anilist/src/components/**",
+        "package/ui/src/**"
+      ],
       "linter": {
         "rules": {
           "complexity": {
@@ -37,7 +41,7 @@
       }
     },
     {
-      "includes": ["src/styles.css"],
+      "includes": ["apps/tofu/src/styles.css"],
       "assist": {
         "actions": {
           "source": {

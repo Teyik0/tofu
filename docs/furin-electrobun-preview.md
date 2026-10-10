@@ -4,9 +4,9 @@ Tofu 0.2.1 uses the core and Electrobun packages from [Furin PR #163](https://gi
 
 ## Architecture
 
-`furin-electrobun build` produces the inert `app.js`, copies its external dependency closure and prepares the Hutch SDK project. The `desktop` section of `furin.config.ts` selects `src/desktop-host.ts` through the new `hostEntry` option. That host uses `runDesktopHost()` with Tofu's existing data directory. The package selects the source or compiled app, publishes development readiness and drains the backend on failures, signals and quit. The backend lives in the same Bun process as the SDK; WebTorrent remains on Bun.
+`furin-electrobun build` produces the inert `app.js`, copies its external dependency closure and prepares the Hutch SDK project. The `desktop` section of `apps/tofu/furin.config.ts` selects `apps/tofu/src/desktop-host.ts` through the new `hostEntry` option. That host uses `runDesktopHost()` with Tofu's existing data directory. The package selects the source or compiled app, publishes development readiness and drains the backend on failures, signals and quit. The backend lives in the same Bun process as the SDK; WebTorrent remains on Bun.
 
-The app installs `desktopApp({ onStartup, onShutdown, restrictWebToLoopback: true })` on its original Elysia root. Lifecycle functions live in `src/api/lifecycle.ts` and also support updater recovery. Initialization acquires the instance lease before opening the journal, engine, automations and updater; the private listener opens after initialization completes. Shutdown persists transfers and closes resources. Native update preparation drains durable services while retaining the listener so an unsuccessful helper handoff can restore services with the same session. Normal quit stops the backend through Furin.
+The app installs `desktopApp({ onStartup, onShutdown, restrictWebToLoopback: true })` on its original Elysia root. Lifecycle functions live in `apps/tofu/src/api/lifecycle.ts` and also support updater recovery. Initialization acquires the instance lease before opening the journal, engine, automations and updater; the private listener opens after initialization completes. Shutdown persists transfers and closes resources. Native update preparation drains durable services while retaining the listener so an unsuccessful helper handoff can restore services with the same session. Normal quit stops the backend through Furin.
 
 Tofu owns its tray, menus, protocol events, window reopening and updater behavior. The alternative of replacing those with a generic framework window would discard existing native behavior. The small host entrypoint and typed SDK additions preserve it without adding torrent-specific framework APIs. This follows the artifact/deployment boundary used by [Next.js standalone output](https://nextjs.org/docs/app/api-reference/config/next-config-js/output) and [TanStack Start hosting](https://tanstack.com/start/latest/docs/framework/react/guide/hosting).
 
@@ -26,7 +26,7 @@ Run `bun run dev:desktop` to open Tofu on its source app with Furin Fast Refresh
 
 ## API composition
 
-`src/server.ts` mounts `.use(api)`. `src/api.ts` composes the route-free core dependency and the core, Jev, AniList, automation, discovery and configuration HTTP modules. See the [plugin architecture](plugin-architecture.md) for the future extension boundary.
+`apps/tofu/src/server.ts` mounts `.use(api)`. `apps/tofu/src/api.ts` composes the route-free core dependency and the core, Jev, AniList, automation, discovery and configuration HTTP modules. See the [plugin architecture](plugin-architecture.md) for the experimental SDK and trusted local extension boundary.
 
 ## Session handling in Tofu
 
