@@ -11,7 +11,7 @@ const feedExpression3 = /[«"“]([^»"”]+)[»"”]/;
 const feedExpression4 =
   /^(?:t[eé]l[eé]charge(?:r)?|suivre|r[eé]cup[eè]re|download|follow)\s+(?:les\s+|the\s+)?(?:nouveaux\s+|new\s+)?(?:[eé]pisodes\s+(?:de\s+)?|episodes\s+(?:of\s+)?)?/i;
 const feedExpression5 =
-  /\s+(?:(?:saison|season)\s+\d+|(?:en|with|in)\s+(?:VF|VOSTFR|MULTI)|(?:en|with|in)\s+\d{3,4}p|(?:en|with|in)\s+(?:x26[45]|h[ .]?26[45]|HEVC|AVC|AV1)\b|pr[eé]f[eè]re|prefer|avec\s|with\s|sur\s|on\s)|[,;]/i;
+  /\s+(?:(?:saison|season)\s+\d+|(?:en|with|in)\s+(?:VF|VOSTFR|MULTI)|(?:en|with|in)\s+\d{3,4}p|(?:(?:en|with|in)\s+)?(?:x26[45]|h[ .]?26[45]|HEVC|AVC|AV1)\b|pr[eé]f[eè]re|prefer|avec\s|with\s|sur\s|on\s)|[,;]/i;
 const feedExpression6 = /\b(?:2160|1080|900|720|480)p\b/gi;
 const feedExpression7 = /\b(?:VOSTFR|VF|MULTI)\b/gi;
 const feedExpression8 = /tsundere(?:-raws)?/i;

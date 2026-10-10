@@ -54,10 +54,10 @@ test("automation resumes recurring AniList sync after a startup database write f
     await expect(service.start()).rejects.toThrow("database is locked");
     writer.exec("ROLLBACK");
     clock += 60_001;
-    await Bun.sleep(15_000);
     const subscription = await waitFor(
       async () => service.anilist.snapshot().subscriptions[0],
-      (value) => value?.lastSyncAt === clock
+      (value) => value?.lastSyncAt === clock,
+      20_000
     );
     expect(subscription?.lastSyncAt).toBe(clock);
     expect(subscription?.error).toBeNull();

@@ -24,8 +24,12 @@ export function json(body: object): RequestInit {
   };
 }
 
-export async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean) {
-  const until = Date.now() + 15_000;
+export async function waitFor<T>(
+  read: () => Promise<T>,
+  ready: (value: T) => boolean,
+  timeoutMs?: number
+) {
+  const until = Date.now() + (timeoutMs ?? 15_000);
   while (Date.now() < until) {
     const value = await read();
     if (ready(value)) {

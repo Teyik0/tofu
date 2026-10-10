@@ -84,6 +84,9 @@ test("general preferences shape new rules, explicit requests override them, and 
     expect(explicit.sources).toEqual(["tsundere"]);
     expect(explicit.waitMinutes).toBe(45);
 
+    const bareCodec = await interpret("download Frieren x265");
+    expect(bareCodec).toMatchObject({ codecs: ["H.265"], title: "Frieren" });
+
     const codecRequests = await Promise.all(
       ["x264", "h 264", "AVC", "AV1", "HEVC", "x265", "h265"].map((codec) =>
         interpret(`Example in ${codec}`)
