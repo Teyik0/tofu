@@ -3,6 +3,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import type {
   AniListClient,
   AniListEntry,
+  AniListSeason,
   AniListState,
   AniListStatus,
   AniListSubscription,
@@ -58,6 +59,8 @@ interface ListResponse {
           bannerImage?: string | null;
           episodes?: number | null;
           format?: string | null;
+          genres?: string[] | null;
+          season?: string | null;
           seasonYear?: number | null;
         };
       }[];
@@ -65,7 +68,7 @@ interface ListResponse {
   };
 }
 const listQuery =
-  "query($userId: Int!, $chunk: Int!) { MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) { hasNextChunk lists { entries { status progress media { id title { romaji english native userPreferred } synonyms siteUrl coverImage { extraLarge large } bannerImage episodes format seasonYear } } } } }";
+  "query($userId: Int!, $chunk: Int!) { MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) { hasNextChunk lists { entries { status progress media { id title { romaji english native userPreferred } synonyms siteUrl coverImage { extraLarge large } bannerImage episodes format genres season seasonYear } } } } }";
 
 export function isAniListStatus(value: string): value is AniListStatus {
   return ["CURRENT", "PLANNING", "COMPLETED", "PAUSED", "DROPPED", "REPEATING"].includes(value);
@@ -85,6 +88,7 @@ function animeFolder(entry: AniListEntry) {
   );
 }
 
+const aniListSeasons: AniListSeason[] = ["WINTER", "SPRING", "SUMMER", "FALL"];
 function collectEntries(
   collection: ListResponse["MediaListCollection"],
   found: Map<number, AniListEntry>
@@ -117,8 +121,12 @@ function collectEntries(
         coverImage: entry.media.coverImage?.extraLarge ?? entry.media.coverImage?.large ?? null,
         episodes: entry.media.episodes ?? null,
         format: entry.media.format ?? null,
+        genres: (entry.media.genres ?? [])
+          .filter((genre) => typeof genre === "string")
+          .slice(0, 30),
         mediaId: entry.media.id,
         progress: Math.max(0, entry.progress),
+        season: aniListSeasons.find((season) => season === entry.media.season) ?? null,
         seasonYear: entry.media.seasonYear ?? null,
         siteUrl: entry.media.siteUrl ?? null,
         status: entry.status,

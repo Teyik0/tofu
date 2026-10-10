@@ -22,7 +22,7 @@ import { ActionTooltip } from "./action-tooltip";
 import { AniListCover } from "./anilist-cover";
 import { request } from "./api";
 import { useDashboard } from "./app-shell";
-import { RuleFields } from "./automation-center";
+import { RuleFields } from "./automation-fields";
 import { bytes } from "./format";
 import { OptionSelect } from "./option-select";
 import { Alert, AlertDescription } from "./ui/alert";

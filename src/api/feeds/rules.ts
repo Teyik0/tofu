@@ -1,4 +1,9 @@
-import type { AutomationDraft, FeedRelease, SourcePluginId } from "../../types";
+import type {
+  AutomationDraft,
+  AutomationPreferences,
+  FeedRelease,
+  SourcePluginId,
+} from "../../types";
 
 const feedExpression1 = /\p{M}/gu;
 const feedExpression2 = /[^\p{L}\p{N}]+/gu;
@@ -22,7 +27,25 @@ export function normalizeTitle(value: string) {
     .replace(feedExpression2, " ")
     .trim();
 }
-export function interpretLocally(query: string, destinationId: string): AutomationDraft {
+export const defaultAutomationPreferences: AutomationPreferences = {
+  automatic: true,
+  codecs: [],
+  deleteReplacedFiles: false,
+  excludePacks: true,
+  intervalMinutes: 15,
+  languages: [],
+  paused: false,
+  priority: ["language", "resolution", "source", "codec"],
+  resolutions: [],
+  sources: ["tsundere", "nyaa", "c411"],
+  waitMinutes: 0,
+};
+/** Formats and sources named in the request win over the general preferences. */
+export function interpretLocally(
+  query: string,
+  destinationId: string,
+  preferences: AutomationPreferences
+): AutomationDraft {
   const explicit = query.match(feedExpression3)?.[1];
   const title =
     explicit ?? query.replace(feedExpression4, "").split(feedExpression5)[0]?.trim() ?? query;
@@ -42,26 +65,18 @@ export function interpretLocally(query: string, destinationId: string): Automati
     .filter((source) => source.index >= 0)
     .sort((a, b) => a.index - b.index)
     .map((source) => source.id);
-  const sources: SourcePluginId[] = listed.length ? listed : ["tsundere", "nyaa", "c411"];
   return {
-    automatic: true,
-    codecs: [],
-    deleteReplacedFiles: false,
+    ...preferences,
     destinationId,
     enabled: true,
-    excludePacks: true,
     includeExisting: false,
-    intervalMinutes: 15,
-    languages,
+    languages: languages.length ? languages : preferences.languages,
     matchMode: "exact",
-    paused: false,
-    priority: ["language", "resolution", "source", "codec"],
     query,
-    resolutions,
+    resolutions: resolutions.length ? resolutions : preferences.resolutions,
     season: Number(query.match(feedExpression11)?.[1]) || null,
-    sources,
+    sources: listed.length ? listed : preferences.sources,
     title,
-    waitMinutes: 0,
   };
 }
 export function localMatch(rule: AutomationDraft, release: FeedRelease) {

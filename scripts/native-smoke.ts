@@ -610,10 +610,11 @@ async function nativeWorkflow(config: {
         getComputedStyle(document.querySelector('[data-slot="sidebar-container"]')!).width ===
           "190px" && getComputedStyle(document.documentElement).fontFamily.includes("system-ui")
     );
-    check(
-      "React hydrated and engine connected",
-      document.body.textContent?.includes("Engine connected") === true
+    // The status bar only shows a port once the engine is listening.
+    const enginePort = Number(
+      document.querySelector(".status-port")!.textContent!.replace("Port ", "")
     );
+    check("React hydrated and engine connected", enginePort > 0);
     check(
       "Filtering and sorting use accessible Select controls",
       document.querySelector('[aria-label="Filter torrents by status"]')?.getAttribute("role") ===
@@ -641,7 +642,7 @@ async function nativeWorkflow(config: {
     );
     check(
       "Engine data present in HTML before JavaScript",
-      (await (await fetch("/")).text()).includes("Engine connected")
+      (await (await fetch("/")).text()).includes(`class="status-port">Port <b>${enginePort}</b>`)
     );
     await wait(() =>
       performance
@@ -1206,11 +1207,18 @@ async function nativeWorkflow(config: {
       )
     );
     click("Prepare tracking");
+    await wait(() =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>("button")).some(
+        (button) => button.textContent?.trim() === "Create AniList tracking"
+      )
+    );
+    document.querySelector<HTMLButtonElement>("#anilist-customize")!.click();
     await wait(() => !!document.querySelector("#automation-language"));
     check(
-      "AniList list preferences and tracked statuses configurable",
+      "AniList tracking starts from the general preferences and tracked statuses are configurable",
       [
-        document.querySelector<HTMLInputElement>("#automation-language")!.value === "VOSTFR",
+        document.querySelector("#automation-language")!.getAttribute("data-value") ===
+          (await automationState()).preferences.languages.join(","),
         document.querySelector<HTMLInputElement>("#anilist-CURRENT")!.checked === true,
         document.querySelector<HTMLInputElement>("#anilist-PLANNING")!.checked === true,
       ].every(Boolean)
@@ -1254,7 +1262,10 @@ async function nativeWorkflow(config: {
       "Without Jev, editable criteria and exact matching",
       document.querySelector<HTMLInputElement>("#automation-title")!.value === "Example" &&
         document.querySelector("#automation-matcher")!.textContent?.trim() === "Exact title name" &&
-        document.querySelector<HTMLInputElement>("#automation-resolution")!.value.includes("1080p")
+        document
+          .querySelector("#automation-resolution")!
+          .getAttribute("data-value")
+          ?.includes("1080p") === true
     );
     document.querySelector<HTMLInputElement>("#automation-enabled")!.click();
     await wait(
@@ -1553,8 +1564,10 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       coverImage: null,
       episodes: 3,
       format: "TV",
+      genres: ["Action", "Comedy"],
       mediaId: 10,
       progress: 0,
+      season: "SPRING",
       seasonYear: 2026,
       siteUrl: "https://anilist.co/anime/10",
       status: "CURRENT",
@@ -1763,12 +1776,14 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     await wait(() => rootInput.value === customRoot && !button("Prepare tracking").disabled);
     button("Prepare tracking").click();
     await wait(
-      () => !!document.querySelector("#automation-language") && !button("Prepare tracking").disabled
+      () =>
+        Array.from(document.querySelectorAll("button")).some(
+          (element) => element.textContent?.trim() === "Create AniList tracking"
+        ) && !button("Prepare tracking").disabled
     );
     check(
-      "Custom root folder and Nyaa preferences are preserved",
-      rootInput.value === customRoot &&
-        document.querySelector<HTMLInputElement>("#automation-language")!.value === "VOSTFR"
+      "Custom root folder is preserved and the general preferences are summarized",
+      rootInput.value === customRoot && !!document.querySelector(".preference-summary li")
     );
     check("Creation waits for AniList title approval", button("Create AniList tracking").disabled);
     await pickOption("#anilist-organization", "All anime in the selected thread");
@@ -1965,7 +1980,8 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     check(
       "Anime automation exposes quality preferences with identity supplied by AniList",
       !document.querySelector("#automation-title") &&
-        document.querySelector<HTMLInputElement>("#automation-resolution")!.value === "1080p, 720p"
+        document.querySelector("#automation-resolution")!.getAttribute("data-value") ===
+          "1080p,720p"
     );
     document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!.click();
     await wait(() => !document.querySelector(".anime-modal"));

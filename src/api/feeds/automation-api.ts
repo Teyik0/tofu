@@ -1,7 +1,7 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { type CoreDependencies, createCore, unavailableAutomation } from "../core";
-import { draft } from "./schemas";
+import { draft, preferences } from "./schemas";
 
 export function createAutomationApi(dependencies: CoreDependencies) {
   const { automation, sync } = dependencies;
@@ -11,6 +11,9 @@ export function createAutomationApi(dependencies: CoreDependencies) {
     .use(furinSync(sync))
     .guard({ sync: false })
     .get("/automation", { sync: { id: "tofu.automation", scope: {} } }, () => service().snapshot())
+    .put("/automation/preferences", { body: preferences }, ({ body }) =>
+      service().savePreferences(body)
+    )
     .post("/automations/preview", { body: draft }, ({ body }) => service().preview(body))
     .post("/automations", { body: draft }, ({ body }) => service().save(null, body))
     .put("/automations/:id", { body: draft }, ({ params, body }) => service().save(params.id, body))

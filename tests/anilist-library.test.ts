@@ -5,7 +5,7 @@ import { AutomationService } from "../src/api/feeds/service";
 import type { AniListState, AutomationRule } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
 
-test("AniList library returns artwork and all list statuses, and remembers the visible statuses", async () => {
+test("AniList library returns artwork, genres, seasons and all list statuses, and remembers the visible statuses", async () => {
   const context = await fixture(1024, []);
   const provider = Bun.serve({
     async fetch(incoming) {
@@ -25,7 +25,9 @@ test("AniList library returns artwork and all list statuses, and remembers the v
                           coverImage: { extraLarge: "https://example.com/cover.jpg" },
                           episodes: 12,
                           format: "TV",
+                          genres: ["Action", "Drama"],
                           id: 10,
+                          season: "SPRING",
                           seasonYear: 2026,
                           synonyms: [],
                           title: { romaji: "Example" },
@@ -75,9 +77,16 @@ test("AniList library returns artwork and all list statuses, and remembers the v
       coverImage: "https://example.com/cover.jpg",
       episodes: 12,
       format: "TV",
+      genres: ["Action", "Drama"],
+      season: "SPRING",
       seasonYear: 2026,
     });
-    expect(state.entries[1]).toMatchObject({ coverImage: null, episodes: null });
+    expect(state.entries[1]).toMatchObject({
+      coverImage: null,
+      episodes: null,
+      genres: [],
+      season: null,
+    });
     expect(state.visibleStatuses).toEqual(["CURRENT", "PLANNING"]);
     const changed = await request("/anilist/preferences", {
       ...json({ visibleStatuses: ["COMPLETED"] }),

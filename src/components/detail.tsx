@@ -1,11 +1,12 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
-import { memo, useState } from "react";
+import { memo, useId, useState } from "react";
 import type { DashboardState, FilePriority, SpeedSample, TorrentDetail } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import { request } from "./api";
 import { bytes, date, duration, percent, ratio, speed, statusLabels } from "./format";
 import { Icon } from "./icon";
 import type { ModalKind } from "./modal";
+import { StatusGlyph } from "./status-glyph";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -27,19 +28,22 @@ export const TrafficChart = memo(function TrafficChartView({
   samples: SpeedSample[];
   small: boolean;
 }) {
+  const id = useId();
   const maximum = Math.max(1024, ...samples.flatMap((sample) => [sample.download, sample.upload]));
-  const points = (key: "download" | "upload") =>
-    samples
-      .map(
-        (sample, index) =>
-          `${(index / Math.max(1, samples.length - 1)) * 600},${90 - (sample[key] / maximum) * 78}`
-      )
-      .join(" ");
+  const coordinates = (key: "download" | "upload") =>
+    samples.map(
+      (sample, index) =>
+        `${(index / Math.max(1, samples.length - 1)) * 600},${96 - (sample[key] / maximum) * 84}`
+    );
+  const line = (key: "download" | "upload") => coordinates(key).join(" ");
+  const area = (key: "download" | "upload") =>
+    samples.length > 1 ? `M0,96 L${coordinates(key).join(" L")} L600,96 Z` : "";
   return (
     <div className={small ? "sparkline" : "traffic-chart"}>
       {!small && (
         <div className="chart-scale">
           <span>{speed(maximum)}</span>
+          <span>{speed(maximum / 2)}</span>
           <span>0 B/s</span>
         </div>
       )}
@@ -49,35 +53,40 @@ export const TrafficChart = memo(function TrafficChartView({
         role="img"
         viewBox="0 0 600 100"
       >
-        <path d="M0 12H600 M0 51H600 M0 90H600" fill="none" opacity=".08" stroke="currentColor" />
+        <defs>
+          {(["download", "upload"] as const).map((key) => (
+            <linearGradient id={`${id}-${key}`} key={key} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor={`var(--chart-${key})`} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={`var(--chart-${key})`} stopOpacity={0} />
+            </linearGradient>
+          ))}
+        </defs>
+        <path
+          className="chart-grid"
+          d="M0 12H600 M0 54H600 M0 96H600"
+          fill="none"
+          stroke="currentColor"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path d={area("upload")} fill={`url(#${id}-upload)`} />
+        <path d={area("download")} fill={`url(#${id}-download)`} />
         <polyline
           fill="none"
-          points={points("download")}
-          stroke="var(--chart-download)"
-          strokeWidth={small ? 3 : 2}
+          points={line("upload")}
+          stroke="var(--chart-upload)"
+          strokeLinejoin="round"
+          strokeWidth={small ? 2 : 1.75}
           vectorEffect="non-scaling-stroke"
         />
         <polyline
           fill="none"
-          points={points("upload")}
-          stroke="var(--chart-upload)"
-          strokeWidth={small ? 3 : 2}
+          points={line("download")}
+          stroke="var(--chart-download)"
+          strokeLinejoin="round"
+          strokeWidth={small ? 2 : 1.75}
           vectorEffect="non-scaling-stroke"
         />
       </svg>
-      {!small && (
-        <div className="chart-legend">
-          <span>
-            <i className="download-dot" />
-            Download
-          </span>
-          <span>
-            <i className="upload-dot" />
-            Upload
-          </span>
-          <span className="muted">Last 2 minutes · all torrents</span>
-        </div>
-      )}
     </div>
   );
 });
@@ -122,8 +131,9 @@ export const Detail = memo(function DetailView({
     }
   };
   const tabs = ["Activity", "Files", "Trackers", "Peers", "Information"];
+  const latest = data.history.at(-1);
   const trackerLabels = {
-    announcing: "Annonce…",
+    announcing: "Announcing…",
     error: "Error",
     paused: "Paused",
     waiting: "Waiting",
@@ -133,11 +143,22 @@ export const Detail = memo(function DetailView({
     <section aria-label="Torrent details" className="detail-pane">
       <div className="detail-top">
         <div className="detail-name">
-          <Icon name={torrent.progress === 1 ? "check" : "download"} />
-          <strong>{torrent.name}</strong>
-          <Badge className={`status ${torrent.status}`} variant="secondary">
-            {statusLabels[torrent.status]}
-          </Badge>
+          <StatusGlyph progress={torrent.progress} size={40} status={torrent.status} />
+          <div className="detail-title">
+            <strong title={torrent.name}>{torrent.name}</strong>
+            <div className="detail-meta">
+              <Badge className={`status ${torrent.status}`} variant="secondary">
+                {statusLabels[torrent.status]}
+              </Badge>
+              <span className="num">
+                {bytes(torrent.downloaded)} of {bytes(torrent.length)}
+              </span>
+              <span className="num">{percent(torrent.progress)}</span>
+              <span className="detail-path" title={torrent.savePath}>
+                {torrent.savePath}
+              </span>
+            </div>
+          </div>
         </div>
         <div className="detail-actions">
           <ActionTooltip>
@@ -177,6 +198,7 @@ export const Detail = memo(function DetailView({
               </Button>
             </ActionTooltip>
           )}
+          <span aria-hidden="true" className="toolbar-divider" />
           <ActionTooltip>
             <Button
               aria-label="Remove torrent"
@@ -196,7 +218,7 @@ export const Detail = memo(function DetailView({
           <AlertDescription>{fileError}</AlertDescription>
         </Alert>
       )}
-      <Tabs defaultValue="Activity">
+      <Tabs className="detail-tabs" defaultValue="Activity">
         <TabsList aria-label="Details" className="tabs" variant="line">
           {tabs.map((name) => (
             <TabsTrigger key={name} value={name}>
@@ -218,18 +240,25 @@ export const Detail = memo(function DetailView({
           )}
           <TabsContent value="Activity">
             <div className="activity-layout">
-              <div>
+              <div className="activity-traffic">
                 <div className="section-heading">
-                  <h3>Live traffic</h3>
-                  <span className="live">
-                    <i />
-                    Live updates
-                  </span>
+                  <h3>Session traffic</h3>
+                  <div className="chart-legend">
+                    <span data-direction="down">
+                      <i />
+                      Download <b className="num">{speed(latest?.download ?? 0)}</b>
+                    </span>
+                    <span data-direction="up">
+                      <i />
+                      Upload <b className="num">{speed(latest?.upload ?? 0)}</b>
+                    </span>
+                  </div>
                 </div>
                 <TrafficChart samples={data.history} small={false} />
+                <p className="chart-caption">Last 2 minutes · all torrents</p>
                 <div className="pieces-heading">
                   <span>Local availability</span>
-                  <span className="mono">
+                  <span className="num">
                     {torrent.verifiedPieces.toLocaleString("en-US")} /{" "}
                     {torrent.pieces.toLocaleString("en-US")} pieces
                   </span>
@@ -252,28 +281,40 @@ export const Detail = memo(function DetailView({
                   ))}
                 </div>
               </div>
-              <dl className="stats-grid">
-                <Stat
-                  label="Downloaded"
-                  value={`${bytes(torrent.downloaded)} / ${bytes(torrent.length)}`}
-                />
-                <Stat label="Uploaded" value={bytes(torrent.uploaded)} />
-                <Stat label="Ratio" value={ratio(torrent.ratio)} />
-                <Stat
-                  label="Time remaining"
-                  value={torrent.progress === 1 ? "Completed" : duration(torrent.eta)}
-                />
-                <Stat
-                  label="Connected peers"
-                  value={`${torrent.peers} · ${torrent.seeds} seed${torrent.seeds === 1 ? "" : "s"}`}
-                />
-                <Stat
-                  label="Swarm · seeds / peers"
-                  value={`${torrent.swarmSeeds ?? "—"} / ${torrent.swarmPeers ?? "—"}`}
-                />
-                <Stat label="Active time" value={duration(torrent.activeSeconds)} />
-                <Stat label="Seeding time" value={duration(torrent.seedSeconds)} />
-              </dl>
+              <div className="stats-groups">
+                <section aria-label="Transfer">
+                  <h4>Transfer</h4>
+                  <dl className="stats-grid">
+                    <Stat label="Downloaded" value={bytes(torrent.downloaded)} />
+                    <Stat label="Uploaded" value={bytes(torrent.uploaded)} />
+                    <Stat label="Ratio" value={ratio(torrent.ratio)} />
+                  </dl>
+                </section>
+                <section aria-label="Swarm">
+                  <h4>Swarm</h4>
+                  <dl className="stats-grid">
+                    <Stat
+                      label="Connected peers"
+                      value={`${torrent.peers} · ${torrent.seeds} seed${torrent.seeds === 1 ? "" : "s"}`}
+                    />
+                    <Stat
+                      label="Swarm · seeds / peers"
+                      value={`${torrent.swarmSeeds ?? "—"} / ${torrent.swarmPeers ?? "—"}`}
+                    />
+                  </dl>
+                </section>
+                <section aria-label="Time">
+                  <h4>Time</h4>
+                  <dl className="stats-grid">
+                    <Stat
+                      label="Time remaining"
+                      value={torrent.progress === 1 ? "Completed" : duration(torrent.eta)}
+                    />
+                    <Stat label="Active time" value={duration(torrent.activeSeconds)} />
+                    <Stat label="Seeding time" value={duration(torrent.seedSeconds)} />
+                  </dl>
+                </section>
+              </div>
             </div>
           </TabsContent>
           <TabsContent value="Files">
@@ -442,7 +483,7 @@ export const Detail = memo(function DetailView({
                           <div className="inline-actions">
                             <ActionTooltip>
                               <Button
-                                aria-label={`Modifier ${row.url}`}
+                                aria-label={`Edit ${row.url}`}
                                 onClick={() => open({ torrent, type: "trackers" })}
                                 size="icon-sm"
                                 type="button"
@@ -565,7 +606,7 @@ export const Detail = memo(function DetailView({
                 value={torrent.private ? "Private torrent" : "Public torrent"}
               />
               <Stat label="Created with" value={torrent.createdBy || "—"} />
-              <Stat label="Commentaire" value={torrent.comment || "—"} />
+              <Stat label="Comment" value={torrent.comment || "—"} />
             </dl>
           </TabsContent>
         </div>
