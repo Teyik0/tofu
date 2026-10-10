@@ -31,6 +31,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ### Fixed
 
+- Build release bundles before type checking and testing so clean runners have the Electrobun Hutch SDK available.
 - Prevent large AniList libraries from exceeding deferred route-frame limits by loading list state through ordinary JSON transport while keeping torrent details deferred.
 - Search anime romaji titles first and fall back to English when no release passes matching requirements, consistently across previews, baseline exclusions and scheduled automation checks.
 - Exclude Jev matches below 75% confidence from previews and automation decisions while retaining explicit review for uncertain eligible matches.

@@ -81,10 +81,6 @@ jobs:
 
       - run: bunx --bun ultracite check
 
-      - run: bun run tscheck
-
-      - run: bun run test
-
       - name: Configure optional Apple signing
         if: runner.os == 'macOS'
         run: bun scripts/release.ts signing
@@ -93,7 +89,12 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
 
-      - run: bun run build:release
+      - name: Build release and prepare the Hutch SDK
+        run: bun run build:release
+
+      - run: bun run tscheck
+
+      - run: bun run test
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
