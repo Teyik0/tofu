@@ -1,0 +1,21 @@
+.github/workflows/release.yml
+  s_807678f85853ef::t_0afade000465b4 92-97
+CHANGELOG.md
+  s_807678f85853ef::t_0afade000465b4 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "750898b2b4a0b979d804287db21f05bb9a5ecc3c",
+  "prompts": {},
+  "sessions": {
+    "s_807678f85853ef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a126ec-19de-7c63-9436-f99151a96f2b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
