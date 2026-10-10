@@ -2,15 +2,13 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { version } from "../package.json";
 
-test("Hutch embeds the package version and update feed in release metadata", async () => {
+test("the Furin desktop configuration supplies the package version and release update feed", async () => {
   const root = join(import.meta.dir, "..");
   const child = Bun.spawn(
     [
       process.execPath,
-      "--bun",
-      "node_modules/electrobun/bin/electrobun.cjs",
-      "config",
-      "--env=stable",
+      "-e",
+      'const { default: config } = await import("./furin.config.ts"); console.log(JSON.stringify(config.desktop));',
     ],
     {
       cwd: root,
@@ -32,5 +30,18 @@ test("Hutch embeds the package version and update feed in release metadata", asy
   const config = JSON.parse(output.trim().split("\n").at(-1) ?? "");
   expect(config.app.version).toBe(version);
   expect(config.app.identifier).toBe("app.tofu.torrents");
-  expect(config.release.baseUrl).toBe("https://github.com/Teyik0/Tofu/releases/latest/download");
+  expect(config.sdk.release.baseUrl).toBe(
+    "https://github.com/Teyik0/Tofu/releases/latest/download"
+  );
+  expect(config.sdk.build.linux.icon).toBe("public/tofu-icon.png");
+  expect(config.sdk.build.mac.icons).toBe("public/tofu.iconset");
+  expect(config.sdk.build.win.icon).toBe("public/tofu.iconset/icon_256x256.png");
+  const iconsExist = await Promise.all(
+    [
+      config.sdk.build.linux.icon,
+      `${config.sdk.build.mac.icons}/icon_512x512@2x.png`,
+      config.sdk.build.win.icon,
+    ].map((icon) => Bun.file(join(root, icon)).exists())
+  );
+  expect(iconsExist).toEqual([true, true, true]);
 }, 30_000);

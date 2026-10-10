@@ -1,5 +1,7 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
+import { useMutation } from "@teyik0/furin/client";
 import { memo, useId, useState } from "react";
+import { api } from "../lib/client";
 import type { DashboardState, FilePriority, SpeedSample, TorrentDetail } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import { request } from "./api";
@@ -109,9 +111,17 @@ export const Detail = memo(function DetailView({
   torrent: TorrentDetail;
   data: DashboardState;
   busy: boolean;
-  act: (path: string, method: string, body: object | undefined) => Promise<void>;
+  act: (id: string, task: () => Promise<unknown>) => Promise<void>;
   open: (modal: ModalKind) => void;
 }) {
+  const endpoint = api.torrents({ id: torrent.id });
+  const verify = useMutation(endpoint.verify.post);
+  const reveal = useMutation(endpoint.reveal.post);
+  const announce = useMutation(endpoint.announce.post);
+  const setPriority = useMutation((index: number, priority: FilePriority) =>
+    endpoint.files({ index }).put({ priority })
+  );
+  const setTrackers = useMutation(endpoint.trackers.put);
   const base = `/torrents/${torrent.id}`;
   const [fileError, setFileError] = useState<string | null>(null);
   const [savingFile, setSavingFile] = useState<number | null>(null);
@@ -165,7 +175,7 @@ export const Detail = memo(function DetailView({
             <Button
               aria-label="Verify files"
               disabled={busy || !torrent.pieces}
-              onClick={() => void act(`${base}/verify`, "POST", undefined)}
+              onClick={() => void act(torrent.id, () => verify.mutateAsync())}
               size="icon-sm"
               type="button"
               variant="ghost"
@@ -189,7 +199,7 @@ export const Detail = memo(function DetailView({
               <Button
                 aria-label="Open folder"
                 disabled={busy}
-                onClick={() => void act(`${base}/reveal`, "POST", undefined)}
+                onClick={() => void act(torrent.id, () => reveal.mutateAsync())}
                 size="icon-sm"
                 type="button"
                 variant="ghost"
@@ -368,9 +378,9 @@ export const Detail = memo(function DetailView({
                               { label: "High", value: "high" },
                             ]}
                             onValueChange={(value) =>
-                              void act(`${base}/files/${file.index}`, "PUT", {
-                                priority: value as FilePriority,
-                              })
+                              void act(torrent.id, () =>
+                                setPriority.mutateAsync(file.index, value as FilePriority)
+                              )
                             }
                             value={file.priority}
                           >
@@ -417,7 +427,7 @@ export const Detail = memo(function DetailView({
               <div className="inline-actions">
                 <Button
                   disabled={busy || torrent.status === "paused" || !torrent.trackers.length}
-                  onClick={() => void act(`${base}/announce`, "POST", undefined)}
+                  onClick={() => void act(torrent.id, () => announce.mutateAsync())}
                   size="sm"
                   type="button"
                   variant="outline"
@@ -498,11 +508,13 @@ export const Detail = memo(function DetailView({
                                 className="danger-text"
                                 disabled={busy}
                                 onClick={() =>
-                                  void act(`${base}/trackers`, "PUT", {
-                                    urls: torrent.trackers
-                                      .filter((tracker) => tracker.url !== row.url)
-                                      .map((tracker) => tracker.url),
-                                  })
+                                  void act(torrent.id, () =>
+                                    setTrackers.mutateAsync({
+                                      urls: torrent.trackers
+                                        .filter((tracker) => tracker.url !== row.url)
+                                        .map((tracker) => tracker.url),
+                                    })
+                                  )
                                 }
                                 size="icon-sm"
                                 type="button"

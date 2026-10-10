@@ -3,11 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Elysia } from "elysia";
-import { DesktopUpdateInstaller } from "../src/api/desktop-update-installer";
-import { TorrentEngine } from "../src/api/engine";
-import { createTofuSync } from "../src/api/sync";
-import { UpdatesService } from "../src/api/updates";
-import { createUpdatesApi } from "../src/api/updates-api";
+import { TorrentEngine } from "../src/api/modules/torrents/service";
+import { DesktopUpdateInstaller } from "../src/api/modules/updates/installer";
+import { UpdatesService } from "../src/api/modules/updates/service";
+import { createTestUpdatesApi } from "./api-fixture";
+import { openTestDatabase } from "./database";
 import { fixture, json, network, waitFor } from "./helpers";
 
 test("an update restart saves a real peer transfer and recovers when the native handoff fails", async () => {
@@ -71,7 +71,7 @@ test("an update restart saves a real peer transfer and recovers when the native 
 
 test("desktop updates prepare in app and only restart after an explicit install action", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-native-"));
-  const sync = await createTofuSync(join(folder, "sync"));
+  const sync = await openTestDatabase(join(folder, "sync"));
   let ready = false;
   let installed = false;
   let downloads = 0;
@@ -124,9 +124,9 @@ test("desktop updates prepare in app and only restart after an explicit install 
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string) =>
-    app.handle(new Request(`http://localhost/updates${path}`, json({})));
+    app.handle(new Request(`http://localhost/api/updates${path}`, json({})));
   try {
     expect((await call("/install")).status).toBe(409);
     const checked = await (await call("/check")).json();
@@ -150,7 +150,7 @@ test("desktop updates prepare in app and only restart after an explicit install 
   } finally {
     finish();
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -158,7 +158,7 @@ test("desktop updates prepare in app and only restart after an explicit install 
 
 test("failed native downloads can be retried and scheduled checks preserve the prepared version", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-retry-"));
-  const sync = await createTofuSync(join(folder, "sync"));
+  const sync = await openTestDatabase(join(folder, "sync"));
   let fail = true;
   let checks = 0;
   let downloads = 0;
@@ -212,9 +212,9 @@ test("failed native downloads can be retried and scheduled checks preserve the p
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string) =>
-    app.handle(new Request(`http://localhost/updates${path}`, json({})));
+    app.handle(new Request(`http://localhost/api/updates${path}`, json({})));
   try {
     await call("/check");
     await call("/prepare");
@@ -243,7 +243,7 @@ test("failed native downloads can be retried and scheduled checks preserve the p
     expect(updates.snapshot().error).toBe("Cannot start helper");
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -251,7 +251,7 @@ test("failed native downloads can be retried and scheduled checks preserve the p
 
 test("update checks require no signed-in access", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-access-"));
-  const sync = await createTofuSync(join(folder, "sync"));
+  const sync = await openTestDatabase(join(folder, "sync"));
   const options = {
     apiOrigin: "http://127.0.0.1:1",
     arch: "arm64",
@@ -261,28 +261,28 @@ test("update checks require no signed-in access", async () => {
     version: "0.1.0",
   };
   const updates = await UpdatesService.open(options);
-  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   try {
     // No access configuration exists: the first check runs against the public API.
-    const first = await app.handle(new Request("http://localhost/updates/check", json({})));
+    const first = await app.handle(new Request("http://localhost/api/updates/check", json({})));
     expect(first.status).toBe(200);
     const state = (await first.json()) as { status: string };
     // 127.0.0.1:1 refuses the connection, so the check reports a transient error.
     expect(state.status).toBe("error");
 
     // A second manual check is allowed even while schedules continue in background.
-    const second = await app.handle(new Request("http://localhost/updates/check", json({})));
+    const second = await app.handle(new Request("http://localhost/api/updates/check", json({})));
     expect(second.status).toBe(200);
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     await rm(folder, { force: true, recursive: true });
   }
 });
 
 test("a release check during an installer download keeps the original filename and payload", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-concurrent-"));
-  const sync = await createTofuSync(join(folder, "sync"));
+  const sync = await openTestDatabase(join(folder, "sync"));
   let releaseVersion = "0.2.0";
   let started = false;
   let finish: () => void = () => undefined;
@@ -314,9 +314,9 @@ test("a release check during an installer download keeps the original filename a
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string, init: RequestInit | undefined) =>
-    app.handle(new Request(`http://localhost/updates${path}`, init));
+    app.handle(new Request(`http://localhost/api/updates${path}`, init));
   try {
     await call("/check", json({}));
     const pending = call("/download", undefined);
@@ -331,7 +331,7 @@ test("a release check during an installer download keeps the original filename a
   } finally {
     finish();
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -339,7 +339,7 @@ test("a release check during an installer download keeps the original filename a
 
 test("a refused asset download reports the failure and clears the stale download", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-refused-"));
-  const sync = await createTofuSync(join(folder, "sync"));
+  const sync = await openTestDatabase(join(folder, "sync"));
   const github = Bun.serve({
     fetch(request) {
       return new URL(request.url).pathname.endsWith("/assets/17")
@@ -362,9 +362,9 @@ test("a refused asset download reports the failure and clears the stale download
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string, init: RequestInit | undefined) =>
-    app.handle(new Request(`http://localhost/updates${path}`, init));
+    app.handle(new Request(`http://localhost/api/updates${path}`, init));
   try {
     await call("/check", json({}));
     const download = await call("/download", undefined);
@@ -373,7 +373,7 @@ test("a refused asset download reports the failure and clears the stale download
     expect((await (await call("", undefined)).json()).downloadName).toBeNull();
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -381,7 +381,7 @@ test("a refused asset download reports the failure and clears the stale download
 
 test("a repository without a stable release reports no-release", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-empty-"));
-  const sync = await createTofuSync(join(folder, "sync"));
+  const sync = await openTestDatabase(join(folder, "sync"));
   const github = Bun.serve({
     fetch(request) {
       return new URL(request.url).pathname.endsWith("/releases/latest")
@@ -399,9 +399,9 @@ test("a repository without a stable release reports no-release", async () => {
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string, init: RequestInit | undefined) =>
-    app.handle(new Request(`http://localhost/updates${path}`, init));
+    app.handle(new Request(`http://localhost/api/updates${path}`, init));
   try {
     const checked = await call("/check", json({}));
     const state = await checked.json();
@@ -410,7 +410,7 @@ test("a repository without a stable release reports no-release", async () => {
     expect(state.error).toBeNull();
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -425,7 +425,7 @@ test.each([
   "public releases notify once per version and download the compatible installer for $platform/$arch",
   async ({ platform, arch, installer: filename }) => {
     const folder = await mkdtemp(join(tmpdir(), "tofu-updates-"));
-    const sync = await createTofuSync(join(folder, "sync"));
+    const sync = await openTestDatabase(join(folder, "sync"));
     let requests = 0;
     let notified: string | undefined;
     const github = Bun.serve({
@@ -461,9 +461,9 @@ test.each([
     };
     try {
       const updates = await UpdatesService.open(options);
-      const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+      const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
       const call = (path: string, init: RequestInit | undefined) =>
-        app.handle(new Request(`http://localhost/updates${path}`, init));
+        app.handle(new Request(`http://localhost/api/updates${path}`, init));
       const checked = await call("/check", json({}));
       const state = await checked.json();
       expect(state.status).toBe("available");
@@ -482,7 +482,7 @@ test.each([
       reopened.close();
     } finally {
       github.stop(true);
-      sync.close();
+      await sync.close();
       await rm(folder, { force: true, recursive: true });
     }
   }
@@ -490,7 +490,7 @@ test.each([
 
 test("an unavailable GitHub API surfaces an error state without blocking later checks", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-error-"));
-  const sync = await createTofuSync(join(folder, "sync"));
+  const sync = await openTestDatabase(join(folder, "sync"));
   let failing = true;
   const github = Bun.serve({
     fetch() {
@@ -514,9 +514,9 @@ test("an unavailable GitHub API surfaces an error state without blocking later c
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string, init: RequestInit | undefined) =>
-    app.handle(new Request(`http://localhost/updates${path}`, init));
+    app.handle(new Request(`http://localhost/api/updates${path}`, init));
   try {
     const checked = await call("/check", json({}));
     const state = await checked.json();
@@ -528,7 +528,7 @@ test("an unavailable GitHub API surfaces an error state without blocking later c
     expect(next.status).toBe("available");
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }

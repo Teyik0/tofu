@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { defaultAutomationPreferences, interpretLocally } from "../src/api/feeds/rules";
+import {
+  defaultAutomationPreferences,
+  interpretLocally,
+} from "../src/api/modules/automation/rules";
 import { AutomationInbox } from "../src/components/automation-inbox";
 import type { AutomationDecision, AutomationState } from "../src/types";
 

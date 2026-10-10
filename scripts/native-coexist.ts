@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { resolveInstanceConfig } from "../src/api/instance";
+import { resolveInstanceConfig } from "../src/api/lib/instance";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { DashboardState, DesktopState, InstanceConfig, ServerInfo } from "../src/types";
 import { fixture, json, waitFor } from "../tests/helpers";
@@ -77,12 +77,16 @@ try {
   // Stable build launchers are installers. Run only the archive's flat app in a temporary tree.
   const target = hostDesktopTarget();
   const metadata: { artifact: { file: string } } = await Bun.file(
-    join(root, `artifacts/stable-${target.platform}-${target.arch}-update.json`)
+    join(root, `.furin/electrobun/artifacts/stable-${target.platform}-${target.arch}-update.json`)
   ).json();
   const releaseRoot = join(context.directory, "native-bundles");
-  const compressed = await Bun.file(join(root, "artifacts", metadata.artifact.file)).arrayBuffer();
+  const compressed = await Bun.file(
+    join(root, ".furin/electrobun/artifacts", metadata.artifact.file)
+  ).arrayBuffer();
   const archive = new Bun.Archive(await Bun.zstdDecompress(compressed));
-  await archive.extract(join(releaseRoot, `build/stable-${target.platform}-${target.arch}`));
+  await archive.extract(
+    join(releaseRoot, `.furin/electrobun/build/stable-${target.platform}-${target.arch}`)
+  );
   const options = {
     dataDir: undefined,
     desktop: true,

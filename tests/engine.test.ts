@@ -4,10 +4,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebTorrent, { type Torrent } from "webtorrent";
-import { createApi } from "../src/api";
-import { TorrentEngine } from "../src/api/engine";
-import { createTofuSync } from "../src/api/sync";
+import { TorrentEngine } from "../src/api/modules/torrents/service";
 import type { DashboardState } from "../src/types";
+import { createTestApi } from "./api-fixture";
+import { openTestDatabase } from "./database";
 
 const network = {
   dht: false,
@@ -41,8 +41,8 @@ test("a magnet added through the API downloads real bytes and exposes its files 
     downloadPath: join(directory, "downloads"),
     network,
   });
-  const sync = await createTofuSync(join(directory, "sync"));
-  const api = createApi(() => engine, sync.options);
+  const sync = await openTestDatabase(join(directory, "sync"));
+  const api = await createTestApi(() => engine, sync.options);
   try {
     const seed = await new Promise<Torrent>((resolve, reject) => {
       seeder.on("error", reject);
@@ -76,7 +76,7 @@ test("a magnet added through the API downloads real bytes and exposes its files 
     expect(content.status).toBe(200);
     expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(Bun.SHA256.hash(bytes, "hex"));
   } finally {
-    sync.close();
+    await sync.close();
     await engine.close();
     await new Promise<void>((resolve) => seeder.destroy(() => resolve()));
     await rm(directory, { force: true, recursive: true });

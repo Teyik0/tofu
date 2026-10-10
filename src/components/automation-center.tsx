@@ -1,4 +1,5 @@
-import { useQuery } from "@teyik0/furin/client";
+import { Form, getDeepError, useField, useForm } from "@formisch/react";
+import { useMutation, useQuery } from "@teyik0/furin/client";
 import {
   CheckIcon,
   HistoryIcon,
@@ -15,27 +16,33 @@ import {
   Trash2Icon,
   ZapIcon,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
-import { api } from "../client";
+import { type ReactNode, useState } from "react";
+import { pick } from "valibot";
+import { discoverySchema } from "../api/modules/discovery/model";
+import { interpretationSchema } from "../api/modules/jev/model";
+import { useAutomationDraftForm } from "../hooks/use-automation-draft-form";
+import { createAutomationMutations } from "../lib/automation-mutations";
+import { api } from "../lib/client";
+import { useRefresh } from "../lib/navigation";
 import type {
   AutomationDecision,
   AutomationDraft,
-  AutomationPreferences,
   AutomationRule,
-  AutomationState,
+  AutomationSection,
+  DashboardState,
   DiscoveryResult,
   FeedRelease,
   PluginState,
   SourcePluginId,
 } from "../types";
 import { ActionTooltip } from "./action-tooltip";
-import { AniListIcon } from "./anilist-icon";
-import { AniListPanel } from "./anilist-panel";
+import { AniListIcon } from "./anilist/icon";
+import { QueriedAniListPanel } from "./anilist/panel";
 import { request } from "./api";
-import { useDashboard } from "./app-shell";
-import { PreferenceFields, RuleFields, sourceNames } from "./automation-fields";
+import { RuleFields, sourceNames } from "./automation-fields";
 import { AutomationInbox, isPending, ReleaseLine, useNow } from "./automation-inbox";
 import { relative } from "./format";
+import { GeneralPreferences } from "./general-preferences";
 import { OptionSelect } from "./option-select";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
@@ -49,13 +56,9 @@ import { Skeleton } from "./ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Textarea } from "./ui/textarea";
 
-export type AutomationSection =
-  | "inbox"
-  | "rules"
-  | "anilist"
-  | "discover"
-  | "history"
-  | "preferences";
+export type { AutomationSection } from "../types";
+
+const mutations = createAutomationMutations(api);
 const ruleStatuses: Record<AutomationRule["status"], string> = {
   active: "Active",
   error: "Needs attention",
@@ -246,35 +249,65 @@ function RuleCard({
 }
 
 export function AutomationCenter({
+  dashboard,
   destinationId,
   section,
   close,
 }: {
+  dashboard: DashboardState;
   destinationId: string;
   section: AutomationSection;
   close: () => void;
 }) {
-  const { data: dashboard, refresh } = useDashboard();
-  const { data: live, error: loadingError } = useQuery(api.api.automation.get);
-  const [saved, setSaved] = useState<AutomationState | null>(null);
-  const state: AutomationState | null =
-    live && "plugins" in live && (!saved || live.updatedAt > saved.updatedAt) ? live : saved;
+  const refresh = useRefresh();
+  const { data: live, error: loadingError } = useQuery(api.automation.get);
+  const createRule = useMutation(mutations.createRule);
+  const updateRule = useMutation(mutations.updateRule);
+  const deleteRule = useMutation(mutations.deleteRule);
+  const ignoreDecision = useMutation(mutations.ignoreDecision);
+  const runRule = useMutation((id: string) => api.automations({ id }).run.post());
+  const approveDecision = useMutation((id: string) =>
+    api["automation-decisions"]({ id }).approve.post()
+  );
+  const addRelease = useMutation(api.discover.add.post);
+  const state = live && "plugins" in live ? live : null;
   const [tab, setTab] = useState<AutomationSection>(section);
   const [target, setTarget] = useState(destinationId);
-  const [query, setQuery] = useState("");
-  const [draft, setDraft] = useState<AutomationDraft | null>(null);
+  const queryForm = useForm({
+    initialInput: { query: "" },
+    schema: pick(interpretationSchema, ["query"]),
+  });
+  const queryField = useField(queryForm, { path: ["query"] });
+  const query = queryField.input ?? "";
+  const setQuery = queryField.onChange;
+  const { draft, setDraft, validatedDraft, error: draftError } = useAutomationDraftForm(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryResult | null>(null);
-  const [search, setSearch] = useState("");
+  const searchForm = useForm({
+    initialInput: { query: "" },
+    schema: pick(discoverySchema, ["query"]),
+  });
+  const searchField = useField(searchForm, { path: ["query"] });
+  const search = searchField.input ?? "";
+  const setSearch = searchField.onChange;
   const [excludedSources, setExcludedSources] = useState<SourcePluginId[]>([]);
-  const [preferences, setPreferences] = useState<AutomationPreferences | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [serverError, setError] = useState<string | null>(null);
+  const error =
+    serverError ??
+    (tab === "rules"
+      ? (getDeepError(queryForm) ?? draftError)
+      : tab === "discover"
+        ? getDeepError(searchForm)
+        : null);
   const now = useNow(30_000);
   const reload = async () => {
-    setSaved(await request<AutomationState>("/automation", "GET", undefined));
+    const { error: failure } = await api.automation.get();
+    if (failure) {
+      throw new Error("Unable to load automations");
+    }
   };
   const action: Action = (task) => {
     setBusy(true);
@@ -299,7 +332,6 @@ export function AutomationCenter({
     state?.decisions.filter(
       (decision) => !isPending(decision) && rules.some((rule) => rule.id === decision.automationId)
     ) ?? [];
-  const editedPreferences = preferences ?? state?.preferences ?? null;
   const reset = () => {
     setDraft(null);
     setEditId(null);
@@ -311,8 +343,7 @@ export function AutomationCenter({
     reset();
     setDiscovery(null);
   };
-  const interpret = (event: FormEvent) => {
-    event.preventDefault();
+  const interpret = () => {
     action(async () => {
       setDraft(
         await request<AutomationDraft>("/automations/interpret", "POST", {
@@ -325,31 +356,32 @@ export function AutomationCenter({
   };
   const save = () =>
     action(async () => {
-      if (!draft) {
+      const validated = await validatedDraft();
+      if (!validated) {
         return;
       }
-      const rule = await request<AutomationRule>(
-        editId ? `/automations/${editId}` : "/automations",
-        editId ? "PUT" : "POST",
-        { ...draft, destinationId: target }
-      );
+      const body = { ...validated, destinationId: target };
+      const rule = editId
+        ? await updateRule.mutateAsync(editId, body)
+        : await createRule.mutateAsync(body);
+      if (!(rule && "id" in rule)) {
+        return;
+      }
       reset();
       if (rule.enabled) {
-        await request(`/automations/${rule.id}/run`, "POST", {});
+        await runRule.mutateAsync(rule.id);
+        await reload();
+        await refresh();
       }
-      await reload();
-      await refresh();
       setNotice(editId ? "Rule saved." : "Automation created and checked once.");
     });
   const decide = (decision: AutomationDecision, verdict: "approve" | "ignore") =>
     action(async () => {
-      await request(
-        `/automation-decisions/${encodeURIComponent(decision.id)}/${verdict}`,
-        "POST",
-        {}
-      );
-      await reload();
-      if (verdict === "approve") {
+      if (verdict === "ignore") {
+        await ignoreDecision.mutateAsync(decision.id);
+      } else {
+        await approveDecision.mutateAsync(decision.id);
+        await reload();
         await refresh();
       }
     });
@@ -459,11 +491,13 @@ export function AutomationCenter({
                   </TabsContent>
                   <TabsContent value="rules">
                     <div className="automation-section">
-                      <form className="rule-composer" onSubmit={interpret}>
+                      <Form className="rule-composer" of={queryForm} onSubmit={interpret}>
                         <label htmlFor="automation-query">
                           {editId ? "Edit this rule" : "Follow something new"}
                         </label>
                         <Textarea
+                          {...queryField.props}
+                          aria-invalid={Boolean(queryField.errors)}
                           id="automation-query"
                           onChange={(event) => {
                             setQuery(event.target.value);
@@ -509,7 +543,7 @@ export function AutomationCenter({
                             </Button>
                           </div>
                         </div>
-                      </form>
+                      </Form>
                       {draft !== null && (
                         <section aria-label="Rule settings" className="rule-editor">
                           <header>
@@ -530,11 +564,18 @@ export function AutomationCenter({
                             <Button
                               disabled={busy}
                               onClick={() =>
-                                action(async () =>
-                                  setPreview(
-                                    await request<Preview>("/automations/preview", "POST", draft)
-                                  )
-                                )
+                                action(async () => {
+                                  const validated = await validatedDraft();
+                                  if (validated) {
+                                    setPreview(
+                                      await request<Preview>(
+                                        "/automations/preview",
+                                        "POST",
+                                        validated
+                                      )
+                                    );
+                                  }
+                                })
                               }
                               variant="outline"
                             >
@@ -600,7 +641,7 @@ export function AutomationCenter({
                       </div>
                       {rules.map((rule) => (
                         <RuleCard
-                          busy={busy}
+                          busy={busy || rule.id.startsWith("pending:")}
                           edit={() => {
                             setEditId(rule.id);
                             setQuery(rule.query);
@@ -615,28 +656,26 @@ export function AutomationCenter({
                           }
                           remove={() =>
                             action(async () => {
-                              await request(`/automations/${rule.id}`, "DELETE", undefined);
+                              await deleteRule.mutateAsync(rule.id);
                               if (editId === rule.id) {
                                 reset();
                               }
-                              await reload();
                             })
                           }
                           rule={rule}
                           run={() =>
                             action(async () => {
-                              await request(`/automations/${rule.id}/run`, "POST", {});
+                              await runRule.mutateAsync(rule.id);
                               await reload();
                               await refresh();
                             })
                           }
                           toggle={() =>
                             action(async () => {
-                              await request(`/automations/${rule.id}`, "PUT", {
+                              await updateRule.mutateAsync(rule.id, {
                                 ...ruleDraft(rule),
                                 enabled: !rule.enabled,
                               });
-                              await reload();
                             })
                           }
                         />
@@ -651,7 +690,7 @@ export function AutomationCenter({
                     </div>
                   </TabsContent>
                   <TabsContent value="anilist">
-                    <AniListPanel
+                    <QueriedAniListPanel
                       action={action}
                       automations={state.automations}
                       busy={busy}
@@ -670,10 +709,10 @@ export function AutomationCenter({
                         description={`Search once across your sources and add a release to ${destination?.name ?? "this thread"}.`}
                         title="Discover"
                       />
-                      <form
+                      <Form
                         className="discover-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
+                        of={searchForm}
+                        onSubmit={() => {
                           action(async () =>
                             setDiscovery(
                               await request<DiscoveryResult>("/discover", "POST", {
@@ -694,6 +733,8 @@ export function AutomationCenter({
                             <InputGroup>
                               <InputGroupInput
                                 disabled={busy || !activeSources.length}
+                                {...searchField.props}
+                                aria-invalid={Boolean(searchField.errors)}
                                 id="feed-search"
                                 onChange={(event) => setSearch(event.target.value)}
                                 placeholder={
@@ -776,7 +817,7 @@ export function AutomationCenter({
                             ? "Title, season and episode in any order. English and Japanese titles are searched automatically."
                             : "Keywords are searched as typed. Enable Jev in Plugins for natural language search."}
                         </p>
-                      </form>
+                      </Form>
                       {discovery?.search?.warning ? (
                         <Alert>
                           <AlertDescription>{discovery.search.warning}</AlertDescription>
@@ -813,7 +854,7 @@ export function AutomationCenter({
                                 disabled={busy}
                                 onClick={() =>
                                   action(async () => {
-                                    await request("/discover/add", "POST", {
+                                    await addRelease.mutateAsync({
                                       destinationId: target,
                                       id: release.id,
                                       paused: false,
@@ -888,52 +929,7 @@ export function AutomationCenter({
                     </div>
                   </TabsContent>
                   <TabsContent value="preferences">
-                    {editedPreferences ? (
-                      <form
-                        className="automation-section"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          action(async () => {
-                            setSaved(
-                              await request<AutomationState>(
-                                "/automation/preferences",
-                                "PUT",
-                                editedPreferences
-                              )
-                            );
-                            setPreferences(null);
-                            setNotice("Preferences saved. New rules will start from them.");
-                          });
-                        }}
-                      >
-                        <SectionHeading
-                          description="New rules and AniList tracking start from these settings. Existing rules keep their own; edit a rule to change it."
-                          title="General preferences"
-                        />
-                        <PreferenceFields
-                          idPrefix="preferences"
-                          onChange={setPreferences}
-                          value={editedPreferences}
-                        />
-                        <footer className="preferences-actions">
-                          <Button
-                            disabled={busy || preferences === null}
-                            onClick={() => setPreferences(null)}
-                            type="button"
-                            variant="ghost"
-                          >
-                            Discard changes
-                          </Button>
-                          <Button
-                            disabled={busy || preferences === null || !preferences.sources.length}
-                            type="submit"
-                          >
-                            <CheckIcon data-icon="inline-start" />
-                            Save preferences
-                          </Button>
-                        </footer>
-                      </form>
-                    ) : null}
+                    <GeneralPreferences initialPreferences={state.preferences} />
                   </TabsContent>
                 </>
               ) : (

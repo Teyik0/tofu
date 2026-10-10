@@ -1,17 +1,10 @@
+import { Form, getDeepError, useField, useForm } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
 import { FolderIcon, LinkIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
-import { api } from "../client";
-import type {
-  DashboardState,
-  Destination,
-  DestinationIconName,
-  TorrentDetail,
-  TorrentSummary,
-} from "../types";
-import { request } from "./api";
-import { useDashboard } from "./app-shell";
-import type { AutomationSection } from "./automation-center";
+import { type ReactNode, useState } from "react";
+import { modalFormSchema } from "../api/modules/torrents/model";
+import { api } from "../lib/client";
+import type { DashboardState, Destination, DestinationInput, FormModalKind } from "../types";
 import { DestinationIconPicker } from "./destination-icon";
 import { TorrentFileInput } from "./torrent-file-input";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -47,17 +40,7 @@ import {
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 
-export type ModalKind =
-  | FormModalKind
-  | { type: "automation"; destinationId: string; section: AutomationSection }
-  | { type: "deleteDestination"; destination: Destination };
-export type FormModalKind =
-  | { type: "add"; destinationId: string }
-  | { type: "drop"; files: File[] }
-  | { type: "destination"; destination: Destination | null }
-  | { type: "remove"; torrent: TorrentSummary }
-  | { type: "trackers"; torrent: TorrentDetail }
-  | { type: "peer"; torrent: TorrentDetail };
+export type { FormModalKind, ModalKind } from "../types";
 
 function ModalFrame({
   remove,
@@ -114,27 +97,33 @@ function ModalFrame({
 }
 
 /** Deletes a tab and returns the tab to show when the visible tab no longer exists. */
-export async function deleteDestination(id: string, active: string | null) {
-  const { removed } = await request<{ ok: true; removed: string }>(
-    `/destinations/${id}`,
-    "DELETE",
-    undefined
-  );
-  return active === id || active === removed ? "default" : null;
+export function useDeleteDestination(active: string | null) {
+  const remove = useMutation((id: string) => api.destinations({ id }).delete());
+  return async (id: string) => {
+    const result = await remove.mutateAsync(id);
+    if (!(result && "removed" in result)) {
+      throw new Error("Unable to delete the tab");
+    }
+    return active === id || active === result.removed ? "default" : null;
+  };
 }
 
 export function DeleteDestinationModal({
+  activeDestination,
+  data,
   destination,
   cancel,
   close,
   done,
 }: {
+  activeDestination: string | null;
+  data: DashboardState;
   destination: Destination;
   cancel: () => void;
   close: () => void;
   done: (id: string | null, destinationId: string | null) => Promise<void>;
 }) {
-  const { activeDestination, data } = useDashboard();
+  const deleteDestination = useDeleteDestination(activeDestination);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fallback = data.destinations.find((item) =>
@@ -144,7 +133,7 @@ export function DeleteDestinationModal({
     setBusy(true);
     setError(null);
     try {
-      await done(null, await deleteDestination(destination.id, activeDestination));
+      await done(null, await deleteDestination(destination.id));
       close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to delete the tab");
@@ -184,11 +173,13 @@ export function DeleteDestinationModal({
 }
 
 export function Modal({
+  activeDestination,
   modal,
   data,
   close,
   done,
 }: {
+  activeDestination: string | null;
   modal: FormModalKind;
   data: DashboardState;
   close: () => void;
@@ -198,35 +189,81 @@ export function Modal({
     modal.type === "add"
       ? data.destinations.find((destination) => destination.id === modal.destinationId)
       : null;
-  const upload = useMutation(api.api.torrents.file.post);
-  const createDestination = useMutation(api.api.destinations.post);
+  const upload = useMutation(api.torrents.file.post);
+  const createDestination = useMutation(api.destinations.post);
+  const updateDestination = useMutation((id: string, body: DestinationInput) =>
+    api.destinations({ id }).put(body)
+  );
+  const addTorrent = useMutation(api.torrents.post);
+  const updateTrackers = useMutation((id: string, trackerUrls: string[]) =>
+    api.torrents({ id }).trackers.put({ urls: trackerUrls })
+  );
+  const addPeer = useMutation((id: string, peer: string) =>
+    api.torrents({ id }).peers.post({ peer })
+  );
+  const removeTorrent = useMutation((id: string, deleteFiles: boolean) =>
+    api.torrents({ id }).delete({ deleteFiles })
+  );
+  const chooseDirectory = useMutation(api.directory.post);
   const [droppedFiles, setDroppedFiles] = useState(modal.type === "drop" ? modal.files : []);
-  const [destinationId, setDestinationId] = useState(initialDestination?.id ?? "default");
-  const [pinned, setPinned] = useState(
-    modal.type === "destination" ? (modal.destination?.pinned ?? false) : false
-  );
-  const [destinationIcon, setDestinationIcon] = useState<DestinationIconName>(
-    modal.type === "destination" ? (modal.destination?.icon ?? "folder") : "folder"
-  );
-  const [name, setName] = useState(
-    modal.type === "destination" ? (modal.destination?.name ?? "") : ""
-  );
-  const [path, setPath] = useState(
-    modal.type === "destination"
-      ? (modal.destination?.downloadPath ?? data.settings.downloadPath)
-      : data.settings.downloadPath
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const form = useForm({
+    initialInput: {
+      destinationIcon:
+        modal.type === "destination" ? (modal.destination?.icon ?? "folder") : "folder",
+      destinationId: initialDestination?.id ?? "default",
+      file: null,
+      moveFiles: false,
+      name: modal.type === "destination" ? (modal.destination?.name ?? "") : "",
+      path:
+        modal.type === "destination"
+          ? (modal.destination?.downloadPath ?? data.settings.downloadPath)
+          : data.settings.downloadPath,
+      paused: false,
+      pinned: modal.type === "destination" ? (modal.destination?.pinned ?? false) : false,
+      removeFiles: false,
+      source: "",
+      trackers:
+        modal.type === "trackers" ? modal.torrent.trackers.map((row) => row.url).join("\n") : "",
+    },
+    schema: modalFormSchema(modal.type),
+  });
+  const destinationField = useField(form, { path: ["destinationId"] });
+  const pinnedField = useField(form, { path: ["pinned"] });
+  const iconField = useField(form, { path: ["destinationIcon"] });
+  const nameField = useField(form, { path: ["name"] });
+  const pathField = useField(form, { path: ["path"] });
+  const sourceField = useField(form, { path: ["source"] });
+  const fileField = useField(form, { path: ["file"] });
+  const pausedField = useField(form, { path: ["paused"] });
+  const trackersField = useField(form, { path: ["trackers"] });
+  const removeFilesField = useField(form, { path: ["removeFiles"] });
+  const moveFilesField = useField(form, { path: ["moveFiles"] });
+  const destinationId = destinationField.input ?? "default";
+  const setDestinationId = destinationField.onChange;
+  const pinned = pinnedField.input === true;
+  const setPinned = pinnedField.onChange;
+  const destinationIcon = iconField.input ?? "folder";
+  const setDestinationIcon = iconField.onChange;
+  const name = nameField.input ?? "";
+  const setName = nameField.onChange;
+  const path = pathField.input ?? "";
+  const setPath = pathField.onChange;
+  const source = sourceField.input ?? "";
+  const setSource = sourceField.onChange;
+  const file = fileField.input ?? null;
+  const setFile = fileField.onChange;
+  const paused = pausedField.input === true;
+  const setPaused = pausedField.onChange;
+  const trackers = trackersField.input ?? "";
+  const setTrackers = trackersField.onChange;
+  const removeFiles = removeFilesField.input === true;
+  const setRemoveFiles = removeFilesField.onChange;
+  const moveFiles = moveFilesField.input === true;
+  const setMoveFiles = moveFilesField.onChange;
+  const [serverError, setError] = useState<string | null>(null);
+  const error = getDeepError(form) ?? serverError;
+  const busy = form.isSubmitting;
   const [deletingDestination, setDeletingDestination] = useState(false);
-  const [source, setSource] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [paused, setPaused] = useState(false);
-  const [trackers, setTrackers] = useState(
-    modal.type === "trackers" ? modal.torrent.trackers.map((row) => row.url).join("\n") : ""
-  );
-  const [removeFiles, setRemoveFiles] = useState(false);
-  const [moveFiles, setMoveFiles] = useState(false);
   const editedDestination = modal.type === "destination" ? modal.destination : null;
   const destinationChanged = Boolean(editedDestination && path !== editedDestination.downloadPath);
   const existingTorrents = editedDestination
@@ -239,8 +276,10 @@ export function Modal({
   if (deletingDestination && modal.type === "destination" && modal.destination) {
     return (
       <DeleteDestinationModal
+        activeDestination={activeDestination}
         cancel={() => setDeletingDestination(false)}
         close={close}
+        data={data}
         destination={modal.destination}
         done={done}
       />
@@ -269,17 +308,15 @@ export function Modal({
       .filter(Boolean);
   const browse = async () => {
     try {
-      const result = await request<{ path: string | null }>("/directory", "POST", undefined);
-      if (result.path) {
+      const result = await chooseDirectory.mutateAsync();
+      if (result && "path" in result && result.path) {
         setPath(result.path);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to open the folder");
     }
   };
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
+  const submit = async () => {
     setError(null);
     try {
       let selected: string | null = null;
@@ -302,59 +339,57 @@ export function Modal({
             paused: "false",
           });
           if (!(result && "id" in result)) {
-            throw new Error(
-              result && "error" in result ? result.error : "Unable to add the torrent"
-            );
+            throw new Error("Unable to add the torrent");
           }
           selected = result.id;
           setDroppedFiles((remaining) => remaining.filter((item) => item !== droppedFile));
         }
         savedDestination = target;
       } else if (modal.type === "add") {
-        let result: { id: string };
-        if (file) {
-          const body = new FormData();
-          body.set("file", file);
-          body.set("paused", String(paused));
-          body.set("destinationId", destinationId);
-          body.set("trackers", trackers);
-          result = await request("/torrents/file", "POST", body);
-        } else {
-          result = await request("/torrents", "POST", {
-            destinationId,
-            paused,
-            source: source.trim(),
-            trackers: urls(),
-          });
+        const result = file
+          ? await upload.mutateAsync({
+              destinationId,
+              file,
+              paused: paused ? "true" : "false",
+              trackers,
+            })
+          : await addTorrent.mutateAsync({
+              destinationId,
+              paused,
+              source: source.trim(),
+              trackers: urls(),
+            });
+        if (!(result && "id" in result)) {
+          throw new Error("Unable to add the torrent");
         }
         selected = result.id;
         savedDestination = destinationId;
       } else if (modal.type === "destination") {
-        const result = await request<Destination>(
-          modal.destination ? `/destinations/${modal.destination.id}` : "/destinations",
-          modal.destination ? "PUT" : "POST",
-          {
-            downloadPath: path,
-            icon: destinationIcon,
-            moveFiles: offerMove && moveFiles,
-            name,
-            pinned,
-          }
-        );
+        const body: DestinationInput = {
+          downloadPath: path,
+          icon: destinationIcon,
+          moveFiles: offerMove && moveFiles,
+          name,
+          pinned,
+        };
+        const result = modal.destination
+          ? await updateDestination.mutateAsync(modal.destination.id, body)
+          : await createDestination.mutateAsync(body);
+        if (!(result && "id" in result)) {
+          throw new Error("Unable to save the tab");
+        }
         savedDestination = result.id;
       } else if (modal.type === "trackers") {
-        await request(`/torrents/${modal.torrent.id}/trackers`, "PUT", { urls: urls() });
+        await updateTrackers.mutateAsync(modal.torrent.id, urls());
       } else if (modal.type === "peer") {
-        await request(`/torrents/${modal.torrent.id}/peers`, "POST", { peer: source.trim() });
+        await addPeer.mutateAsync(modal.torrent.id, source.trim());
       } else if (modal.type === "remove") {
-        await request(`/torrents/${modal.torrent.id}`, "DELETE", { deleteFiles: removeFiles });
+        await removeTorrent.mutateAsync(modal.torrent.id, removeFiles);
       }
       await done(selected, savedDestination);
       close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "An error occurred");
-    } finally {
-      setBusy(false);
     }
   };
   const submitButton = (
@@ -390,7 +425,11 @@ export function Modal({
       remove={modal.type === "remove"}
       title={titles[modal.type]}
     >
-      <form className={modal.type === "add" ? "torrent-add-form" : undefined} onSubmit={submit}>
+      <Form
+        className={modal.type === "add" ? "torrent-add-form" : undefined}
+        of={form}
+        onSubmit={submit}
+      >
         <FieldGroup>
           {modal.type === "drop" && (
             <>
@@ -462,6 +501,8 @@ export function Modal({
                   </InputGroupAddon>
                   <InputGroupInput
                     disabled={Boolean(file) || busy}
+                    {...sourceField.props}
+                    aria-invalid={Boolean(sourceField.errors)}
                     id="torrent-source"
                     onChange={(event) => setSource(event.target.value)}
                     placeholder="Paste a magnet link or https://…"
@@ -511,6 +552,8 @@ export function Modal({
                 <Field className="mt-3">
                   <FieldLabel htmlFor="extra-trackers">One URL per line</FieldLabel>
                   <Textarea
+                    {...trackersField.props}
+                    aria-invalid={Boolean(trackersField.errors)}
                     id="extra-trackers"
                     onChange={(event) => setTrackers(event.target.value)}
                     rows={3}
@@ -533,8 +576,9 @@ export function Modal({
             <Field data-invalid={Boolean(error)}>
               <FieldLabel htmlFor="destination-name">Tab name</FieldLabel>
               <Input
-                aria-invalid={Boolean(error)}
                 disabled={busy}
+                {...nameField.props}
+                aria-invalid={Boolean(nameField.errors)}
                 id="destination-name"
                 maxLength={80}
                 onChange={(event) => setName(event.target.value)}
@@ -571,8 +615,9 @@ export function Modal({
               <FieldLabel htmlFor="destination-path">Download folder</FieldLabel>
               <InputGroup>
                 <InputGroupInput
-                  aria-invalid={Boolean(error)}
                   disabled={busy}
+                  {...pathField.props}
+                  aria-invalid={Boolean(pathField.errors)}
                   id="destination-path"
                   onChange={(event) => setPath(event.target.value)}
                   required
@@ -632,6 +677,8 @@ export function Modal({
             <Field>
               <FieldLabel htmlFor="tracker-urls">Trackers · one URL per line</FieldLabel>
               <Textarea
+                {...trackersField.props}
+                aria-invalid={Boolean(trackersField.errors)}
                 id="tracker-urls"
                 onChange={(event) => setTrackers(event.target.value)}
                 rows={8}
@@ -645,6 +692,8 @@ export function Modal({
             <Field>
               <FieldLabel htmlFor="peer-address">IP address or host and port</FieldLabel>
               <Input
+                {...sourceField.props}
+                aria-invalid={Boolean(sourceField.errors)}
                 id="peer-address"
                 onChange={(event) => setSource(event.target.value)}
                 placeholder="192.168.1.10:51413"
@@ -705,7 +754,7 @@ export function Modal({
             {submitButton}
           </DialogFooter>
         )}
-      </form>
+      </Form>
     </ModalFrame>
   );
 }

@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { DesktopUrlOpener } from "../src/api/desktop-opening";
-import { resolveAniListClient } from "../src/api/feeds/anilist-client";
-import { AutomationService } from "../src/api/feeds/service";
+import { resolveAniListClient } from "../src/api/modules/anilist/client";
+import { AutomationService } from "../src/api/modules/automation/service";
+import { DesktopUrlOpener } from "../src/api/modules/desktop/opening";
 import type { AniListClient, AniListState, AutomationState } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json } from "./helpers";
 
 async function oauthFixture(client?: AniListClient) {
@@ -57,7 +57,7 @@ async function oauthFixture(client?: AniListClient) {
     show: () => undefined,
   });
   opening.ready();
-  const api = createApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -76,6 +76,11 @@ async function oauthFixture(client?: AniListClient) {
     async restart() {
       await service.close();
       service = await AutomationService.open(options);
+      api = await createTestApi(
+        () => context.engine,
+        context.sync.options,
+        () => service
+      );
     },
   };
 }

@@ -1,34 +1,60 @@
 import { defineConfig } from "@teyik0/furin/config";
 import { defineDesktopConfig } from "@teyik0/furin-electrobun";
 import tailwind from "bun-plugin-tailwind";
-import native from "./electrobun.config";
+import { version } from "./package.json";
+import { databaseMigrationsPlugin } from "./scripts/database-migrations";
+
+const release = process.env.TOFU_RELEASE === "1";
+process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
+if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPER_ID) {
+  process.env.ELECTROBUN_DEVELOPER_ID = "-";
+}
 
 const nativeDependencies = /^(webtorrent|parse-torrent|electrobun\/main)$/;
 
 export default defineConfig({
   desktop: defineDesktopConfig({
-    app: { identifier: native.app.identifier, name: native.app.name, version: native.app.version },
+    app: {
+      identifier: release ? "app.tofu.torrents" : "app.tofu.torrents.dev",
+      name: "Tofu",
+      version,
+    },
     external: ["webtorrent", "parse-torrent"],
     hostEntry: "src/desktop-host.ts",
     sdk: {
-      app: { fileAssociations: native.app.fileAssociations, urlSchemes: native.app.urlSchemes },
+      app: {
+        fileAssociations: release
+          ? [{ ext: ["torrent"], name: "BitTorrent document", role: "Viewer" }]
+          : [],
+        urlSchemes: release ? ["magnet", "tofu"] : ["tofu-dev"],
+      },
       build: {
         bun: { external: ["webtorrent", "parse-torrent"] },
         copy: {
           "LICENSE.md": "bun/LICENSE.md",
           "runtime/anilist-client.json": "bun/anilist-client.json",
           "runtime/desktop-protocol.js": "bun/desktop-protocol.js",
-          "runtime/node_modules": "bun/node_modules",
+          "src/db/drizzle": "bun/drizzle",
         },
-        linux: native.build.linux,
-        mac: native.build.mac,
-        win: native.build.win,
+        linux: { icon: "public/tofu-icon.png" },
+        mac: {
+          codesign: release || Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
+          createDmg: release,
+          icons: "public/tofu.iconset",
+          notarize: Boolean(
+            process.env.ELECTROBUN_DEVELOPER_ID &&
+              process.env.ELECTROBUN_DEVELOPER_ID !== "-" &&
+              process.env.ELECTROBUN_APPLEAPIKEYPATH
+          ),
+        },
+        win: { icon: "public/tofu.iconset/icon_256x256.png" },
       },
-      release: native.release,
+      release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },
     },
     window: { height: 940, width: 1400 },
   }),
   plugins: [
+    databaseMigrationsPlugin,
     {
       name: tailwind.name,
       setup(builder) {

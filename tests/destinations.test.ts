@@ -1,10 +1,11 @@
-import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { TorrentEngine } from "../src/api/engine";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../src/api/lib/db";
+import { TorrentEngine } from "../src/api/modules/torrents/service";
 import type { DashboardState, Destination } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json, network, waitFor } from "./helpers";
 
 test("pinned threads retain their selected icon after restart without changing downloaded data", async () => {
@@ -43,7 +44,7 @@ test("pinned threads retain their selected icon after restart without changing d
       network,
     });
     const restored = restarted;
-    const api = createApi(() => restored, context.sync.options);
+    const api = await createTestApi(() => restored, context.sync.options);
     const state = await waitFor(
       async () =>
         (await (
@@ -108,7 +109,7 @@ test("pinning and changing icons preserve live transfers and older clients retai
   }
 });
 
-test("legacy thread databases gain unpinned folder icons without rewriting names, folders or transfers", async () => {
+test("default thread icons and pinning persist without changing names, folders or transfers", async () => {
   const context = await fixture(8192, []);
   let restarted: TorrentEngine | null = null;
   try {
@@ -118,6 +119,7 @@ test("legacy thread databases gain unpinned folder icons without rewriting names
         json({ downloadPath: join(context.directory, "saved"), name: "My saved thread" })
       )
     ).json()) as Destination;
+    expect(destination).toMatchObject({ icon: "folder", pinned: false });
     const { id } = (await (
       await context.request(
         "/torrents",
@@ -132,21 +134,13 @@ test("legacy thread databases gain unpinned folder icons without rewriting names
       (state) => state.detail?.status === "seeding"
     );
     await context.engine.close();
-    const database = new Database(join(context.directory, "state/tofu.sqlite"));
-    try {
-      database.exec(
-        "ALTER TABLE destinations DROP COLUMN pinned; ALTER TABLE destinations DROP COLUMN icon"
-      );
-    } finally {
-      database.close();
-    }
     restarted = await TorrentEngine.open({
       dataDir: join(context.directory, "state"),
       downloadPath: join(context.directory, "downloads"),
       network,
     });
     const restored = restarted;
-    const api = createApi(() => restored, context.sync.options);
+    const api = await createTestApi(() => restored, context.sync.options);
     const read = async () =>
       (await (
         await api.handle(new Request(`http://localhost/api/state?selected=${id}`))
@@ -251,7 +245,7 @@ test.each(["default", "saved"])(
   "a failed %s tab deletion preserves destinations, settings and real transfers",
   async (tab) => {
     const context = await fixture(8192, []);
-    const database = new Database(join(context.directory, "state/tofu.sqlite"));
+    const database = createDatabase(join(context.directory, "state/feeds.sqlite"));
     try {
       const destination = (await (
         await context.request(
@@ -270,9 +264,8 @@ test.each(["default", "saved"])(
           await context.request(`/state?selected=${id}`, undefined)
         ).json() as Promise<DashboardState>;
       const before = await waitFor(read, (state) => state.detail?.status === "seeding");
-      database.exec(
-        "CREATE TRIGGER reject_destination_delete BEFORE DELETE ON destinations BEGIN SELECT RAISE(ABORT, 'Destination deletion failed'); END"
-      );
+      database.run(sql`CREATE TRIGGER reject_destination_delete BEFORE DELETE ON destinations
+        BEGIN SELECT RAISE(ABORT, 'Destination deletion failed'); END`);
       const target = tab === "default" ? "default" : destination.id;
       const response = await context.request(`/destinations/${target}`, { method: "DELETE" });
       expect(response.status).toBe(500);
@@ -282,13 +275,13 @@ test.each(["default", "saved"])(
       expect(after.detail).toMatchObject({ destinationId: destination.id, status: "seeding" });
       const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
       expect(new Uint8Array(await content.arrayBuffer())).toEqual(context.bytes);
-      database.exec("DROP TRIGGER reject_destination_delete");
+      database.run(sql`DROP TRIGGER reject_destination_delete`);
       expect((await context.request(`/destinations/${target}`, { method: "DELETE" })).status).toBe(
         200
       );
       expect((await read()).detail?.destinationId).toBe("default");
     } finally {
-      database.close();
+      database.$client.close(true);
       await context.close();
     }
   }
@@ -585,7 +578,7 @@ test("bulk pause targets the visible torrent IDs rather than every destination",
 test("editing a destination persists its identity and changes future adds without moving files", async () => {
   const context = await fixture(65_536, []);
   const other = await fixture(65_536, []);
-  let restarted: import("../src/api/engine").TorrentEngine | null = null;
+  let restarted: import("../src/api/modules/torrents/service").TorrentEngine | null = null;
   try {
     const path = join(context.directory, "original");
     const destination = (await (
@@ -681,7 +674,7 @@ test("torrents with overlapping files do not overwrite an existing download", as
       network,
     });
     const engine = reopened;
-    const app = createApi(() => engine, context.sync.options);
+    const app = await createTestApi(() => engine, context.sync.options);
     request = (path, init) => app.handle(new Request(`http://localhost/api${path}`, init));
     const restored = await waitFor(
       () => read(first.id),

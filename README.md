@@ -1,4 +1,4 @@
-<img src="assets/tofu-icon.png" alt="Tofu" width="128" height="128" />
+<img src="public/tofu-icon.png" alt="Tofu" width="128" height="128" />
 
 # Tofu
 
@@ -28,7 +28,7 @@ See the [release guide](docs/releases.md) for updates and signing details. macOS
 
 ## 🚀 Run from source
 
-You need **Bun 1.4+**. macOS also requires **Xcode Command Line Tools**. Linux requires GTK 3, WebKitGTK 4.1, Ayatana AppIndicator, and librsvg; see the [development guide](docs/development.md).
+You need **Bun 1.4.3+** for the built-in `bun check` type checker. macOS also requires **Xcode Command Line Tools**. Linux requires GTK 3, WebKitGTK 4.1, Ayatana AppIndicator, and librsvg; see the [development guide](docs/development.md).
 
 ```sh
 git clone https://github.com/Teyik0/Tofu.git
@@ -40,7 +40,7 @@ bun run build:desktop
 bun run desktop
 ```
 
-For web development, run `bun run dev` and open **http://127.0.0.1:3030**.
+For web development, run `bun run dev` (`TOFU_PROFILE=dev bun --hot src/server.ts`) and open **http://127.0.0.1:3030**.
 
 Want to try a real local transfer? Keep `bun run demo` running while Tofu is open.
 
@@ -59,6 +59,8 @@ Plugins are optional and start disabled. Enable them from **Plugins** in the sid
 [Plugin guide →](docs/plugins.md)
 
 ## 🛠️ Development
+
+The desktop commands use the Furin Electrobun CLI directly. Bundle outputs and release artifacts stay under `.furin/electrobun/`. Build once before typechecking to prepare the Hutch SDK types.
 
 ```sh
 bun run tscheck

@@ -1,14 +1,15 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: exercise ordered public API mutations and real transfer lifecycle.
 
-import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { chmod, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { TorrentEngine } from "../src/api/engine";
-import { AutomationService } from "../src/api/feeds/service";
-import { pluginEndpoints } from "../src/api/plugins/registry";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../src/api/lib/db";
+import { AutomationService } from "../src/api/modules/automation/service";
+import { pluginEndpoints } from "../src/api/modules/plugins/service";
+import { TorrentEngine } from "../src/api/modules/torrents/service";
 import type { AutomationState } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json, network, waitFor } from "./helpers";
 
 const catalog = Bun.serve({
@@ -40,7 +41,7 @@ test("automation resumes recurring AniList sync after a startup database write f
     engine: () => context.engine,
     now: () => clock,
   });
-  const writer = new Database(join(dataDir, "feeds.sqlite"));
+  const writer = createDatabase(join(dataDir, "feeds.sqlite"));
   try {
     service.configure("anilist", { apiKey: "startup-test-token", enabled: true });
     service.anilist.subscribe({
@@ -50,9 +51,9 @@ test("automation resumes recurring AniList sync after a startup database write f
       statuses: ["CURRENT"],
       template: await service.interpret("Example", "default"),
     });
-    writer.exec("BEGIN IMMEDIATE");
+    writer.run(sql`BEGIN IMMEDIATE`);
     await expect(service.start()).rejects.toThrow("database is locked");
-    writer.exec("ROLLBACK");
+    writer.run(sql`ROLLBACK`);
     clock += 60_001;
     const subscription = await waitFor(
       async () => service.anilist.snapshot().subscriptions[0],
@@ -62,7 +63,7 @@ test("automation resumes recurring AniList sync after a startup database write f
     expect(subscription?.lastSyncAt).toBe(clock);
     expect(subscription?.error).toBeNull();
   } finally {
-    writer.close();
+    writer.$client.close(true);
     await service.close();
     upstream.stop(true);
     await context.close();
@@ -96,7 +97,7 @@ test("pattern rules exclude existing releases and still download newly published
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -161,7 +162,7 @@ test("plugin credentials stay private when automation reuses an existing data di
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -210,7 +211,7 @@ test("C411 downloads the enclosure server-side without exposing its API key", as
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -277,7 +278,7 @@ test("Nyaa search falls back to the HTML catalogue when RSS is unavailable", asy
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -333,7 +334,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     now: () => clock,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -362,6 +363,11 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     await request("/plugins/tsundere", { ...json({ enabled: false }), method: "PUT" });
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
     clock += 120_000;
     await service.start();
     expect(context.engine.snapshot(null).torrents).toHaveLength(0);
@@ -382,7 +388,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
 
 test("Jev interprets natural language, sends no tracker credentials and uncertain matches require review", async () => {
   const context = await fixture(4096, []);
-  let probability = 0.6;
+  let probability = 0.8;
   let calls = 0;
   const upstream = Bun.serve({
     async fetch(incoming) {
@@ -443,7 +449,7 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -541,7 +547,7 @@ test("an automation chooses one preferred version, downloads into its thread and
     now: () => clock,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  let api = await createTestApi(
     () => engine,
     low.sync.options,
     () => service
@@ -610,6 +616,11 @@ test("an automation chooses one preferred version, downloads into its thread and
       network,
     });
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => engine,
+      low.sync.options,
+      () => service
+    );
     clock += 60_000;
     await service.start();
     await waitFor(
@@ -673,7 +684,7 @@ test("search reads real RSS/JSON, preserves unknown values and isolates a failin
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -727,7 +738,7 @@ test("plugins are opt-in, preserve their settings and never return API keys", as
       }
       return service;
     };
-    const api = createApi(() => context.engine, context.sync.options, getService);
+    let api = await createTestApi(() => context.engine, context.sync.options, getService);
     const request = (path: string, init: RequestInit | undefined) =>
       api.handle(new Request(`http://localhost/api${path}`, init));
     const initial = await request("/automation", undefined);
@@ -744,6 +755,7 @@ test("plugins are opt-in, preserve their settings and never return API keys", as
     await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(() => context.engine, context.sync.options, getService);
     const state = (await (await request("/automation", undefined)).json()) as AutomationState;
     expect(state.plugins.find((plugin) => plugin.id === "nyaa")?.enabled).toBe(true);
     expect(state.plugins.find((plugin) => plugin.id === "jev")?.hasApiKey).toBe(true);
@@ -784,7 +796,7 @@ test("disabling a rule while its torrent file is loading cancels the automatic a
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -845,7 +857,7 @@ test("without Jev an explicit pattern matches release names and downloads from r
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -905,7 +917,7 @@ test("C411 paces searches and disabling the plugin cancels queued requests", asy
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

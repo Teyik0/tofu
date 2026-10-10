@@ -1,14 +1,19 @@
+import { EdenFetchError } from "@elysia/eden";
 import { useMutation } from "@teyik0/furin/client";
+import { useSetAtom } from "jotai";
 import { DownloadIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { api } from "../client";
-import { useDashboard } from "./app-shell";
+import { api } from "../lib/client";
+import { useRefresh } from "../lib/navigation";
+import { modalAtom, selectedTorrentAtom } from "../state/workspace";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 
-export function TorrentDrop() {
-  const { activeDestination, open, refresh, setSelected } = useDashboard();
-  const upload = useMutation(api.api.torrents.file.post);
+export function TorrentDrop({ activeDestination }: { activeDestination: string | null }) {
+  const open = useSetAtom(modalAtom);
+  const setSelected = useSetAtom(selectedTorrentAtom);
+  const refresh = useRefresh();
+  const upload = useMutation(api.torrents.file.post);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const depth = useRef(0);
@@ -27,12 +32,24 @@ export function TorrentDrop() {
           paused: "false",
         });
         if (!(result && "id" in result)) {
-          throw new Error(result && "error" in result ? result.error : "Unable to add the torrent");
+          throw new Error("Unable to add the torrent");
         }
         setSelected(result.id);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to add the torrent");
+      const value: unknown = cause instanceof EdenFetchError ? cause.value : null;
+      setError(
+        value && typeof value === "object" && "error" in value && typeof value.error === "string"
+          ? value.error
+          : value &&
+              typeof value === "object" &&
+              "detail" in value &&
+              typeof value.detail === "string"
+            ? value.detail
+            : cause instanceof Error
+              ? cause.message
+              : "Unable to add the torrent"
+      );
     } finally {
       await refresh();
     }

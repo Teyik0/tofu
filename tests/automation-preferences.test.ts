@@ -1,8 +1,11 @@
 import { afterAll, expect, test } from "bun:test";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { AutomationService } from "../src/api/feeds/service";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../src/api/lib/db";
+import { AutomationService } from "../src/api/modules/automation/service";
 import type { AutomationDraft, AutomationPreferences, AutomationState } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json } from "./helpers";
 
 const upstream = Bun.serve({
@@ -20,7 +23,7 @@ async function open(directory: string, context: Awaited<ReturnType<typeof fixtur
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -43,6 +46,69 @@ const preferences: AutomationPreferences = {
   sources: ["nyaa", "tsundere"],
   waitMinutes: 45,
 };
+
+test("legacy automation and AniList settings survive opening and updating the existing database", async () => {
+  const context = await fixture(1024, []);
+  const dataDir = join(context.directory, "feeds");
+  await mkdir(dataDir);
+  const legacy = createDatabase(join(dataDir, "feeds.sqlite"));
+  try {
+    legacy.run(sql`CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+    legacy.run(sql`CREATE TABLE plugins (id TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+    legacy.run(sql`CREATE TABLE anilist (id TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+    legacy.run(sql`INSERT INTO preferences VALUES ('automation', ${JSON.stringify(preferences)})`);
+    legacy.run(
+      sql`INSERT INTO plugins VALUES ('jev', ${JSON.stringify({ apiKey: "legacy-key", dailyLimit: 73, enabled: false })})`
+    );
+    legacy.run(
+      sql`INSERT INTO anilist VALUES ('config', ${JSON.stringify({ userName: "Archive's preferred name" })})`
+    );
+    legacy.run(
+      sql`INSERT INTO anilist VALUES ('preferences', ${JSON.stringify(["CURRENT", "COMPLETED"])})`
+    );
+  } finally {
+    legacy.$client.close(true);
+  }
+  let { request, service } = await open(context.directory, context);
+  try {
+    const initial = (await (await request("/automation", undefined)).json()) as AutomationState;
+    expect(initial.preferences).toEqual(preferences);
+    expect(initial.plugins.find((plugin) => plugin.id === "jev")).toMatchObject({
+      dailyLimit: 73,
+      enabled: false,
+      hasApiKey: true,
+    });
+    expect(JSON.stringify(initial)).not.toContain("legacy-key");
+    expect(await (await request("/anilist", undefined)).json()).toMatchObject({
+      userName: "Archive's preferred name",
+      visibleStatuses: ["CURRENT", "COMPLETED"],
+    });
+    const updated = { ...preferences, paused: false, waitMinutes: 60 };
+    expect(
+      (await request("/automation/preferences", { ...json(updated), method: "PUT" })).status
+    ).toBe(200);
+    expect(
+      (
+        await request("/anilist/preferences", {
+          ...json({ visibleStatuses: ["PLANNING"] }),
+          method: "PUT",
+        })
+      ).status
+    ).toBe(200);
+    await service.close();
+    ({ request, service } = await open(context.directory, context));
+    expect(await (await request("/automation", undefined)).json()).toMatchObject({
+      preferences: updated,
+    });
+    expect(await (await request("/anilist", undefined)).json()).toMatchObject({
+      userName: "Archive's preferred name",
+      visibleStatuses: ["PLANNING"],
+    });
+  } finally {
+    await service.close();
+    await context.close();
+  }
+});
 
 test("general preferences shape new rules, explicit requests override them, and they persist", async () => {
   const context = await fixture(1024, []);
@@ -68,7 +134,7 @@ test("general preferences shape new rules, explicit requests override them, and 
       method: "PUT",
     });
     expect(saved.status).toBe(200);
-    expect(((await saved.json()) as AutomationState).preferences).toEqual(preferences);
+    expect(await saved.json()).toEqual(preferences);
 
     const interpret = async (query: string) =>
       (await (

@@ -17,8 +17,12 @@
     "noUnusedParameters": true,
     "paths": {
       "@/*": ["./src/*"],
-      "electrobun": ["./.hutch/devkit/api/sdks/main/index.ts"],
-      "electrobun/main": ["./.hutch/devkit/api/sdks/main/index.ts"]
+      "electrobun": [
+        "./.furin/electrobun/.hutch/devkit/api/sdks/main/index.ts"
+      ],
+      "electrobun/main": [
+        "./.furin/electrobun/.hutch/devkit/api/sdks/main/index.ts"
+      ]
     }
   },
   "include": [

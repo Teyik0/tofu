@@ -1,9 +1,8 @@
 import { useMutation, useQuery } from "@teyik0/furin/client";
 import { DownloadIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
-import { api } from "../client";
+import { api } from "../lib/client";
 import type { UpdateState } from "../types";
-import { request } from "./api";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
@@ -18,6 +17,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 function useUpdateAction(state: UpdateState | undefined) {
+  const prepare = useMutation(api.updates.prepare.post);
+  const install = useMutation(api.updates.install.post);
+  const openDownload = useMutation(api.updates["open-download"].post);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const download = async () => {
@@ -25,15 +27,11 @@ function useUpdateAction(state: UpdateState | undefined) {
     setError(null);
     try {
       if (state?.automatic) {
-        await request<UpdateState>(
-          state.status === "ready" ? "/updates/install" : "/updates/prepare",
-          "POST",
-          {}
-        );
+        await (state.status === "ready" ? install.mutateAsync() : prepare.mutateAsync());
         return;
       }
-      const result = await request<{ opened: boolean }>("/updates/open-download", "POST", {});
-      if (!result.opened) {
+      const result = await openDownload.mutateAsync();
+      if (result && "opened" in result && !result.opened) {
         window.location.assign("/api/updates/download");
       }
     } catch (cause) {
@@ -91,9 +89,9 @@ function useSpinLatch(checking: boolean) {
 }
 
 export function SidebarUpdateAction() {
-  const { data: live, error: loadingError } = useQuery(api.api.updates.get);
+  const { data: live, error: loadingError } = useQuery(api.updates.get);
   const data = live && "status" in live ? live : undefined;
-  const check = useMutation(api.api.updates.check.post);
+  const check = useMutation(api.updates.check.post);
   const download = useUpdateAction(data);
   const checking = check.isPending || data?.status === "checking";
   const spin = useSpinLatch(checking);
@@ -173,9 +171,9 @@ export function SidebarUpdateAction() {
 }
 
 export function UpdatesPanel({ disabled }: { disabled: boolean }) {
-  const { data: live, error: loadingError } = useQuery(api.api.updates.get);
+  const { data: live, error: loadingError } = useQuery(api.updates.get);
   const data = live && "status" in live ? live : undefined;
-  const check = useMutation(api.api.updates.check.post);
+  const check = useMutation(api.updates.check.post);
   const download = useUpdateAction(data);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

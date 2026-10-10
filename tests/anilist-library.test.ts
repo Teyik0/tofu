@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { AutomationService } from "../src/api/feeds/service";
+import { AutomationService } from "../src/api/modules/automation/service";
 import type { AniListState, AutomationRule } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json, waitFor } from "./helpers";
 
 test("AniList library returns artwork, genres, seasons and all list statuses, and remembers the visible statuses", async () => {
@@ -58,7 +58,7 @@ test("AniList library returns artwork, genres, seasons and all list statuses, an
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -95,6 +95,11 @@ test("AniList library returns artwork, genres, seasons and all list statuses, an
     expect(changed.status).toBe(200);
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
     expect((await (await request("/anilist", undefined)).json()).visibleStatuses).toEqual([
       "COMPLETED",
     ]);
@@ -162,7 +167,7 @@ test("anime episodes offer matching releases, download through real peers and re
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -236,6 +241,11 @@ test("anime episodes offer matching releases, download through real peers and re
     });
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
     await request("/anilist/list", json({}));
     expect((await (await request("/anilist", undefined)).json()).entries[0].automationId).toBe(
       rule.id
@@ -300,7 +310,7 @@ test("episode completion syncs only consecutive progress and preserves out-of-or
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -319,6 +329,11 @@ test("episode completion syncs only consecutive progress and preserves out-of-or
     expect(mutations).toEqual([]);
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
     await request("/anilist/list", json({}));
     expect(
       (await (await request("/anilist", undefined)).json()).entries[0].completedEpisodes

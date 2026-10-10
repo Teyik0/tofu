@@ -1,31 +1,21 @@
 import { join } from "node:path";
 import { runDesktopHost } from "@teyik0/furin-electrobun/host";
-import { DesktopController } from "./api/desktop";
-import { DesktopUrlOpener } from "./api/desktop-opening";
-import { registerDesktopProtocol } from "./api/desktop-protocol";
-import { writeServerInfo } from "./api/server-info";
+import { writeServerInfo } from "./api/lib/server-info";
+import { DesktopUrlOpener } from "./api/modules/desktop/opening";
+import { registerDesktopProtocol } from "./api/modules/desktop/protocol";
+import { DesktopController } from "./api/modules/desktop/service";
 
 process.env.TOFU_MODE = "desktop";
 const sdk = await import("electrobun/main");
 
 await runDesktopHost(sdk, async ({ startBackend }) => {
-  const { runtime, instance, getAutomation, getEngine, getDesktop, getUpdates } = await import(
-    "./api/runtime"
-  );
-  runtime.sdk = sdk;
-  const opening = sdk
-    ? new DesktopUrlOpener({
-        authorize: (callbackUrl) => getAutomation().anilist.receiveAuthorizationUrl(callbackUrl),
-        engine: getEngine,
-        show: () => {
-          getDesktop().open();
-        },
-      })
-    : null;
-  if (sdk && opening && !runtime.desktop) {
+  const { applicationHost, hostIntegration, instance } = await import("./api/lib/host");
+  hostIntegration.tofuNativeSdk = sdk;
+  const readiness = Promise.withResolvers<DesktopUrlOpener>();
+  {
     const openUrl = (callbackUrl: string) => {
-      void opening
-        .open(callbackUrl)
+      void readiness.promise
+        .then((opener) => opener.open(callbackUrl))
         .catch((error: unknown) => {
           if (
             error instanceof Error &&
@@ -55,9 +45,9 @@ await runDesktopHost(sdk, async ({ startBackend }) => {
     await registerDesktopProtocol(instance);
   }
 
-  const { onStartup, onShutdown } = await import("./api/lifecycle");
+  const { onStartup, onShutdown } = await import("./api/lib/lifecycle");
   const { backend } = await startBackend({ dataDir: instance.dataDir });
-  await writeServerInfo(backend.origin, backend.cookie);
+  let core = await applicationHost.core;
   const { ApplicationMenu } = sdk;
   ApplicationMenu.setApplicationMenu([
     {
@@ -88,7 +78,7 @@ await runDesktopHost(sdk, async ({ startBackend }) => {
     if ((event as { data: { action: string } }).data.action !== "set-default-torrent-app") {
       return;
     }
-    void import("./api/desktop-associations")
+    void import("./api/modules/desktop/associations")
       .then(({ setDefaultTorrentApp }) => setDefaultTorrentApp(instance.profile))
       .then(() =>
         sdk.Utils.showMessageBox({
@@ -112,10 +102,10 @@ await runDesktopHost(sdk, async ({ startBackend }) => {
   const smokeScript = process.env.TOFU_SMOKE_SCRIPT
     ? await Bun.file(process.env.TOFU_SMOKE_SCRIPT).text()
     : null;
-  runtime.desktop = new DesktopController({
+  const desktop = new DesktopController({
     backend,
-    checkUpdates: () => getUpdates().check(),
-    engine: getEngine,
+    checkUpdates: () => core.updates.check(),
+    engine: () => core.engine,
     name: instance.name,
     prepareUpdate: onShutdown,
     profile: instance.profile,
@@ -124,11 +114,24 @@ await runDesktopHost(sdk, async ({ startBackend }) => {
       : join(import.meta.dir, "../furin/public"),
     recover: async () => {
       await onStartup(new AbortController().signal);
-      await writeServerInfo(backend.origin, backend.cookie);
+      core = await applicationHost.core;
+      applicationHost.activate(core, { controller: desktop, kind: "desktop", utils: sdk.Utils });
+      await writeServerInfo(core, backend.origin, backend.cookie);
     },
     sdk,
     shutdown: backend.stop,
     smokeScript,
   });
-  opening?.ready();
+  applicationHost.activate(core, { controller: desktop, kind: "desktop", utils: sdk.Utils });
+  await writeServerInfo(core, backend.origin, backend.cookie);
+  const opening = new DesktopUrlOpener({
+    authorize: (url) => core.automation.anilist.receiveAuthorizationUrl(url),
+    engine: () => core.engine,
+    show: () => {
+      desktop.open();
+    },
+  });
+  opening.ready();
+  readiness.resolve(opening);
+  desktop.open();
 });

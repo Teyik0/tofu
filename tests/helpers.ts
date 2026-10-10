@@ -3,10 +3,12 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { desktopApp } from "@teyik0/furin-electrobun/server";
+import { Elysia } from "elysia";
 import WebTorrent, { type Torrent } from "webtorrent";
-import { createApi } from "../src/api";
-import { TorrentEngine } from "../src/api/engine";
-import { createTofuSync } from "../src/api/sync";
+import { TorrentEngine } from "../src/api/modules/torrents/service";
+import { createTestApi } from "./api-fixture";
+import { openTestDatabase } from "./database";
 
 export const network = {
   dht: false,
@@ -55,13 +57,15 @@ export async function fixture(length: number, trackers: string[], filename?: str
     downloadPath: join(directory, "downloads"),
     network: { ...network, tracker: trackers.length > 0 },
   });
-  const sync = await createTofuSync(join(directory, "sync"));
-  const api = createApi(() => engine, sync.options);
+  const sync = await openTestDatabase(join(directory, "state"));
+  const api = new Elysia()
+    .use(desktopApp({ restrictWebToLoopback: true }))
+    .use(await createTestApi(() => engine, sync.options));
   return {
     api,
     bytes,
     async close() {
-      sync.close();
+      await sync.close();
       await Promise.all([
         engine.close(),
         new Promise<void>((resolve) => seeder.destroy(() => resolve())),

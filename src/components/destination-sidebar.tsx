@@ -1,15 +1,17 @@
 import { Link, useRouter } from "@teyik0/furin/link";
+import { useSetAtom } from "jotai";
 import { FolderIcon, PencilIcon, PlugIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
-import { type MouseEvent, memo, useEffect, useState } from "react";
+import { type MouseEvent, memo, startTransition, useActionState, useEffect, useState } from "react";
+import { isSupersededNavigation, showDestination } from "../lib/navigation";
+import { modalAtom } from "../state/workspace";
 import type { DashboardState, Destination } from "../types";
 import { ActionTooltip } from "./action-tooltip";
-import { AniListIcon } from "./anilist-icon";
-import { useDashboard } from "./app-shell";
+import { AniListIcon } from "./anilist/icon";
 import { DestinationIcon } from "./destination-icon";
 import { DestinationMenu } from "./destination-menu";
 import { bytes } from "./format";
 import { Logo } from "./icon";
-import { deleteDestination, type ModalKind } from "./modal";
+import { type ModalKind, useDeleteDestination } from "./modal";
 import { SidebarToggle } from "./sidebar-toggle";
 import { Button } from "./ui/button";
 import {
@@ -47,17 +49,20 @@ function useShiftHeld() {
 
 /** Replaces the torrent count on hover; Shift-clicking Delete skips the confirmation dialog. */
 function DestinationThreadActions({
+  activeDestination,
   destination,
   deletable,
   immediate,
   open,
 }: {
+  activeDestination: string | null;
   destination: Destination;
   deletable: boolean;
   immediate: boolean;
   open: (modal: ModalKind) => void;
 }) {
-  const { activeDestination, showDestination } = useDashboard();
+  const router = useRouter();
+  const deleteDestination = useDeleteDestination(activeDestination);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const remove = async (event: MouseEvent<HTMLButtonElement>) => {
@@ -68,7 +73,7 @@ function DestinationThreadActions({
     setBusy(true);
     setError(null);
     try {
-      await showDestination(await deleteDestination(destination.id, activeDestination));
+      await showDestination(router, await deleteDestination(destination.id), activeDestination);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to delete the tab");
     } finally {
@@ -123,14 +128,23 @@ export const DestinationSidebar = memo(
   function DestinationSidebarView({
     data,
     active,
-    open,
   }: {
     data: DashboardState | null;
     active: string | null;
-    open: (modal: ModalKind) => void;
   }) {
     const router = useRouter();
-    const { openPlugins } = useDashboard();
+    const open = useSetAtom(modalAtom);
+    const [navigationError, openPlugins] = useActionState<string | null, void>(async () => {
+      try {
+        await router.navigate({ to: "/plugins" });
+        return null;
+      } catch (cause) {
+        if (isSupersededNavigation(cause)) {
+          return null;
+        }
+        return cause instanceof Error ? cause.message : "Unable to open plugins";
+      }
+    }, null);
     const shiftHeld = useShiftHeld();
     return (
       <Sidebar className="destination-sidebar" collapsible="icon" variant="inset">
@@ -142,7 +156,7 @@ export const DestinationSidebar = memo(
               className="sidebar-brand"
               resetScroll={false}
               title="All torrents"
-              to="/library/all"
+              to="/"
             >
               <Logo />
               <span aria-hidden="true">Tofu</span>
@@ -169,7 +183,11 @@ export const DestinationSidebar = memo(
                 .filter((destination) => destination.pinned)
                 .map((destination) => (
                   <SidebarMenuItem key={destination.id}>
-                    <DestinationMenu destination={destination} open={open}>
+                    <DestinationMenu
+                      deletable={data.destinations.length > 1}
+                      destination={destination}
+                      open={open}
+                    >
                       <SidebarMenuButton
                         aria-label={destination.name}
                         className="sidebar-shortcut"
@@ -179,7 +197,7 @@ export const DestinationSidebar = memo(
                             aria-current={active === destination.id ? "page" : undefined}
                             params={{ id: destination.id }}
                             resetScroll={false}
-                            to="/library/destinations/:id"
+                            to="/thread/:id"
                           />
                         }
                         tooltip={{ children: destination.name, hidden: false }}
@@ -209,7 +227,11 @@ export const DestinationSidebar = memo(
                 .filter((destination) => !destination.pinned)
                 .map((destination) => (
                   <SidebarMenuItem key={destination.id}>
-                    <DestinationMenu destination={destination} open={open}>
+                    <DestinationMenu
+                      deletable={data.destinations.length > 1}
+                      destination={destination}
+                      open={open}
+                    >
                       <SidebarMenuButton
                         aria-label={destination.name}
                         className="sidebar-thread-link"
@@ -219,7 +241,7 @@ export const DestinationSidebar = memo(
                             aria-current={active === destination.id ? "page" : undefined}
                             params={{ id: destination.id }}
                             resetScroll={false}
-                            to="/library/destinations/:id"
+                            to="/thread/:id"
                           />
                         }
                         title={destination.downloadPath}
@@ -236,6 +258,7 @@ export const DestinationSidebar = memo(
                       }
                     </SidebarMenuBadge>
                     <DestinationThreadActions
+                      activeDestination={active}
                       deletable={data.destinations.length > 1}
                       destination={destination}
                       immediate={shiftHeld}
@@ -260,7 +283,7 @@ export const DestinationSidebar = memo(
                 <Button
                   aria-label="Settings"
                   disabled={!data}
-                  onClick={() => void router.navigate({ to: "/settings" })}
+                  onClick={() => void router.navigate({ to: "/options" })}
                   size="icon"
                   type="button"
                   variant="ghost"
@@ -272,7 +295,7 @@ export const DestinationSidebar = memo(
                 <Button
                   aria-label="Plugins"
                   disabled={!data}
-                  onClick={openPlugins}
+                  onClick={() => startTransition(() => openPlugins())}
                   size="icon"
                   type="button"
                   variant="ghost"
@@ -283,6 +306,11 @@ export const DestinationSidebar = memo(
             </div>
             <SidebarUpdateAction />
           </fieldset>
+          {navigationError !== null && (
+            <p className="text-destructive text-xs" role="alert">
+              {navigationError}
+            </p>
+          )}
         </SidebarFooter>
       </Sidebar>
     );
@@ -291,6 +319,5 @@ export const DestinationSidebar = memo(
     previous.active === next.active &&
     previous.data?.destinations === next.data?.destinations &&
     previous.data?.torrents === next.data?.torrents &&
-    previous.data?.session.freeSpace === next.data?.session.freeSpace &&
-    previous.open === next.open
+    previous.data?.session.freeSpace === next.data?.session.freeSpace
 );

@@ -7,6 +7,7 @@ build/
 artifacts/
 runtime/
 furin-env.d.ts
+/src/api/modules/anilist/graphql/generated.ts
 *.log
 *.tsbuildinfo
 .DS_Store

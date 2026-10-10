@@ -24,6 +24,15 @@
   },
   "overrides": [
     {
+      "includes": ["src/api/modules/anilist/graphql/schema.graphql"],
+      "formatter": {
+        "enabled": false
+      },
+      "linter": {
+        "enabled": false
+      }
+    },
+    {
       "includes": ["src/components/**"],
       "linter": {
         "rules": {

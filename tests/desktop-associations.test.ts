@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { readTorrentDefaults, setDefaultTorrentApp } from "../src/api/desktop-associations";
+import { readTorrentDefaults, setDefaultTorrentApp } from "../src/api/modules/desktop/associations";
 
 test("development cannot change the user's default torrent application", async () => {
   await expect(setDefaultTorrentApp("dev")).rejects.toThrow(
@@ -11,12 +11,12 @@ test("development cannot change the user's default torrent application", async (
 test("only release bundles advertise torrent files and magnet links to macOS", async () => {
   await Promise.all(
     [false, true].map(async (release) => {
-      const configPath = join(import.meta.dir, "../electrobun.config.ts");
+      const configPath = join(import.meta.dir, "../furin.config.ts");
       const child = Bun.spawn(
         [
           process.execPath,
           "-e",
-          `const {default: config} = await import(${JSON.stringify(configPath)}); console.log(JSON.stringify(config.app));`,
+          `const {default: config} = await import(${JSON.stringify(configPath)}); console.log(JSON.stringify({...config.desktop.app, ...config.desktop.sdk.app}));`,
         ],
         {
           env: { ...process.env, TOFU_RELEASE: release ? "1" : "0" },

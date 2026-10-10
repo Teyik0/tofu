@@ -6,12 +6,12 @@ async function macSigning(
   identity: string | undefined,
   keyPath: string | undefined
 ) {
-  const configPath = join(import.meta.dir, "../electrobun.config.ts");
+  const configPath = join(import.meta.dir, "../furin.config.ts");
   const child = Bun.spawn(
     [
       process.execPath,
       "-e",
-      `const { default: config } = await import(${JSON.stringify(configPath)}); console.log(JSON.stringify(config.build.mac));`,
+      `const { default: config } = await import(${JSON.stringify(configPath)}); console.log(JSON.stringify(config.desktop.sdk.build.mac));`,
     ],
     {
       env: {
