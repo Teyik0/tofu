@@ -41,6 +41,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 - Finalize SQLite prepared statements when their owning service shuts down, releasing Windows file locks before temporary directory cleanup.
 - Wait for the hot reload test's readiness file before reading it to avoid startup races on slower CI runners.
 - Preserve LF endings in GraphQL snapshots so Windows checkouts retain their recorded checksums.
+- Temporarily skip blocked-request cancellation tests on Windows because Bun 1.4.3 can crash during their teardown; retain coverage on macOS and Linux.
 - Generate Furin route and asset declarations before type checking on clean checkouts, without starting the development server.
 
 ## [0.2.1]
