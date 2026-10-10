@@ -1,0 +1,31 @@
+src/api/engine.ts
+  s_e830586d962d7a::t_351b4677fd6960 314,326-329,432-434,436-437,440-441,445-451
+scripts/native-smoke.ts
+  s_e830586d962d7a::t_7e94ffe6db941c 1579-1580,1602-1603,1605-1611,1753-1754,1757,1761-1764
+tests/anilist-opening.test.ts
+  s_e830586d962d7a::t_57af5987ef0819 35-46
+  s_e830586d962d7a::t_01dd6e2b831030 47-57,59-63
+  s_e830586d962d7a::t_9b220223735b24 58
+src/api/feeds/anilist-opening-api.ts
+  s_e830586d962d7a::t_a8cbae6659c6d2 1,13-14
+  s_e830586d962d7a::t_e6d034c98ad921 33
+tests/destinations.test.ts
+  s_e830586d962d7a::t_19fabaa323e43a 250-268,272-285,289-296
+  s_e830586d962d7a::t_9b220223735b24 269-271,286-288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c52d494271486fb148ca6bd9add2cae4e60677e",
+  "prompts": {},
+  "sessions": {
+    "s_e830586d962d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12427-b542-7021-8787-49df9e8fbe28",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
