@@ -326,22 +326,87 @@ export type AniListStatus =
   | "DROPPED"
   | "REPEATING";
 export type AniListSeason = "WINTER" | "SPRING" | "SUMMER" | "FALL";
-export interface AniListEntry {
+export interface AniListMedia {
+  airingStatus?: string | null;
   aliases: string[];
-  automationId: string | null;
+  averageScore?: number | null;
   bannerImage: string | null;
-  completedEpisodes: number[];
+  countryOfOrigin?: string | null;
   coverImage: string | null;
+  duration?: number | null;
+  endDate?: AniListDate | null;
   episodes: number | null;
+  favourites?: number | null;
   format: string | null;
   genres: string[];
+  isAdult?: boolean | null;
+  isLicensed?: boolean | null;
   mediaId: number;
-  progress: number;
+  nextAiringEpisode?: { episode: number; airingAt: number } | null;
+  popularity?: number | null;
+  releaseDate?: AniListDate | null;
   season: AniListSeason | null;
   seasonYear: number | null;
   siteUrl: string | null;
-  status: AniListStatus;
+  source?: string | null;
+  startDate?: number | null;
+  streamingOn?: number[];
+  studios?: string[];
+  tags?: { name: string; rank: number; isAdult: boolean }[];
   title: string;
+  trending?: number | null;
+}
+export interface AniListDate {
+  day: number | null;
+  month: number | null;
+  year: number | null;
+}
+export interface AniListEntry extends AniListMedia {
+  automationId: string | null;
+  completedEpisodes: number[];
+  progress: number;
+  status: AniListStatus;
+}
+export interface AniListCatalog {
+  hasNextPage: boolean;
+  media: AniListMedia[];
+  page: number;
+}
+export type AniListCatalogSort =
+  | "title"
+  | "popularity"
+  | "score"
+  | "trending"
+  | "favourites"
+  | "added"
+  | "released";
+export interface AniListCatalogFilters {
+  airingStatus?: string;
+  countryOfOrigin?: string;
+  doujin?: "any" | "only" | "exclude";
+  durationMax?: number;
+  durationMin?: number;
+  episodesMax?: number;
+  episodesMin?: number;
+  excludedGenres?: string[];
+  excludedTags?: string[];
+  format?: string;
+  genres?: string[];
+  page?: number;
+  search?: string;
+  season?: AniListSeason;
+  sort?: AniListCatalogSort;
+  source?: string;
+  streamingOn?: number;
+  tags?: string[];
+  year?: number;
+  yearMax?: number;
+  yearMin?: number;
+}
+export interface AniListCatalogOptions {
+  genres: string[];
+  streaming: { id: number; name: string }[];
+  tags: { name: string; category: string; isAdult: boolean }[];
 }
 export interface AniListReleases extends DiscoveryResult {
   torrents: TorrentSummary[];

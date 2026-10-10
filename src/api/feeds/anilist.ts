@@ -1,6 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { isAbsolute, join, resolve } from "node:path";
 import type {
+  AniListCatalog,
+  AniListCatalogFilters,
+  AniListCatalogOptions,
   AniListClient,
   AniListEntry,
   AniListSeason,
@@ -14,6 +17,14 @@ import type {
   DestinationInput,
 } from "../../types";
 import { UserError } from "../engine";
+import {
+  type CatalogMedia,
+  catalogMedia,
+  catalogOptionsQuery,
+  catalogQuery,
+  catalogVariables,
+  mediaFields,
+} from "./anilist-catalog";
 import { AniListAuthorization } from "./anilist-oauth";
 
 interface AniListOptions {
@@ -45,30 +56,12 @@ interface ListResponse {
       entries: {
         status: string;
         progress: number;
-        media: {
-          id: number;
-          title: {
-            romaji: string | null;
-            english: string | null;
-            native: string | null;
-            userPreferred: string | null;
-          };
-          synonyms: string[];
-          siteUrl: string | null;
-          coverImage?: { extraLarge: string | null; large: string | null };
-          bannerImage?: string | null;
-          episodes?: number | null;
-          format?: string | null;
-          genres?: string[] | null;
-          season?: string | null;
-          seasonYear?: number | null;
-        };
+        media: CatalogMedia;
       }[];
     }[];
   };
 }
-const listQuery =
-  "query($userId: Int!, $chunk: Int!) { MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) { hasNextChunk lists { entries { status progress media { id title { romaji english native userPreferred } synonyms siteUrl coverImage { extraLarge large } bannerImage episodes format genres season seasonYear } } } } }";
+const listQuery = `query($userId: Int!, $chunk: Int!) { MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) { hasNextChunk lists { entries { status progress media { ${mediaFields} } } } } }`;
 
 export function isAniListStatus(value: string): value is AniListStatus {
   return ["CURRENT", "PLANNING", "COMPLETED", "PAUSED", "DROPPED", "REPEATING"].includes(value);
@@ -105,7 +98,7 @@ function collectEntries(
             entry.media.title.english,
             entry.media.title.native,
             entry.media.title.userPreferred,
-            ...entry.media.synonyms,
+            ...(entry.media.synonyms ?? []),
           ].filter((name): name is string => typeof name === "string" && name.trim().length > 0)
         ),
       ].slice(0, 30);
@@ -114,6 +107,7 @@ function collectEntries(
         continue;
       }
       found.set(entry.media.id, {
+        ...catalogMedia(entry.media),
         aliases,
         automationId: null,
         bannerImage: entry.media.bannerImage ?? null,
@@ -382,13 +376,17 @@ export class AniListService {
   }
   private async request<T>(
     query: string,
-    variables: {
-      userId?: number;
-      chunk?: number;
-      name?: string;
-      mediaId?: number;
-      progress?: number;
-    },
+    variables:
+      | ReturnType<typeof catalogVariables>
+      | {
+          userId?: number;
+          chunk?: number;
+          name?: string;
+          mediaId?: number;
+          progress?: number;
+          page?: number;
+          sort?: string[];
+        },
     controller: AbortController,
     accessToken?: string
   ): Promise<T> {
@@ -410,6 +408,61 @@ export class AniListService {
       throw new UserError("AniList: account or list inaccessible", { status: 502 });
     }
     return result.data;
+  }
+  async catalog(filters: AniListCatalogFilters): Promise<AniListCatalog> {
+    const variables = catalogVariables(filters);
+    const controller = new AbortController();
+    this.requests.add(controller);
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const { Page: page } = await this.request<{
+        Page: { pageInfo: { currentPage: number; hasNextPage: boolean }; media: CatalogMedia[] };
+      }>(catalogQuery, variables, controller, "");
+      return {
+        hasNextPage: page.pageInfo.hasNextPage,
+        media: page.media.map(catalogMedia),
+        page: page.pageInfo.currentPage,
+      };
+    } finally {
+      clearTimeout(timeout);
+      this.requests.delete(controller);
+    }
+  }
+  private catalogOptionsCache: AniListCatalogOptions | null = null;
+  async catalogOptions(): Promise<AniListCatalogOptions> {
+    if (this.catalogOptionsCache) {
+      return this.catalogOptionsCache;
+    }
+    const controller = new AbortController();
+    this.requests.add(controller);
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const result = await this.request<{
+        GenreCollection: string[];
+        MediaTagCollection: AniListCatalogOptions["tags"];
+        ExternalLinkSourceCollection: {
+          id: number;
+          site: string;
+          type: string;
+          isDisabled: boolean | null;
+        }[];
+      }>(catalogOptionsQuery, {}, controller, "");
+      this.catalogOptionsCache = {
+        genres: result.GenreCollection.toSorted((a, b) => a.localeCompare(b, "en-US")),
+        streaming: result.ExternalLinkSourceCollection.filter(
+          (link) => link.type === "STREAMING" && !link.isDisabled
+        )
+          .map((link) => ({ id: link.id, name: link.site }))
+          .toSorted((a, b) => a.name.localeCompare(b.name, "en-US")),
+        tags: result.MediaTagCollection.filter((tag) => !tag.isAdult).toSorted((a, b) =>
+          a.name.localeCompare(b.name, "en-US")
+        ),
+      };
+      return this.catalogOptionsCache;
+    } finally {
+      clearTimeout(timeout);
+      this.requests.delete(controller);
+    }
   }
   private async authorize(token: string, current: () => boolean) {
     const controller = new AbortController();
