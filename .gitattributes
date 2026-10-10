@@ -1,0 +1,2 @@
+# Preserve GraphQL snapshot checksums on every platform.
+*.graphql text eol=lf

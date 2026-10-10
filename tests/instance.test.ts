@@ -288,6 +288,10 @@ await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
   try {
     const url = await dev.ready();
     await waitFor(
+      () => Bun.file(signal).exists(),
+      (exists) => exists
+    );
+    await waitFor(
       async () => (await Bun.file(signal).json()) as { iteration: number },
       (value) => value.iteration === 1
     );
