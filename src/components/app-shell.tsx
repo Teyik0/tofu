@@ -164,7 +164,11 @@ export function AppShell({
           <TorrentDrop />
           {modal !== null &&
             (modal.type === "automation" ? (
-              <AutomationCenter close={() => setModal(null)} destinationId={modal.destinationId} />
+              <AutomationCenter
+                close={() => setModal(null)}
+                destinationId={modal.destinationId}
+                section={modal.section}
+              />
             ) : modal.type === "deleteDestination" ? (
               <DeleteDestinationModal
                 cancel={() => setModal(null)}

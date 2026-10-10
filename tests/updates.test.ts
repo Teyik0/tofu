@@ -3,11 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Elysia } from "elysia";
-import { DesktopUpdateInstaller } from "../src/server/desktop-update-installer";
-import { TorrentEngine } from "../src/server/engine";
-import { createTofuSync } from "../src/server/sync";
-import { UpdatesService } from "../src/server/updates";
-import { createUpdatesApi } from "../src/server/updates-api";
+import { DesktopUpdateInstaller } from "../src/api/desktop-update-installer";
+import { TorrentEngine } from "../src/api/engine";
+import { createTofuSync } from "../src/api/sync";
+import { UpdatesService } from "../src/api/updates";
+import { createUpdatesApi } from "../src/api/updates-api";
 import { fixture, json, network, waitFor } from "./helpers";
 
 test("an update restart saves a real peer transfer and recovers when the native handoff fails", async () => {

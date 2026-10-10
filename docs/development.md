@@ -46,7 +46,7 @@ Electrobun → native window, dialogs, and app lifecycle
 
 The torrent engine lives in the Bun process, so downloads outlast HTTP requests. The browser displays state and sends actions. The same API supports desktop and web modes. Electrobun RPC is an alternative, but would require a second transport for web access.
 
-The optional Furin Electrobun package builds the inert application and starts its guarded backend in the SDK process. `furin.desktop.config.ts` selects Tofu's native host for trays, background windows, protocols and updates. Desktop SSR forwards the incoming session to the same local API; initialization and disposal use the artifact's lifecycle hooks. See the [integration report](furin-electrobun-preview.md).
+The optional Furin Electrobun package builds the inert application and starts its guarded backend in the SDK process. The `desktop` section of `furin.config.ts` selects Tofu's native host for trays, background windows, protocols and updates. Desktop SSR forwards the incoming session to the same local API; initialization and disposal use `desktopApp()` lifecycle callbacks. See the [integration report](furin-electrobun-preview.md).
 
 Shared application types live in `src/types.ts`. Source plugins and automation also run in Bun and hand selected downloads to the existing engine.
 
@@ -62,7 +62,7 @@ Furin core and Electrobun currently use pinned local PR #163 archives under `ven
 
 WebTorrent native addons remain external during bundling. `runtime/node_modules` is packaged with the desktop application. The Electrobun SDK stays external during the Furin build and is resolved from `.hutch/devkit` during the native build.
 
-`src/server/webtorrent-stats.ts` bridges tracker and wire information for **WebTorrent 3.0.21**. Rerun tracker and peer tests when updating the engine.
+`src/api/webtorrent-stats.ts` bridges tracker and wire information for **WebTorrent 3.0.21**. Rerun tracker and peer tests when updating the engine.
 
 ## Files and statistics
 

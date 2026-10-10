@@ -311,7 +311,7 @@ export class TorrentEngine {
       );
   }
 
-  private storeDestination(destination: Destination) {
+  private writeDestination(destination: Destination) {
     this.db
       .query(
         "INSERT INTO destinations (id, name, downloadPath, pinned, icon) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, downloadPath=excluded.downloadPath, pinned=excluded.pinned, icon=excluded.icon"
@@ -323,6 +323,10 @@ export class TorrentEngine {
         Number(destination.pinned),
         destination.icon
       );
+  }
+
+  private storeDestination(destination: Destination) {
+    this.writeDestination(destination);
     this.destinations.set(destination.id, destination);
     return destination;
   }
@@ -425,20 +429,26 @@ export class TorrentEngine {
     if (!(removed && successor)) {
       throw new UserError("At least one tab is required", { status: 409 });
     }
+    const reassigned = [...this.entries.values()].filter(
+      (entry) => entry.detail.destinationId === removed
+    );
     this.db.transaction(() => {
-      for (const entry of this.entries.values()) {
-        if (entry.detail.destinationId === removed) {
-          entry.detail.destinationId = "default";
-          this.save(entry);
-        }
+      for (const entry of reassigned) {
+        this.save({ ...entry, detail: { ...entry.detail, destinationId: "default" } });
       }
       if (id === "default") {
-        this.storeDestination({ ...successor, id: "default" });
-        this.settings.downloadPath = successor.downloadPath;
-        this.config("settings", this.settings);
+        this.writeDestination({ ...successor, id: "default" });
+        this.config("settings", { ...this.settings, downloadPath: successor.downloadPath });
       }
       this.db.query("DELETE FROM destinations WHERE id = ?").run(removed);
     })();
+    for (const entry of reassigned) {
+      entry.detail.destinationId = "default";
+    }
+    if (id === "default") {
+      this.destinations.set("default", { ...successor, id: "default" });
+      this.settings.downloadPath = successor.downloadPath;
+    }
     this.destinations.delete(removed);
     if (id === "default") {
       await this.diskSpace();

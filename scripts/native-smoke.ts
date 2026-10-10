@@ -610,10 +610,11 @@ async function nativeWorkflow(config: {
         getComputedStyle(document.querySelector('[data-slot="sidebar-container"]')!).width ===
           "190px" && getComputedStyle(document.documentElement).fontFamily.includes("system-ui")
     );
-    check(
-      "React hydrated and engine connected",
-      document.body.textContent?.includes("Engine connected") === true
+    // The status bar only shows a port once the engine is listening.
+    const enginePort = Number(
+      document.querySelector(".status-port")!.textContent!.replace("Port ", "")
     );
+    check("React hydrated and engine connected", enginePort > 0);
     check(
       "Filtering and sorting use accessible Select controls",
       document.querySelector('[aria-label="Filter torrents by status"]')?.getAttribute("role") ===
@@ -641,7 +642,7 @@ async function nativeWorkflow(config: {
     );
     check(
       "Engine data present in HTML before JavaScript",
-      (await (await fetch("/")).text()).includes("Engine connected")
+      (await (await fetch("/")).text()).includes(`class="status-port">Port <b>${enginePort}</b>`)
     );
     await wait(() =>
       performance
@@ -1206,11 +1207,18 @@ async function nativeWorkflow(config: {
       )
     );
     click("Prepare tracking");
+    await wait(() =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>("button")).some(
+        (button) => button.textContent?.trim() === "Create AniList tracking"
+      )
+    );
+    document.querySelector<HTMLButtonElement>("#anilist-customize")!.click();
     await wait(() => !!document.querySelector("#automation-language"));
     check(
-      "AniList list preferences and tracked statuses configurable",
+      "AniList tracking starts from the general preferences and tracked statuses are configurable",
       [
-        document.querySelector<HTMLInputElement>("#automation-language")!.value === "VOSTFR",
+        document.querySelector("#automation-language")!.getAttribute("data-value") ===
+          (await automationState()).preferences.languages.join(","),
         document.querySelector<HTMLInputElement>("#anilist-CURRENT")!.checked === true,
         document.querySelector<HTMLInputElement>("#anilist-PLANNING")!.checked === true,
       ].every(Boolean)
@@ -1254,7 +1262,20 @@ async function nativeWorkflow(config: {
       "Without Jev, editable criteria and exact matching",
       document.querySelector<HTMLInputElement>("#automation-title")!.value === "Example" &&
         document.querySelector("#automation-matcher")!.textContent?.trim() === "Exact title name" &&
-        document.querySelector<HTMLInputElement>("#automation-resolution")!.value.includes("1080p")
+        document
+          .querySelector("#automation-resolution")!
+          .getAttribute("data-value")
+          ?.includes("1080p") === true
+    );
+    const resolution900 = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("#automation-resolution button")
+    ).find((element) => element.textContent?.trim() === "900p");
+    check("Automation offers 900p among resolution priorities", !!resolution900);
+    resolution900!.click();
+    await wait(
+      () =>
+        document.querySelector("#automation-resolution")!.getAttribute("data-value") ===
+        "1080p,720p,900p"
     );
     document.querySelector<HTMLInputElement>("#automation-enabled")!.click();
     await wait(
@@ -1282,7 +1303,7 @@ async function nativeWorkflow(config: {
       automation.destinationId === anime.id &&
         !automation.enabled &&
         automation.deleteReplacedFiles === true &&
-        automation.resolutions.join(",") === "1080p,720p" &&
+        automation.resolutions.join(",") === "1080p,720p,900p" &&
         automation.sources[0] === "tsundere"
     );
     await fetch(`/api/automations/${automation.id}`, { method: "DELETE" });
@@ -1553,8 +1574,10 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       coverImage: null,
       episodes: 3,
       format: "TV",
+      genres: ["Action", "Comedy"],
       mediaId: 10,
       progress: 0,
+      season: "SPRING",
       seasonYear: 2026,
       siteUrl: "https://anilist.co/anime/10",
       status: "CURRENT",
@@ -1563,6 +1586,8 @@ async function anilistWorkflow(config: { reportUrl: string }) {
   ];
   const releaseSearch = Promise.withResolvers<void>();
   let pluginNavigation = Promise.withResolvers<void>();
+  let pluginNavigationStarted = Promise.withResolvers<void>();
+  let pluginNavigationFinished = Promise.withResolvers<void>();
   const pluginState = Promise.withResolvers<void>();
   let openedAniListUrl: string | null = null;
   const fixtureFetch: typeof window.fetch = Object.assign(
@@ -1584,12 +1609,26 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         path === "/_furin/data" &&
         new URL(url, location.origin).searchParams.get("path") === "/plugins"
       ) {
+        const finished = pluginNavigationFinished;
+        pluginNavigationStarted.resolve();
         await pluginNavigation.promise;
+        try {
+          init?.signal?.throwIfAborted();
+          const response = await nativeFetch(input, init);
+          await response.clone().arrayBuffer();
+          return response;
+        } finally {
+          finished.resolve();
+        }
       }
       if (path === "/api/automation") {
         await pluginState.promise;
       }
       if (path === "/api/anilist" && (!init?.method || init.method === "GET")) {
+        return Response.json(sample);
+      }
+      if (path === "/api/anilist/preferences") {
+        Object.assign(sample, JSON.parse(String(init?.body)));
         return Response.json(sample);
       }
       if (path === "/api/anilist/entries/10/releases") {
@@ -1681,6 +1720,29 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       location.pathname === pluginsOrigin &&
         !!document.querySelector('[aria-label="Loading plugins"]')
     );
+    await pluginNavigationStarted.promise;
+    button("Back").click();
+    await wait(() => !!document.querySelector(".add-button"));
+    pluginNavigation.resolve();
+    await pluginNavigationFinished.promise;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    check(
+      "Back remains available during plugin navigation",
+      !document.querySelector(".plugins-page") && location.pathname === pluginsOrigin
+    );
+    // Exercise cancellation before a completed navigation caches the Plugins route.
+    pluginNavigation = Promise.withResolvers<void>();
+    pluginNavigationStarted = Promise.withResolvers<void>();
+    pluginNavigationFinished = Promise.withResolvers<void>();
+    button("Plugins").click();
+    await wait(() => !!document.querySelector(".plugins-page"));
+    await pluginNavigationStarted.promise;
+    button("Sources").click();
+    await wait(
+      () => document.querySelector(".settings-topbar h1")?.textContent?.includes("Sources") === true
+    );
     pluginNavigation.resolve();
     await wait(() => location.pathname === "/plugins");
     check(
@@ -1725,16 +1787,6 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     button("Back").click();
     await wait(() => !!document.querySelector(".add-button"));
     check("Plugins returns to the originating library", location.pathname === pluginsOrigin);
-    pluginNavigation = Promise.withResolvers<void>();
-    button("Plugins").click();
-    await wait(() => !!document.querySelector(".plugins-page"));
-    button("Back").click();
-    await wait(() => !!document.querySelector(".add-button"));
-    pluginNavigation.resolve();
-    check(
-      "Back remains available during plugin navigation",
-      !document.querySelector(".plugins-page") && location.pathname === pluginsOrigin
-    );
     button("Automations").click();
     await wait(() => !!document.querySelector("[role=dialog]"));
     const tab = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(
@@ -1763,12 +1815,14 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     await wait(() => rootInput.value === customRoot && !button("Prepare tracking").disabled);
     button("Prepare tracking").click();
     await wait(
-      () => !!document.querySelector("#automation-language") && !button("Prepare tracking").disabled
+      () =>
+        Array.from(document.querySelectorAll("button")).some(
+          (element) => element.textContent?.trim() === "Create AniList tracking"
+        ) && !button("Prepare tracking").disabled
     );
     check(
-      "Custom root folder and Nyaa preferences are preserved",
-      rootInput.value === customRoot &&
-        document.querySelector<HTMLInputElement>("#automation-language")!.value === "VOSTFR"
+      "Custom root folder is preserved and the general preferences are summarized",
+      rootInput.value === customRoot && !!document.querySelector(".preference-summary li")
     );
     check("Creation waits for AniList title approval", button("Create AniList tracking").disabled);
     await pickOption("#anilist-organization", "All anime in the selected thread");
@@ -1868,6 +1922,39 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     );
     themeSurface.remove();
     const statusFilter = document.querySelector<HTMLButtonElement>(".anilist-status-filter")!;
+    const accessibleName = (element: HTMLElement) =>
+      element
+        .getAttribute("aria-labelledby")
+        ?.split(" ")
+        .map((id) => document.getElementById(id)?.textContent?.trim())
+        .join(" ");
+    check(
+      "AniList list filter announces its selected statuses",
+      accessibleName(statusFilter) === "Lists Watching, Plan to Watch"
+    );
+    const genreFilter = document.querySelector<HTMLButtonElement>(
+      'button[aria-labelledby^="anilist-genres-label"]'
+    )!;
+    check(
+      "AniList genre filter announces Any before selection",
+      accessibleName(genreFilter) === "Genres Any"
+    );
+    genreFilter.focus();
+    genreFilter.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" })
+    );
+    await wait(() => !!document.querySelector('[role="menu"]'));
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+      .find((element) => element.textContent?.trim() === "Action")!
+      .click();
+    await wait(() => genreFilter.textContent?.trim() === "Action");
+    genreFilter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    genreFilter.click();
+    await wait(() => !document.querySelector('[role="menu"]'));
+    check(
+      "AniList genre filter announces its selected values",
+      accessibleName(genreFilter) === "Genres Action"
+    );
     statusFilter.focus();
     statusFilter.dispatchEvent(
       new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" })
@@ -1877,14 +1964,44 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       "AniList offers all six list statuses",
       document.querySelectorAll('[role="menu"] [role="menuitemcheckbox"]').length === 6
     );
-    document.body.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" })
-    );
-    document
-      .querySelector('[role="menu"]')
-      ?.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" })
+    statusFilter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    statusFilter.click();
+    await wait(() => !document.querySelector('[role="menu"]'));
+    for (const label of ["Watching", "Plan to Watch"]) {
+      statusFilter.focus();
+      statusFilter.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" })
       );
+      await wait(() => !!document.querySelector('[role="menu"]'));
+      const choice = Array.from(
+        document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')
+      ).find((element) => element.textContent?.trim() === label)!;
+      const selectedCount = sample.visibleStatuses.length;
+      choice.click();
+      await wait(() => sample.visibleStatuses.length < selectedCount);
+      await wait(() => choice.getAttribute("aria-disabled") !== "true");
+      statusFilter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      statusFilter.click();
+      await wait(() => !document.querySelector('[role="menu"]'));
+    }
+    await wait(() => statusFilter.textContent?.trim() === "None");
+    check(
+      "No selected AniList lists shows and announces None",
+      statusFilter.textContent?.trim() === "None" &&
+        accessibleName(statusFilter) === "Lists None" &&
+        !document.querySelector('button[aria-label="View episodes for Native Example"]')
+    );
+    statusFilter.focus();
+    statusFilter.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" })
+    );
+    await wait(() => !!document.querySelector('[role="menu"]'));
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+      .find((element) => element.textContent?.trim() === "Watching")!
+      .click();
+    await wait(() => sample.visibleStatuses.includes("CURRENT"));
+    statusFilter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    statusFilter.click();
     await wait(() => !document.querySelector('[role="menu"]'));
     await wait(
       () => !!document.querySelector('button[aria-label="View episodes for Native Example"]')
@@ -1943,6 +2060,8 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         document.querySelector<HTMLInputElement>("#anime-episode-2")!.checked
     );
     const releaseName = document.querySelector<HTMLElement>(".anime-release-name")!;
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Tab" }));
     releaseName.focus();
     await wait(() => !!document.querySelector('[data-slot="tooltip-content"][data-open]'));
     check(
@@ -1965,7 +2084,8 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     check(
       "Anime automation exposes quality preferences with identity supplied by AniList",
       !document.querySelector("#automation-title") &&
-        document.querySelector<HTMLInputElement>("#automation-resolution")!.value === "1080p, 720p"
+        document.querySelector("#automation-resolution")!.getAttribute("data-value") ===
+          "1080p,720p"
     );
     document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!.click();
     await wait(() => !document.querySelector(".anime-modal"));

@@ -1,5 +1,12 @@
 import { useQuery } from "@teyik0/furin/client";
-import { CheckIcon, ExternalLinkIcon, RefreshCwIcon, TrashIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ExternalLinkIcon,
+  PauseIcon,
+  PlayIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { type ReactNode, useEffect, useEffectEvent, useState } from "react";
 import { api } from "../client";
 import type {
@@ -8,14 +15,19 @@ import type {
   AniListSubscription,
   AniListThreadProposal,
   AutomationDraft,
+  AutomationPreferences,
   AutomationRule,
   Destination,
   PluginState,
 } from "../types";
 import { ActionTooltip } from "./action-tooltip";
+import { AniListCover } from "./anilist-cover";
 import { aniListStatusLabel } from "./anilist-status";
 import { AniListThreads } from "./anilist-threads";
 import { request } from "./api";
+import { PreferenceFields, preferenceSummary } from "./automation-fields";
+import { useNow } from "./automation-inbox";
+import { relative } from "./format";
 import { OptionSelect } from "./option-select";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
@@ -23,7 +35,6 @@ import { Button, buttonVariants } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
 
 type Action = (task: () => Promise<void>) => void;
 function AniListConnection({
@@ -67,7 +78,7 @@ function AniListConnection({
     };
   }, [state.authorizationPending]);
   return (
-    <section aria-label="AniList account connection" className="automation-editor">
+    <section aria-label="AniList account connection" className="anilist-account-card">
       <div className="automation-row-heading">
         <strong>Your AniList account</strong>
         <Badge variant="outline">
@@ -179,6 +190,32 @@ const organizationOptions = [
   { label: "One thread per anime", value: "per-anime" },
   { label: "All anime in the selected thread", value: "shared" },
 ] satisfies { label: string; value: "per-anime" | "shared" }[];
+const trackedStatuses = ["CURRENT", "PLANNING"] as const;
+
+function Step({
+  number,
+  title,
+  description,
+  children,
+}: {
+  number: number;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <li className="setup-step">
+      <header>
+        <b aria-hidden="true">{number}</b>
+        <div>
+          <h4>{title}</h4>
+          <p>{description}</p>
+        </div>
+      </header>
+      <div className="setup-step-body">{children}</div>
+    </li>
+  );
+}
 
 export function AniListPanel({
   target,
@@ -186,18 +223,20 @@ export function AniListPanel({
   busy,
   action,
   reloadPlugins,
-  renderTemplate,
+  preferences,
+  openPreferences,
   plugin,
   destinations,
   automations,
   onRefresh,
 }: {
   target: string;
-  destinationField: ReactNode;
+  destinationField?: ReactNode;
   busy: boolean;
   action: Action;
   reloadPlugins: () => Promise<void>;
-  renderTemplate: (draft: AutomationDraft, onChange: (draft: AutomationDraft) => void) => ReactNode;
+  preferences: AutomationPreferences;
+  openPreferences?: () => void;
   plugin: PluginState | undefined;
   destinations: Destination[];
   automations: AutomationRule[];
@@ -206,14 +245,15 @@ export function AniListPanel({
   const { data: live } = useQuery(api.api.anilist.get);
   const [saved, setSaved] = useState<AniListState | null>(null);
   const state = saved ?? (live && "subscriptions" in live ? live : null);
-  const [query, setQuery] = useState("On Nyaa, with VOSTFR, prefer 1080p then 720p.");
-  const [draft, setDraft] = useState<AutomationDraft | null>(null);
   const [statuses, setStatuses] = useState<AniListStatus[]>(["CURRENT", "PLANNING"]);
   const [mode, setMode] = useState<"per-anime" | "shared">("per-anime");
   const [basePath, setBasePath] = useState(
     () => destinations.find((destination) => destination.id === target)?.downloadPath ?? ""
   );
+  const [custom, setCustom] = useState<AutomationPreferences | null>(null);
+  const [prepared, setPrepared] = useState(false);
   const [proposals, setProposals] = useState<AniListThreadProposal[] | null>(null);
+  const now = useNow(60_000);
   const reload = async () => {
     const refreshed = await request<AniListState>("/anilist", "GET", undefined);
     setSaved(refreshed);
@@ -221,17 +261,40 @@ export function AniListPanel({
     await reloadPlugins();
   };
   if (!state) {
-    return <p>Loading AniList connection…</p>;
+    return <p className="automation-muted">Loading AniList connection…</p>;
   }
-  const selectedCount = state.entries.filter(
-    (entry) =>
-      statuses.includes(entry.status) &&
-      state.selections.some((selection) => selection.mediaId === entry.mediaId && selection.enabled)
-  ).length;
+  const unprepare = () => {
+    setPrepared(false);
+    setProposals(null);
+  };
+  const visible = state.entries.filter((entry) => statuses.includes(entry.status));
+  const approved = (mediaId: number) =>
+    state.selections.some((selection) => selection.mediaId === mediaId && selection.enabled);
+  const selectedCount = visible.filter((entry) => approved(entry.mediaId)).length;
+  const formats = custom ?? preferences;
+  const template: AutomationDraft = {
+    ...formats,
+    destinationId: target,
+    enabled: true,
+    includeExisting: true,
+    matchMode: "exact",
+    query: `AniList: ${statuses.map(aniListStatusLabel).join(" + ") || "lists"}`,
+    season: null,
+    title: "Titles from my AniList lists",
+  };
+  const subscriptions = state.subscriptions.filter(
+    (subscription) => subscription.template.destinationId === target
+  );
   return (
-    <>
-      <div className="automation-section-heading">
-        <span className="automation-caption">ANILIST · WATCHING & PLAN TO WATCH</span>
+    <div className="automation-section anilist-setup">
+      <div className="automation-section-title">
+        <div>
+          <h3>AniList tracking</h3>
+          <p>
+            Follow the anime on your AniList lists. Tofu creates one rule per approved title and
+            skips episodes you have already watched.
+          </p>
+        </div>
         <Button disabled={busy} onClick={() => action(reload)} size="sm" variant="ghost">
           <RefreshCwIcon data-icon="inline-start" />
           Refresh
@@ -241,200 +304,212 @@ export function AniListPanel({
       {!plugin?.enabled && (
         <Alert>
           <AlertDescription>
-            Enable the AniList plugin to read your lists and sync tracking. The OAuth connection
-            enables it after authorization.
+            Enable the AniList plugin to read your lists. Connecting your account enables it
+            automatically.
           </AlertDescription>
         </Alert>
       )}
-      <div className="automation-form-actions">
-        <Button
-          disabled={busy || !plugin?.enabled}
-          onClick={() =>
-            action(async () => {
-              setSaved(await request<AniListState>("/anilist/list", "POST", {}));
-              setProposals(null);
-            })
-          }
-          variant="outline"
+      <ol className="setup-steps">
+        <Step
+          description="Your choices stay in Tofu; your AniList list is never modified."
+          number={1}
+          title="Choose lists and titles"
         >
-          Load Watching and Plan to Watch
-        </Button>
-      </div>
-      {state.entries.length > 0 && (
-        <div className="automation-preview">
-          <div className="automation-row-heading">
-            <strong>Choose anime to download</strong>
-            <Badge variant="outline">
-              {state.selections.filter((selection) => selection.enabled).length} approved
-            </Badge>
-          </div>
-          <p className="automation-caption">
-            Your choices stay in Tofu. Your AniList list remains unchanged. Each new title waits for
-            your approval.
-          </p>
-          {state.entries.map((entry) => (
-            <div className="automation-history-item" key={entry.mediaId}>
-              <Field orientation="horizontal">
+          <div className="setup-inline">
+            {trackedStatuses.map((status) => (
+              <Field key={status} orientation="horizontal">
                 <Checkbox
-                  checked={state.selections.some(
-                    (selection) => selection.mediaId === entry.mediaId && selection.enabled
-                  )}
-                  disabled={busy}
-                  id={`anilist-title-${entry.mediaId}`}
-                  onCheckedChange={(checked) =>
-                    action(async () => {
-                      setProposals(null);
-                      setSaved(
-                        await request<AniListState>(`/anilist/entries/${entry.mediaId}`, "PUT", {
-                          enabled: checked === true,
-                        })
-                      );
-                      await reloadPlugins();
-                    })
-                  }
+                  checked={statuses.includes(status)}
+                  id={`anilist-${status}`}
+                  onCheckedChange={(checked) => {
+                    unprepare();
+                    setStatuses(
+                      checked === true
+                        ? [...statuses, status]
+                        : statuses.filter((value) => value !== status)
+                    );
+                  }}
                 />
-                <FieldLabel htmlFor={`anilist-title-${entry.mediaId}`}>{entry.title}</FieldLabel>
+                <FieldLabel htmlFor={`anilist-${status}`}>{aniListStatusLabel(status)}</FieldLabel>
               </Field>
-              <div className="feed-release-meta">
-                <Badge variant="outline">{aniListStatusLabel(entry.status)}</Badge>
-                <span>{entry.progress} episodes watched</span>
+            ))}
+            <Button
+              disabled={busy || !plugin?.enabled}
+              onClick={() =>
+                action(async () => {
+                  setSaved(await request<AniListState>("/anilist/list", "POST", {}));
+                  unprepare();
+                })
+              }
+              size="sm"
+              variant="outline"
+            >
+              <RefreshCwIcon data-icon="inline-start" />
+              {state.entries.length ? "Reload lists" : "Load my lists"}
+            </Button>
+          </div>
+          {visible.length ? (
+            <>
+              <p className="automation-muted">
+                {selectedCount} of {visible.length} titles approved. New titles on your lists wait
+                for your approval here.
+              </p>
+              <div className="title-grid">
+                {visible.map((entry) => (
+                  <div
+                    className="title-card"
+                    data-selected={approved(entry.mediaId)}
+                    key={entry.mediaId}
+                  >
+                    <label className="title-card-label" htmlFor={`anilist-title-${entry.mediaId}`}>
+                      <span className="title-card-cover">
+                        <AniListCover src={entry.coverImage} />
+                      </span>
+                      <span className="title-card-copy">
+                        <strong title={entry.title}>{entry.title}</strong>
+                        <small>
+                          {aniListStatusLabel(entry.status)} · {entry.progress}/
+                          {entry.episodes ?? "?"} watched
+                        </small>
+                      </span>
+                    </label>
+                    <Checkbox
+                      checked={approved(entry.mediaId)}
+                      disabled={busy}
+                      id={`anilist-title-${entry.mediaId}`}
+                      onCheckedChange={(checked) =>
+                        action(async () => {
+                          unprepare();
+                          setSaved(
+                            await request<AniListState>(
+                              `/anilist/entries/${entry.mediaId}`,
+                              "PUT",
+                              {
+                                enabled: checked === true,
+                              }
+                            )
+                          );
+                          await reloadPlugins();
+                        })
+                      }
+                    />
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-      <section className="automation-editor">
-        <strong>Automatically follow these lists</strong>
-        {destinationField}
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="anilist-organization">Thread organization</FieldLabel>
-            <OptionSelect
-              disabled={busy}
-              id="anilist-organization"
-              onValueChange={setMode}
-              options={organizationOptions}
-              value={mode}
-            />
-            <FieldDescription>
-              Each approved anime has an automation linked to AniList.
-            </FieldDescription>
-          </Field>
-          {mode === "per-anime" && (
-            <Field>
-              <FieldLabel htmlFor="anilist-base-path">Root folder</FieldLabel>
-              <Input
-                disabled={busy}
-                id="anilist-base-path"
-                onChange={(event) => {
-                  setBasePath(event.target.value);
-                  setProposals(null);
-                }}
-                placeholder="/video"
-                value={basePath}
-              />
-              <FieldDescription>
-                Example: /video → One Piece in /video/one-piece. You can edit each proposal.
-              </FieldDescription>
-            </Field>
+            </>
+          ) : (
+            <p className="automation-muted">
+              {state.entries.length
+                ? "No titles in the selected lists."
+                : "Load your lists to choose which anime Tofu should follow."}
+            </p>
           )}
-        </FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="anilist-preferences">Your preferences for list titles</FieldLabel>
-          <Textarea
-            id="anilist-preferences"
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setDraft(null);
-            }}
-            rows={2}
-            value={query}
-          />
-          <FieldDescription>
-            Names and aliases come from AniList. Watched episodes are excluded. Tracking creates one
-            rule per approved title in the thread selected for that anime.
-          </FieldDescription>
-        </Field>
-        <div className="automation-checks">
-          {(["CURRENT", "PLANNING"] as const).map((status) => (
-            <Field key={status} orientation="horizontal">
-              <Checkbox
-                checked={statuses.includes(status)}
-                id={`anilist-${status}`}
-                onCheckedChange={(checked) => {
-                  setProposals(null);
-                  setStatuses(
-                    checked === true
-                      ? [...statuses, status]
-                      : statuses.filter((value) => value !== status)
-                  );
+        </Step>
+        <Step
+          description="Each anime can get its own thread, or share the selected one."
+          number={2}
+          title="Where to download"
+        >
+          <div className="fields-grid">
+            {destinationField}
+            <Field>
+              <FieldLabel htmlFor="anilist-organization">Organization</FieldLabel>
+              <OptionSelect
+                disabled={busy}
+                id="anilist-organization"
+                onValueChange={(value) => {
+                  unprepare();
+                  setMode(value);
                 }}
+                options={organizationOptions}
+                value={mode}
               />
-              <FieldLabel htmlFor={`anilist-${status}`}>
-                {status === "CURRENT" ? "Watching" : "Plan to Watch"}
-              </FieldLabel>
             </Field>
-          ))}
-        </div>
-        <div className="automation-form-actions">
-          <Button
-            disabled={
-              busy ||
-              !query.trim() ||
-              !statuses.length ||
-              (mode === "per-anime" && !basePath.trim())
-            }
-            onClick={() =>
-              action(async () => {
-                const [value, threads] = await Promise.all([
-                  request<AutomationDraft>("/automations/interpret", "POST", {
-                    destinationId: target,
-                    query,
-                  }),
-                  mode === "per-anime"
-                    ? request<AniListThreadProposal[]>("/anilist/threads/preview", "POST", {
-                        basePath,
-                        statuses,
-                      })
-                    : Promise.resolve(null),
-                ]);
-                setProposals(threads);
-                setDraft({
-                  ...value,
-                  includeExisting: true,
-                  title: "Titles from my AniList lists",
-                });
-              })
-            }
-            variant="outline"
-          >
-            Prepare tracking
-          </Button>
-        </div>
-        {draft !== null && (
-          <>
-            {mode === "per-anime" && proposals !== null && (
-              <AniListThreads
-                busy={busy}
-                destinations={destinations}
-                entries={state.entries}
-                onChange={setProposals}
-                proposals={proposals}
-              />
+            {mode === "per-anime" && (
+              <Field>
+                <FieldLabel htmlFor="anilist-base-path">Root folder</FieldLabel>
+                <Input
+                  disabled={busy}
+                  id="anilist-base-path"
+                  onChange={(event) => {
+                    setBasePath(event.target.value);
+                    unprepare();
+                  }}
+                  placeholder="/video"
+                  value={basePath}
+                />
+                <FieldDescription>
+                  /video → One Piece goes to /video/one-piece. You can rename each one in step 4.
+                </FieldDescription>
+              </Field>
             )}
-            {renderTemplate({ ...draft, destinationId: target }, setDraft)}
-            <FieldDescription>
-              The Name field is replaced with each AniList title. A title removed from the tracked
-              lists is paused; existing downloads are preserved.
-            </FieldDescription>
-            <div className="automation-form-actions">
+          </div>
+        </Step>
+        <Step
+          description="Tracked titles use your general preferences unless you customize them here."
+          number={3}
+          title="Download preferences"
+        >
+          <div className="preference-summary">
+            <ul>
+              {preferenceSummary(formats).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+              <li>{formats.automatic ? "Downloads automatically" : "Asks before downloading"}</li>
+            </ul>
+            {openPreferences && custom === null ? (
+              <button className="link-button" onClick={openPreferences} type="button">
+                Edit general preferences
+              </button>
+            ) : null}
+          </div>
+          <Field orientation="horizontal">
+            <Checkbox
+              checked={custom !== null}
+              id="anilist-customize"
+              onCheckedChange={(checked) => setCustom(checked === true ? { ...preferences } : null)}
+            />
+            <FieldLabel htmlFor="anilist-customize">Customize for AniList tracking</FieldLabel>
+          </Field>
+          {custom !== null && (
+            <div className="rule-fields">
+              <PreferenceFields idPrefix="automation" onChange={setCustom} value={custom} />
+            </div>
+          )}
+        </Step>
+        <Step
+          description="Check the threads, then create the tracking. Nothing is created before this step."
+          number={4}
+          title="Review and create"
+        >
+          <div className="setup-inline">
+            <Button
+              disabled={busy || !statuses.length || (mode === "per-anime" && !basePath.trim())}
+              onClick={() =>
+                action(async () => {
+                  setProposals(
+                    mode === "per-anime"
+                      ? await request<AniListThreadProposal[]>("/anilist/threads/preview", "POST", {
+                          basePath,
+                          statuses,
+                        })
+                      : null
+                  );
+                  setPrepared(true);
+                })
+              }
+              variant="outline"
+            >
+              Prepare tracking
+            </Button>
+            {prepared ? (
               <Button
                 disabled={
                   busy ||
                   !statuses.length ||
                   !selectedCount ||
                   !plugin?.enabled ||
-                  !draft.sources.length ||
+                  !template.sources.length ||
                   (mode === "per-anime" &&
                     (proposals === null ||
                       proposals.length !== selectedCount ||
@@ -449,17 +524,17 @@ export function AniListPanel({
                       "POST",
                       {
                         enabled: true,
-                        intervalMinutes: Math.max(5, draft.intervalMinutes),
+                        intervalMinutes: Math.max(5, template.intervalMinutes),
                         organization:
                           mode === "per-anime"
                             ? { basePath, mode, overrides: proposals ?? [] }
                             : { mode },
                         statuses,
-                        template: { ...draft, destinationId: target },
+                        template,
                       }
                     );
                     await request(`/anilist/subscriptions/${subscription.id}/sync`, "POST", {});
-                    setDraft(null);
+                    unprepare();
                     await reload();
                   })
                 }
@@ -467,58 +542,79 @@ export function AniListPanel({
                 <CheckIcon data-icon="inline-start" />
                 Create AniList tracking
               </Button>
-            </div>
-          </>
-        )}
-      </section>
-      {state.subscriptions
-        .filter((subscription) => subscription.template.destinationId === target)
-        .map((subscription) => (
-          <article className="automation-rule" key={subscription.id}>
-            <div className="automation-row-heading">
+            ) : null}
+          </div>
+          {prepared && !selectedCount ? (
+            <p className="automation-muted">Approve at least one title in step 1.</p>
+          ) : null}
+          {prepared && mode === "per-anime" && proposals !== null && (
+            <AniListThreads
+              busy={busy}
+              destinations={destinations}
+              entries={state.entries}
+              onChange={setProposals}
+              proposals={proposals}
+            />
+          )}
+        </Step>
+      </ol>
+      <div className="automation-list-heading">
+        <h3>
+          Active tracking <span>{subscriptions.length}</span>
+        </h3>
+      </div>
+      {subscriptions.length === 0 ? (
+        <p className="automation-muted">No AniList tracking starts from this thread yet.</p>
+      ) : null}
+      {subscriptions.map((subscription) => (
+        <article className="rule-card" key={subscription.id}>
+          <div className="rule-card-heading">
+            <span aria-hidden="true" className="rule-card-dot" data-on={subscription.enabled} />
+            <div className="rule-card-title">
               <strong>{subscription.statuses.map(aniListStatusLabel).join(" + ")}</strong>
-              <Badge variant="outline">
-                {subscription.enabled
-                  ? `${subscription.bindings.filter((binding) => binding.active).length} tracked titles`
-                  : "Paused"}
-              </Badge>
+              <p>
+                {subscription.organization?.mode === "per-anime"
+                  ? `One thread per anime in ${subscription.organization.basePath}`
+                  : "All anime in this thread"}
+              </p>
             </div>
-            <p>{subscription.template.query}</p>
-            <p className="automation-caption">
-              {subscription.organization?.mode === "per-anime"
-                ? `One thread per anime · ${subscription.organization.basePath}`
-                : "All anime in this thread"}
-            </p>
+            <Badge variant="outline">
+              {subscription.enabled
+                ? `${subscription.bindings.filter((binding) => binding.active).length} titles`
+                : "Paused"}
+            </Badge>
+          </div>
+          <ul className="binding-list">
             {subscription.bindings.map((binding) => {
               const rule = automations.find((item) => item.id === binding.ruleId);
               const destination = destinations.find((item) => item.id === rule?.destinationId);
               return (
-                <div className="feed-release-meta" key={binding.mediaId}>
+                <li data-active={binding.active} key={binding.mediaId}>
                   <a
                     href={`https://anilist.co/anime/${binding.mediaId}`}
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    {rule?.title ?? `Anime ${binding.mediaId}`} ↗
+                    {rule?.title ?? `Anime ${binding.mediaId}`}
                   </a>
-                  <span>
-                    → {destination?.name ?? "—"} · {destination?.downloadPath ?? "—"}
-                  </span>
-                </div>
+                  <span title={destination?.downloadPath}>→ {destination?.name ?? "—"}</span>
+                </li>
               );
             })}
-            <span className="automation-caption">
-              Sync every {subscription.intervalMinutes} min ·{" "}
+          </ul>
+          {subscription.error !== null && (
+            <Alert>
+              <AlertDescription>{subscription.error}</AlertDescription>
+            </Alert>
+          )}
+          <footer className="rule-card-footer">
+            <span>
               {subscription.lastSyncAt === null
                 ? "Never synced"
-                : new Date(subscription.lastSyncAt).toLocaleString("en-US")}
+                : `Synced ${relative(subscription.lastSyncAt, now)}`}{" "}
+              · every {subscription.intervalMinutes} min
             </span>
-            {subscription.error !== null && (
-              <Alert>
-                <AlertDescription>{subscription.error}</AlertDescription>
-              </Alert>
-            )}
-            <div className="automation-rule-actions">
+            <div className="rule-card-actions">
               <Button
                 disabled={busy || !plugin?.enabled || !subscription.enabled}
                 onClick={() =>
@@ -530,26 +626,33 @@ export function AniListPanel({
                 size="sm"
                 variant="outline"
               >
-                Sync
-              </Button>
-              <Button
-                disabled={busy}
-                onClick={() =>
-                  action(async () => {
-                    await request(`/anilist/subscriptions/${subscription.id}`, "PUT", {
-                      enabled: !subscription.enabled,
-                    });
-                    await reload();
-                  })
-                }
-                size="sm"
-                variant="ghost"
-              >
-                {subscription.enabled ? "Pause" : "Enable"}
+                <RefreshCwIcon data-icon="inline-start" />
+                Sync now
               </Button>
               <ActionTooltip>
                 <Button
+                  aria-label={
+                    subscription.enabled ? "Pause AniList tracking" : "Resume AniList tracking"
+                  }
+                  disabled={busy}
+                  onClick={() =>
+                    action(async () => {
+                      await request(`/anilist/subscriptions/${subscription.id}`, "PUT", {
+                        enabled: !subscription.enabled,
+                      });
+                      await reload();
+                    })
+                  }
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  {subscription.enabled ? <PauseIcon /> : <PlayIcon />}
+                </Button>
+              </ActionTooltip>
+              <ActionTooltip>
+                <Button
                   aria-label="Remove AniList tracking"
+                  className="danger-text"
                   disabled={busy}
                   onClick={() =>
                     action(async () => {
@@ -564,12 +667,13 @@ export function AniListPanel({
                   size="icon-sm"
                   variant="ghost"
                 >
-                  <TrashIcon />
+                  <Trash2Icon />
                 </Button>
               </ActionTooltip>
             </div>
-          </article>
-        ))}
-    </>
+          </footer>
+        </article>
+      ))}
+    </div>
   );
 }

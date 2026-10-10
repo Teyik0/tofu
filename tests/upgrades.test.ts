@@ -2,8 +2,8 @@
 // biome-ignore-all lint/style/noNonNullAssertion: missing fixtures must fail these integration tests immediately.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { AutomationService } from "../src/server/feeds/service";
+import { createApi } from "../src/api";
+import { AutomationService } from "../src/api/feeds/service";
 import type { AutomationDraft, AutomationRule, AutomationState } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
 

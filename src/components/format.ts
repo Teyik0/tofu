@@ -57,3 +57,22 @@ export const statusLabels: { [Status in TorrentStatus]: string } = {
   paused: "Paused",
   seeding: "Seeding",
 };
+const relativeFormatter = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
+/** "in 12 minutes", "3 hours ago"; null stays "—". */
+export function relative(value: number | null, now: number) {
+  if (value === null) {
+    return "—";
+  }
+  const seconds = (value - now) / 1000;
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["day", 86_400],
+    ["hour", 3600],
+    ["minute", 60],
+  ];
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) {
+      return relativeFormatter.format(Math.round(seconds / size), unit);
+    }
+  }
+  return seconds >= 0 ? "in less than a minute" : "just now";
+}

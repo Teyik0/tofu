@@ -4,9 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebTorrent, { type Torrent } from "webtorrent";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
-import { createTofuSync } from "../src/server/sync";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
+import { createTofuSync } from "../src/api/sync";
 import type { DashboardState } from "../src/types";
 
 const network = {

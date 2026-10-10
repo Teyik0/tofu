@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { forwardNativeAuthorization } from "../src/server/desktop-protocol";
+import { forwardNativeAuthorization } from "../src/api/desktop-protocol";
 
 test("the protocol helper forwards OAuth to the matching running instance without starting another engine", async () => {
   const directory = await mkdtemp(join(tmpdir(), "tofu-protocol-"));

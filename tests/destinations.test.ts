@@ -2,8 +2,8 @@ import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { TorrentEngine } from "../src/server/engine";
+import { createApi } from "../src/api";
+import { TorrentEngine } from "../src/api/engine";
 import type { DashboardState, Destination } from "../src/types";
 import { fixture, json, network, waitFor } from "./helpers";
 
@@ -246,6 +246,53 @@ test("deleting tabs keeps one tab and rejects unknown or already deleted tabs", 
     await context.close();
   }
 });
+
+test.each(["default", "saved"])(
+  "a failed %s tab deletion preserves destinations, settings and real transfers",
+  async (tab) => {
+    const context = await fixture(8192, []);
+    const database = new Database(join(context.directory, "state/tofu.sqlite"));
+    try {
+      const destination = (await (
+        await context.request(
+          "/destinations",
+          json({ downloadPath: join(context.directory, "series"), name: "Series" })
+        )
+      ).json()) as Destination;
+      const { id } = (await (
+        await context.request(
+          "/torrents",
+          json({ destinationId: destination.id, paused: false, source: context.magnet })
+        )
+      ).json()) as { id: string };
+      const read = async () =>
+        (
+          await context.request(`/state?selected=${id}`, undefined)
+        ).json() as Promise<DashboardState>;
+      const before = await waitFor(read, (state) => state.detail?.status === "seeding");
+      database.exec(
+        "CREATE TRIGGER reject_destination_delete BEFORE DELETE ON destinations BEGIN SELECT RAISE(ABORT, 'Destination deletion failed'); END"
+      );
+      const target = tab === "default" ? "default" : destination.id;
+      const response = await context.request(`/destinations/${target}`, { method: "DELETE" });
+      expect(response.status).toBe(500);
+      const after = await read();
+      expect(after.destinations).toEqual(before.destinations);
+      expect(after.settings.downloadPath).toBe(before.settings.downloadPath);
+      expect(after.detail).toMatchObject({ destinationId: destination.id, status: "seeding" });
+      const content = await context.request(`/torrents/${id}/files/0/content`, undefined);
+      expect(new Uint8Array(await content.arrayBuffer())).toEqual(context.bytes);
+      database.exec("DROP TRIGGER reject_destination_delete");
+      expect((await context.request(`/destinations/${target}`, { method: "DELETE" })).status).toBe(
+        200
+      );
+      expect((await read()).detail?.destinationId).toBe("default");
+    } finally {
+      database.close();
+      await context.close();
+    }
+  }
+);
 
 test("deleting the default tab hands its role to the next tab without moving real transfers", async () => {
   const context = await fixture(65_536, []);
@@ -538,7 +585,7 @@ test("bulk pause targets the visible torrent IDs rather than every destination",
 test("editing a destination persists its identity and changes future adds without moving files", async () => {
   const context = await fixture(65_536, []);
   const other = await fixture(65_536, []);
-  let restarted: import("../src/server/engine").TorrentEngine | null = null;
+  let restarted: import("../src/api/engine").TorrentEngine | null = null;
   try {
     const path = join(context.directory, "original");
     const destination = (await (

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readAniListClient } from "../src/server/feeds/anilist-client";
+import { readAniListClient } from "../src/api/feeds/anilist-client";
 
 test("desktop configuration reads the packaged development client and never changes the release client", async () => {
   const directory = await mkdtemp(join(tmpdir(), "tofu-anilist-client-"));

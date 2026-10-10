@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { DesktopUrlOpener } from "../src/server/desktop-opening";
-import { resolveAniListClient } from "../src/server/feeds/anilist-client";
-import { AutomationService } from "../src/server/feeds/service";
+import { createApi } from "../src/api";
+import { DesktopUrlOpener } from "../src/api/desktop-opening";
+import { resolveAniListClient } from "../src/api/feeds/anilist-client";
+import { AutomationService } from "../src/api/feeds/service";
 import type { AniListClient, AniListState, AutomationState } from "../src/types";
 import { fixture, json } from "./helpers";
 

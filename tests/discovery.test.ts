@@ -1,8 +1,8 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: exercise sequential public API requests.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/server/api";
-import { AutomationService } from "../src/server/feeds/service";
+import { createApi } from "../src/api";
+import { AutomationService } from "../src/api/feeds/service";
 import type { DiscoveryResult } from "../src/types";
 import { fixture, json } from "./helpers";
 

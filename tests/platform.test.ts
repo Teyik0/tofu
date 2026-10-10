@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import desktopConfig from "../electrobun.config";
-import { readBundleIdentity } from "../src/server/instance";
+import { readBundleIdentity } from "../src/api/instance";
 
 test("the Windows PNG icon fits the dimensions supported by ICO", async () => {
   const path = join(import.meta.dir, "..", desktopConfig.build.win.icon);

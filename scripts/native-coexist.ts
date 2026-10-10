@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveInstanceConfig } from "../src/api/instance";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
-import { resolveInstanceConfig } from "../src/server/instance";
 import type { DashboardState, DesktopState, InstanceConfig, ServerInfo } from "../src/types";
 import { fixture, json, waitFor } from "../tests/helpers";
 import { nativeRequest } from "./native-request";

@@ -243,7 +243,22 @@ export interface AutomationState {
   automations: AutomationRule[];
   decisions: AutomationDecision[];
   plugins: PluginState[];
+  preferences: AutomationPreferences;
   updatedAt: number;
+}
+/** Defaults copied into every new rule; each rule can still override them. */
+export interface AutomationPreferences {
+  automatic: boolean;
+  codecs: string[];
+  deleteReplacedFiles: boolean;
+  excludePacks: boolean;
+  intervalMinutes: number;
+  languages: string[];
+  paused: boolean;
+  priority: AutomationCriterion[];
+  resolutions: string[];
+  sources: SourcePluginId[];
+  waitMinutes: number;
 }
 
 export interface FeedRelease {
@@ -310,6 +325,7 @@ export type AniListStatus =
   | "PAUSED"
   | "DROPPED"
   | "REPEATING";
+export type AniListSeason = "WINTER" | "SPRING" | "SUMMER" | "FALL";
 export interface AniListEntry {
   aliases: string[];
   automationId: string | null;
@@ -318,8 +334,10 @@ export interface AniListEntry {
   coverImage: string | null;
   episodes: number | null;
   format: string | null;
+  genres: string[];
   mediaId: number;
   progress: number;
+  season: AniListSeason | null;
   seasonYear: number | null;
   siteUrl: string | null;
   status: AniListStatus;

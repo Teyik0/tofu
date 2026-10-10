@@ -2,9 +2,16 @@ import { useMutation } from "@teyik0/furin/client";
 import { FolderIcon, LinkIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { api } from "../client";
-import type { DashboardState, Destination, DestinationIconName, TorrentDetail } from "../types";
+import type {
+  DashboardState,
+  Destination,
+  DestinationIconName,
+  TorrentDetail,
+  TorrentSummary,
+} from "../types";
 import { request } from "./api";
 import { useDashboard } from "./app-shell";
+import type { AutomationSection } from "./automation-center";
 import { DestinationIconPicker } from "./destination-icon";
 import { TorrentFileInput } from "./torrent-file-input";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -42,13 +49,13 @@ import { Textarea } from "./ui/textarea";
 
 export type ModalKind =
   | FormModalKind
-  | { type: "automation"; destinationId: string }
+  | { type: "automation"; destinationId: string; section: AutomationSection }
   | { type: "deleteDestination"; destination: Destination };
 export type FormModalKind =
   | { type: "add"; destinationId: string }
   | { type: "drop"; files: File[] }
   | { type: "destination"; destination: Destination | null }
-  | { type: "remove"; torrent: TorrentDetail }
+  | { type: "remove"; torrent: TorrentSummary }
   | { type: "trackers"; torrent: TorrentDetail }
   | { type: "peer"; torrent: TorrentDetail };
 

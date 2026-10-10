@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { resolveInstanceConfig } from "../src/server/instance";
+import { resolveInstanceConfig } from "../src/api/instance";
 import type { DashboardState, InstanceConfig } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
 
