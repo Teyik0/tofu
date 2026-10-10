@@ -32,7 +32,7 @@ const criterionNames: Record<AutomationCriterion, string> = {
   resolution: "Resolution",
   source: "Source",
 };
-const languageOptions = [
+const languageOptions: { label: string; value: AutomationPreferences["languages"][number] }[] = [
   { label: "VF", value: "VF" },
   { label: "VOSTFR", value: "VOSTFR" },
   { label: "MULTI", value: "MULTI" },
@@ -64,7 +64,7 @@ export function preferenceSummary(preferences: AutomationPreferences) {
  * Ordered multi-select: the first chip pressed is the most preferred. An empty selection
  * accepts every value, matching the rule engine.
  */
-function ChipOrder({
+function ChipOrder<Value extends string>({
   id,
   label,
   description,
@@ -77,9 +77,9 @@ function ChipOrder({
   label: string;
   description: string;
   anyLabel: string;
-  options: { label: string; value: string }[];
-  values: string[];
-  onChange: (values: string[]) => void;
+  options: { label: string; value: Value }[];
+  values: Value[];
+  onChange: (values: Value[]) => void;
 }) {
   const extra = values.filter((value) => !options.some((option) => option.value === value));
   return (

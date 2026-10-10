@@ -1,22 +1,23 @@
 import { join } from "node:path";
 import { runDesktopHost } from "@teyik0/furin-electrobun/host";
-import { DesktopController } from "./api/desktop";
-import { DesktopUrlOpener } from "./api/desktop-opening";
-import { registerDesktopProtocol } from "./api/desktop-protocol";
-import { writeServerInfo } from "./api/server-info";
+import { writeServerInfo } from "./api/lib/server-info";
+import { DesktopUrlOpener } from "./api/modules/desktop/opening";
+import { registerDesktopProtocol } from "./api/modules/desktop/protocol";
+import { DesktopController } from "./api/modules/desktop/service";
 
 process.env.TOFU_MODE = "desktop";
 const sdk = await import("electrobun/main");
 
 await runDesktopHost(sdk, async ({ startBackend }) => {
-  const { runtime, instance, getAutomation, getEngine, getDesktop, getUpdates } = await import(
-    "./api/runtime"
+  const { runtime, instance, getAutomation, getDesktop, getUpdates } = await import(
+    "./api/lib/runtime"
   );
+  const { services } = await import("./api/lib/services");
   runtime.sdk = sdk;
   const opening = sdk
     ? new DesktopUrlOpener({
         authorize: (callbackUrl) => getAutomation().anilist.receiveAuthorizationUrl(callbackUrl),
-        engine: getEngine,
+        engine: () => services.engine,
         show: () => {
           getDesktop().open();
         },
@@ -55,7 +56,7 @@ await runDesktopHost(sdk, async ({ startBackend }) => {
     await registerDesktopProtocol(instance);
   }
 
-  const { onStartup, onShutdown } = await import("./api/lifecycle");
+  const { onStartup, onShutdown } = await import("./api/lib/lifecycle");
   const { backend } = await startBackend({ dataDir: instance.dataDir });
   await writeServerInfo(backend.origin, backend.cookie);
   const { ApplicationMenu } = sdk;
@@ -88,7 +89,7 @@ await runDesktopHost(sdk, async ({ startBackend }) => {
     if ((event as { data: { action: string } }).data.action !== "set-default-torrent-app") {
       return;
     }
-    void import("./api/desktop-associations")
+    void import("./api/modules/desktop/associations")
       .then(({ setDefaultTorrentApp }) => setDefaultTorrentApp(instance.profile))
       .then(() =>
         sdk.Utils.showMessageBox({
@@ -115,7 +116,7 @@ await runDesktopHost(sdk, async ({ startBackend }) => {
   runtime.desktop = new DesktopController({
     backend,
     checkUpdates: () => getUpdates().check(),
-    engine: getEngine,
+    engine: () => services.engine,
     name: instance.name,
     prepareUpdate: onShutdown,
     profile: instance.profile,

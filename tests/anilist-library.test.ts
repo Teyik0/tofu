@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { AutomationService } from "../src/api/feeds/service";
+import { AutomationService } from "../src/api/modules/automation/service";
 import type { AniListState, AutomationRule } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json, waitFor } from "./helpers";
 
 test("AniList library returns artwork, genres, seasons and all list statuses, and remembers the visible statuses", async () => {
@@ -58,7 +58,7 @@ test("AniList library returns artwork, genres, seasons and all list statuses, an
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -162,7 +162,7 @@ test("anime episodes offer matching releases, download through real peers and re
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -300,7 +300,7 @@ test("episode completion syncs only consecutive progress and preserves out-of-or
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

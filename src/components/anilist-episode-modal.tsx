@@ -1,3 +1,4 @@
+import { useMutation } from "@teyik0/furin/client";
 import {
   BookOpenIcon,
   DownloadIcon,
@@ -8,20 +9,19 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { api } from "../lib/client";
+import { useRefresh } from "../lib/navigation";
 import type {
   AniListEntry,
-  AniListOpenResult,
   AniListReleases,
-  AniListState,
   AutomationDraft,
-  AutomationRule,
   AutomationState,
+  DashboardState,
   FeedRelease,
 } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import { AniListCover } from "./anilist-cover";
 import { request } from "./api";
-import { useDashboard } from "./app-shell";
 import { RuleFields } from "./automation-fields";
 import { bytes } from "./format";
 import { OptionSelect } from "./option-select";
@@ -40,6 +40,7 @@ type Action = (task: () => Promise<void>) => void;
 type ReleaseStatus = "searching" | "ready" | "failed";
 
 function EpisodeRow({
+  torrents,
   episode,
   releases,
   entry,
@@ -47,8 +48,8 @@ function EpisodeRow({
   busy,
   releaseStatus,
   action,
-  onState,
 }: {
+  torrents: DashboardState["torrents"];
   episode: number | null;
   releases: FeedRelease[];
   entry: AniListEntry;
@@ -56,15 +57,21 @@ function EpisodeRow({
   busy: boolean;
   releaseStatus: ReleaseStatus;
   action: Action;
-  onState: (state: AniListState) => void;
 }) {
-  const { data: dashboard, refresh } = useDashboard();
+  const refresh = useRefresh();
+  const addRelease = useMutation(api.discover.add.post);
+  const completeEpisode = useMutation((episodeNumber: number, isCompleted: boolean) =>
+    api.anilist
+      .entries({ mediaId: entry.mediaId })
+      .episodes({ episode: episodeNumber })
+      .put({ completed: isCompleted })
+  );
   const [chosen, setChosen] = useState<string | null>(null);
   const release =
     releases.find((item) => `${item.sourceId}:${item.id}` === chosen) ??
-    releases.find((item) => dashboard.torrents.some((download) => download.id === item.infoHash)) ??
+    releases.find((item) => torrents.some((download) => download.id === item.infoHash)) ??
     releases[0];
-  const torrent = dashboard.torrents.find((item) => item.id === release?.infoHash);
+  const torrent = torrents.find((item) => item.id === release?.infoHash);
   const completed = episode !== null && entry.completedEpisodes.includes(episode);
   const label =
     episode === null ? "Pack / unnumbered release" : `Episode ${String(episode).padStart(2, "0")}`;
@@ -132,7 +139,7 @@ function EpisodeRow({
               disabled={busy || !destinationId}
               onClick={() =>
                 action(async () => {
-                  await request("/discover/add", "POST", {
+                  await addRelease.mutateAsync({
                     destinationId,
                     id: release.id,
                     paused: false,
@@ -156,13 +163,7 @@ function EpisodeRow({
                 id={`anime-episode-${episode}`}
                 onCheckedChange={(checked) =>
                   action(async () => {
-                    onState(
-                      await request<AniListState>(
-                        `/anilist/entries/${entry.mediaId}/episodes/${episode}`,
-                        "PUT",
-                        { completed: checked === true }
-                      )
-                    );
+                    await completeEpisode.mutateAsync(episode, checked === true);
                   })
                 }
               />
@@ -176,19 +177,22 @@ function EpisodeRow({
 }
 
 export function AniListEpisodeModal({
+  dashboard,
   entry,
   automation,
-  onState,
-  reloadAutomation,
   close,
 }: {
+  dashboard: DashboardState;
   entry: AniListEntry;
   automation: AutomationState;
-  onState: (state: AniListState) => void;
-  reloadAutomation: () => Promise<void>;
   close: () => void;
 }) {
-  const { data: dashboard, refresh } = useDashboard();
+  const refresh = useRefresh();
+  const saveAutomation = useMutation((body: AutomationDraft) =>
+    api.anilist.entries({ mediaId: entry.mediaId }).automation.put(body)
+  );
+  const runAutomation = useMutation((id: string) => api.automations({ id }).run.post());
+  const openAnime = useMutation(api.anilist.open.post);
   const rule = automation.automations.find((item) => item.id === entry.automationId);
   const [destinationId, setDestinationId] = useState(rule?.destinationId ?? "default");
   const destinationOptions = dashboard.destinations.map((destination) => ({
@@ -311,7 +315,7 @@ export function AniListEpisodeModal({
                   event.preventDefault();
                   const url = event.currentTarget.href;
                   action(async () => {
-                    await request<AniListOpenResult>("/anilist/open", "POST", { url });
+                    await openAnime.mutateAsync({ url });
                   });
                 }}
                 rel="noopener noreferrer"
@@ -393,9 +397,9 @@ export function AniListEpisodeModal({
                       entry={entry}
                       episode={episode}
                       key={episode}
-                      onState={onState}
                       releaseStatus={releaseStatus}
                       releases={numbered.get(episode) ?? []}
+                      torrents={dashboard.torrents}
                     />
                   ))}
                   {packs.map((release) => (
@@ -406,9 +410,9 @@ export function AniListEpisodeModal({
                       entry={entry}
                       episode={null}
                       key={`${release.sourceId}:${release.id}`}
-                      onState={onState}
                       releaseStatus={releaseStatus}
                       releases={[release]}
+                      torrents={dashboard.torrents}
                     />
                   ))}
                 </div>
@@ -475,14 +479,11 @@ export function AniListEpisodeModal({
                       disabled={busy || !draft.sources.length}
                       onClick={() =>
                         action(async () => {
-                          const saved = await request<AutomationRule>(
-                            `/anilist/entries/${entry.mediaId}/automation`,
-                            "PUT",
-                            draft
-                          );
+                          const saved = await saveAutomation.mutateAsync(draft);
+                          if (!(saved && "id" in saved)) {
+                            return;
+                          }
                           setDraft(saved);
-                          onState(await request<AniListState>("/anilist", "GET", undefined));
-                          await reloadAutomation();
                           setNotice("Automation saved for this anime.");
                         })
                       }
@@ -499,9 +500,8 @@ export function AniListEpisodeModal({
                         disabled={busy || !rule.enabled}
                         onClick={() =>
                           action(async () => {
-                            await request(`/automations/${rule.id}/run`, "POST", {});
+                            await runAutomation.mutateAsync(rule.id);
                             await refresh();
-                            await reloadAutomation();
                             await reload();
                             setNotice("Automation checked for new releases.");
                           })

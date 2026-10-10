@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { resolveInstanceConfig } from "../src/api/instance";
+import { resolveInstanceConfig } from "../src/api/lib/instance";
 import type { DashboardState, InstanceConfig } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
 
@@ -11,7 +11,7 @@ const optionalUtpNotice =
   /^WebTorrent: uTP not supported warn: No native build was found for [^\r\n]+\r?\n {4}loaded from: [^\r\n]*utp-native\r?\n\r?\n(?: {6}at [^\r\n]+\r?\n)+\r?\n/m;
 
 function launch(config: InstanceConfig, hotEntry?: string) {
-  const command = hotEntry ? ["--hot", hotEntry] : ["scripts/dev.ts"];
+  const command = hotEntry ? ["--hot", hotEntry] : ["src/server.ts"];
   const child = Bun.spawn(
     [process.execPath, "--preload", join(import.meta.dir, "process-control.ts"), ...command],
     {
@@ -270,20 +270,27 @@ test("hot reload keeps the original profile and database together until process 
   const entry = join(hotDirectory, "hot-entry.ts");
   const signal = join(context.directory, "hot-ready.json");
   const source = join(import.meta.dir, "../src/server.ts");
+  const serverProgram = (await Bun.file(source).text()).replaceAll(
+    'from "./',
+    `from "${join(import.meta.dir, "../src")}/`
+  );
   const nextDataDir = join(context.directory, "hot-release");
   // Publish readiness atomically so polling never reads a partially written JSON file.
   const program = (iteration: number, dataDir: string, profile: string) =>
     `import { rename } from "node:fs/promises";
 process.env.TOFU_DATA_DIR = ${JSON.stringify(dataDir)};
 process.env.TOFU_PROFILE = ${JSON.stringify(profile)};
-const serverModule = await import(${JSON.stringify(source)});
-await serverModule.startServer();
-await Bun.write(${JSON.stringify(`${signal}.tmp`)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + serverModule.default.server.port}));
+${serverProgram}
+await Bun.write(${JSON.stringify(`${signal}.tmp`)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + app.server?.port}));
 await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
   await Bun.write(entry, program(1, config.dataDir, "dev"));
   const dev = launch(config, entry);
   try {
     const url = await dev.ready();
+    await waitFor(
+      async () => (await Bun.file(signal).json()) as { iteration: number },
+      (value) => value.iteration === 1
+    );
     const response = await fetch(
       `${url}/api/torrents`,
       json({ paused: false, source: context.magnet })
@@ -306,6 +313,9 @@ await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
       await fetch(`${ready.url}/api/torrents/${id}/files/0/content`)
     ).arrayBuffer();
     expect(Bun.SHA256.hash(bytes, "hex")).toBe(Bun.SHA256.hash(context.bytes, "hex"));
+  } catch (error) {
+    await dev.stop();
+    throw new Error(await dev.output, { cause: error });
   } finally {
     await dev.stop();
     await Promise.all([context.close(), rm(hotDirectory, { force: true, recursive: true })]);
@@ -431,7 +441,7 @@ test("an inactive profile cannot be reused by the other channel, even through a 
   try {
     await release.ready();
     await release.stop();
-    const before = await Bun.file(join(config.dataDir, "tofu.sqlite")).arrayBuffer();
+    const before = await Bun.file(join(config.dataDir, "feeds.sqlite")).arrayBuffer();
     const alias = join(context.directory, "alias");
     await symlink(config.dataDir, alias, process.platform === "win32" ? "junction" : "dir");
     dev = launch({ ...config, dataDir: alias, profile: "dev" });
@@ -442,7 +452,7 @@ test("an inactive profile cannot be reused by the other channel, even through a 
     expect(exit).not.toBeNull();
     expect(exit).not.toBe(0);
     expect(await dev.output).toContain("profile release");
-    expect(await Bun.file(join(config.dataDir, "tofu.sqlite")).arrayBuffer()).toEqual(before);
+    expect(await Bun.file(join(config.dataDir, "feeds.sqlite")).arrayBuffer()).toEqual(before);
   } finally {
     await dev?.stop();
     await release.stop();

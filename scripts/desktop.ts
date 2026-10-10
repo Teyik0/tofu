@@ -4,7 +4,7 @@ import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 const root = join(import.meta.dir, "..");
 const launcher = desktopLauncher(root, hostDesktopTarget(), "dev");
 if (!(await Bun.file(launcher).exists())) {
-  const build = Bun.spawn([process.execPath, "scripts/build.ts", "desktop"], {
+  const build = Bun.spawn([process.execPath, "run", "build:desktop"], {
     cwd: root,
     stderr: "inherit",
     stdout: "inherit",

@@ -1,9 +1,9 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: verify ordered sync and real transfer lifecycle through public APIs.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { AutomationService } from "../src/api/feeds/service";
+import { AutomationService } from "../src/api/modules/automation/service";
 import type { AutomationState } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json, waitFor } from "./helpers";
 
 test("AniList sync follows Watching and Planning in the chosen thread, skips watched episodes and pauses removed entries", async () => {
@@ -91,7 +91,7 @@ test("AniList sync follows Watching and Planning in the chosen thread, skips wat
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -220,7 +220,7 @@ test("AniList OAuth validates state and stores the exchanged token without retur
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -326,7 +326,7 @@ test("AniList titles require validation and unsetting a title persists across sy
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

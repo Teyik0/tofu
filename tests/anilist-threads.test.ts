@@ -2,8 +2,7 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { AutomationService } from "../src/api/feeds/service";
+import { AutomationService } from "../src/api/modules/automation/service";
 import type {
   AniListState,
   AniListSubscription,
@@ -12,6 +11,7 @@ import type {
   DashboardState,
   Destination,
 } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json, waitFor } from "./helpers";
 
 async function setup() {
@@ -66,7 +66,7 @@ async function setup() {
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

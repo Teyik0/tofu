@@ -1,27 +1,16 @@
 import { expect, test } from "bun:test";
-import { createTofuClient } from "../src/client";
+import { createClient } from "@teyik0/furin/client";
+import { apiPlugin } from "../src/api";
+import { api } from "../src/lib/client";
 
-test("SSR clients forward the native cookie only to the incoming request origin", async () => {
-  const local = Bun.serve({
-    fetch: () => Response.json({ theme: "dark" }),
-    hostname: "127.0.0.1",
-    port: 0,
-  });
-  let received: string | null = "unexpected";
-  const other = Bun.serve({
-    fetch: (request) => {
-      received = request.headers.get("cookie");
-      return Response.json({ theme: "dark" });
-    },
-    hostname: "127.0.0.1",
-    port: 0,
-  });
-  try {
-    const incoming = new Request(local.url, { headers: { cookie: "furin_desktop_test=secret" } });
-    await createTofuClient(other.url.origin, incoming).api.settings.get();
-    expect(received).toBeNull();
-  } finally {
-    local.stop(true);
-    other.stop(true);
-  }
+test("the shared server client accesses the local API without an HTTP listener or session cookie", async () => {
+  const { data, error } = await api.instance.get();
+  expect(error).toBeNull();
+  expect(data).toMatchObject({ dataDir: expect.any(String), profile: expect.any(String) });
+});
+
+test("the API plugin supports Eden's direct server transport", async () => {
+  const { data, error } = await createClient(apiPlugin, { parseDate: false }).api.instance.get();
+  expect(error).toBeNull();
+  expect(data).toMatchObject({ dataDir: expect.any(String), profile: expect.any(String) });
 });

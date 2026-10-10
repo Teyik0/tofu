@@ -1,25 +1,15 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+const directory = join(import.meta.dir, "../node_modules/node-datachannel");
+if (existsSync(join(directory, "build/Release/node_datachannel.node"))) {
+  process.exit(0);
+}
 const native = Bun.spawn([process.execPath, "../prebuild-install/bin.js", "-r", "napi"], {
-  cwd: join(import.meta.dir, "../node_modules/node-datachannel"),
+  cwd: directory,
   stderr: "inherit",
   stdout: "inherit",
 });
 if ((await native.exited) !== 0) {
   throw new Error("Unable to install the native WebTorrent module");
-}
-const prepare = Bun.spawn(
-  [process.execPath, "--bun", "node_modules/electrobun/bin/electrobun.cjs", "prepare"],
-  {
-    cwd: join(import.meta.dir, ".."),
-    env: {
-      ...process.env,
-      HUTCH_HOME: process.env.HUTCH_HOME ?? join(import.meta.dir, "../.cache/hutch"),
-    },
-    stderr: "inherit",
-    stdout: "inherit",
-  }
-);
-if ((await prepare.exited) !== 0) {
-  throw new Error("Unable to prepare Electrobun");
 }

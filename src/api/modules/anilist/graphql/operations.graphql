@@ -1,0 +1,168 @@
+# biome-ignore-all lint/style/useLoneExecutableDefinition: These operations share the media fragment and generate one SDK.
+fragment AniListMedia on Media {
+  id
+  title {
+    romaji
+    english
+    native
+    userPreferred
+  }
+  synonyms
+  siteUrl
+  coverImage {
+    extraLarge
+    large
+  }
+  bannerImage
+  episodes
+  format
+  genres
+  season
+  seasonYear
+  status(version: 2)
+  averageScore
+  trending
+  popularity
+  favourites
+  duration
+  countryOfOrigin
+  source(version: 3)
+  isLicensed
+  isAdult
+  tags {
+    name
+    rank
+    isAdult
+  }
+  externalLinks {
+    siteId
+    type
+    isDisabled
+  }
+  startDate {
+    year
+    month
+    day
+  }
+  endDate {
+    year
+    month
+    day
+  }
+  nextAiringEpisode {
+    episode
+    airingAt
+  }
+  studios(isMain: true) {
+    nodes {
+      name
+    }
+  }
+}
+
+query Viewer {
+  Viewer {
+    id
+    name
+  }
+}
+
+query User($name: String!) {
+  User(name: $name) {
+    id
+    name
+  }
+}
+
+query Library($userId: Int!, $chunk: Int!) {
+  MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) {
+    hasNextChunk
+    lists {
+      entries {
+        status
+        progress
+        media {
+          ...AniListMedia
+        }
+      }
+    }
+  }
+}
+
+query Catalog(
+  $page: Int!
+  $sort: [MediaSort]
+  $search: String
+  $genre_in: [String]
+  $genre_not_in: [String]
+  $tag_in: [String]
+  $tag_not_in: [String]
+  $seasonYear: Int
+  $season: MediaSeason
+  $format: MediaFormat
+  $status: MediaStatus
+  $licensedById: Int
+  $countryOfOrigin: CountryCode
+  $source: MediaSource
+  $startDate_greater: FuzzyDateInt
+  $startDate_lesser: FuzzyDateInt
+  $episodes_greater: Int
+  $episodes_lesser: Int
+  $duration_greater: Int
+  $duration_lesser: Int
+  $isLicensed: Boolean
+) {
+  Page(page: $page, perPage: 30) {
+    pageInfo {
+      currentPage
+      hasNextPage
+    }
+    media(
+      type: ANIME
+      isAdult: false
+      sort: $sort
+      search: $search
+      genre_in: $genre_in
+      genre_not_in: $genre_not_in
+      tag_in: $tag_in
+      tag_not_in: $tag_not_in
+      seasonYear: $seasonYear
+      season: $season
+      format: $format
+      status: $status
+      licensedById: $licensedById
+      countryOfOrigin: $countryOfOrigin
+      source: $source
+      startDate_greater: $startDate_greater
+      startDate_lesser: $startDate_lesser
+      episodes_greater: $episodes_greater
+      episodes_lesser: $episodes_lesser
+      duration_greater: $duration_greater
+      duration_lesser: $duration_lesser
+      isLicensed: $isLicensed
+    ) {
+      ...AniListMedia
+    }
+  }
+}
+
+query CatalogOptions {
+  GenreCollection
+  MediaTagCollection {
+    name
+    category
+    isAdult
+  }
+  ExternalLinkSourceCollection(type: STREAMING, mediaType: ANIME) {
+    id
+    site
+    type
+    isDisabled
+  }
+}
+
+mutation SaveProgress($mediaId: Int!, $progress: Int!) {
+  SaveMediaListEntry(mediaId: $mediaId, progress: $progress) {
+    progress
+  }
+}

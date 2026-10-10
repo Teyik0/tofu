@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { Server as Tracker } from "bittorrent-tracker";
 import WebTorrent, { type Torrent } from "webtorrent";
-import { currentInstanceConfig } from "../src/api/instance";
+import { currentInstanceConfig } from "../src/api/lib/instance";
 
 const { dataDir, profile } = await currentInstanceConfig();
 const serverInfo = Bun.file(join(dataDir, "server.json"));

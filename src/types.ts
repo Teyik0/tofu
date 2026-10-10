@@ -1,3 +1,5 @@
+import type { Options as TorrentNetworkOptions } from "webtorrent";
+
 export type InstanceProfile = "dev" | "release";
 
 export interface ServerInfo {
@@ -43,10 +45,8 @@ export interface Settings {
   uploadLimit: number;
 }
 
-export interface SettingsInput extends Omit<Settings, "runInBackground" | "theme"> {
+export interface SettingsInput extends Partial<Settings> {
   moveFiles?: boolean;
-  runInBackground?: boolean;
-  theme?: ThemePreference;
 }
 
 export interface UpdateState {
@@ -253,7 +253,7 @@ export interface AutomationPreferences {
   deleteReplacedFiles: boolean;
   excludePacks: boolean;
   intervalMinutes: number;
-  languages: string[];
+  languages: NonNullable<FeedRelease["language"]>[];
   paused: boolean;
   priority: AutomationCriterion[];
   resolutions: string[];
@@ -306,7 +306,7 @@ export interface AutomationDraft {
   excludePacks: boolean;
   includeExisting: boolean;
   intervalMinutes: number;
-  languages: string[];
+  languages: NonNullable<FeedRelease["language"]>[];
   matchMode: "exact" | "pattern" | "jev";
   paused: boolean;
   priority: AutomationCriterion[];
@@ -326,22 +326,87 @@ export type AniListStatus =
   | "DROPPED"
   | "REPEATING";
 export type AniListSeason = "WINTER" | "SPRING" | "SUMMER" | "FALL";
-export interface AniListEntry {
+export interface AniListMedia {
+  airingStatus?: string | null;
   aliases: string[];
-  automationId: string | null;
+  averageScore?: number | null;
   bannerImage: string | null;
-  completedEpisodes: number[];
+  countryOfOrigin?: string | null;
   coverImage: string | null;
+  duration?: number | null;
+  endDate?: AniListDate | null;
   episodes: number | null;
+  favourites?: number | null;
   format: string | null;
   genres: string[];
+  isAdult?: boolean | null;
+  isLicensed?: boolean | null;
   mediaId: number;
-  progress: number;
+  nextAiringEpisode?: { episode: number; airingAt: number } | null;
+  popularity?: number | null;
+  releaseDate?: AniListDate | null;
   season: AniListSeason | null;
   seasonYear: number | null;
   siteUrl: string | null;
-  status: AniListStatus;
+  source?: string | null;
+  startDate?: number | null;
+  streamingOn?: number[];
+  studios?: string[];
+  tags?: { name: string; rank: number; isAdult: boolean }[];
   title: string;
+  trending?: number | null;
+}
+export interface AniListDate {
+  day: number | null;
+  month: number | null;
+  year: number | null;
+}
+export interface AniListEntry extends AniListMedia {
+  automationId: string | null;
+  completedEpisodes: number[];
+  progress: number;
+  status: AniListStatus;
+}
+export interface AniListCatalog {
+  hasNextPage: boolean;
+  media: AniListMedia[];
+  page: number;
+}
+export type AniListCatalogSort =
+  | "title"
+  | "popularity"
+  | "score"
+  | "trending"
+  | "favourites"
+  | "added"
+  | "released";
+export interface AniListCatalogFilters {
+  airingStatus?: string;
+  countryOfOrigin?: string;
+  doujin?: "any" | "only" | "exclude";
+  durationMax?: number;
+  durationMin?: number;
+  episodesMax?: number;
+  episodesMin?: number;
+  excludedGenres?: string[];
+  excludedTags?: string[];
+  format?: string;
+  genres?: string[];
+  page?: number;
+  search?: string;
+  season?: AniListSeason;
+  sort?: AniListCatalogSort;
+  source?: string;
+  streamingOn?: number;
+  tags?: string[];
+  year?: number;
+  yearMax?: number;
+  yearMin?: number;
+}
+export interface AniListCatalogOptions {
+  genres: string[];
+  streaming: { id: number; name: string }[];
+  tags: { name: string; category: string; isAdult: boolean }[];
 }
 export interface AniListReleases extends DiscoveryResult {
   torrents: TorrentSummary[];
@@ -376,7 +441,10 @@ export interface AniListState {
   connectedUser: string | null;
   entries: AniListEntry[];
   hasClientSecret: boolean;
+  lastSyncedAt: number | null;
   redirectUri: string;
+  refreshError: string | null;
+  refreshing: boolean;
   selections: { mediaId: number; enabled: boolean }[];
   subscriptions: AniListSubscription[];
   userName: string;
@@ -407,3 +475,61 @@ export interface AniListClient {
   clientId: string;
   redirectUri: string;
 }
+
+export interface EngineOpenOptions {
+  dataDir: string;
+  downloadPath: string;
+  network: TorrentNetworkOptions;
+}
+
+export interface TorrentAddOptions {
+  destinationId?: string;
+  downloadPath?: string;
+  paused: boolean;
+  trackers?: string[];
+}
+
+export interface EngineOperations {
+  add: (input: string | Uint8Array, options: TorrentAddOptions) => Promise<{ id: string }>;
+  addPeer: (id: string, peer: string) => Promise<{ ok: boolean }>;
+  assertReady: () => void | Promise<void>;
+  close: () => Promise<void>;
+  detail: (id: string) => TorrentDetail | Promise<TorrentDetail>;
+  file: (id: string, index: number) => Promise<{ name: string; path: string }>;
+  pause: (id: string) => Promise<{ ok: boolean }>;
+  priority: (id: string, index: number, priority: FilePriority) => Promise<{ ok: boolean }>;
+  reannounce: (id: string) => { ok: boolean } | Promise<{ ok: boolean }>;
+  remove: (id: string, deleteFiles: boolean) => Promise<{ ok: boolean }>;
+  removeDestination: (id: string) => Promise<{ ok: boolean; removed: string }>;
+  replaceTrackers: (id: string, urls: string[]) => Promise<{ ok: boolean }>;
+  resume: (id: string) => Promise<{ ok: boolean }>;
+  saveDestination: (id: string | null, input: DestinationInput) => Promise<Destination>;
+  updateDestinationPresentation: (
+    id: string,
+    input: DestinationPresentation
+  ) => Destination | Promise<Destination>;
+  updateSettings: (settings: SettingsInput) => Promise<Settings>;
+  verify: (id: string) => Promise<{ ok: boolean }>;
+}
+
+export interface EnginePort extends EngineOperations {
+  mode: "desktop" | "server";
+  readonly settings: Settings;
+  snapshot: (selected: string | null, includeDetail?: boolean) => DashboardState;
+}
+
+export type EngineRequest =
+  | {
+      [Method in keyof EngineOperations]: {
+        id: number;
+        method: Method;
+        args: Parameters<EngineOperations[Method]>;
+      };
+    }[keyof EngineOperations]
+  | { id: number; method: "open"; args: [EngineOpenOptions] };
+
+export type EngineMessage =
+  | { type: "ready" }
+  | { type: "snapshot"; state: DashboardState }
+  | { type: "result"; id: number; value: unknown; state: DashboardState }
+  | { type: "error"; id: number; message: string; status: number };

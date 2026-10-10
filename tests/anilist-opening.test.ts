@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
-import { createAniListOpeningApi } from "../src/api/feeds/anilist-opening-api";
+import { createTestAniListOpeningApi } from "./api-fixture";
 import { json } from "./helpers";
 
 test("AniList anime links open in the desktop system browser", async () => {
   const opened: string[] = [];
-  const app = createAniListOpeningApi({
+  const app = createTestAniListOpeningApi({
     isDesktop: () => true,
     openExternal: (target) => {
       opened.push(target);
@@ -21,7 +21,7 @@ test("AniList anime links open in the desktop system browser", async () => {
 });
 
 test("AniList opening reports a native browser launch failure", async () => {
-  const app = createAniListOpeningApi({
+  const app = createTestAniListOpeningApi({
     isDesktop: () => true,
     openExternal: () => Promise.resolve(false),
   });
@@ -33,7 +33,7 @@ test("AniList opening reports a native browser launch failure", async () => {
 });
 
 test("AniList opening reports a rejected native browser launch", async () => {
-  const app = createAniListOpeningApi({
+  const app = createTestAniListOpeningApi({
     isDesktop: () => true,
     openExternal: () => Promise.reject(new Error("Native launch failed")),
   });
@@ -48,7 +48,7 @@ test.each([{}, { url: 10 }, { url: "a".repeat(2001) }])(
   "AniList opening rejects an invalid request body with a validation status: %j",
   async (body) => {
     const opened: string[] = [];
-    const app = createAniListOpeningApi({
+    const app = createTestAniListOpeningApi({
       isDesktop: () => true,
       openExternal: (url) => {
         opened.push(url);
@@ -63,7 +63,7 @@ test.each([{}, { url: 10 }, { url: "a".repeat(2001) }])(
 
 test("AniList OAuth URLs still open in the desktop system browser", async () => {
   const opened: string[] = [];
-  const app = createAniListOpeningApi({
+  const app = createTestAniListOpeningApi({
     isDesktop: () => true,
     openExternal: (target) => {
       opened.push(target);
@@ -82,7 +82,7 @@ test("AniList OAuth URLs still open in the desktop system browser", async () => 
 
 test("server mode leaves AniList opening to the user's browser", async () => {
   const opened: string[] = [];
-  const app = createAniListOpeningApi({
+  const app = createTestAniListOpeningApi({
     isDesktop: () => false,
     openExternal: (target) => {
       opened.push(target);
@@ -109,7 +109,7 @@ test.each([
   "https://anilist.co/settings",
 ])("AniList opening rejects unsupported URL %s", async (url) => {
   const opened: string[] = [];
-  const app = createAniListOpeningApi({
+  const app = createTestAniListOpeningApi({
     isDesktop: () => true,
     openExternal: (target) => {
       opened.push(target);

@@ -1,15 +1,15 @@
 import { expect, test } from "bun:test";
 import { Elysia } from "elysia";
-import { createCore } from "../src/api/core";
+import { services } from "../src/api/lib/services";
 import { fixture } from "./helpers";
 
-test("a third-party Elysia plugin reuses core capabilities without remounting core routes", async () => {
+test("a third-party Elysia plugin reuses shared services without remounting application routes", async () => {
   const context = await fixture(65_536, []);
   try {
-    const dependency = createCore({ engine: () => context.engine, sync: context.sync.options });
-    const extension = new Elysia({ name: "fixture-extension", prefix: "/api/plugins/fixture" })
-      .use(dependency)
-      .get("/state", ({ core }) => core.engine().snapshot(null, false));
+    const extension = new Elysia({ name: "fixture-extension", prefix: "/api/plugins/fixture" }).get(
+      "/state",
+      () => services.engine.snapshot(null, false)
+    );
     const app = new Elysia().use(context.api).use(extension);
     const response = await app.handle("http://localhost/api/plugins/fixture/state");
     expect(response.status).toBe(200);

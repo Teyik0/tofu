@@ -1,16 +1,15 @@
 import { useMutation } from "@teyik0/furin/client";
 import { FolderIcon, LinkIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
-import { api } from "../client";
+import { api } from "../lib/client";
 import type {
   DashboardState,
   Destination,
   DestinationIconName,
+  DestinationInput,
   TorrentDetail,
   TorrentSummary,
 } from "../types";
-import { request } from "./api";
-import { useDashboard } from "./app-shell";
 import type { AutomationSection } from "./automation-center";
 import { DestinationIconPicker } from "./destination-icon";
 import { TorrentFileInput } from "./torrent-file-input";
@@ -114,27 +113,33 @@ function ModalFrame({
 }
 
 /** Deletes a tab and returns the tab to show when the visible tab no longer exists. */
-export async function deleteDestination(id: string, active: string | null) {
-  const { removed } = await request<{ ok: true; removed: string }>(
-    `/destinations/${id}`,
-    "DELETE",
-    undefined
-  );
-  return active === id || active === removed ? "default" : null;
+export function useDeleteDestination(active: string | null) {
+  const remove = useMutation((id: string) => api.destinations({ id }).delete());
+  return async (id: string) => {
+    const result = await remove.mutateAsync(id);
+    if (!(result && "removed" in result)) {
+      throw new Error("Unable to delete the tab");
+    }
+    return active === id || active === result.removed ? "default" : null;
+  };
 }
 
 export function DeleteDestinationModal({
+  activeDestination,
+  data,
   destination,
   cancel,
   close,
   done,
 }: {
+  activeDestination: string | null;
+  data: DashboardState;
   destination: Destination;
   cancel: () => void;
   close: () => void;
   done: (id: string | null, destinationId: string | null) => Promise<void>;
 }) {
-  const { activeDestination, data } = useDashboard();
+  const deleteDestination = useDeleteDestination(activeDestination);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fallback = data.destinations.find((item) =>
@@ -144,7 +149,7 @@ export function DeleteDestinationModal({
     setBusy(true);
     setError(null);
     try {
-      await done(null, await deleteDestination(destination.id, activeDestination));
+      await done(null, await deleteDestination(destination.id));
       close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to delete the tab");
@@ -184,11 +189,13 @@ export function DeleteDestinationModal({
 }
 
 export function Modal({
+  activeDestination,
   modal,
   data,
   close,
   done,
 }: {
+  activeDestination: string | null;
   modal: FormModalKind;
   data: DashboardState;
   close: () => void;
@@ -198,8 +205,22 @@ export function Modal({
     modal.type === "add"
       ? data.destinations.find((destination) => destination.id === modal.destinationId)
       : null;
-  const upload = useMutation(api.api.torrents.file.post);
-  const createDestination = useMutation(api.api.destinations.post);
+  const upload = useMutation(api.torrents.file.post);
+  const createDestination = useMutation(api.destinations.post);
+  const updateDestination = useMutation((id: string, body: DestinationInput) =>
+    api.destinations({ id }).put(body)
+  );
+  const addTorrent = useMutation(api.torrents.post);
+  const updateTrackers = useMutation((id: string, trackerUrls: string[]) =>
+    api.torrents({ id }).trackers.put({ urls: trackerUrls })
+  );
+  const addPeer = useMutation((id: string, peer: string) =>
+    api.torrents({ id }).peers.post({ peer })
+  );
+  const removeTorrent = useMutation((id: string, deleteFiles: boolean) =>
+    api.torrents({ id }).delete({ deleteFiles })
+  );
+  const chooseDirectory = useMutation(api.directory.post);
   const [droppedFiles, setDroppedFiles] = useState(modal.type === "drop" ? modal.files : []);
   const [destinationId, setDestinationId] = useState(initialDestination?.id ?? "default");
   const [pinned, setPinned] = useState(
@@ -239,8 +260,10 @@ export function Modal({
   if (deletingDestination && modal.type === "destination" && modal.destination) {
     return (
       <DeleteDestinationModal
+        activeDestination={activeDestination}
         cancel={() => setDeletingDestination(false)}
         close={close}
+        data={data}
         destination={modal.destination}
         done={done}
       />
@@ -269,8 +292,8 @@ export function Modal({
       .filter(Boolean);
   const browse = async () => {
     try {
-      const result = await request<{ path: string | null }>("/directory", "POST", undefined);
-      if (result.path) {
+      const result = await chooseDirectory.mutateAsync();
+      if (result && "path" in result && result.path) {
         setPath(result.path);
       }
     } catch (cause) {
@@ -311,43 +334,40 @@ export function Modal({
         }
         savedDestination = target;
       } else if (modal.type === "add") {
-        let result: { id: string };
-        if (file) {
-          const body = new FormData();
-          body.set("file", file);
-          body.set("paused", String(paused));
-          body.set("destinationId", destinationId);
-          body.set("trackers", trackers);
-          result = await request("/torrents/file", "POST", body);
-        } else {
-          result = await request("/torrents", "POST", {
-            destinationId,
-            paused,
-            source: source.trim(),
-            trackers: urls(),
-          });
+        const result = file
+          ? await upload.mutateAsync({ destinationId, file, paused: String(paused), trackers })
+          : await addTorrent.mutateAsync({
+              destinationId,
+              paused,
+              source: source.trim(),
+              trackers: urls(),
+            });
+        if (!(result && "id" in result)) {
+          throw new Error("Unable to add the torrent");
         }
         selected = result.id;
         savedDestination = destinationId;
       } else if (modal.type === "destination") {
-        const result = await request<Destination>(
-          modal.destination ? `/destinations/${modal.destination.id}` : "/destinations",
-          modal.destination ? "PUT" : "POST",
-          {
-            downloadPath: path,
-            icon: destinationIcon,
-            moveFiles: offerMove && moveFiles,
-            name,
-            pinned,
-          }
-        );
+        const body: DestinationInput = {
+          downloadPath: path,
+          icon: destinationIcon,
+          moveFiles: offerMove && moveFiles,
+          name,
+          pinned,
+        };
+        const result = modal.destination
+          ? await updateDestination.mutateAsync(modal.destination.id, body)
+          : await createDestination.mutateAsync(body);
+        if (!(result && "id" in result)) {
+          throw new Error("Unable to save the tab");
+        }
         savedDestination = result.id;
       } else if (modal.type === "trackers") {
-        await request(`/torrents/${modal.torrent.id}/trackers`, "PUT", { urls: urls() });
+        await updateTrackers.mutateAsync(modal.torrent.id, urls());
       } else if (modal.type === "peer") {
-        await request(`/torrents/${modal.torrent.id}/peers`, "POST", { peer: source.trim() });
+        await addPeer.mutateAsync(modal.torrent.id, source.trim());
       } else if (modal.type === "remove") {
-        await request(`/torrents/${modal.torrent.id}`, "DELETE", { deleteFiles: removeFiles });
+        await removeTorrent.mutateAsync(modal.torrent.id, removeFiles);
       }
       await done(selected, savedDestination);
       close();

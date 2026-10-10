@@ -1,19 +1,22 @@
 import { furin } from "@teyik0/furin";
 import { desktopApp } from "@teyik0/furin-electrobun/server";
 import { Elysia } from "elysia";
-import { api } from "./api";
-import { onShutdown, onStartup } from "./api/lifecycle";
-import { instance, runtime, syncOptions } from "./api/runtime";
-import { writeServerInfo } from "./api/server-info";
+import { apiPlugin } from "./api";
+import { assertRuntimeReady, onShutdown, onStartup } from "./api/lib/lifecycle";
+import { instance, runtime } from "./api/lib/runtime";
+import { writeServerInfo } from "./api/lib/server-info";
+import { sync } from "./sync";
 
 const app = new Elysia({ serve: { maxRequestBodySize: 9 * 1024 * 1024 } })
   .use(desktopApp({ onShutdown, onStartup, restrictWebToLoopback: true }))
-  .use(api)
-  .use(await furin({ pagesDir: "./src/pages", sync: syncOptions }));
+  .setup(async () => {
+    await onStartup(new AbortController().signal);
+    await assertRuntimeReady();
+  })
+  .use(await furin({ pagesDir: "./src/pages", sync }))
+  .use(apiPlugin);
 
-export default app;
-
-export async function startServer() {
+if (import.meta.main) {
   try {
     await new Promise<void>((resolve, reject) => {
       app.cleanup(() => reject(new Error("Tofu stopped before startup completed")));
@@ -36,3 +39,5 @@ export async function startServer() {
     throw error;
   }
 }
+
+export default app;

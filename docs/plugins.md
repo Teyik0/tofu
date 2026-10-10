@@ -2,6 +2,8 @@
 
 Open **Plugins** in the sidebar to enable integrations. All plugins start disabled. C411 and Jev require personal API keys. Credentials stay on the Bun side and are excluded from public state; they are stored locally without encryption.
 
+Installed plugins are listed at `/plugins`. Sources, Intelligence and Integrations have separate pages at `/plugins/sources`, `/plugins/intelligence` and `/plugins/integrations`. The navigation stays in place while each page mounts only its plugin cards. Unsaved credentials remain in memory across section changes and are discarded when leaving Plugins.
+
 ## Sources
 
 - **Nyaa** searches RSS and falls back to the HTML catalogue when the RSS request fails.
@@ -26,7 +28,9 @@ Open automation from a destination tab, describe what you want, then prepare and
 
 Review the title, sources, language, quality, and destination; reorder preferences and preview matches. Without Jev, use an exact title or an explicit regular expression. Disabling Jev falls back to exact-title matching; an outage defers verification.
 
-A single language or resolution is a requirement. Multiple values are allowed fallbacks in the listed order. An optional waiting period gives better releases time to arrive. Uncertain Jev matches require approval from history.
+Anime rules search the romaji title first, then the English title on each searchable source if no release passes the rule's requirements and matching checks. AniList rules reuse their saved aliases; Jev rules without aliases resolve canonical titles through the public catalogue and keep the entered title if it is unavailable. Tsundere's recent feed is fetched once. Previews, initial release exclusion, and scheduled checks use the same search behavior.
+
+A single language or resolution is a requirement. Multiple values are allowed fallbacks in the listed order. An optional waiting period gives better releases time to arrive. Jev matches below 75% are excluded from previews and automation decisions. Scores from 75% to below 95% require approval from history; scores of at least 95% can download automatically when the rule allows it. The score is the lower of the identity and requirements evaluations.
 
 After downloading a fallback, Tofu keeps looking for a strictly better release. Equal quality and changing peer counts do not trigger replacement. Once an ideal version is found, monitoring continues for new episodes. Releases you deliberately remove or ignore stay excluded.
 

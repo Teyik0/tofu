@@ -34,7 +34,7 @@ Versions shipped before the in-app updater was implemented require one final man
 
 The ZIP and Linux archive retain Electrobun's installer payload structure; renaming an extracted Windows executable would separate it from the sidecar files it needs. Signing and notarization are configured only on the macOS runner.
 
-To prepare a version, update package.json, run `bun run tscheck`, `bun run fix`, `bun run test`, `bun run build:desktop`, `bun run test:native`, and `bun run test:background`, then commit and push the matching tag. Follow the project's Git hooks before committing and pushing. `bun run build:release` produces the installer for the current platform locally.
+To prepare a version, update package.json, run `bun run tscheck`, `bun run fix`, `bun run test`, `bun run build:desktop`, `bun run test:native`, and `bun run test:background`, then commit and push the matching tag. Follow the project's Git hooks before committing and pushing. `bun run build:release` calls the Furin Electrobun CLI directly and produces installers and update artifacts in `.furin/electrobun/artifacts`. Its postbuild step renames only the first-install installer to the updater's expected format; update metadata and archive names remain untouched. There are no additional output copies at the repository root.
 
 ## Free macOS distribution
 

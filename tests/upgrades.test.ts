@@ -2,9 +2,9 @@
 // biome-ignore-all lint/style/noNonNullAssertion: missing fixtures must fail these integration tests immediately.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { AutomationService } from "../src/api/feeds/service";
+import { AutomationService } from "../src/api/modules/automation/service";
 import type { AutomationDraft, AutomationRule, AutomationState } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json, waitFor } from "./helpers";
 
 test("failed upgrades keep the old files and a manually removed fallback is never resurrected", async () => {
@@ -53,7 +53,7 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -144,7 +144,7 @@ test("equal and worse releases are skipped, ideal episodes stop Jev matching whi
     engine: () => context.engine,
     now: () => clock,
   });
-  const api = createApi(
+  const api = createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -260,7 +260,7 @@ test.each([true, false])(
       now: Date.now,
     };
     let service = await AutomationService.open(options);
-    const api = createApi(
+    const api = createTestApi(
       () => fallback.engine,
       fallback.sync.options,
       () => service

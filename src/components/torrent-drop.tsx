@@ -1,14 +1,16 @@
 import { useMutation } from "@teyik0/furin/client";
 import { DownloadIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { api } from "../client";
-import { useDashboard } from "./app-shell";
+import { api } from "../lib/client";
+import { useRefresh } from "../lib/navigation";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
+import { useWorkspace } from "./workspace-state";
 
-export function TorrentDrop() {
-  const { activeDestination, open, refresh, setSelected } = useDashboard();
-  const upload = useMutation(api.api.torrents.file.post);
+export function TorrentDrop({ activeDestination }: { activeDestination: string | null }) {
+  const { open, setSelected } = useWorkspace();
+  const refresh = useRefresh();
+  const upload = useMutation(api.torrents.file.post);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const depth = useRef(0);

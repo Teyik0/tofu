@@ -1,4 +1,4 @@
-import { useQuery } from "@teyik0/furin/client";
+import { useMutation, useQuery } from "@teyik0/furin/client";
 import {
   CheckIcon,
   ExternalLinkIcon,
@@ -8,11 +8,10 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useEffectEvent, useState } from "react";
-import { api } from "../client";
+import { api } from "../lib/client";
 import type {
   AniListState,
   AniListStatus,
-  AniListSubscription,
   AniListThreadProposal,
   AutomationDraft,
   AutomationPreferences,
@@ -42,12 +41,20 @@ function AniListConnection({
   action,
   reload,
   busy,
+  afterMutation,
 }: {
   state: AniListState;
   action: Action;
   reload: () => Promise<void>;
   busy: boolean;
+  afterMutation?: () => Promise<void>;
 }) {
+  const connect = useMutation(api.anilist.connect.post);
+  const openAuthorization = useMutation(api.anilist.open.post);
+  const cancelAuthorization = useMutation(api.anilist.connect.delete);
+  const configure = useMutation(api.anilist.put);
+  const enablePlugin = useMutation(api.plugins({ id: "anilist" }).put);
+  const loadList = useMutation(api.anilist.list.post);
   const [userName, setUserName] = useState(state.userName);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
@@ -97,15 +104,17 @@ function AniListConnection({
           onClick={() =>
             action(async () => {
               setAuthorizationUrl(null);
-              const { url } = await request<{ url: string }>("/anilist/connect", "POST", {});
+              const authorization = await connect.mutateAsync();
+              if (!(authorization && "url" in authorization)) {
+                return;
+              }
+              const { url } = authorization;
               setAuthorizationUrl(url);
-              await reload();
-              const result = await request<{ url: string; opened: boolean }>(
-                "/anilist/open",
-                "POST",
-                { url }
-              );
-              setAuthorizationUrl(result.url);
+              await afterMutation?.();
+              const result = await openAuthorization.mutateAsync({ url });
+              if (result && "url" in result) {
+                setAuthorizationUrl(result.url);
+              }
             })
           }
         >
@@ -127,9 +136,9 @@ function AniListConnection({
             disabled={busy}
             onClick={() =>
               action(async () => {
-                await request("/anilist/connect", "DELETE", undefined);
+                await cancelAuthorization.mutateAsync();
                 setAuthorizationUrl(null);
-                await reload();
+                await afterMutation?.();
               })
             }
             variant="outline"
@@ -169,10 +178,10 @@ function AniListConnection({
               disabled={busy}
               onClick={() =>
                 action(async () => {
-                  await request("/anilist", "PUT", { userName });
-                  await request("/plugins/anilist", "PUT", { enabled: true });
-                  await request("/anilist/list", "POST", {});
-                  await reload();
+                  await configure.mutateAsync({ userName });
+                  await enablePlugin.mutateAsync({ enabled: true });
+                  await loadList.mutateAsync();
+                  await afterMutation?.();
                 })
               }
               variant="outline"
@@ -217,34 +226,49 @@ function Step({
   );
 }
 
-export function AniListPanel({
+interface AniListPanelProps {
+  action: Action;
+  afterMutation?: () => Promise<void>;
+  automations: AutomationRule[];
+  busy: boolean;
+  destinationField?: ReactNode;
+  destinations: Destination[];
+  openPreferences?: () => void;
+  plugin: PluginState | undefined;
+  preferences: AutomationPreferences;
+  reload: () => Promise<void>;
+  state: AniListState;
+  target: string;
+}
+
+export const AniListPanel = ({
   target,
   destinationField,
   busy,
   action,
-  reloadPlugins,
+  reload,
+  afterMutation,
   preferences,
   openPreferences,
   plugin,
   destinations,
   automations,
-  onRefresh,
-}: {
-  target: string;
-  destinationField?: ReactNode;
-  busy: boolean;
-  action: Action;
-  reloadPlugins: () => Promise<void>;
-  preferences: AutomationPreferences;
-  openPreferences?: () => void;
-  plugin: PluginState | undefined;
-  destinations: Destination[];
-  automations: AutomationRule[];
-  onRefresh?: (state: AniListState) => void;
-}) {
-  const { data: live } = useQuery(api.api.anilist.get);
-  const [saved, setSaved] = useState<AniListState | null>(null);
-  const state = saved ?? (live && "subscriptions" in live ? live : null);
+  state,
+}: AniListPanelProps) => {
+  const selectEntry = useMutation((mediaId: number, enabled: boolean) =>
+    api.anilist.entries({ mediaId }).put({ enabled })
+  );
+  const createSubscription = useMutation(api.anilist.subscriptions.post);
+  const loadList = useMutation(api.anilist.list.post);
+  const syncSubscription = useMutation((id: string) =>
+    api.anilist.subscriptions({ id }).sync.post()
+  );
+  const toggleSubscription = useMutation((id: string, enabled: boolean) =>
+    api.anilist.subscriptions({ id }).put({ enabled })
+  );
+  const removeSubscription = useMutation((id: string) =>
+    api.anilist.subscriptions({ id }).delete()
+  );
   const [statuses, setStatuses] = useState<AniListStatus[]>(["CURRENT", "PLANNING"]);
   const [mode, setMode] = useState<"per-anime" | "shared">("per-anime");
   const [basePath, setBasePath] = useState(
@@ -254,15 +278,7 @@ export function AniListPanel({
   const [prepared, setPrepared] = useState(false);
   const [proposals, setProposals] = useState<AniListThreadProposal[] | null>(null);
   const now = useNow(60_000);
-  const reload = async () => {
-    const refreshed = await request<AniListState>("/anilist", "GET", undefined);
-    setSaved(refreshed);
-    onRefresh?.(refreshed);
-    await reloadPlugins();
-  };
-  if (!state) {
-    return <p className="automation-muted">Loading AniList connection…</p>;
-  }
+  const pluginEnabled = plugin?.enabled === true;
   const unprepare = () => {
     setPrepared(false);
     setProposals(null);
@@ -300,7 +316,13 @@ export function AniListPanel({
           Refresh
         </Button>
       </div>
-      <AniListConnection action={action} busy={busy} reload={reload} state={state} />
+      <AniListConnection
+        action={action}
+        afterMutation={afterMutation}
+        busy={busy}
+        reload={reload}
+        state={state}
+      />
       {!plugin?.enabled && (
         <Alert>
           <AlertDescription>
@@ -334,10 +356,11 @@ export function AniListPanel({
               </Field>
             ))}
             <Button
-              disabled={busy || !plugin?.enabled}
+              disabled={busy || !pluginEnabled}
               onClick={() =>
                 action(async () => {
-                  setSaved(await request<AniListState>("/anilist/list", "POST", {}));
+                  await loadList.mutateAsync();
+                  await afterMutation?.();
                   unprepare();
                 })
               }
@@ -380,16 +403,8 @@ export function AniListPanel({
                       onCheckedChange={(checked) =>
                         action(async () => {
                           unprepare();
-                          setSaved(
-                            await request<AniListState>(
-                              `/anilist/entries/${entry.mediaId}`,
-                              "PUT",
-                              {
-                                enabled: checked === true,
-                              }
-                            )
-                          );
-                          await reloadPlugins();
+                          await selectEntry.mutateAsync(entry.mediaId, checked === true);
+                          await afterMutation?.();
                         })
                       }
                     />
@@ -519,23 +534,22 @@ export function AniListPanel({
                 }
                 onClick={() =>
                   action(async () => {
-                    const subscription = await request<AniListSubscription>(
-                      "/anilist/subscriptions",
-                      "POST",
-                      {
-                        enabled: true,
-                        intervalMinutes: Math.max(5, template.intervalMinutes),
-                        organization:
-                          mode === "per-anime"
-                            ? { basePath, mode, overrides: proposals ?? [] }
-                            : { mode },
-                        statuses,
-                        template,
-                      }
-                    );
-                    await request(`/anilist/subscriptions/${subscription.id}/sync`, "POST", {});
+                    const subscription = await createSubscription.mutateAsync({
+                      enabled: true,
+                      intervalMinutes: Math.max(5, template.intervalMinutes),
+                      organization:
+                        mode === "per-anime"
+                          ? { basePath, mode, overrides: proposals ?? [] }
+                          : { mode },
+                      statuses,
+                      template,
+                    });
+                    if (!(subscription && "id" in subscription)) {
+                      return;
+                    }
+                    await syncSubscription.mutateAsync(subscription.id);
                     unprepare();
-                    await reload();
+                    await afterMutation?.();
                   })
                 }
               >
@@ -619,8 +633,8 @@ export function AniListPanel({
                 disabled={busy || !plugin?.enabled || !subscription.enabled}
                 onClick={() =>
                   action(async () => {
-                    await request(`/anilist/subscriptions/${subscription.id}/sync`, "POST", {});
-                    await reload();
+                    await syncSubscription.mutateAsync(subscription.id);
+                    await afterMutation?.();
                   })
                 }
                 size="sm"
@@ -637,10 +651,8 @@ export function AniListPanel({
                   disabled={busy}
                   onClick={() =>
                     action(async () => {
-                      await request(`/anilist/subscriptions/${subscription.id}`, "PUT", {
-                        enabled: !subscription.enabled,
-                      });
-                      await reload();
+                      await toggleSubscription.mutateAsync(subscription.id, !subscription.enabled);
+                      await afterMutation?.();
                     })
                   }
                   size="icon-sm"
@@ -656,12 +668,8 @@ export function AniListPanel({
                   disabled={busy}
                   onClick={() =>
                     action(async () => {
-                      await request(
-                        `/anilist/subscriptions/${subscription.id}`,
-                        "DELETE",
-                        undefined
-                      );
-                      await reload();
+                      await removeSubscription.mutateAsync(subscription.id);
+                      await afterMutation?.();
                     })
                   }
                   size="icon-sm"
@@ -676,4 +684,32 @@ export function AniListPanel({
       ))}
     </div>
   );
-}
+};
+
+type QueriedAniListPanelProps = Omit<AniListPanelProps, "state" | "reload" | "afterMutation"> & {
+  reloadPlugins: () => Promise<void>;
+};
+
+// The automation modal can open on routes whose loaders do not include AniList.
+export const QueriedAniListPanel = ({ reloadPlugins, ...props }: QueriedAniListPanelProps) => {
+  const { data: live } = useQuery(api.anilist.get);
+  const [refreshed, setRefreshed] = useState<{
+    source: typeof live;
+    state: AniListState;
+  } | null>(null);
+  const state =
+    refreshed && refreshed.source === live
+      ? refreshed.state
+      : live && "subscriptions" in live
+        ? live
+        : null;
+  const reload = async () => {
+    const next = await request<AniListState>("/anilist", "GET", undefined);
+    setRefreshed({ source: live, state: next });
+    await reloadPlugins();
+  };
+  if (!state) {
+    return <p className="automation-muted">Loading AniList connection…</p>;
+  }
+  return <AniListPanel {...props} afterMutation={reload} reload={reload} state={state} />;
+};
