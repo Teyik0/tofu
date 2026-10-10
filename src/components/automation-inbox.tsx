@@ -182,6 +182,7 @@ export function AutomationInbox({
               {items.map((decision) => {
                 const rule = state.automations.find((item) => item.id === decision.automationId);
                 const thread = destinations.find((item) => item.id === rule?.destinationId);
+                const source = state.plugins.find((item) => item.id === decision.release.sourceId);
                 return (
                   <article className="inbox-item" key={decision.id}>
                     <div className="inbox-item-context">
@@ -192,7 +193,11 @@ export function AutomationInbox({
                     <ReleaseLine release={decision.release} />
                     <p className="inbox-item-reason">{explain(decision, rule, now)}</p>
                     <div className="inbox-item-actions">
-                      <Button disabled={busy || !rule} onClick={() => approve(decision)} size="sm">
+                      <Button
+                        disabled={busy || !rule?.enabled || !source?.enabled}
+                        onClick={() => approve(decision)}
+                        size="sm"
+                      >
                         {decision.status === "error" ? (
                           <RefreshCwIcon data-icon="inline-start" />
                         ) : (

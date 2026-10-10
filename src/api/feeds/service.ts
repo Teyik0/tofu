@@ -1086,15 +1086,18 @@ export class AutomationService {
       return;
     }
     this.startupState.started = true;
-    await this.anilist.tick(true);
-    await Promise.all(
-      [...this.rules.values()].filter((rule) => rule.enabled).map((rule) => this.run(rule.id))
-    );
-    if (!this.isClosed()) {
-      this.timer = setInterval(() => {
-        void this.tick();
-      }, 15_000);
-      this.timer.unref();
+    try {
+      await this.anilist.tick(true);
+      await Promise.all(
+        [...this.rules.values()].filter((rule) => rule.enabled).map((rule) => this.run(rule.id))
+      );
+    } finally {
+      if (!this.isClosed()) {
+        this.timer = setInterval(() => {
+          void this.tick().catch(console.error);
+        }, 15_000);
+        this.timer.unref();
+      }
     }
   }
   async tick() {

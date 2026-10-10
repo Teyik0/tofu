@@ -410,14 +410,16 @@ export function AniListLibrary() {
               <DropdownMenuTrigger
                 render={
                   <Button
-                    aria-labelledby="anilist-lists-label"
+                    aria-labelledby="anilist-lists-label anilist-lists-value"
                     className="anilist-status-filter anilist-filter-trigger"
                     variant="ghost"
                   >
-                    <span>
-                      {state?.visibleStatuses.length
-                        ? state.visibleStatuses.map(aniListStatusLabel).join(", ")
-                        : "Any"}
+                    <span id="anilist-lists-value">
+                      {state
+                        ? state.visibleStatuses.length
+                          ? state.visibleStatuses.map(aniListStatusLabel).join(", ")
+                          : "None"
+                        : "Loading…"}
                     </span>
                     <ChevronDownIcon data-icon="inline-end" />
                   </Button>
@@ -461,12 +463,14 @@ export function AniListLibrary() {
               <DropdownMenuTrigger
                 render={
                   <Button
-                    aria-labelledby="anilist-genres-label"
+                    aria-labelledby="anilist-genres-label anilist-genres-value"
                     className="anilist-filter-trigger"
                     disabled={!genres.length}
                     variant="ghost"
                   >
-                    <span>{filters.genres.length ? filters.genres.join(", ") : "Any"}</span>
+                    <span id="anilist-genres-value">
+                      {filters.genres.length ? filters.genres.join(", ") : "Any"}
+                    </span>
                     <ChevronDownIcon data-icon="inline-end" />
                   </Button>
                 }

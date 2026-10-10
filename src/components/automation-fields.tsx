@@ -40,6 +40,7 @@ const languageOptions = [
 const resolutionOptions = [
   { label: "2160p", value: "2160p" },
   { label: "1080p", value: "1080p" },
+  { label: "900p", value: "900p" },
   { label: "720p", value: "720p" },
   { label: "480p", value: "480p" },
 ];
@@ -345,7 +346,7 @@ export function PreferenceFields<Value extends AutomationPreferences>({
         />
         <ChipOrder
           anyLabel="Any resolution"
-          description="One choice is required; several are fallbacks in that order."
+          description="Tap in order of preference. None selected accepts every resolution."
           id={`${idPrefix}-resolution`}
           label="Resolutions"
           onChange={(next) => set("resolutions", next)}

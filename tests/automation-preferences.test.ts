@@ -77,11 +77,27 @@ test("general preferences shape new rules, explicit requests override them, and 
     const plain = await interpret("Example");
     expect(plain).toMatchObject({ ...preferences, title: "Example" });
 
-    const explicit = await interpret("Example in VF 2160p on Tsundere-Raws");
+    const explicit = await interpret("Example in VF 2160p with H.264 on Tsundere-Raws");
+    expect(explicit.codecs).toEqual(["H.264"]);
     expect(explicit.languages).toEqual(["VF"]);
     expect(explicit.resolutions).toEqual(["2160p"]);
     expect(explicit.sources).toEqual(["tsundere"]);
     expect(explicit.waitMinutes).toBe(45);
+
+    const codecRequests = await Promise.all(
+      ["x264", "h 264", "AVC", "AV1", "HEVC", "x265", "h265"].map((codec) =>
+        interpret(`Example in ${codec}`)
+      )
+    );
+    expect(codecRequests.map((draft) => ({ codecs: draft.codecs, title: draft.title }))).toEqual([
+      { codecs: ["H.264"], title: "Example" },
+      { codecs: ["H.264"], title: "Example" },
+      { codecs: ["H.264"], title: "Example" },
+      { codecs: ["AV1"], title: "Example" },
+      { codecs: ["H.265"], title: "Example" },
+      { codecs: ["H.265"], title: "Example" },
+      { codecs: ["H.265"], title: "Example" },
+    ]);
 
     await service.close();
     ({ request, service } = await open(context.directory, context));

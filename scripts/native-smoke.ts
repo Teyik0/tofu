@@ -1267,6 +1267,16 @@ async function nativeWorkflow(config: {
           .getAttribute("data-value")
           ?.includes("1080p") === true
     );
+    const resolution900 = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("#automation-resolution button")
+    ).find((element) => element.textContent?.trim() === "900p");
+    check("Automation offers 900p among resolution priorities", !!resolution900);
+    resolution900!.click();
+    await wait(
+      () =>
+        document.querySelector("#automation-resolution")!.getAttribute("data-value") ===
+        "1080p,720p,900p"
+    );
     document.querySelector<HTMLInputElement>("#automation-enabled")!.click();
     await wait(
       () => document.querySelector<HTMLInputElement>("#automation-enabled")!.checked === false
@@ -1293,7 +1303,7 @@ async function nativeWorkflow(config: {
       automation.destinationId === anime.id &&
         !automation.enabled &&
         automation.deleteReplacedFiles === true &&
-        automation.resolutions.join(",") === "1080p,720p" &&
+        automation.resolutions.join(",") === "1080p,720p,900p" &&
         automation.sources[0] === "tsundere"
     );
     await fetch(`/api/automations/${automation.id}`, { method: "DELETE" });
@@ -1603,6 +1613,7 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         pluginNavigationStarted.resolve();
         await pluginNavigation.promise;
         try {
+          init?.signal?.throwIfAborted();
           const response = await nativeFetch(input, init);
           await response.clone().arrayBuffer();
           return response;
@@ -1614,6 +1625,10 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         await pluginState.promise;
       }
       if (path === "/api/anilist" && (!init?.method || init.method === "GET")) {
+        return Response.json(sample);
+      }
+      if (path === "/api/anilist/preferences") {
+        Object.assign(sample, JSON.parse(String(init?.body)));
         return Response.json(sample);
       }
       if (path === "/api/anilist/entries/10/releases") {
@@ -1705,6 +1720,29 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       location.pathname === pluginsOrigin &&
         !!document.querySelector('[aria-label="Loading plugins"]')
     );
+    await pluginNavigationStarted.promise;
+    button("Back").click();
+    await wait(() => !!document.querySelector(".add-button"));
+    pluginNavigation.resolve();
+    await pluginNavigationFinished.promise;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    check(
+      "Back remains available during plugin navigation",
+      !document.querySelector(".plugins-page") && location.pathname === pluginsOrigin
+    );
+    // Exercise cancellation before a completed navigation caches the Plugins route.
+    pluginNavigation = Promise.withResolvers<void>();
+    pluginNavigationStarted = Promise.withResolvers<void>();
+    pluginNavigationFinished = Promise.withResolvers<void>();
+    button("Plugins").click();
+    await wait(() => !!document.querySelector(".plugins-page"));
+    await pluginNavigationStarted.promise;
+    button("Sources").click();
+    await wait(
+      () => document.querySelector(".settings-topbar h1")?.textContent?.includes("Sources") === true
+    );
     pluginNavigation.resolve();
     await wait(() => location.pathname === "/plugins");
     check(
@@ -1749,23 +1787,6 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     button("Back").click();
     await wait(() => !!document.querySelector(".add-button"));
     check("Plugins returns to the originating library", location.pathname === pluginsOrigin);
-    pluginNavigation = Promise.withResolvers<void>();
-    pluginNavigationStarted = Promise.withResolvers<void>();
-    pluginNavigationFinished = Promise.withResolvers<void>();
-    button("Plugins").click();
-    await wait(() => !!document.querySelector(".plugins-page"));
-    await pluginNavigationStarted.promise;
-    button("Back").click();
-    await wait(() => !!document.querySelector(".add-button"));
-    pluginNavigation.resolve();
-    await pluginNavigationFinished.promise;
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    });
-    check(
-      "Back remains available during plugin navigation",
-      !document.querySelector(".plugins-page") && location.pathname === pluginsOrigin
-    );
     button("Automations").click();
     await wait(() => !!document.querySelector("[role=dialog]"));
     const tab = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(
@@ -1901,6 +1922,39 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     );
     themeSurface.remove();
     const statusFilter = document.querySelector<HTMLButtonElement>(".anilist-status-filter")!;
+    const accessibleName = (element: HTMLElement) =>
+      element
+        .getAttribute("aria-labelledby")
+        ?.split(" ")
+        .map((id) => document.getElementById(id)?.textContent?.trim())
+        .join(" ");
+    check(
+      "AniList list filter announces its selected statuses",
+      accessibleName(statusFilter) === "Lists Watching, Plan to Watch"
+    );
+    const genreFilter = document.querySelector<HTMLButtonElement>(
+      'button[aria-labelledby^="anilist-genres-label"]'
+    )!;
+    check(
+      "AniList genre filter announces Any before selection",
+      accessibleName(genreFilter) === "Genres Any"
+    );
+    genreFilter.focus();
+    genreFilter.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" })
+    );
+    await wait(() => !!document.querySelector('[role="menu"]'));
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+      .find((element) => element.textContent?.trim() === "Action")!
+      .click();
+    await wait(() => genreFilter.textContent?.trim() === "Action");
+    genreFilter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    genreFilter.click();
+    await wait(() => !document.querySelector('[role="menu"]'));
+    check(
+      "AniList genre filter announces its selected values",
+      accessibleName(genreFilter) === "Genres Action"
+    );
     statusFilter.focus();
     statusFilter.dispatchEvent(
       new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" })
@@ -1910,14 +1964,44 @@ async function anilistWorkflow(config: { reportUrl: string }) {
       "AniList offers all six list statuses",
       document.querySelectorAll('[role="menu"] [role="menuitemcheckbox"]').length === 6
     );
-    document.body.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" })
-    );
-    document
-      .querySelector('[role="menu"]')
-      ?.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" })
+    statusFilter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    statusFilter.click();
+    await wait(() => !document.querySelector('[role="menu"]'));
+    for (const label of ["Watching", "Plan to Watch"]) {
+      statusFilter.focus();
+      statusFilter.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" })
       );
+      await wait(() => !!document.querySelector('[role="menu"]'));
+      const choice = Array.from(
+        document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')
+      ).find((element) => element.textContent?.trim() === label)!;
+      const selectedCount = sample.visibleStatuses.length;
+      choice.click();
+      await wait(() => sample.visibleStatuses.length < selectedCount);
+      await wait(() => choice.getAttribute("aria-disabled") !== "true");
+      statusFilter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      statusFilter.click();
+      await wait(() => !document.querySelector('[role="menu"]'));
+    }
+    await wait(() => statusFilter.textContent?.trim() === "None");
+    check(
+      "No selected AniList lists shows and announces None",
+      statusFilter.textContent?.trim() === "None" &&
+        accessibleName(statusFilter) === "Lists None" &&
+        !document.querySelector('button[aria-label="View episodes for Native Example"]')
+    );
+    statusFilter.focus();
+    statusFilter.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" })
+    );
+    await wait(() => !!document.querySelector('[role="menu"]'));
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+      .find((element) => element.textContent?.trim() === "Watching")!
+      .click();
+    await wait(() => sample.visibleStatuses.includes("CURRENT"));
+    statusFilter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    statusFilter.click();
     await wait(() => !document.querySelector('[role="menu"]'));
     await wait(
       () => !!document.querySelector('button[aria-label="View episodes for Native Example"]')
@@ -1976,6 +2060,8 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         document.querySelector<HTMLInputElement>("#anime-episode-2")!.checked
     );
     const releaseName = document.querySelector<HTMLElement>(".anime-release-name")!;
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Tab" }));
     releaseName.focus();
     await wait(() => !!document.querySelector('[data-slot="tooltip-content"][data-open]'));
     check(
