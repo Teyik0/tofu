@@ -1,22 +1,22 @@
-import { t } from "elysia";
+import { boolean, maxLength, minLength, object, optional, picklist, pipe, string } from "valibot";
 import { destinationIconNames } from "../../../types";
 
-export const createDestinationSchema = t.Object({
-  downloadPath: t.String({ maxLength: 4096, minLength: 1 }),
-  icon: t.Optional(t.Enum([...destinationIconNames])),
-  name: t.String({ maxLength: 80, minLength: 1 }),
-  pinned: t.Optional(t.Boolean()),
+export const createDestinationSchema = object({
+  downloadPath: pipe(string(), minLength(1), maxLength(4096)),
+  icon: optional(picklist(destinationIconNames)),
+  name: pipe(string(), minLength(1), maxLength(80)),
+  pinned: optional(boolean()),
 });
 
-export const updateDestinationSchema = t.Object({
-  downloadPath: t.String({ maxLength: 4096, minLength: 1 }),
-  icon: t.Optional(t.Enum([...destinationIconNames])),
-  moveFiles: t.Optional(t.Boolean()),
-  name: t.String({ maxLength: 80, minLength: 1 }),
-  pinned: t.Optional(t.Boolean()),
+export const updateDestinationSchema = object({
+  downloadPath: pipe(string(), minLength(1), maxLength(4096)),
+  icon: optional(picklist(destinationIconNames)),
+  moveFiles: optional(boolean()),
+  name: pipe(string(), minLength(1), maxLength(80)),
+  pinned: optional(boolean()),
 });
 
-export const destinationPresentationSchema = t.Object({
-  icon: t.Optional(t.Enum([...destinationIconNames])),
-  pinned: t.Optional(t.Boolean()),
+export const destinationPresentationSchema = object({
+  icon: optional(picklist(destinationIconNames)),
+  pinned: optional(boolean()),
 });

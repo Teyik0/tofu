@@ -1,10 +1,12 @@
 import { Link, useRouter } from "@teyik0/furin/link";
+import { useSetAtom } from "jotai";
 import { FolderIcon, PencilIcon, PlugIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { type MouseEvent, memo, startTransition, useActionState, useEffect, useState } from "react";
 import { isSupersededNavigation, showDestination } from "../lib/navigation";
+import { modalAtom } from "../state/workspace";
 import type { DashboardState, Destination } from "../types";
 import { ActionTooltip } from "./action-tooltip";
-import { AniListIcon } from "./anilist-icon";
+import { AniListIcon } from "./anilist/icon";
 import { DestinationIcon } from "./destination-icon";
 import { DestinationMenu } from "./destination-menu";
 import { bytes } from "./format";
@@ -27,7 +29,6 @@ import {
 } from "./ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { SidebarUpdateAction } from "./updates";
-import { useWorkspace } from "./workspace-state";
 
 function useShiftHeld() {
   const [held, setHeld] = useState(false);
@@ -132,7 +133,7 @@ export const DestinationSidebar = memo(
     active: string | null;
   }) {
     const router = useRouter();
-    const { open } = useWorkspace();
+    const open = useSetAtom(modalAtom);
     const [navigationError, openPlugins] = useActionState<string | null, void>(async () => {
       try {
         await router.navigate({ to: "/plugins" });

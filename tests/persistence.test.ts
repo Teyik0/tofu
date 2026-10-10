@@ -22,7 +22,7 @@ test("pausing immediately after an active restart preserves completed file progr
       downloadPath: join(context.directory, "downloads"),
       network,
     });
-    const app = createTestApi(() => reopened as TorrentEngine, context.sync.options);
+    const app = await createTestApi(() => reopened as TorrentEngine, context.sync.options);
     const pause = await app.handle(
       new Request(`http://localhost/api/torrents/${id}/pause`, json({}))
     );
@@ -60,7 +60,7 @@ test("background preference survives restart and older settings requests preserv
       downloadPath: join(context.directory, "downloads"),
       network,
     });
-    const app = createTestApi(() => reopened as TorrentEngine, context.sync.options);
+    const app = await createTestApi(() => reopened as TorrentEngine, context.sync.options);
     const saved = await app.handle(
       new Request("http://localhost/api/settings", {
         ...json({
@@ -98,7 +98,7 @@ test("a paused download survives restart with its files, trackers and traffic to
       downloadPath: join(context.directory, "downloads"),
       network,
     });
-    const app = createTestApi(() => reopened as TorrentEngine, context.sync.options);
+    const app = await createTestApi(() => reopened as TorrentEngine, context.sync.options);
     const restored: DashboardState = await (
       await app.handle(new Request(`http://localhost/api/state?selected=${id}`))
     ).json();

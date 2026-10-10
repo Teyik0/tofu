@@ -23,7 +23,7 @@ async function open(directory: string, context: Awaited<ReturnType<typeof fixtur
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

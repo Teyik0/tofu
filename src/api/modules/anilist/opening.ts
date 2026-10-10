@@ -1,20 +1,17 @@
-import { Elysia, t, ValidationError } from "elysia";
+import { Elysia } from "elysia";
+import { maxLength, object, pipe, string } from "valibot";
 import type { AniListOpenResult } from "../../../types";
+import { contextPlugin } from "../../lib/context";
 import { UserError } from "../../lib/errors";
-import { services } from "../../lib/services";
 
 const animePath = /^\/anime\/[1-9]\d*(?:\/[^/]+)?\/?$/;
 
-export const anilistOpening = new Elysia({ name: "tofu-anilist-opening", prefix: "/anilist" })
-  .error(({ error, set }) => {
-    set.status =
-      error instanceof UserError || error instanceof ValidationError ? error.status : 500;
-    return { error: error instanceof Error ? error.message : "Unable to open AniList" };
-  })
+export const anilistOpeningPlugin = new Elysia({ name: "tofu-anilist-opening", prefix: "/anilist" })
+  .use(contextPlugin)
   .post(
     "/open",
-    { body: t.Object({ url: t.String({ maxLength: 2000 }) }), sync: false },
-    async ({ body }): Promise<AniListOpenResult> => {
+    { body: object({ url: pipe(string(), maxLength(2000)) }), sync: false },
+    async ({ application, body }): Promise<AniListOpenResult> => {
       const url = URL.canParse(body.url) ? new URL(body.url) : null;
       if (
         url?.origin !== "https://anilist.co" ||
@@ -24,10 +21,14 @@ export const anilistOpening = new Elysia({ name: "tofu-anilist-opening", prefix:
       ) {
         throw new UserError("Invalid AniList URL", { status: 400 });
       }
-      if (!services.isDesktop) {
+      if (application.platform.kind !== "desktop") {
         return { opened: false, url: url.href };
       }
-      if (!(await services.openExternal(url.href).catch(() => false))) {
+      if (
+        !(await Promise.resolve(application.platform.utils.openExternal(url.href)).catch(
+          () => false
+        ))
+      ) {
         throw new UserError("Unable to open AniList in your browser", { status: 502 });
       }
       return { opened: true, url: url.href };

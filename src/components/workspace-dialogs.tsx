@@ -1,9 +1,10 @@
 import { useRouter } from "@teyik0/furin/link";
+import { useAtom } from "jotai";
 import { showDestination } from "../lib/navigation";
+import { modalAtom, selectedTorrentAtom } from "../state/workspace";
 import type { DashboardState } from "../types";
 import { AutomationCenter } from "./automation-center";
 import { DeleteDestinationModal, Modal } from "./modal";
-import { useWorkspace } from "./workspace-state";
 
 export function WorkspaceDialogs({
   dashboard,
@@ -13,7 +14,8 @@ export function WorkspaceDialogs({
   activeDestination: string | null;
 }) {
   const router = useRouter();
-  const { modal, open, selected, setSelected } = useWorkspace();
+  const [modal, open] = useAtom(modalAtom);
+  const [selected, setSelected] = useAtom(selectedTorrentAtom);
   const visible = dashboard.torrents.filter(
     (torrent) => activeDestination === null || torrent.destinationId === activeDestination
   );

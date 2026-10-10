@@ -1,7 +1,10 @@
+import { useField, useForm } from "@formisch/react";
 import { defineRoute } from "@teyik0/furin";
 import { getRouteApi } from "@teyik0/furin/client";
 import { FolderIcon } from "lucide-react";
-import { startTransition, useState } from "react";
+import { startTransition } from "react";
+import { pick } from "valibot";
+import { bandwidthInputSchema, settingsSchema } from "../../api/modules/settings/model";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import {
   Field,
@@ -20,6 +23,7 @@ import {
   InputGroupInput,
 } from "../../components/ui/input-group";
 import { Switch } from "../../components/ui/switch";
+import { useAutosaveField } from "../../hooks/use-autosave-field";
 import { useSettingsAction } from "../../hooks/use-settings-action";
 import { route as options } from "./_route";
 
@@ -28,8 +32,37 @@ export const route = defineRoute()
   .head(() => ({ meta: [{ title: "Download settings — Tofu" }] }))
   .page(() => {
     const { dashboard: data } = getRouteApi("/options/downloads").useLoaderData();
-    const { busy, dispatchAction, error } = useSettingsAction();
-    const [moveFiles, setMoveFiles] = useState(false);
+    const { busy, dispatchAction, error: serverError } = useSettingsAction();
+    const optionsForm = useForm({
+      initialInput: { moveFiles: false },
+      schema: pick(settingsSchema, ["moveFiles"]),
+    });
+    const moveFilesField = useField(optionsForm, { path: ["moveFiles"] });
+    const moveFiles = moveFilesField.input === true;
+    const folder = useAutosaveField(
+      settingsSchema.entries.downloadPath,
+      data.settings.downloadPath,
+      (downloadPath) => {
+        startTransition(() =>
+          dispatchAction({ settings: { downloadPath, moveFiles }, type: "update" })
+        );
+      }
+    );
+    const download = useAutosaveField(
+      bandwidthInputSchema,
+      data.settings.downloadLimit === -1 ? "" : String(data.settings.downloadLimit / 1024),
+      (downloadLimit) => {
+        startTransition(() => dispatchAction({ settings: { downloadLimit }, type: "update" }));
+      }
+    );
+    const upload = useAutosaveField(
+      bandwidthInputSchema,
+      data.settings.uploadLimit === -1 ? "" : String(data.settings.uploadLimit / 1024),
+      (uploadLimit) => {
+        startTransition(() => dispatchAction({ settings: { uploadLimit }, type: "update" }));
+      }
+    );
+    const error = folder.error ?? download.error ?? upload.error ?? serverError;
     const torrents = data.torrents.filter((torrent) => torrent.destinationId === "default");
     const checking = torrents.find(
       (torrent) => torrent.status === "checking" || torrent.status === "moving"
@@ -51,25 +84,18 @@ export const route = defineRoute()
               <InputGroup>
                 <InputGroupInput
                   aria-describedby="download-folder-description"
-                  defaultValue={data.settings.downloadPath}
                   disabled={busy || (moveFiles && checking !== undefined)}
+                  {...folder.field.props}
+                  aria-invalid={Boolean(folder.field.errors)}
                   id="destination-path"
-                  key={data.settings.downloadPath}
-                  onBlur={(event) => {
-                    const input = event.currentTarget;
-                    if (input.value !== data.settings.downloadPath && input.reportValidity()) {
-                      const downloadPath = input.value;
-                      startTransition(() =>
-                        dispatchAction({ settings: { downloadPath, moveFiles }, type: "update" })
-                      );
-                    }
-                  }}
+                  onBlur={folder.onBlur}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.currentTarget.blur();
                     }
                   }}
                   required
+                  value={folder.field.input ?? ""}
                 />
                 {data.session.mode === "desktop" && (
                   <InputGroupAddon align="inline-end">
@@ -101,7 +127,7 @@ export const route = defineRoute()
                   checked={moveFiles}
                   disabled={busy || checking !== undefined}
                   id="move-files"
-                  onCheckedChange={setMoveFiles}
+                  onCheckedChange={moveFilesField.onChange}
                 />
               </Field>
             )}
@@ -128,26 +154,12 @@ export const route = defineRoute()
               </FieldContent>
               <Input
                 aria-describedby="download-limit-description"
-                defaultValue={
-                  data.settings.downloadLimit === -1 ? "" : data.settings.downloadLimit / 1024
-                }
                 disabled={busy}
+                {...download.field.props}
+                aria-invalid={Boolean(download.field.errors)}
                 id="limit-download"
-                key={data.settings.downloadLimit}
                 min="0"
-                onBlur={(event) => {
-                  const input = event.currentTarget;
-                  if (!input.reportValidity()) {
-                    return;
-                  }
-                  const downloadLimit =
-                    input.value === "" ? -1 : Math.round(input.valueAsNumber * 1024);
-                  if (downloadLimit !== data.settings.downloadLimit) {
-                    startTransition(() =>
-                      dispatchAction({ settings: { downloadLimit }, type: "update" })
-                    );
-                  }
-                }}
+                onBlur={download.onBlur}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.currentTarget.blur();
@@ -156,6 +168,7 @@ export const route = defineRoute()
                 placeholder="Unlimited"
                 step="1"
                 type="number"
+                value={download.field.input ?? ""}
               />
             </Field>
             <Field className="settings-row" orientation="horizontal">
@@ -167,26 +180,12 @@ export const route = defineRoute()
               </FieldContent>
               <Input
                 aria-describedby="upload-limit-description"
-                defaultValue={
-                  data.settings.uploadLimit === -1 ? "" : data.settings.uploadLimit / 1024
-                }
                 disabled={busy}
+                {...upload.field.props}
+                aria-invalid={Boolean(upload.field.errors)}
                 id="limit-upload"
-                key={data.settings.uploadLimit}
                 min="0"
-                onBlur={(event) => {
-                  const input = event.currentTarget;
-                  if (!input.reportValidity()) {
-                    return;
-                  }
-                  const uploadLimit =
-                    input.value === "" ? -1 : Math.round(input.valueAsNumber * 1024);
-                  if (uploadLimit !== data.settings.uploadLimit) {
-                    startTransition(() =>
-                      dispatchAction({ settings: { uploadLimit }, type: "update" })
-                    );
-                  }
-                }}
+                onBlur={upload.onBlur}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.currentTarget.blur();
@@ -195,6 +194,7 @@ export const route = defineRoute()
                 placeholder="Unlimited"
                 step="1"
                 type="number"
+                value={upload.field.input ?? ""}
               />
             </Field>
           </FieldGroup>

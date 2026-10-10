@@ -1,23 +1,27 @@
 import "@teyik0/furin/server-only";
-import type { FurinSyncOptions, TransactionalSyncAdapter } from "@teyik0/furin/sync";
+import type { TransactionalSyncAdapter } from "@teyik0/furin/sync";
 import type { DatabaseTransaction } from "./api/lib/db";
-import { services } from "./api/lib/services";
+import { applicationHost, applicationScope } from "./api/lib/host";
+import type { CoreApplication } from "./types";
 
-// Route registration is side-effect free. Startup binds one real Drizzle adapter
-// to the same connection used by automations and their atomic sync mutations.
-const adapter = {
-  abortMutation: (lease) => services.syncAdapter.abortMutation(lease),
-  beginMutation: (input) => services.syncAdapter.beginMutation(input),
-  completeMutation: (input) => services.syncAdapter.completeMutation(input),
-  currentCursor: () => services.syncAdapter.currentCursor(),
-  executeMutation: (lease, callback) => services.syncAdapter.executeMutation(lease, callback),
-  readChanges: (input) => services.syncAdapter.readChanges(input),
-  renewMutation: (lease) => services.syncAdapter.renewMutation(lease),
-  scope: "host-local",
-  transactionMode: "sync",
-} satisfies TransactionalSyncAdapter<DatabaseTransaction, "sync">;
+// Furin registers routes before startup. Only its transport waits for the real adapter.
+export function createDeferredSync(ready: () => Promise<CoreApplication>) {
+  const adapter = {
+    abortMutation: async (lease) => (await ready()).sync.adapter.abortMutation(lease),
+    beginMutation: async (input) => (await ready()).sync.adapter.beginMutation(input),
+    completeMutation: async (input) => (await ready()).sync.adapter.completeMutation(input),
+    currentCursor: async () => (await ready()).sync.adapter.currentCursor(),
+    executeMutation: async (lease, callback) =>
+      (await ready()).sync.adapter.executeMutation(lease, callback),
+    readChanges: async (input) => (await ready()).sync.adapter.readChanges(input),
+    renewMutation: async (lease) => (await ready()).sync.adapter.renewMutation(lease),
+    scope: "host-local",
+    transactionMode: "sync",
+  } satisfies TransactionalSyncAdapter<DatabaseTransaction, "sync">;
+  return { adapter, principal: () => "local" };
+}
 
-export const sync = {
-  adapter,
-  principal: () => "local",
-} satisfies FurinSyncOptions;
+export const sync = createDeferredSync(() => {
+  const application = applicationScope.getStore();
+  return application ? Promise.resolve(application) : applicationHost.core;
+});

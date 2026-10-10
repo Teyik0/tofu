@@ -103,7 +103,6 @@ export class DesktopController {
           Utils.quit(1);
         });
     });
-    this.open();
   }
   snapshot(): DesktopState {
     return {

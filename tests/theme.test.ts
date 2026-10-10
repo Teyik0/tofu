@@ -66,7 +66,7 @@ test("appearance defaults to system and a saved theme survives restart and older
       downloadPath: join(context.directory, "downloads"),
       network,
     });
-    const app = createTestApi(() => reopened as TorrentEngine, context.sync.options);
+    const app = await createTestApi(() => reopened as TorrentEngine, context.sync.options);
     const restored = await app.handle(new Request("http://localhost/api/settings"));
     expect((await restored.json()).theme).toBe("dark");
     const legacy = await app.handle(

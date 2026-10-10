@@ -1,6 +1,6 @@
-import { t } from "elysia";
+import { maxLength, minLength, object, pipe, string } from "valibot";
 
-export const interpretationSchema = t.Object({
-  destinationId: t.String(),
-  query: t.String({ maxLength: 2000, minLength: 1 }),
+export const interpretationSchema = object({
+  destinationId: string(),
+  query: pipe(string(), minLength(1), maxLength(2000)),
 });

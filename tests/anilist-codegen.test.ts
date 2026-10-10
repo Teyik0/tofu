@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -26,9 +26,14 @@ test("a clean checkout generates the AniList SDK before type checking and reprod
   );
   await mkdir(join(directory, "scripts"));
   await Promise.all(
-    ["package.json", "codegen.ts", "biome.jsonc", "bunfig.toml", "scripts/anilist-codegen.ts"].map(
-      (file) => cp(join(import.meta.dir, "..", file), join(directory, file))
-    )
+    [
+      "package.json",
+      "codegen.ts",
+      "biome.jsonc",
+      "bunfig.toml",
+      ".gitignore",
+      "scripts/anilist-codegen.ts",
+    ].map((file) => cp(join(import.meta.dir, "..", file), join(directory, file)))
   );
   await Bun.write(
     join(directory, "tsconfig.json"),
@@ -61,8 +66,10 @@ test("a clean checkout generates the AniList SDK before type checking and reprod
     const [validExit, validError] = await run("tscheck");
     expect(validExit, validError).toBe(0);
     const output = await Bun.file(join(directory, graphqlPath, "generated.ts")).text();
+    const modifiedAt = (await stat(join(directory, graphqlPath, "generated.ts"))).mtimeMs;
     expect((await run("codegen"))[0]).toBe(0);
     expect(await Bun.file(join(directory, graphqlPath, "generated.ts")).text()).toBe(output);
+    expect((await stat(join(directory, graphqlPath, "generated.ts"))).mtimeMs).toBe(modifiedAt);
     expect((await run("codegen:check"))[0]).toBe(0);
     await Bun.write(join(directory, graphqlPath, "generated.ts"), "// Stale SDK\n");
     const [staleExit, staleError] = await run("codegen:check");

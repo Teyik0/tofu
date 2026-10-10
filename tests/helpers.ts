@@ -60,12 +60,12 @@ export async function fixture(length: number, trackers: string[], filename?: str
   const sync = await openTestDatabase(join(directory, "state"));
   const api = new Elysia()
     .use(desktopApp({ restrictWebToLoopback: true }))
-    .use(createTestApi(() => engine, sync.options));
+    .use(await createTestApi(() => engine, sync.options));
   return {
     api,
     bytes,
     async close() {
-      sync.close();
+      await sync.close();
       await Promise.all([
         engine.close(),
         new Promise<void>((resolve) => seeder.destroy(() => resolve())),

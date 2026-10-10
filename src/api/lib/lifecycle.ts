@@ -1,157 +1,158 @@
 import type { SyncRuntimeOptions, TransactionalSyncAdapter } from "@teyik0/furin/sync";
 import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import { version } from "../../../package.json";
-import { sync } from "../../sync";
+import type { CoreApplication } from "../../types";
 import { readAniListClient } from "../modules/anilist/client";
 import { AutomationService } from "../modules/automation/service";
 import { pluginEndpoints } from "../modules/plugins/service";
 import { WorkerTorrentEngine } from "../modules/torrents/worker-client";
 import { UpdatesService } from "../modules/updates/service";
 import { assertDatabaseReady, type DatabaseTransaction, openDatabase } from "./db";
+import { applicationHost, hostIntegration, instance } from "./host";
 import { acquireInstance } from "./instance";
-import { dataDir, getDesktop, getNativeSdk, instance, runtime } from "./runtime";
-import { services } from "./services";
 
-export async function assertRuntimeReady() {
-  const { engine, db } = runtime;
-  if (!engine) {
-    throw new Error("The torrent engine has not been initialized");
-  }
-  if (!db) {
-    throw new Error("The database has not been initialized");
-  }
-  assertDatabaseReady(db);
-  await engine.assertReady();
+export async function assertApplicationReady(application: Pick<CoreApplication, "db" | "engine">) {
+  assertDatabaseReady(application.db);
+  await application.engine.assertReady();
 }
 
 export async function onStartup(signal: AbortSignal) {
-  // Elysia runs setup hooks concurrently; the native host also starts before listening.
-  // Share initialization so every caller waits for the same resources.
-  signal.throwIfAborted();
-  runtime.startupController ??= new AbortController();
-  const controller = runtime.startupController;
-  signal.addEventListener("abort", () => controller.abort(signal.reason), {
-    once: true,
-    signal: controller.signal,
-  });
-  runtime.starting ??= start(controller.signal);
-  await runtime.starting;
+  const core = await applicationHost.prepare(openCoreApplication, signal);
+  if (!instance.desktop) {
+    applicationHost.activate(core, { kind: "server" });
+  }
 }
 
-async function start(signal: AbortSignal) {
-  runtime.closing = false;
+export function onShutdown() {
+  return applicationHost.stop();
+}
+
+export async function openCoreApplication(signal: AbortSignal): Promise<CoreApplication> {
+  const resources = new AsyncDisposableStack();
   try {
     signal.throwIfAborted();
-    await initialize(signal);
+    const sdk = hostIntegration.tofuNativeSdk;
+    if (instance.desktop && !sdk) {
+      throw new Error("The native SDK must be supplied before desktop startup");
+    }
+    const lease = await acquireInstance(instance);
+    resources.defer(() => lease.close());
     signal.throwIfAborted();
-  } catch (error) {
-    runtime.closing = false;
-    await onShutdown();
-    throw error;
-  }
-}
-
-export async function onShutdown() {
-  if (runtime.closing) {
-    return;
-  }
-  runtime.closing = true;
-  runtime.startupController?.abort();
-  runtime.updates?.close();
-  clearInterval(runtime.timer);
-  await runtime.publishing;
-  try {
-    await runtime.automation?.close();
-    await runtime.engine?.close();
-  } finally {
-    runtime.db?.$client.close();
-    await runtime.lease?.close();
-    runtime.engine = undefined;
-    runtime.automation = undefined;
-    runtime.db = undefined;
-    runtime.lease = undefined;
-    runtime.updates = undefined;
-    runtime.starting = undefined;
-    runtime.startupController = undefined;
-  }
-}
-
-async function initialize(signal: AbortSignal) {
-  const { desktop } = instance;
-  const sdk = desktop ? getNativeSdk() : null;
-  runtime.lease ??= await acquireInstance(instance);
-  signal.throwIfAborted();
-  runtime.db ??= await openDatabase(dataDir);
-  services.syncAdapter = drizzleSyncAdapter({ db: runtime.db, namespace: "tofu" });
-  signal.throwIfAborted();
-  const engine =
-    runtime.engine ??
-    (await WorkerTorrentEngine.open({
-      dataDir,
+    const db = await openDatabase(instance.dataDir);
+    resources.defer(() => db.$client.close());
+    assertDatabaseReady(db);
+    signal.throwIfAborted();
+    const engine = await WorkerTorrentEngine.open({
+      dataDir: instance.dataDir,
       downloadPath: instance.downloadPath,
       network: { maxConns: 100, userAgent: `Tofu/${version}`, utp: false },
-    }));
-  runtime.engine = engine;
-  services.engine = engine;
-  signal.throwIfAborted();
-  const anilistClient = await readAniListClient(
-    instance.profile,
-    process.env.TOFU_ANILIST_CLIENT_ID,
-    process.execPath
-  );
-  runtime.automation ??= await AutomationService.open(
-    {
-      anilistClient,
-      dataDir,
-      endpoints: pluginEndpoints,
-      engine: () => services.engine,
-      now: Date.now,
-    },
-    runtime.db
-  );
-  signal.throwIfAborted();
-  void runtime.automation.start().catch(console.error);
-  engine.mode = desktop ? "desktop" : "server";
-  runtime.updates ??= await UpdatesService.open({
-    apiOrigin: "https://api.github.com",
-    arch: process.arch,
-    dataDir,
-    native:
-      sdk && instance.profile === "release"
-        ? {
-            applyUpdate: () => getDesktop().installUpdate(),
-            checkForUpdate: sdk.Updater.checkForUpdate,
-            downloadUpdate: sdk.Updater.downloadUpdate,
-            onStatusChange: sdk.Updater.onStatusChange,
-            updateInfo: sdk.Updater.updateInfo,
-          }
-        : undefined,
-    notify: (latest) => {
-      if (desktop) {
-        Promise.resolve(
-          getNativeSdk().Utils.showNotification({
-            body: `Open ${instance.name} to update to the new version.`,
-            title: `${instance.name} : Tofu ${latest} is available`,
-          })
-        ).catch(console.error);
+    });
+    resources.defer(() => engine.close());
+    engine.mode = instance.desktop ? "desktop" : "server";
+    await assertApplicationReady({ db, engine });
+    signal.throwIfAborted();
+    const anilistClient = await readAniListClient(
+      instance.profile,
+      process.env.TOFU_ANILIST_CLIENT_ID,
+      process.execPath
+    );
+    const automation = await AutomationService.open(
+      {
+        anilistClient,
+        dataDir: instance.dataDir,
+        endpoints: pluginEndpoints,
+        engine: () => engine,
+        now: Date.now,
+      },
+      db
+    );
+    resources.defer(() => automation.close());
+    signal.throwIfAborted();
+    const updates = await UpdatesService.open({
+      apiOrigin: "https://api.github.com",
+      arch: process.arch,
+      dataDir: instance.dataDir,
+      native:
+        sdk && instance.profile === "release"
+          ? {
+              applyUpdate: async () => {
+                const application = await applicationHost.application;
+                if (application.platform.kind === "desktop") {
+                  await application.platform.controller.installUpdate();
+                }
+              },
+              checkForUpdate: sdk.Updater.checkForUpdate,
+              downloadUpdate: sdk.Updater.downloadUpdate,
+              onStatusChange: sdk.Updater.onStatusChange,
+              updateInfo: sdk.Updater.updateInfo,
+            }
+          : undefined,
+      notify: (latest) => {
+        if (sdk) {
+          Promise.resolve(
+            sdk.Utils.showNotification({
+              body: `Open ${instance.name} to update to the new version.`,
+              title: `${instance.name} : Tofu ${latest} is available`,
+            })
+          ).catch(console.error);
+        }
+      },
+      platform: process.platform,
+      version,
+    });
+    resources.defer(() => updates.close());
+    const sync = {
+      adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),
+      principal: () => "local",
+    };
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let publishing: Promise<void> | null = null;
+    let started = false;
+    resources.defer(async () => {
+      if (timer) {
+        clearInterval(timer);
       }
-    },
-    platform: process.platform,
-    version,
-  });
-  signal.throwIfAborted();
-  runtime.updates.start();
-  clearInterval(runtime.timer);
-  runtime.timer = setInterval(() => {
-    if (!runtime.publishing) {
-      runtime.publishing = publishEngineChanges(sync)
-        .catch(console.error)
-        .finally(() => {
-          runtime.publishing = undefined;
-        });
+      await publishing;
+    });
+    signal.throwIfAborted();
+    const lifetime = resources.move();
+    return {
+      automation,
+      close: () => lifetime.disposeAsync(),
+      db,
+      engine,
+      instance,
+      startBackground() {
+        if (started) {
+          return;
+        }
+        started = true;
+        // External feeds are optional; their availability must not prevent local startup.
+        void automation.start().catch(console.error);
+        updates.start();
+        timer = setInterval(() => {
+          publishing ??= publishEngineChanges(sync)
+            .catch(console.error)
+            .finally(() => {
+              publishing = null;
+            });
+        }, 1000);
+        timer.unref();
+      },
+      sync,
+      updates,
+    };
+  } catch (error) {
+    try {
+      await resources.disposeAsync();
+    } catch (cleanupError) {
+      // biome-ignore lint/style/useErrorCause: AggregateError takes ErrorOptions as its third argument and retains both errors.
+      throw new AggregateError([error, cleanupError], "Application startup and cleanup failed", {
+        cause: cleanupError,
+      });
     }
-  }, 1000);
-  runtime.timer.unref();
+    throw error;
+  }
 }
 
 // Worker events originate outside HTTP mutations and still need durable invalidations.

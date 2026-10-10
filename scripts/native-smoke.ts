@@ -110,11 +110,18 @@ async function generalPreferencesWorkflow(config: { reportUrl: string }) {
         season: null,
         title: "Existing Show",
       }),
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+      },
       method: "POST",
     });
     check("An existing rule can keep its own preferences", created.ok);
-    const existing = (await created.json()) as import("../src/types").AutomationRule;
+    const createdRule = (await created.json()) as import("../src/types").AutomationRule;
+    const existing = (await state()).automations.find((rule) => rule.id === createdRule.id);
+    if (!existing) {
+      throw new Error("The existing rule is missing from the application state");
+    }
     click("Settings");
     await wait(() => location.pathname === "/options");
     document.querySelector<HTMLAnchorElement>('a[href="/options/preferences"]')!.click();
@@ -186,8 +193,14 @@ async function generalPreferencesWorkflow(config: { reportUrl: string }) {
     );
     check(
       "General preferences preserve existing rule settings",
-      JSON.stringify(saved.automations.find((rule) => rule.id === existing.id)) ===
-        JSON.stringify(existing)
+      Object.entries(existing).every(
+        ([key, value]) =>
+          JSON.stringify(
+            saved.automations.find((rule) => rule.id === existing.id)?.[
+              key as keyof typeof existing
+            ]
+          ) === JSON.stringify(value)
+      )
     );
     const interpreted = await fetch("/api/automations/interpret", {
       body: JSON.stringify({ destinationId: "default", query: "New Show" }),
@@ -615,7 +628,7 @@ async function themeWorkflow(config: { appearanceMarkup: string; reportUrl: stri
         getComputedStyle(document.documentElement).backgroundColor === "rgb(23, 27, 20)" &&
         getComputedStyle(document.documentElement).colorScheme === "dark"
     );
-    checks.push("External appearance changes reach the theme provider through Furin Sync");
+    checks.push("External appearance changes reach the theme store through Furin Sync");
     await fetch(config.reportUrl, {
       body: JSON.stringify({ checks, passed: true }),
       method: "POST",
@@ -2731,6 +2744,16 @@ async function pluginsWorkflow(config: { reportUrl: string }) {
         toggle("jev").getAttribute("aria-checked") === "false"
     );
     set("#key-jev", "submitted-native-key");
+    set("#jev-daily-limit", "0");
+    document.querySelector<HTMLFormElement>("#plugin-form-jev")!.requestSubmit();
+    await wait(
+      () => document.querySelector("#jev-daily-limit")?.getAttribute("aria-invalid") === "true"
+    );
+    check(
+      "Invalid limits stay in the form without sending a configuration request",
+      !keySaveStarted &&
+        document.querySelector<HTMLInputElement>("#key-jev")!.value === "submitted-native-key"
+    );
     set("#jev-daily-limit", "42");
     await wait(
       () =>
@@ -2749,6 +2772,7 @@ async function pluginsWorkflow(config: { reportUrl: string }) {
         document.querySelector<HTMLInputElement>("#jev-daily-limit")!.value === "42"
     );
     set("#key-jev", "new-unsaved-native-key");
+    set("#jev-daily-limit", "43");
     keySave.resolve();
     await wait(async () =>
       (await state()).plugins.some((plugin) => plugin.id === "jev" && plugin.hasApiKey)
@@ -2761,6 +2785,11 @@ async function pluginsWorkflow(config: { reportUrl: string }) {
     check(
       "A completed save keeps credentials edited after navigating away",
       document.querySelector<HTMLInputElement>("#key-jev")!.value === "new-unsaved-native-key"
+    );
+    check(
+      "A completed save keeps limits edited while the submitted limit reaches the API",
+      document.querySelector<HTMLInputElement>("#jev-daily-limit")!.value === "43" &&
+        (await state()).plugins.find((plugin) => plugin.id === "jev")?.dailyLimit === 42
     );
     click("Sources");
     await wait(
@@ -2798,6 +2827,10 @@ async function pluginsWorkflow(config: { reportUrl: string }) {
     document.querySelector<HTMLFormElement>("#plugin-form-jev")!.requestSubmit();
     await wait(() => document.querySelector<HTMLInputElement>("#key-jev")?.value === "");
     check("A successful form action clears the submitted credential", true);
+    check(
+      "The next save persists the edited limit",
+      (await state()).plugins.find((plugin) => plugin.id === "jev")?.dailyLimit === 43
+    );
     check("No JavaScript errors", errors.length === 0);
     await nativeFetch(config.reportUrl, {
       body: JSON.stringify({ checks, errors, passed: true }),

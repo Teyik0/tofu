@@ -45,7 +45,7 @@ test.each(["source", "bundle", "host"])(
         network,
       });
       opened = engine;
-      const api = createTestApi(() => engine, context.sync.options);
+      const api = await createTestApi(() => engine, context.sync.options);
       const request = (path: string, init: RequestInit | undefined) =>
         api.handle(new Request(`http://localhost/api${path}`, init));
       const added = await request("/torrents", json({ paused: false, source: context.magnet }));
@@ -78,7 +78,7 @@ test("isolated engine lifecycle preserves files and public errors across restart
     network,
   };
   let engine = await WorkerTorrentEngine.open(options);
-  const api = createTestApi(() => engine, context.sync.options);
+  let api = await createTestApi(() => engine, context.sync.options);
   const request = (path: string, init: RequestInit | undefined) =>
     api.handle(new Request(`http://localhost/api${path}`, init));
   try {
@@ -101,6 +101,7 @@ test("isolated engine lifecycle preserves files and public errors across restart
     );
     await engine.close();
     engine = await WorkerTorrentEngine.open(options);
+    api = await createTestApi(() => engine, context.sync.options);
     expect((await detail()).status).toBe("paused");
     expect((await request(`/torrents/${id}/resume`, json({}))).status).toBe(200);
     await waitFor(detail, (value) => value.status === "seeding");
@@ -143,7 +144,7 @@ test("health and summaries stay responsive during peer handshakes", async () => 
     downloadPath: join(context.directory, "worker-downloads"),
     network: { ...network, maxConns: 100 },
   });
-  const api = createTestApi(() => engine, context.sync.options);
+  const api = await createTestApi(() => engine, context.sync.options);
   const request = (path: string, init: RequestInit | undefined) =>
     api.handle(new Request(`http://localhost/api${path}`, init));
   try {

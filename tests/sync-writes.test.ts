@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { createSyncChangesPlugin } from "@teyik0/furin/sync";
+import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import { sql } from "drizzle-orm";
 import { AutomationService } from "../src/api/modules/automation/service";
 import { pluginEndpoints } from "../src/api/modules/plugins/service";
-import { sync } from "../src/sync";
 import type { AutomationPreferences, AutomationState } from "../src/types";
 import { createTestApi } from "./api-fixture";
 import { fixture, json } from "./helpers";
@@ -17,11 +17,18 @@ test("a failed preferences write leaves persisted state, live state and the jour
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
-    () => context.engine,
-    context.sync.options,
-    () => service
-  ).use(createSyncChangesPlugin(sync));
+  const api = (
+    await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    )
+  ).use(
+    createSyncChangesPlugin({
+      adapter: drizzleSyncAdapter({ db: service.db, namespace: "tofu" }),
+      principal: () => "local",
+    })
+  );
   const initial = service.snapshot().preferences;
   const changed = { ...initial, waitMinutes: 35 };
   const save = () =>
@@ -57,11 +64,18 @@ test("saved automation preferences replay their original response without overwr
     engine: () => context.engine,
     now: () => clock,
   });
-  const api = createTestApi(
-    () => context.engine,
-    context.sync.options,
-    () => service
-  ).use(createSyncChangesPlugin(sync));
+  const api = (
+    await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    )
+  ).use(
+    createSyncChangesPlugin({
+      adapter: drizzleSyncAdapter({ db: service.db, namespace: "tofu" }),
+      principal: () => "local",
+    })
+  );
   const initial = service.snapshot().preferences;
   const first = { ...initial, waitMinutes: 20 };
   const newer = { ...initial, waitMinutes: 60 };
@@ -105,7 +119,7 @@ test("creating and deleting an automation can be replayed without creating a sec
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

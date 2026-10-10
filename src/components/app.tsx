@@ -1,4 +1,5 @@
 import { Await, useMutation, useQuery } from "@teyik0/furin/client";
+import { useAtom, useSetAtom } from "jotai";
 import {
   AlertCircleIcon,
   DownloadIcon,
@@ -12,6 +13,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { version } from "../../package.json";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
+import { modalAtom, selectedTorrentAtom } from "../state/workspace";
 import type { DashboardState, TorrentDetail, TorrentSummary } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import type { AutomationSection } from "./automation-center";
@@ -42,7 +44,6 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
-import { useWorkspace } from "./workspace-state";
 
 type Filter = "all" | "downloading" | "seeding" | "paused" | "error";
 const filters: { id: Filter; label: string }[] = [
@@ -77,7 +78,8 @@ export function App({
     // Await still receives the original promise and displays errors when the snapshot is used.
     void initialDetail.catch(() => undefined);
   }, [initialDetail]);
-  const { open: setModal, selected, setSelected } = useWorkspace();
+  const setModal = useSetAtom(modalAtom);
+  const [selected, setSelected] = useAtom(selectedTorrentAtom);
   const refresh = useRefresh();
   const bulk = useMutation(api.bulk.post);
   const pause = useMutation((id: string) => api.torrents({ id }).pause.post());
@@ -575,7 +577,7 @@ function SelectedDetail({
   act: (id: string, task: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
 }) {
-  const { open } = useWorkspace();
+  const open = useSetAtom(modalAtom);
   const { data: live, error } = useQuery(api.torrents({ id }).get);
   const summary = data.torrents.find((item) => item.id === id);
   const cached = live && "id" in live ? live : null;

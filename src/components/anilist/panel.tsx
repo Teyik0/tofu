@@ -1,3 +1,4 @@
+import { Form, getDeepError, useField, useForm, validate } from "@formisch/react";
 import { useMutation, useQuery } from "@teyik0/furin/client";
 import {
   CheckIcon,
@@ -8,7 +9,9 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useEffectEvent, useState } from "react";
-import { api } from "../lib/client";
+import { pick } from "valibot";
+import { aniListConfigurationSchema, trackingFormSchema } from "../../api/modules/anilist/model";
+import { api } from "../../lib/client";
 import type {
   AniListState,
   AniListStatus,
@@ -18,22 +21,22 @@ import type {
   AutomationRule,
   Destination,
   PluginState,
-} from "../types";
-import { ActionTooltip } from "./action-tooltip";
-import { AniListCover } from "./anilist-cover";
-import { aniListStatusLabel } from "./anilist-status";
-import { AniListThreads } from "./anilist-threads";
-import { request } from "./api";
-import { PreferenceFields, preferenceSummary } from "./automation-fields";
-import { useNow } from "./automation-inbox";
-import { relative } from "./format";
-import { OptionSelect } from "./option-select";
-import { Alert, AlertDescription } from "./ui/alert";
-import { Badge } from "./ui/badge";
-import { Button, buttonVariants } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "./ui/field";
-import { Input } from "./ui/input";
+} from "../../types";
+import { ActionTooltip } from "../action-tooltip";
+import { request } from "../api";
+import { PreferenceFields, preferenceSummary } from "../automation-fields";
+import { useNow } from "../automation-inbox";
+import { relative } from "../format";
+import { OptionSelect } from "../option-select";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Button, buttonVariants } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "../ui/field";
+import { Input } from "../ui/input";
+import { AniListCover } from "./cover";
+import { aniListStatusLabel } from "./status";
+import { AniListThreads } from "./threads";
 
 type Action = (task: () => Promise<void>) => void;
 function AniListConnection({
@@ -55,7 +58,14 @@ function AniListConnection({
   const configure = useMutation(api.anilist.put);
   const enablePlugin = useMutation(api.plugins({ id: "anilist" }).put);
   const loadList = useMutation(api.anilist.list.post);
-  const [userName, setUserName] = useState(state.userName);
+  const accountForm = useForm({
+    initialInput: { userName: state.userName },
+    schema: pick(aniListConfigurationSchema, ["userName"]),
+  });
+  const userNameField = useField(accountForm, { path: ["userName"] });
+  const userName = userNameField.input ?? "";
+  const setUserName = userNameField.onChange;
+  const accountError = getDeepError(accountForm);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const poll = useEffectEvent(async () => {
@@ -160,35 +170,43 @@ function AniListConnection({
       {state.authenticated ? null : (
         <details>
           <summary>Use a public account name instead</summary>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="anilist-username">Public AniList account name</FieldLabel>
-              <Input
-                id="anilist-username"
-                onChange={(event) => setUserName(event.target.value)}
-                placeholder="Your AniList username"
-                value={userName}
-              />
-              <FieldDescription>
-                Read a public list without connecting. Updating watched episodes requires account
-                authorization.
-              </FieldDescription>
-            </Field>
-            <Button
-              disabled={busy}
-              onClick={() =>
-                action(async () => {
-                  await configure.mutateAsync({ userName });
-                  await enablePlugin.mutateAsync({ enabled: true });
-                  await loadList.mutateAsync();
-                  await afterMutation?.();
-                })
-              }
-              variant="outline"
-            >
-              Load public list
-            </Button>
-          </FieldGroup>
+          <Form
+            of={accountForm}
+            onSubmit={(configuration) =>
+              action(async () => {
+                await configure.mutateAsync(configuration);
+                await enablePlugin.mutateAsync({ enabled: true });
+                await loadList.mutateAsync();
+                await afterMutation?.();
+              })
+            }
+          >
+            <FieldGroup>
+              <Field data-invalid={Boolean(userNameField.errors)}>
+                <FieldLabel htmlFor="anilist-username">Public AniList account name</FieldLabel>
+                <Input
+                  {...userNameField.props}
+                  aria-invalid={Boolean(userNameField.errors)}
+                  id="anilist-username"
+                  onChange={(event) => setUserName(event.target.value)}
+                  placeholder="Your AniList username"
+                  value={userName}
+                />
+                <FieldDescription>
+                  Read a public list without connecting. Updating watched episodes requires account
+                  authorization.
+                </FieldDescription>
+              </Field>
+              <Button disabled={busy} type="submit" variant="outline">
+                Load public list
+              </Button>
+            </FieldGroup>
+            {accountError && (
+              <Alert variant="destructive">
+                <AlertDescription>{accountError}</AlertDescription>
+              </Alert>
+            )}
+          </Form>
         </details>
       )}
     </section>
@@ -269,14 +287,36 @@ export const AniListPanel = ({
   const removeSubscription = useMutation((id: string) =>
     api.anilist.subscriptions({ id }).delete()
   );
-  const [statuses, setStatuses] = useState<AniListStatus[]>(["CURRENT", "PLANNING"]);
-  const [mode, setMode] = useState<"per-anime" | "shared">("per-anime");
-  const [basePath, setBasePath] = useState(
-    () => destinations.find((destination) => destination.id === target)?.downloadPath ?? ""
+  const trackingForm = useForm({
+    initialInput: {
+      basePath: destinations.find((destination) => destination.id === target)?.downloadPath ?? "",
+      custom: null,
+      mode: "per-anime",
+      proposals: null,
+      statuses: ["CURRENT", "PLANNING"],
+    },
+    schema: trackingFormSchema,
+  });
+  const statusesField = useField(trackingForm, { path: ["statuses"] });
+  const modeField = useField(trackingForm, { path: ["mode"] });
+  const basePathField = useField(trackingForm, { path: ["basePath"] });
+  const customField = useField(trackingForm, { path: ["custom"] });
+  const proposalsField = useField(trackingForm, { path: ["proposals"] });
+  const statuses = (statusesField.input ?? []).filter(
+    (status): status is AniListStatus => status !== undefined
   );
-  const [custom, setCustom] = useState<AutomationPreferences | null>(null);
+  const setStatuses = statusesField.onChange;
+  const mode = modeField.input ?? "per-anime";
+  const setMode = modeField.onChange;
+  const basePath = basePathField.input ?? "";
+  const setBasePath = basePathField.onChange;
+  // Both editors always write complete API-shaped values into these fields.
+  const custom = customField.input as AutomationPreferences | null;
+  const setCustom = customField.onChange;
+  const proposals = proposalsField.input as AniListThreadProposal[] | null;
+  const setProposals = proposalsField.onChange;
   const [prepared, setPrepared] = useState(false);
-  const [proposals, setProposals] = useState<AniListThreadProposal[] | null>(null);
+  const trackingError = getDeepError(trackingForm);
   const now = useNow(60_000);
   const pluginEnabled = plugin?.enabled === true;
   const unprepare = () => {
@@ -329,6 +369,11 @@ export const AniListPanel = ({
             Enable the AniList plugin to read your lists. Connecting your account enables it
             automatically.
           </AlertDescription>
+        </Alert>
+      )}
+      {trackingError && (
+        <Alert variant="destructive">
+          <AlertDescription>{trackingError}</AlertDescription>
         </Alert>
       )}
       <ol className="setup-steps">
@@ -445,6 +490,8 @@ export const AniListPanel = ({
                 <FieldLabel htmlFor="anilist-base-path">Root folder</FieldLabel>
                 <Input
                   disabled={busy}
+                  {...basePathField.props}
+                  aria-invalid={Boolean(basePathField.errors)}
                   id="anilist-base-path"
                   onChange={(event) => {
                     setBasePath(event.target.value);
@@ -502,6 +549,9 @@ export const AniListPanel = ({
               disabled={busy || !statuses.length || (mode === "per-anime" && !basePath.trim())}
               onClick={() =>
                 action(async () => {
+                  if (!(await validate(trackingForm, { shouldFocus: true })).success) {
+                    return;
+                  }
                   setProposals(
                     mode === "per-anime"
                       ? await request<AniListThreadProposal[]>("/anilist/threads/preview", "POST", {
@@ -534,6 +584,9 @@ export const AniListPanel = ({
                 }
                 onClick={() =>
                   action(async () => {
+                    if (!(await validate(trackingForm, { shouldFocus: true })).success) {
+                      return;
+                    }
                     const subscription = await createSubscription.mutateAsync({
                       enabled: true,
                       intervalMinutes: Math.max(5, template.intervalMinutes),

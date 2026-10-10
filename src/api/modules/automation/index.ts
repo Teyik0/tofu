@@ -1,26 +1,27 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
-import { services } from "../../lib/services";
+import { contextPlugin } from "../../lib/context";
 import { draft, preferences } from "./model";
 
-export const automation = new Elysia({ name: "tofu-automation-api" })
+export const automationPlugin = new Elysia({ name: "tofu-automation-api" })
+  .use(contextPlugin)
   .use(furinSync(sync))
-  .get("/automation", () => services.automation.snapshot())
+  .get("/automation", ({ application }) => application.automation.snapshot())
   .put(
     "/automation/preferences",
     {
       body: preferences,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ body, mutation }) => {
-      const result = await mutation((tx) => services.automation.writePreferences(tx, body));
-      services.automation.refreshState();
+    async ({ application, body, mutation }) => {
+      const result = await mutation((tx) => application.automation.writePreferences(tx, body));
+      application.automation.refreshState();
       return result;
     }
   )
-  .post("/automations/preview", { body: draft, sync: false }, ({ body }) =>
-    services.automation.preview(body)
+  .post("/automations/preview", { body: draft, sync: false }, ({ application, body }) =>
+    application.automation.preview(body)
   )
   .post(
     "/automations",
@@ -28,8 +29,8 @@ export const automation = new Elysia({ name: "tofu-automation-api" })
       body: draft,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ body, mutation }) => {
-      const service = services.automation;
+    async ({ application, body, mutation }) => {
+      const service = application.automation;
       const prepared = await service.prepareRule(null, body);
       const result = await mutation((tx) => service.writeRule(tx, prepared));
       service.refreshState();
@@ -42,8 +43,8 @@ export const automation = new Elysia({ name: "tofu-automation-api" })
       body: draft,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ params, body, mutation }) => {
-      const service = services.automation;
+    async ({ application, params, body, mutation }) => {
+      const service = application.automation;
       const prepared = await service.prepareRule(params.id, body);
       const result = await mutation((tx) => service.writeRule(tx, prepared));
       service.refreshState();
@@ -55,24 +56,26 @@ export const automation = new Elysia({ name: "tofu-automation-api" })
     {
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ params, mutation }) => {
-      const service = services.automation;
+    async ({ application, params, mutation }) => {
+      const service = application.automation;
       const result = await mutation((tx) => service.deleteRule(tx, params.id));
       service.refreshState();
       return result;
     }
   )
-  .post("/automations/:id/run", { sync: false }, ({ params }) => services.automation.run(params.id))
-  .post("/automation-decisions/:id/approve", { sync: false }, ({ params }) =>
-    services.automation.approve(params.id)
+  .post("/automations/:id/run", { sync: false }, ({ application, params }) =>
+    application.automation.run(params.id)
+  )
+  .post("/automation-decisions/:id/approve", { sync: false }, ({ application, params }) =>
+    application.automation.approve(params.id)
   )
   .post(
     "/automation-decisions/:id/ignore",
     {
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ params, mutation }) => {
-      const service = services.automation;
+    async ({ application, params, mutation }) => {
+      const service = application.automation;
       const result = await mutation((tx) => service.ignoreDecision(tx, params.id));
       service.refreshState();
       return result;

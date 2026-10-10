@@ -53,7 +53,7 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -144,7 +144,7 @@ test("equal and worse releases are skipped, ideal episodes stop Jev matching whi
     engine: () => context.engine,
     now: () => clock,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -260,7 +260,7 @@ test.each([true, false])(
       now: Date.now,
     };
     let service = await AutomationService.open(options);
-    const api = createTestApi(
+    let api = await createTestApi(
       () => fallback.engine,
       fallback.sync.options,
       () => service
@@ -299,6 +299,11 @@ test.each([true, false])(
       expect(await Bun.file(oldPath).bytes()).toEqual(new Uint8Array(fallback.bytes));
       await service.close();
       service = await AutomationService.open(options);
+      api = await createTestApi(
+        () => fallback.engine,
+        fallback.sync.options,
+        () => service
+      );
       available = true;
       const upgraded = await run(rule.id);
       expect(upgraded.decisions[0]?.torrentId).toBe(replacement.seed.infoHash);
@@ -306,6 +311,11 @@ test.each([true, false])(
       expect(await Bun.file(oldPath).exists()).toBe(true);
       await service.close();
       service = await AutomationService.open(options);
+      api = await createTestApi(
+        () => fallback.engine,
+        fallback.sync.options,
+        () => service
+      );
       await request(
         `/torrents/${replacement.seed.infoHash}/peers`,
         json({ peer: `127.0.0.1:${replacement.seeder.torrentPort}` })

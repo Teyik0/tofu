@@ -8,8 +8,6 @@ import { integer, sqliteTable } from "drizzle-orm/sqlite-core";
 import { Elysia } from "elysia";
 import { createDatabase } from "../src/api/lib/db";
 import { publishEngineChanges } from "../src/api/lib/lifecycle";
-import { services } from "../src/api/lib/services";
-import { sync as liveSync } from "../src/sync";
 import { openTestDatabase } from "./database";
 import { fixture } from "./helpers";
 
@@ -59,14 +57,14 @@ test("the legacy journal migrates once without losing replay responses or changi
     const latest = await (
       await migrated.handle("http://localhost/_furin/sync/changes?after=0")
     ).json();
-    current.close();
+    await current?.close();
     current = await openTestDatabase(context.directory);
     const restarted = new Elysia().use(createSyncChangesPlugin(current.options));
     expect(
       await (await restarted.handle("http://localhost/_furin/sync/changes?after=0")).json()
     ).toEqual(latest);
   } finally {
-    current?.close();
+    await current?.close();
     legacy.$client.close();
     await context.close();
   }
@@ -74,11 +72,10 @@ test("the legacy journal migrates once without losing replay responses or changi
 
 test("SQL mutations commit with the journal and replay without repeating their writes", async () => {
   const context = await fixture(1024, []);
-  const previous = services.syncAdapter;
   try {
     const app = new Elysia()
-      .use(furinSync(liveSync))
-      .use(createSyncChangesPlugin(liveSync))
+      .use(furinSync(context.sync.options))
+      .use(createSyncChangesPlugin(context.sync.options))
       .post("/counter", { sync: { invalidate: { path: "/", type: "layout" } } }, ({ mutation }) =>
         mutation((tx) => {
           tx.run(sql`CREATE TABLE IF NOT EXISTS sync_counter (value INTEGER NOT NULL)`);
@@ -86,7 +83,6 @@ test("SQL mutations commit with the journal and replay without repeating their w
           return { count: tx.select().from(counter).all().length };
         })
       );
-    services.syncAdapter = context.sync.options.adapter;
     const request = (key: string) =>
       new Request("http://localhost/counter", {
         headers: { "idempotency-key": key },
@@ -105,7 +101,6 @@ test("SQL mutations commit with the journal and replay without repeating their w
     );
     expect(await (await app.handle(request("second"))).json()).toEqual({ count: 2 });
   } finally {
-    services.syncAdapter = previous;
     await context.close();
   }
 });
@@ -165,7 +160,7 @@ test("live engine updates are recoverable through the Furin Sync journal", async
     expect(nextPage.reset).toBe(true);
     expect(nextPage.cursor).not.toBe(page.cursor);
   } finally {
-    sync.close();
+    await sync.close();
     await context.close();
   }
 });
@@ -177,7 +172,7 @@ test("the journal preserves live changes across database restarts", async () => 
     const app = new Elysia().use(createSyncChangesPlugin(sync.options));
     await publishEngineChanges(sync.options);
     const page = await (await app.handle("http://localhost/_furin/sync/changes?after=0")).json();
-    sync.close();
+    await sync.close();
     sync = await openTestDatabase(context.directory);
     const restarted = new Elysia().use(createSyncChangesPlugin(sync.options));
     expect(
@@ -190,7 +185,7 @@ test("the journal preserves live changes across database restarts", async () => 
     expect(next.reset).toBe(true);
     expect(next.cursor).not.toBe(page.cursor);
   } finally {
-    sync.close();
+    await sync.close();
     await context.close();
   }
 });

@@ -1,4 +1,52 @@
+import type { FormStore } from "@formisch/react";
+import type { SyncRuntimeOptions } from "@teyik0/furin/sync";
+import type { DrizzleSqliteSyncAdapter } from "@teyik0/furin/sync/drizzle";
+import type { InferOutput } from "valibot";
 import type { Options as TorrentNetworkOptions } from "webtorrent";
+import type { TofuDatabase } from "./api/lib/db";
+import type { AutomationService } from "./api/modules/automation/service";
+import type { DesktopController } from "./api/modules/desktop/service";
+import type { pluginConfigurationSchema, pluginFormSchema } from "./api/modules/plugins/model";
+import type { UpdatesService } from "./api/modules/updates/service";
+
+export type ApplicationSync = SyncRuntimeOptions<DrizzleSqliteSyncAdapter<TofuDatabase>>;
+export type ApplicationInstance = InstanceConfig & { desktop: boolean };
+export type NativeSdk = typeof import("electrobun/main");
+export type ApplicationPlatform =
+  | { kind: "server" }
+  | {
+      kind: "desktop";
+      utils: Pick<NativeSdk["Utils"], "openFileDialog" | "openPath"> & {
+        openExternal: (url: string) => boolean | Promise<boolean>;
+      };
+      controller: Pick<
+        DesktopController,
+        "snapshot" | "open" | "background" | "openDownload" | "installUpdate"
+      >;
+    };
+
+export interface CoreApplication {
+  readonly automation: AutomationService;
+  close: () => Promise<void>;
+  readonly db: TofuDatabase;
+  readonly engine: EnginePort;
+  readonly instance: ApplicationInstance;
+  startBackground: () => void;
+  readonly sync: ApplicationSync;
+  readonly updates: UpdatesService;
+}
+
+export interface Application extends CoreApplication {
+  readonly platform: ApplicationPlatform;
+}
+
+export type ApplicationState =
+  | { phase: "starting" | "stopping" | "stopped" }
+  | { phase: "ready"; application: Application };
+
+export interface ApplicationProvider {
+  readonly state: ApplicationState;
+}
 
 export type InstanceProfile = "dev" | "release";
 
@@ -533,3 +581,27 @@ export type EngineMessage =
   | { type: "snapshot"; state: DashboardState }
   | { type: "result"; id: number; value: unknown; state: DashboardState }
   | { type: "error"; id: number; message: string; status: number };
+
+export type PluginForm = FormStore<typeof pluginFormSchema>;
+export type PluginConfiguration = InferOutput<typeof pluginConfigurationSchema>;
+export type PluginForms = Record<PluginId, PluginForm>;
+
+export type ModalKind =
+  | FormModalKind
+  | { type: "automation"; destinationId: string; section: AutomationSection }
+  | { type: "deleteDestination"; destination: Destination };
+export type FormModalKind =
+  | { type: "add"; destinationId: string }
+  | { type: "drop"; files: File[] }
+  | { type: "destination"; destination: Destination | null }
+  | { type: "remove"; torrent: TorrentSummary }
+  | { type: "trackers"; torrent: TorrentDetail }
+  | { type: "peer"; torrent: TorrentDetail };
+
+export type AutomationSection =
+  | "inbox"
+  | "rules"
+  | "anilist"
+  | "discover"
+  | "history"
+  | "preferences";

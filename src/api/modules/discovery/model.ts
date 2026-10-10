@@ -1,18 +1,16 @@
-import { t } from "elysia";
+import { array, boolean, literal, maxLength, object, optional, pipe, string, union } from "valibot";
 import { source } from "../automation/model";
 
-export const discoverySchema = t.Object({
-  query: t.String({ maxLength: 1000 }),
-  sources: t.Optional(
-    t.Array(t.Union([t.Literal("nyaa"), t.Literal("tsundere"), t.Literal("c411")]), {
-      maxItems: 3,
-    })
+export const discoverySchema = object({
+  query: pipe(string(), maxLength(1000)),
+  sources: optional(
+    pipe(array(union([literal("nyaa"), literal("tsundere"), literal("c411")])), maxLength(3))
   ),
 });
 
-export const addReleaseSchema = t.Object({
-  destinationId: t.String(),
-  id: t.String({ maxLength: 4096 }),
-  paused: t.Boolean(),
+export const addReleaseSchema = object({
+  destinationId: string(),
+  id: pipe(string(), maxLength(4096)),
+  paused: boolean(),
   sourceId: source,
 });

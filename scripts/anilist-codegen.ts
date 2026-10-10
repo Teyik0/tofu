@@ -10,6 +10,7 @@ await Promise.all(
         process.execPath,
         join(import.meta.dir, "../node_modules/@biomejs/biome/bin/biome"),
         "format",
+        "--vcs-enabled=false",
         "--config-path",
         join(import.meta.dir, ".."),
         "--stdin-file-path",
@@ -30,14 +31,14 @@ await Promise.all(
     if (await formatting.exited) {
       throw new Error("Unable to format the generated AniList SDK");
     }
+    const previous = (await Bun.file(file.filename).exists())
+      ? await Bun.file(file.filename).text()
+      : null;
     if (process.argv.includes("--check")) {
-      if (
-        !(await Bun.file(file.filename).exists()) ||
-        (await Bun.file(file.filename).text()) !== content
-      ) {
+      if (previous !== content) {
         throw new Error("The AniList SDK is stale. Run bun run codegen.");
       }
-    } else {
+    } else if (previous !== content) {
       await Bun.write(file.filename, content);
     }
   })

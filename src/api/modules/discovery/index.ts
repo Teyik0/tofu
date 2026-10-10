@@ -1,10 +1,11 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
-import { services } from "../../lib/services";
+import { contextPlugin } from "../../lib/context";
 import { addReleaseSchema, discoverySchema } from "./model";
 
-export const discovery = new Elysia({ name: "tofu-discovery-api" })
+export const discoveryPlugin = new Elysia({ name: "tofu-discovery-api" })
+  .use(contextPlugin)
   .use(furinSync(sync))
   .guard({ sync: false })
   .post(
@@ -12,13 +13,13 @@ export const discovery = new Elysia({ name: "tofu-discovery-api" })
     {
       body: discoverySchema,
     },
-    ({ body }) => services.automation.discover(body.query, body.sources)
+    ({ application, body }) => application.automation.discover(body.query, body.sources)
   )
   .post(
     "/discover/add",
     {
       body: addReleaseSchema,
     },
-    ({ body }) =>
-      services.automation.addRelease(body.sourceId, body.id, body.destinationId, body.paused)
+    ({ application, body }) =>
+      application.automation.addRelease(body.sourceId, body.id, body.destinationId, body.paused)
   );

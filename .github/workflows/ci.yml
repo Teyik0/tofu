@@ -42,7 +42,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run setup
-      - run: bun run codegen:check
       - run: bun run build:desktop
       - run: bun run tscheck
       - run: bun run test

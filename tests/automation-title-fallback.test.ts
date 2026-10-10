@@ -46,7 +46,7 @@ test("Jev excludes scores below 75 percent from previews and automation decision
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -156,7 +156,7 @@ test("Jev resolves romaji before English and searches English only when romaji h
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -250,7 +250,7 @@ test("automation falls back to English after rejected romaji matches in previews
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

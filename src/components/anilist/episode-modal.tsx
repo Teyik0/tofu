@@ -1,3 +1,4 @@
+import { useField, useForm } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
 import {
   BookOpenIcon,
@@ -9,8 +10,10 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../lib/client";
-import { useRefresh } from "../lib/navigation";
+import { object, string } from "valibot";
+import { useAutomationDraftForm } from "../../hooks/use-automation-draft-form";
+import { api } from "../../lib/client";
+import { useRefresh } from "../../lib/navigation";
 import type {
   AniListEntry,
   AniListReleases,
@@ -18,23 +21,23 @@ import type {
   AutomationState,
   DashboardState,
   FeedRelease,
-} from "../types";
-import { ActionTooltip } from "./action-tooltip";
-import { AniListCover } from "./anilist-cover";
-import { request } from "./api";
-import { RuleFields } from "./automation-fields";
-import { bytes } from "./format";
-import { OptionSelect } from "./option-select";
-import { Alert, AlertDescription } from "./ui/alert";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "./ui/field";
-import { Skeleton } from "./ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+} from "../../types";
+import { ActionTooltip } from "../action-tooltip";
+import { request } from "../api";
+import { RuleFields } from "../automation-fields";
+import { bytes } from "../format";
+import { OptionSelect } from "../option-select";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "../ui/field";
+import { Skeleton } from "../ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { AniListCover } from "./cover";
 
 type Action = (task: () => Promise<void>) => void;
 type ReleaseStatus = "searching" | "ready" | "failed";
@@ -194,18 +197,30 @@ export function AniListEpisodeModal({
   const runAutomation = useMutation((id: string) => api.automations({ id }).run.post());
   const openAnime = useMutation(api.anilist.open.post);
   const rule = automation.automations.find((item) => item.id === entry.automationId);
-  const [destinationId, setDestinationId] = useState(rule?.destinationId ?? "default");
+  const destinationForm = useForm({
+    initialInput: { destinationId: rule?.destinationId ?? "default" },
+    schema: object({ destinationId: string() }),
+  });
+  const destinationField = useField(destinationForm, { path: ["destinationId"] });
+  const destinationId = destinationField.input ?? "default";
+  const setDestinationId = destinationField.onChange;
   const destinationOptions = dashboard.destinations.map((destination) => ({
     label: destination.name,
     value: destination.id,
   }));
   const [result, setResult] = useState<AniListReleases | null>(null);
-  const [draft, setDraft] = useState<AutomationDraft | null>(rule ?? null);
+  const {
+    draft,
+    setDraft,
+    validatedDraft,
+    error: draftError,
+  } = useAutomationDraftForm(rule ?? null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchVersion, setSearchVersion] = useState(0);
   const [releaseError, setReleaseError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [serverError, setError] = useState<string | null>(null);
+  const error = draftError ?? serverError;
   const [notice, setNotice] = useState<string | null>(null);
   const action: Action = (task) => {
     setBusy(true);
@@ -479,7 +494,11 @@ export function AniListEpisodeModal({
                       disabled={busy || !draft.sources.length}
                       onClick={() =>
                         action(async () => {
-                          const saved = await saveAutomation.mutateAsync(draft);
+                          const validated = await validatedDraft();
+                          if (!validated) {
+                            return;
+                          }
+                          const saved = await saveAutomation.mutateAsync(validated);
                           if (!(saved && "id" in saved)) {
                             return;
                           }

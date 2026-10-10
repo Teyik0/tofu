@@ -138,7 +138,7 @@ test("AniList restores its cached list after restart without contacting upstream
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createTestApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -155,6 +155,11 @@ test("AniList restores its cached list after restart without contacting upstream
     expect(requests).toBe(2);
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
     const restored = await request("/anilist", undefined);
     const state = (await restored.json()) as AniListState;
     expect(state.entries[0]?.title).toBe("Cached anime");
@@ -198,7 +203,7 @@ test("AniList serves fresh cache and shares concurrent refreshes", async () => {
     engine: () => context.engine,
     now: () => now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -278,7 +283,7 @@ test("AniList returns stale entries immediately, refreshes after the response an
     engine: () => context.engine,
     now: () => now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

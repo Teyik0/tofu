@@ -1,6 +1,20 @@
-import { t } from "elysia";
+import {
+  array,
+  check,
+  integer,
+  maxLength,
+  maxValue,
+  minLength,
+  minValue,
+  object,
+  optional,
+  picklist,
+  pipe,
+  string,
+} from "valibot";
 import type { AniListCatalogFilters, AniListMedia } from "../../../types";
 import { UserError } from "../../lib/errors";
+import { integerInput } from "../../lib/validation";
 import type { AniListMediaFragment, CatalogQueryVariables } from "./graphql/generated";
 
 export type CatalogMedia = AniListMediaFragment;
@@ -34,14 +48,17 @@ function enumValue<Value extends string>(input: string | undefined, values: read
   }
   return value;
 }
-const choices = (values: readonly string[]) =>
-  t.Optional(t.Union(values.map((value) => t.Literal(value))));
-const names = t.Optional(
-  t.Array(t.String({ maxLength: 100, minLength: 1 }), { maxItems: 30, uniqueItems: true })
+const choices = (values: readonly string[]) => optional(picklist(values));
+const names = optional(
+  pipe(
+    array(pipe(string(), minLength(1), maxLength(100))),
+    maxLength(30),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  )
 );
-const year = t.Optional(t.Integer({ maximum: 2200, minimum: 1900 }));
-const count = t.Optional(t.Integer({ maximum: 100_000, minimum: 0 }));
-export const catalogSchema = t.Object({
+const year = optional(pipe(integerInput, integer(), minValue(1900), maxValue(2200)));
+const count = optional(pipe(integerInput, integer(), minValue(0), maxValue(100_000)));
+export const catalogSchema = object({
   airingStatus: choices(mediaStatuses),
   countryOfOrigin: choices(["JP", "KR", "CN", "TW"]),
   doujin: choices(["any", "only", "exclude"]),
@@ -53,12 +70,12 @@ export const catalogSchema = t.Object({
   excludedTags: names,
   format: choices(mediaFormats),
   genres: names,
-  page: t.Optional(t.Integer({ maximum: 1000, minimum: 1 })),
-  search: t.Optional(t.String({ maxLength: 200 })),
+  page: optional(pipe(integerInput, integer(), minValue(1), maxValue(1000))),
+  search: optional(pipe(string(), maxLength(200))),
   season: choices(["WINTER", "SPRING", "SUMMER", "FALL"]),
   sort: choices(["title", "popularity", "score", "trending", "favourites", "added", "released"]),
   source: choices(mediaSources),
-  streamingOn: t.Optional(t.Integer({ minimum: 1 })),
+  streamingOn: optional(pipe(integerInput, integer(), minValue(1))),
   tags: names,
   year,
   yearMax: year,

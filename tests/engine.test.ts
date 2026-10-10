@@ -42,7 +42,7 @@ test("a magnet added through the API downloads real bytes and exposes its files 
     network,
   });
   const sync = await openTestDatabase(join(directory, "sync"));
-  const api = createTestApi(() => engine, sync.options);
+  const api = await createTestApi(() => engine, sync.options);
   try {
     const seed = await new Promise<Torrent>((resolve, reject) => {
       seeder.on("error", reject);
@@ -76,7 +76,7 @@ test("a magnet added through the API downloads real bytes and exposes its files 
     expect(content.status).toBe(200);
     expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(Bun.SHA256.hash(bytes, "hex"));
   } finally {
-    sync.close();
+    await sync.close();
     await engine.close();
     await new Promise<void>((resolve) => seeder.destroy(() => resolve()));
     await rm(directory, { force: true, recursive: true });

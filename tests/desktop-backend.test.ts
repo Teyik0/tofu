@@ -4,15 +4,19 @@ import { join } from "node:path";
 import type { DashboardState } from "../src/types";
 import { fixture, json, waitFor } from "./helpers";
 
-test("the host rejects startup when the torrent engine cannot open its download directory", async () => {
-  const context = await fixture(4096, []);
-  const downloadPath = join(context.directory, "blocked-downloads");
-  await Bun.write(downloadPath, "This is a file, not a download directory.");
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      "--eval",
-      `
+test.each(["desktop", "web"])(
+  "the %s host rejects startup when the torrent engine cannot open its download directory",
+  async (mode) => {
+    const context = await fixture(4096, []);
+    const downloadPath = join(context.directory, "blocked-downloads");
+    await Bun.write(downloadPath, "This is a file, not a download directory.");
+    const command =
+      mode === "web"
+        ? [process.execPath, "src/server.ts"]
+        : [
+            process.execPath,
+            "--eval",
+            `
         import { startDesktopBackend } from "@teyik0/furin-electrobun/host";
         try {
           const backend = await startDesktopBackend(() => import("./src/server.ts"), process.env.TOFU_DATA_DIR, "dev");
@@ -23,41 +27,44 @@ test("the host rejects startup when the torrent engine cannot open its download 
           process.exitCode = 1;
         }
       `,
-    ],
-    {
+          ];
+    const child = Bun.spawn(command, {
       cwd: join(import.meta.dir, ".."),
       env: {
         ...process.env,
         TOFU_DATA_DIR: join(context.directory, "failed-startup-state"),
         TOFU_DOWNLOAD_DIR: downloadPath,
         TOFU_MODE: "server",
+        TOFU_PORT: "0",
         TOFU_PROFILE: "dev",
       },
       stderr: "pipe",
       stdout: "pipe",
+    });
+    const deadline = setTimeout(() => child.kill("SIGTERM"), 20_000);
+    try {
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      expect(exitCode).toBe(1);
+      expect(stdout).not.toContain("Listening before the engine was ready");
+      expect(stdout).not.toContain("is ready");
+      expect(stderr).toContain(downloadPath);
+      expect(
+        await Bun.file(join(context.directory, "failed-startup-state/server.json")).exists()
+      ).toBe(false);
+      expect(await Bun.file(downloadPath).text()).toBe("This is a file, not a download directory.");
+    } finally {
+      clearTimeout(deadline);
+      child.kill("SIGTERM");
+      await child.exited;
+      await context.close();
     }
-  );
-  const deadline = setTimeout(() => child.kill("SIGTERM"), 20_000);
-  try {
-    const [exitCode, stdout, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    expect(exitCode).toBe(1);
-    expect(stdout).not.toContain("Listening before the engine was ready");
-    expect(stderr).toContain(downloadPath);
-    expect(
-      await Bun.file(join(context.directory, "failed-startup-state/server.json")).exists()
-    ).toBe(false);
-    expect(await Bun.file(downloadPath).text()).toBe("This is a file, not a download directory.");
-  } finally {
-    clearTimeout(deadline);
-    child.kill("SIGTERM");
-    await child.exited;
-    await context.close();
-  }
-}, 30_000);
+  },
+  30_000
+);
 
 test("the Furin desktop host initializes Tofu, guards requests and preserves real transfers across restart", async () => {
   const context = await fixture(512 * 1024, []);

@@ -1,10 +1,8 @@
 import { join } from "node:path";
 import { furin } from "@teyik0/furin";
 import { Elysia } from "elysia";
-import { runtime } from "../src/api/lib/runtime";
-import { services } from "../src/api/lib/services";
 import { AutomationService } from "../src/api/modules/automation/service";
-import { createTestApi } from "./api-fixture";
+import { createTestApplication, mountTestApplication } from "./api-fixture";
 import { fixture } from "./helpers";
 
 const endpoint = process.env.TOFU_TEST_ANILIST_ENDPOINT;
@@ -24,19 +22,11 @@ const service = await AutomationService.open({
   engine: () => context.engine,
   now: Date.now,
 });
-runtime.automation = service;
-services.engine = context.engine;
-runtime.db = service.db;
-services.syncAdapter = context.sync.options.adapter;
+const application = await createTestApplication(context.engine, context.sync.options, service);
+const api = await mountTestApplication(application, { kind: "server" });
 const host = new Elysia()
-  .use(
-    createTestApi(
-      () => context.engine,
-      context.sync.options,
-      () => service
-    )
-  )
-  .use(await furin({ pagesDir: "./src/pages", sync: context.sync.options }))
+  .use(api)
+  .use(await furin({ pagesDir: "./src/pages", sync: application.sync }))
   .listen({ hostname: "127.0.0.1", port: 0 });
 process.on("SIGTERM", async () => {
   await host.stop(true);

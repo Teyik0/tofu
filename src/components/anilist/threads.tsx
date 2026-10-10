@@ -1,11 +1,18 @@
-import type { AniListEntry, AniListThreadProposal, Destination } from "../types";
-import { OptionSelect } from "./option-select";
-import { Badge } from "./ui/badge";
-import { Field, FieldGroup, FieldLabel } from "./ui/field";
-import { Input } from "./ui/input";
+import type { AniListEntry, AniListThreadProposal, Destination } from "../../types";
+import { OptionSelect } from "../option-select";
+import { Badge } from "../ui/badge";
+import { Field, FieldGroup, FieldLabel } from "../ui/field";
+import { Input } from "../ui/input";
 
-/** Select values cannot be empty, so this sentinel stands for a thread to create. */
 const newThread = "new-thread";
+
+interface AnilistThreadsProps {
+  busy: boolean;
+  destinations: Destination[];
+  entries: AniListEntry[];
+  onChange: (proposals: AniListThreadProposal[]) => void;
+  proposals: AniListThreadProposal[];
+}
 
 export function AniListThreads({
   proposals,
@@ -13,19 +20,14 @@ export function AniListThreads({
   entries,
   onChange,
   busy,
-}: {
-  proposals: AniListThreadProposal[];
-  destinations: Destination[];
-  entries: AniListEntry[];
-  onChange: (proposals: AniListThreadProposal[]) => void;
-  busy: boolean;
-}) {
+}: AnilistThreadsProps) {
   const update = (mediaId: number, patch: Partial<Omit<AniListThreadProposal, "mediaId">>) =>
     onChange(
       proposals.map((proposal) =>
         proposal.mediaId === mediaId ? { ...proposal, ...patch } : proposal
       )
     );
+
   return (
     <section aria-label="Proposed threads" className="automation-preview">
       <div className="automation-row-heading">

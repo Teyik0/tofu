@@ -44,7 +44,7 @@ test("AniList catalog handles nullable schema fields without inventing metadata"
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -106,7 +106,7 @@ test.each([200, 429])(
       engine: () => context.engine,
       now: Date.now,
     });
-    const api = createTestApi(
+    const api = await createTestApi(
       () => context.engine,
       context.sync.options,
       () => service
@@ -160,7 +160,7 @@ test("closing the service aborts an in-flight generated SDK request", async () =
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -223,7 +223,7 @@ test("nullable AniList episode progress never replaces a valid persisted library
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createTestApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -247,6 +247,11 @@ test("nullable AniList episode progress never replaces a valid persisted library
     expect(await failed.text()).toContain("did not return episode progress");
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
     const cached = await request("/anilist", undefined);
     expect((await cached.json()).entries).toMatchObject([{ mediaId: 7, progress: 2 }]);
   } finally {

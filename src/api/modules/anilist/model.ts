@@ -1,56 +1,111 @@
-import { t } from "elysia";
-import { draft, listStatus, organization } from "../automation/model";
+import {
+  array,
+  boolean,
+  check,
+  forward,
+  integer,
+  is,
+  maxLength,
+  maxValue,
+  minLength,
+  minValue,
+  nullable,
+  object,
+  optional,
+  partialCheck,
+  picklist,
+  pipe,
+  string,
+} from "valibot";
+import { integerInput, numericInput } from "../../lib/validation";
+import { draft, listStatus, organization, preferences } from "../automation/model";
+import { updateDestinationSchema } from "../destinations/model";
 
-export const mediaParamsSchema = t.Object({ mediaId: t.Numeric({ minimum: 1, multipleOf: 1 }) });
-
-export const episodeCompletionSchema = t.Object({ completed: t.Boolean() });
-
-export const episodeParamsSchema = t.Object({
-  episode: t.Numeric({ maximum: 10_000, minimum: 1, multipleOf: 1 }),
-  mediaId: t.Numeric({ minimum: 1, multipleOf: 1 }),
+export const mediaParamsSchema = object({
+  mediaId: pipe(numericInput, integer(), minValue(1)),
 });
 
-export const aniListPreferencesSchema = t.Object({
-  visibleStatuses: t.Array(listStatus, { maxItems: 6, uniqueItems: true }),
+export const episodeCompletionSchema = object({ completed: boolean() });
+
+export const episodeParamsSchema = object({
+  episode: pipe(numericInput, integer(), minValue(1), maxValue(10_000)),
+  mediaId: pipe(numericInput, integer(), minValue(1)),
 });
 
-export const threadPreviewSchema = t.Object({
-  basePath: t.String({ maxLength: 4096, minLength: 1 }),
-  statuses: t.Array(listStatus, {
-    maxItems: 6,
-    minItems: 1,
-    uniqueItems: true,
-  }),
+export const aniListPreferencesSchema = object({
+  visibleStatuses: pipe(
+    array(listStatus),
+    maxLength(6),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
 });
 
-export const enabledSchema = t.Object({ enabled: t.Boolean() });
-
-export const selectionSchema = t.Object({
-  enabled: t.Boolean(),
-  mediaIds: t.Array(t.Integer({ minimum: 1 }), {
-    maxItems: 500,
-    minItems: 1,
-    uniqueItems: true,
-  }),
+export const threadPreviewSchema = object({
+  basePath: pipe(string(), minLength(1), maxLength(4096)),
+  statuses: pipe(
+    array(listStatus),
+    minLength(1),
+    maxLength(6),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
 });
 
-export const aniListConfigurationSchema = t.Object({
-  clientId: t.Optional(t.String({ maxLength: 50 })),
-  clientSecret: t.Optional(t.String({ maxLength: 4096 })),
-  redirectUri: t.Optional(t.String({ maxLength: 500 })),
-  userName: t.String({ maxLength: 100 }),
+export const enabledSchema = object({ enabled: boolean() });
+
+export const selectionSchema = object({
+  enabled: boolean(),
+  mediaIds: pipe(
+    array(pipe(integerInput, integer(), minValue(1))),
+    minLength(1),
+    maxLength(500),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
 });
 
-export const authorizationCallbackSchema = t.Object({ url: t.String({ maxLength: 8192 }) });
+export const aniListConfigurationSchema = object({
+  clientId: optional(pipe(string(), maxLength(50))),
+  clientSecret: optional(pipe(string(), maxLength(4096))),
+  redirectUri: optional(pipe(string(), maxLength(500))),
+  userName: pipe(string(), maxLength(100)),
+});
 
-export const subscriptionSchema = t.Object({
-  enabled: t.Boolean(),
-  intervalMinutes: t.Integer({ maximum: 1440, minimum: 5 }),
-  organization: t.Optional(organization),
-  statuses: t.Array(listStatus, {
-    maxItems: 6,
-    minItems: 1,
-    uniqueItems: true,
-  }),
+export const authorizationCallbackSchema = object({ url: pipe(string(), maxLength(8192)) });
+
+export const subscriptionSchema = object({
+  enabled: boolean(),
+  intervalMinutes: pipe(integerInput, integer(), minValue(5), maxValue(1440)),
+  organization: optional(organization),
+  statuses: pipe(
+    array(listStatus),
+    minLength(1),
+    maxLength(6),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
   template: draft,
 });
+
+export const threadProposalSchema = object({
+  destinationId: nullable(string()),
+  downloadPath: updateDestinationSchema.entries.downloadPath,
+  mediaId: pipe(integerInput, integer(), minValue(1)),
+  name: pipe(string(), minLength(1), maxLength(500)),
+});
+
+export const trackingFormSchema = pipe(
+  object({
+    basePath: string(),
+    custom: nullable(preferences),
+    mode: picklist(["per-anime", "shared"]),
+    proposals: nullable(pipe(array(threadProposalSchema), maxLength(500))),
+    statuses: subscriptionSchema.entries.statuses,
+  }),
+  forward(
+    partialCheck(
+      [["mode"], ["basePath"]],
+      (input) =>
+        input.mode !== "per-anime" || is(threadPreviewSchema.entries.basePath, input.basePath),
+      "Enter a root folder of at most 4096 characters"
+    ),
+    ["basePath"]
+  )
+);

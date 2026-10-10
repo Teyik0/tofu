@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AniListMediaInfo } from "../src/components/anilist-media-info";
+import { AniListMediaInfo } from "../src/components/anilist/media-info";
 import type { AniListMedia } from "../src/types";
 
 const media: AniListMedia = {

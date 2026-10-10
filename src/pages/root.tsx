@@ -1,29 +1,30 @@
 import "../styles.css";
+
 import { defineRootRoute, HeadContent, Scripts } from "@teyik0/furin";
-import type { CSSProperties } from "react";
+import { Provider } from "jotai";
+import { type CSSProperties, useState } from "react";
 import { DestinationSidebar } from "../components/destination-sidebar";
-import { ThemeProvider } from "../components/theme-provider";
+import { TofuStateSync } from "../components/tofu-state-sync";
 import { TorrentDrop } from "../components/torrent-drop";
 import { SidebarInset, SidebarProvider } from "../components/ui/sidebar";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { WorkspaceDialogs } from "../components/workspace-dialogs";
-import { WorkspaceProvider } from "../components/workspace-state";
+import { readData } from "../lib/api-data";
 import { api } from "../lib/client";
 import { destinationFromPath, isPreferencesPath } from "../lib/navigation";
+import { createTofuStore } from "../state/workspace";
 
 export const route = defineRootRoute()
   .config({ mode: "ssr" })
-  .loader(async () => {
-    const { data, error } = await api.state.get({ query: { detail: "false" } });
-    if (error || !data || !("destinations" in data)) {
-      throw new Error("The Tofu engine is unavailable");
-    }
-    return { dashboard: data };
-  })
+  .loader(async () => ({
+    dashboard: readData(await api.state.get({ query: { detail: "false" } })),
+  }))
   .layout(({ children, dashboard, path }) => {
+    const initialTheme = dashboard?.settings.theme ?? "system";
+    const [store] = useState(() => createTofuStore(initialTheme));
     const activeDestination = destinationFromPath(path);
     return (
-      <html data-theme={dashboard.settings.theme} lang="en">
+      <html data-theme={initialTheme} lang="en">
         <head>
           <link href="/favicon.ico" rel="icon" sizes="16x16 32x32 48x48" />
           <link href="/public/icon.png" rel="icon" sizes="256x256" type="image/png" />
@@ -31,25 +32,28 @@ export const route = defineRootRoute()
           <HeadContent />
         </head>
         <body>
-          <ThemeProvider initialTheme={dashboard.settings.theme}>
-            <WorkspaceProvider path={path}>
-              <TooltipProvider>
-                <SidebarProvider
-                  className="app-shell"
-                  style={
-                    { "--sidebar-width": "190px", "--sidebar-width-icon": "52px" } as CSSProperties
-                  }
-                >
-                  {!isPreferencesPath(path) && (
-                    <DestinationSidebar active={activeDestination} data={dashboard} />
-                  )}
-                  <SidebarInset className="min-w-0 overflow-hidden">{children}</SidebarInset>
-                  <TorrentDrop activeDestination={activeDestination} />
-                  <WorkspaceDialogs activeDestination={activeDestination} dashboard={dashboard} />
-                </SidebarProvider>
-              </TooltipProvider>
-            </WorkspaceProvider>
-          </ThemeProvider>
+          <Provider store={store}>
+            <TofuStateSync initialTheme={initialTheme} path={path} />
+            <TooltipProvider>
+              <SidebarProvider
+                className="app-shell"
+                style={
+                  { "--sidebar-width": "190px", "--sidebar-width-icon": "52px" } as CSSProperties
+                }
+              >
+                {dashboard && !isPreferencesPath(path) && (
+                  <DestinationSidebar active={activeDestination} data={dashboard} />
+                )}
+                <SidebarInset className="min-w-0 overflow-hidden">{children}</SidebarInset>
+                {!!dashboard && (
+                  <>
+                    <TorrentDrop activeDestination={activeDestination} />
+                    <WorkspaceDialogs activeDestination={activeDestination} dashboard={dashboard} />
+                  </>
+                )}
+              </SidebarProvider>
+            </TooltipProvider>
+          </Provider>
           <Scripts />
         </body>
       </html>

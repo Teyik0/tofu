@@ -57,7 +57,7 @@ async function oauthFixture(client?: AniListClient) {
     show: () => undefined,
   });
   opening.ready();
-  const api = createTestApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -76,6 +76,11 @@ async function oauthFixture(client?: AniListClient) {
     async restart() {
       await service.close();
       service = await AutomationService.open(options);
+      api = await createTestApi(
+        () => context.engine,
+        context.sync.options,
+        () => service
+      );
     },
   };
 }

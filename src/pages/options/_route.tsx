@@ -1,5 +1,6 @@
 import { defineRoute } from "@teyik0/furin";
 import { Link, useRouter } from "@teyik0/furin/link";
+import { useAtomValue } from "jotai";
 import {
   ArrowLeftIcon,
   DownloadIcon,
@@ -12,8 +13,8 @@ import { useEffect } from "react";
 import { Logo } from "../../components/icon";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { SidebarUpdateAction } from "../../components/updates";
-import { useWorkspace } from "../../components/workspace-state";
 import { backToWorkspace } from "../../lib/navigation";
+import { settingsBackPathAtom } from "../../state/workspace";
 import { route as root } from "../root";
 
 const sections = [
@@ -27,7 +28,7 @@ const sections = [
 export const route = defineRoute()
   .config({ layout: root, mode: "ssr" })
   .layout(({ children, path }) => {
-    const { settingsBackPath } = useWorkspace();
+    const settingsBackPath = useAtomValue(settingsBackPathAtom);
     const router = useRouter();
     useEffect(() => {
       if (path === "/options" && window.location.hash === "#updates") {

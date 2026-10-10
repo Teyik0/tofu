@@ -1,6 +1,8 @@
+import { Form, getDeepError, reset } from "@formisch/react";
 import { useMutation, useQuery } from "@teyik0/furin/client";
 import { CheckIcon, LoaderCircleIcon } from "lucide-react";
-import { startTransition, useActionState, useState } from "react";
+import { useState } from "react";
+import { usePreferencesForm } from "../hooks/use-preferences-form";
 import { createAutomationMutations } from "../lib/automation-mutations";
 import { api } from "../lib/client";
 import type { AutomationPreferences } from "../types";
@@ -18,36 +20,34 @@ export function GeneralPreferences({
 }) {
   const { data: live } = useQuery(api.automation.get);
   const savePreferences = useMutation(mutations.savePreferences);
-  const [draft, setDraft] = useState<AutomationPreferences | null>(null);
   const [saved, setSaved] = useState(false);
   const preferences = live && "preferences" in live ? live.preferences : initialPreferences;
-  const value = draft ?? preferences;
-  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(preferences);
-  const [error, save, busy] = useActionState<string | null, AutomationPreferences>(
-    async (_previous, next) => {
-      try {
-        await savePreferences.mutateAsync(next);
-        setDraft(null);
-        setSaved(true);
-        return null;
-      } catch (cause) {
-        return cause instanceof Error ? cause.message : "Unable to save preferences";
-      }
-    },
-    null
-  );
+  const { form, value, setValue } = usePreferencesForm(preferences);
+  const dirty = form.isDirty;
+  const busy = form.isSubmitting;
+  const [serverError, setError] = useState<string | null>(null);
+  const error = getDeepError(form) ?? serverError;
+  const save = async (next: AutomationPreferences) => {
+    if (!dirty) {
+      return;
+    }
+    setSaved(false);
+    setError(null);
+    try {
+      const confirmed = await savePreferences.mutateAsync(next);
+      reset(form, { initialInput: confirmed && "sources" in confirmed ? confirmed : next });
+      setSaved(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save preferences");
+    }
+  };
 
   return (
-    <form
+    <Form
       className="automation-section general-preferences"
       id="preferences-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (dirty && !busy && value.sources.length) {
-          setSaved(false);
-          startTransition(() => save(value));
-        }
-      }}
+      of={form}
+      onSubmit={save}
     >
       <header className="automation-section-title">
         <div>
@@ -67,7 +67,7 @@ export function GeneralPreferences({
         <PreferenceFields
           idPrefix="preferences"
           onChange={(next) => {
-            setDraft(next);
+            setValue(next);
             setSaved(false);
           }}
           value={value}
@@ -84,7 +84,7 @@ export function GeneralPreferences({
         <Button
           disabled={busy || !dirty}
           onClick={() => {
-            setDraft(null);
+            reset(form, { initialInput: preferences });
             setSaved(false);
           }}
           type="button"
@@ -101,6 +101,6 @@ export function GeneralPreferences({
           {busy ? "Saving…" : "Save preferences"}
         </Button>
       </footer>
-    </form>
+    </Form>
   );
 }

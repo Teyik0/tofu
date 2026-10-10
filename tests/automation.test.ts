@@ -97,7 +97,7 @@ test("pattern rules exclude existing releases and still download newly published
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -162,7 +162,7 @@ test("plugin credentials stay private when automation reuses an existing data di
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -211,7 +211,7 @@ test("C411 downloads the enclosure server-side without exposing its API key", as
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -278,7 +278,7 @@ test("Nyaa search falls back to the HTML catalogue when RSS is unavailable", asy
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -334,7 +334,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     now: () => clock,
   };
   let service = await AutomationService.open(options);
-  const api = createTestApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -363,6 +363,11 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     await request("/plugins/tsundere", { ...json({ enabled: false }), method: "PUT" });
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => context.engine,
+      context.sync.options,
+      () => service
+    );
     clock += 120_000;
     await service.start();
     expect(context.engine.snapshot(null).torrents).toHaveLength(0);
@@ -444,7 +449,7 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -542,7 +547,7 @@ test("an automation chooses one preferred version, downloads into its thread and
     now: () => clock,
   };
   let service = await AutomationService.open(options);
-  const api = createTestApi(
+  let api = await createTestApi(
     () => engine,
     low.sync.options,
     () => service
@@ -611,6 +616,11 @@ test("an automation chooses one preferred version, downloads into its thread and
       network,
     });
     service = await AutomationService.open(options);
+    api = await createTestApi(
+      () => engine,
+      low.sync.options,
+      () => service
+    );
     clock += 60_000;
     await service.start();
     await waitFor(
@@ -674,7 +684,7 @@ test("search reads real RSS/JSON, preserves unknown values and isolates a failin
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -728,7 +738,7 @@ test("plugins are opt-in, preserve their settings and never return API keys", as
       }
       return service;
     };
-    const api = createTestApi(() => context.engine, context.sync.options, getService);
+    let api = await createTestApi(() => context.engine, context.sync.options, getService);
     const request = (path: string, init: RequestInit | undefined) =>
       api.handle(new Request(`http://localhost/api${path}`, init));
     const initial = await request("/automation", undefined);
@@ -745,6 +755,7 @@ test("plugins are opt-in, preserve their settings and never return API keys", as
     await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
     await service.close();
     service = await AutomationService.open(options);
+    api = await createTestApi(() => context.engine, context.sync.options, getService);
     const state = (await (await request("/automation", undefined)).json()) as AutomationState;
     expect(state.plugins.find((plugin) => plugin.id === "nyaa")?.enabled).toBe(true);
     expect(state.plugins.find((plugin) => plugin.id === "jev")?.hasApiKey).toBe(true);
@@ -785,7 +796,7 @@ test("disabling a rule while its torrent file is loading cancels the automatic a
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -846,7 +857,7 @@ test("without Jev an explicit pattern matches release names and downloads from r
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -906,7 +917,7 @@ test("C411 paces searches and disabling the plugin cancels queued requests", asy
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

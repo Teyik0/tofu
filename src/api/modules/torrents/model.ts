@@ -1,34 +1,110 @@
-import { t } from "elysia";
+import {
+  array,
+  boolean,
+  file,
+  forward,
+  is,
+  literal,
+  maxLength,
+  maxSize,
+  minLength,
+  nullable,
+  object,
+  optional,
+  partialCheck,
+  pipe,
+  string,
+  union,
+} from "valibot";
+import type { FormModalKind } from "../../../types";
+import { updateDestinationSchema } from "../destinations/model";
 
-export const createTorrentSchema = t.Object({
-  destinationId: t.Optional(t.String()),
-  downloadPath: t.Optional(t.String()),
-  paused: t.Boolean(),
-  source: t.String({ maxLength: 65_536, minLength: 1 }),
-  trackers: t.Optional(t.Array(t.String())),
+export const createTorrentSchema = object({
+  destinationId: optional(string()),
+  downloadPath: optional(string()),
+  paused: boolean(),
+  source: pipe(string(), minLength(1), maxLength(65_536)),
+  trackers: optional(array(string())),
 });
 
-export const uploadTorrentSchema = t.Object({
-  destinationId: t.Optional(t.String()),
-  downloadPath: t.Optional(t.String()),
-  file: t.File({ maxSize: 8 * 1024 * 1024 }),
-  paused: t.String(),
-  trackers: t.Optional(t.String()),
+export const uploadTorrentSchema = object({
+  destinationId: optional(string()),
+  downloadPath: optional(string()),
+  file: pipe(file(), maxSize(8_388_608)),
+  paused: string(),
+  trackers: optional(string()),
 });
 
-export const trackersSchema = t.Object({
-  urls: t.Array(t.String({ maxLength: 2048 }), { maxItems: 100 }),
+export const trackersSchema = object({
+  urls: pipe(array(pipe(string(), maxLength(2048))), maxLength(100)),
 });
 
-export const removeTorrentSchema = t.Object({ deleteFiles: t.Boolean() });
+export const removeTorrentSchema = object({ deleteFiles: boolean() });
 
-export const filePrioritySchema = t.Object({
-  priority: t.Union([t.Literal("skip"), t.Literal("normal"), t.Literal("high")]),
+export const filePrioritySchema = object({
+  priority: union([literal("skip"), literal("normal"), literal("high")]),
 });
 
-export const addPeerSchema = t.Object({ peer: t.String({ maxLength: 255, minLength: 1 }) });
-
-export const bulkActionSchema = t.Object({
-  action: t.Union([t.Literal("pause"), t.Literal("resume")]),
-  ids: t.Optional(t.Array(t.String(), { maxItems: 1000 })),
+export const addPeerSchema = object({
+  peer: pipe(string(), minLength(1), maxLength(255)),
 });
+
+export const bulkActionSchema = object({
+  action: union([literal("pause"), literal("resume")]),
+  ids: optional(pipe(array(string()), maxLength(1000))),
+});
+
+export function modalFormSchema(kind: FormModalKind["type"]) {
+  return pipe(
+    object({
+      destinationIcon: updateDestinationSchema.entries.icon.wrapped,
+      destinationId: string(),
+      file: nullable(uploadTorrentSchema.entries.file),
+      moveFiles: boolean(),
+      name: string(),
+      path: string(),
+      paused: boolean(),
+      pinned: boolean(),
+      removeFiles: boolean(),
+      source: string(),
+      trackers: string(),
+    }),
+    forward(
+      partialCheck(
+        [["source"], ["file"]],
+        (input) => {
+          if (kind === "add") {
+            return (
+              input.file !== null || is(createTorrentSchema.entries.source, input.source.trim())
+            );
+          }
+          return kind !== "peer" || is(addPeerSchema.entries.peer, input.source.trim());
+        },
+        kind === "peer"
+          ? "Enter a peer address"
+          : "Choose a torrent file or enter a magnet link or URL"
+      ),
+      ["source"]
+    ),
+    forward(
+      partialCheck(
+        [["destinationId"], ["name"]],
+        (input) =>
+          !(kind === "destination" || (kind === "drop" && input.destinationId === "new")) ||
+          is(updateDestinationSchema.entries.name, input.name),
+        "Enter a tab name of at most 80 characters"
+      ),
+      ["name"]
+    ),
+    forward(
+      partialCheck(
+        [["destinationId"], ["path"]],
+        (input) =>
+          !(kind === "destination" || (kind === "drop" && input.destinationId === "new")) ||
+          is(updateDestinationSchema.entries.downloadPath, input.path),
+        "Enter a download folder of at most 4096 characters"
+      ),
+      ["path"]
+    )
+  );
+}

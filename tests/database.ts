@@ -4,12 +4,18 @@ import { sync } from "../src/sync";
 
 export async function openTestDatabase(directory: string) {
   const db = await openDatabase(directory);
+  const resources = new AsyncDisposableStack();
+  resources.defer(() => db.$client.close());
   return {
-    close() {
-      db.$client.close();
-    },
+    close: () => resources.disposeAsync(),
     db,
-    options: { ...sync, adapter: drizzleSyncAdapter({ db, namespace: "tofu" }), db },
+    options: {
+      ...sync,
+      adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),
+      db,
+      directory,
+      resources,
+    },
   };
 }
 

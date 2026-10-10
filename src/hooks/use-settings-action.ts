@@ -1,9 +1,10 @@
 import { useMutation } from "@teyik0/furin/client";
+import { useSetAtom } from "jotai";
 import { startTransition, useActionState } from "react";
 import { request } from "../components/api";
-import { useTheme } from "../components/theme-provider";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
+import { themeAtom } from "../state/workspace";
 
 type SettingsCommand =
   | { type: "update"; settings: NonNullable<Parameters<typeof api.settings.patch>[0]> }
@@ -13,7 +14,7 @@ type SettingsCommand =
 export function useSettingsAction() {
   const updateSettings = useMutation(api.settings.patch);
   const refresh = useRefresh();
-  const { setTheme } = useTheme();
+  const setTheme = useSetAtom(themeAtom);
   const [actionError, dispatchAction, busy] = useActionState<string | null, SettingsCommand>(
     async (_previous, command) => {
       try {

@@ -20,7 +20,7 @@ test.each(["success", "rejection"])(
       engine: () => context.engine,
       now: Date.now,
     });
-    const app = createTestApi(
+    const app = await createTestApi(
       () => context.engine,
       context.sync.options,
       () => service
@@ -91,7 +91,7 @@ test("rules appear, change and disappear before their writes complete", async ()
     engine: () => context.engine,
     now: Date.now,
   });
-  const app = createTestApi(
+  const app = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

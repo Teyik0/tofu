@@ -1,14 +1,19 @@
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
-import { dataDir, instance } from "./runtime";
-import { services } from "./services";
+import type { CoreApplication } from "../../types";
 
-export async function writeServerInfo(url: string, cookie: string | undefined) {
+export async function writeServerInfo(
+  application: CoreApplication,
+  url: string,
+  cookie: string | undefined
+) {
+  const { instance, engine } = application;
+  const { dataDir } = instance;
   await Bun.write(
     join(dataDir, "server.json.tmp"),
     JSON.stringify({
       cookie,
-      mode: services.engine.mode,
+      mode: engine.mode,
       pid: process.pid,
       profile: instance.profile,
       url,

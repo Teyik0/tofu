@@ -1,12 +1,14 @@
-import type { PluginId, PluginState } from "../../types";
+import type { PluginForms, PluginId, PluginState } from "../../types";
 import { FieldGroup, FieldLegend, FieldSet } from "../ui/field";
 import { PluginCard } from "./plugin-card";
 
 export function PluginGroup({
+  forms,
   ids,
   title,
   plugins,
 }: {
+  forms: PluginForms;
   ids: readonly PluginId[];
   title: string;
   plugins: PluginState[];
@@ -18,7 +20,7 @@ export function PluginGroup({
         {plugins
           .filter((plugin) => ids.includes(plugin.id))
           .map((plugin) => (
-            <PluginCard key={plugin.id} plugin={plugin} />
+            <PluginCard form={forms[plugin.id]} key={plugin.id} plugin={plugin} />
           ))}
       </FieldGroup>
     </FieldSet>

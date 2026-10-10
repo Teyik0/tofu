@@ -124,7 +124,7 @@ test("desktop updates prepare in app and only restart after an explicit install 
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createTestUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string) =>
     app.handle(new Request(`http://localhost/api/updates${path}`, json({})));
   try {
@@ -150,7 +150,7 @@ test("desktop updates prepare in app and only restart after an explicit install 
   } finally {
     finish();
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -212,7 +212,7 @@ test("failed native downloads can be retried and scheduled checks preserve the p
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createTestUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string) =>
     app.handle(new Request(`http://localhost/api/updates${path}`, json({})));
   try {
@@ -243,7 +243,7 @@ test("failed native downloads can be retried and scheduled checks preserve the p
     expect(updates.snapshot().error).toBe("Cannot start helper");
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -261,7 +261,7 @@ test("update checks require no signed-in access", async () => {
     version: "0.1.0",
   };
   const updates = await UpdatesService.open(options);
-  const app = new Elysia().use(createTestUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   try {
     // No access configuration exists: the first check runs against the public API.
     const first = await app.handle(new Request("http://localhost/api/updates/check", json({})));
@@ -275,7 +275,7 @@ test("update checks require no signed-in access", async () => {
     expect(second.status).toBe(200);
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     await rm(folder, { force: true, recursive: true });
   }
 });
@@ -314,7 +314,7 @@ test("a release check during an installer download keeps the original filename a
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createTestUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string, init: RequestInit | undefined) =>
     app.handle(new Request(`http://localhost/api/updates${path}`, init));
   try {
@@ -331,7 +331,7 @@ test("a release check during an installer download keeps the original filename a
   } finally {
     finish();
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -362,7 +362,7 @@ test("a refused asset download reports the failure and clears the stale download
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createTestUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string, init: RequestInit | undefined) =>
     app.handle(new Request(`http://localhost/api/updates${path}`, init));
   try {
@@ -373,7 +373,7 @@ test("a refused asset download reports the failure and clears the stale download
     expect((await (await call("", undefined)).json()).downloadName).toBeNull();
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -399,7 +399,7 @@ test("a repository without a stable release reports no-release", async () => {
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createTestUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string, init: RequestInit | undefined) =>
     app.handle(new Request(`http://localhost/api/updates${path}`, init));
   try {
@@ -410,7 +410,7 @@ test("a repository without a stable release reports no-release", async () => {
     expect(state.error).toBeNull();
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
@@ -461,7 +461,7 @@ test.each([
     };
     try {
       const updates = await UpdatesService.open(options);
-      const app = new Elysia().use(createTestUpdatesApi(() => updates, sync.options));
+      const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
       const call = (path: string, init: RequestInit | undefined) =>
         app.handle(new Request(`http://localhost/api/updates${path}`, init));
       const checked = await call("/check", json({}));
@@ -482,7 +482,7 @@ test.each([
       reopened.close();
     } finally {
       github.stop(true);
-      sync.close();
+      await sync.close();
       await rm(folder, { force: true, recursive: true });
     }
   }
@@ -514,7 +514,7 @@ test("an unavailable GitHub API surfaces an error state without blocking later c
     platform: "darwin",
     version: "0.1.0",
   });
-  const app = new Elysia().use(createTestUpdatesApi(() => updates, sync.options));
+  const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
   const call = (path: string, init: RequestInit | undefined) =>
     app.handle(new Request(`http://localhost/api/updates${path}`, init));
   try {
@@ -528,7 +528,7 @@ test("an unavailable GitHub API surfaces an error state without blocking later c
     expect(next.status).toBe("available");
   } finally {
     updates.close();
-    sync.close();
+    await sync.close();
     github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }

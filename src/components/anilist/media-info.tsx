@@ -1,5 +1,5 @@
-import type { AniListDate, AniListMedia } from "../types";
-import { Badge } from "./ui/badge";
+import type { AniListDate, AniListMedia } from "../../types";
+import { Badge } from "../ui/badge";
 
 const seasons = { FALL: "Fall", SPRING: "Spring", SUMMER: "Summer", WINTER: "Winter" };
 const formats: Record<string, string> = {

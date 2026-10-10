@@ -27,7 +27,7 @@ test("discovery keeps the literal query and makes no catalogue request until Jev
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -109,7 +109,7 @@ test("discovery defaults to active sources and filters the unsearchable Tsundere
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -186,7 +186,7 @@ test("natural discovery falls back during a catalogue outage and reads episode n
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -287,7 +287,7 @@ test("natural discovery searches English and Japanese aliases and keeps only the
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

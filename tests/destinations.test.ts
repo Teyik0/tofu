@@ -44,7 +44,7 @@ test("pinned threads retain their selected icon after restart without changing d
       network,
     });
     const restored = restarted;
-    const api = createTestApi(() => restored, context.sync.options);
+    const api = await createTestApi(() => restored, context.sync.options);
     const state = await waitFor(
       async () =>
         (await (
@@ -146,7 +146,7 @@ test("legacy thread databases gain unpinned folder icons without rewriting names
       network,
     });
     const restored = restarted;
-    const api = createTestApi(() => restored, context.sync.options);
+    const api = await createTestApi(() => restored, context.sync.options);
     const read = async () =>
       (await (
         await api.handle(new Request(`http://localhost/api/state?selected=${id}`))
@@ -680,7 +680,7 @@ test("torrents with overlapping files do not overwrite an existing download", as
       network,
     });
     const engine = reopened;
-    const app = createTestApi(() => engine, context.sync.options);
+    const app = await createTestApi(() => engine, context.sync.options);
     request = (path, init) => app.handle(new Request(`http://localhost/api${path}`, init));
     const restored = await waitFor(
       () => read(first.id),

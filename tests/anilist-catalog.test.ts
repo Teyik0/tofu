@@ -61,7 +61,7 @@ test("AniList catalog browses trending anime without an account and keeps person
     engine: () => context.engine,
     now: Date.now,
   });
-  const api = createTestApi(
+  const api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service

@@ -5,9 +5,9 @@ import type {
   AniListCatalogOptions,
   AniListCatalogSort,
   AniListMedia,
-} from "../types";
-import { OptionSelect } from "./option-select";
-import { Button } from "./ui/button";
+} from "../../types";
+import { OptionSelect } from "../option-select";
+import { Button } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -15,9 +15,9 @@ import {
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { Field, FieldGroup, FieldLabel } from "./ui/field";
-import { Input } from "./ui/input";
+} from "../ui/dropdown-menu";
+import { Field, FieldGroup, FieldLabel } from "../ui/field";
+import { Input } from "../ui/input";
 
 export const catalogSortOptions = [
   { label: "Title", value: "title" },

@@ -3,7 +3,7 @@ import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
 import type { AniListCatalogFilters } from "../../../types";
-import { services } from "../../lib/services";
+import { contextPlugin } from "../../lib/context";
 import { draft } from "../automation/model";
 import { catalogSchema } from "./catalog";
 import {
@@ -21,23 +21,28 @@ import {
 
 const invalidateLibrary = { path: "/anilist", type: "page" } as const;
 
-export const anilist = new Elysia({ name: "tofu-anilist-api" })
+export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
+  .use(contextPlugin)
   .use(furinSync(sync))
   .use(furinInvalidate())
   .guard({ sync: false })
-  .get("/anilist", { sync: { id: "tofu.anilist", scope: {} } }, ({ defer }) => {
-    const { anilist: library } = services.automation;
+  .get("/anilist", { sync: { id: "tofu.anilist", scope: {} } }, ({ application, defer }) => {
+    const { anilist: library } = application.automation;
     if (library.needsRefresh()) {
       defer(() => library.refresh().catch(() => undefined));
     }
     return library.snapshot();
   })
-  .post("/anilist/catalog", { body: catalogSchema }, ({ body }) =>
-    services.automation.anilist.catalog(body as AniListCatalogFilters)
+  .post("/anilist/catalog", { body: catalogSchema }, ({ application, body }) =>
+    application.automation.anilist.catalog(body as AniListCatalogFilters)
   )
-  .get("/anilist/catalog/options", () => services.automation.anilist.catalogOptions())
-  .post("/anilist/entries/:mediaId/releases", { params: mediaParamsSchema }, ({ params }) =>
-    services.automation.animeReleases(params.mediaId)
+  .get("/anilist/catalog/options", ({ application }) =>
+    application.automation.anilist.catalogOptions()
+  )
+  .post(
+    "/anilist/entries/:mediaId/releases",
+    { params: mediaParamsSchema },
+    ({ application, params }) => application.automation.animeReleases(params.mediaId)
   )
   .put(
     "/anilist/entries/:mediaId/automation",
@@ -46,8 +51,8 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
       params: mediaParamsSchema,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ params, body, mutation }) => {
-      const service = services.automation;
+    async ({ application, params, body, mutation }) => {
+      const service = application.automation;
       const input = service.anilist.prepareAutomation(params.mediaId, body);
       const prepared = await service.prepareRule(input.id, input.draft);
       const result = await mutation((tx) => {
@@ -67,8 +72,8 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
       invalidate: invalidateLibrary,
       params: episodeParamsSchema,
     },
-    ({ params, body }) =>
-      services.automation.anilist.completeEpisode(params.mediaId, params.episode, body.completed)
+    ({ application, params, body }) =>
+      application.automation.anilist.completeEpisode(params.mediaId, params.episode, body.completed)
   )
   .put(
     "/anilist/preferences",
@@ -76,8 +81,8 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
       body: aniListPreferencesSchema,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ body, mutation }) => {
-      const library = services.automation.anilist;
+    async ({ application, body, mutation }) => {
+      const library = application.automation.anilist;
       const result = await mutation((tx) => library.writePreferences(tx, body.visibleStatuses));
       library.refreshState();
       return result;
@@ -88,7 +93,8 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
     {
       body: threadPreviewSchema,
     },
-    ({ body }) => services.automation.anilist.previewThreads(body.basePath, body.statuses)
+    ({ application, body }) =>
+      application.automation.anilist.previewThreads(body.basePath, body.statuses)
   )
   .put(
     "/anilist/entries/:mediaId",
@@ -97,8 +103,8 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
       params: mediaParamsSchema,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ params, body, mutation }) => {
-      const service = services.automation;
+    async ({ application, params, body, mutation }) => {
+      const service = application.automation;
       const result = await mutation((tx) =>
         service.anilist.writeSelection(tx, [params.mediaId], body.enabled)
       );
@@ -113,8 +119,8 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
       body: selectionSchema,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ body, mutation }) => {
-      const service = services.automation;
+    async ({ application, body, mutation }) => {
+      const service = application.automation;
       const result = await mutation((tx) =>
         service.anilist.writeSelection(tx, body.mediaIds, body.enabled)
       );
@@ -129,24 +135,24 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
       body: aniListConfigurationSchema,
       invalidate: invalidateLibrary,
     },
-    ({ body }) => services.automation.anilist.configure(body)
+    ({ application, body }) => application.automation.anilist.configure(body)
   )
-  .post("/anilist/connect", { invalidate: invalidateLibrary }, () =>
-    services.automation.anilist.connect()
+  .post("/anilist/connect", { invalidate: invalidateLibrary }, ({ application }) =>
+    application.automation.anilist.connect()
   )
   .post(
     "/anilist/callback",
     { body: authorizationCallbackSchema, invalidate: invalidateLibrary },
-    ({ body }) => services.automation.anilist.receiveAuthorizationUrl(body.url)
+    ({ application, body }) => application.automation.anilist.receiveAuthorizationUrl(body.url)
   )
-  .delete("/anilist/connect", { invalidate: invalidateLibrary }, () =>
-    services.automation.anilist.cancelAuthorization()
+  .delete("/anilist/connect", { invalidate: invalidateLibrary }, ({ application }) =>
+    application.automation.anilist.cancelAuthorization()
   )
-  .post("/anilist/list", { invalidate: invalidateLibrary }, () =>
-    services.automation.anilist.list()
+  .post("/anilist/list", { invalidate: invalidateLibrary }, ({ application }) =>
+    application.automation.anilist.list()
   )
-  .post("/anilist/refresh", { invalidate: invalidateLibrary }, () =>
-    services.automation.anilist.refresh()
+  .post("/anilist/refresh", { invalidate: invalidateLibrary }, ({ application }) =>
+    application.automation.anilist.refresh()
   )
   .post(
     "/anilist/subscriptions",
@@ -154,15 +160,17 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
       body: subscriptionSchema,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ body, mutation }) => {
-      const library = services.automation.anilist;
+    async ({ application, body, mutation }) => {
+      const library = application.automation.anilist;
       const result = await mutation((tx) => library.writeSubscription(tx, body));
       library.refreshState();
       return result;
     }
   )
-  .post("/anilist/subscriptions/:id/sync", { invalidate: invalidateLibrary }, ({ params }) =>
-    services.automation.anilist.sync(params.id)
+  .post(
+    "/anilist/subscriptions/:id/sync",
+    { invalidate: invalidateLibrary },
+    ({ application, params }) => application.automation.anilist.sync(params.id)
   )
   .put(
     "/anilist/subscriptions/:id",
@@ -170,8 +178,8 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
       body: enabledSchema,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ params, body, mutation }) => {
-      const service = services.automation;
+    async ({ application, params, body, mutation }) => {
+      const service = application.automation;
       const result = await mutation((tx) =>
         service.anilist.writeToggle(tx, params.id, body.enabled)
       );
@@ -185,8 +193,8 @@ export const anilist = new Elysia({ name: "tofu-anilist-api" })
     {
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ params, mutation }) => {
-      const service = services.automation;
+    async ({ application, params, mutation }) => {
+      const service = application.automation;
       const result = await mutation((tx) => service.anilist.deleteSubscription(tx, params.id));
       service.refreshState();
       service.anilist.refreshState();

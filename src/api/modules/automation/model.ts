@@ -1,72 +1,110 @@
-import { t } from "elysia";
+import {
+  array,
+  boolean,
+  check,
+  integer,
+  literal,
+  maxLength,
+  maxValue,
+  minLength,
+  minValue,
+  null as nullSchema,
+  object,
+  optional,
+  pipe,
+  string,
+  union,
+} from "valibot";
+import { integerInput } from "../../lib/validation";
 
-export const source = t.Union([t.Literal("nyaa"), t.Literal("tsundere"), t.Literal("c411")]);
-export const listStatus = t.Union([
-  t.Literal("CURRENT"),
-  t.Literal("PLANNING"),
-  t.Literal("COMPLETED"),
-  t.Literal("PAUSED"),
-  t.Literal("DROPPED"),
-  t.Literal("REPEATING"),
+export const source = union([literal("nyaa"), literal("tsundere"), literal("c411")]);
+export const listStatus = union([
+  literal("CURRENT"),
+  literal("PLANNING"),
+  literal("COMPLETED"),
+  literal("PAUSED"),
+  literal("DROPPED"),
+  literal("REPEATING"),
 ]);
-export const organization = t.Union([
-  t.Object({ mode: t.Literal("shared") }),
-  t.Object({
-    basePath: t.String({ maxLength: 4096, minLength: 1 }),
-    mode: t.Literal("per-anime"),
-    overrides: t.Array(
-      t.Object({
-        destinationId: t.Union([t.String(), t.Null()]),
-        downloadPath: t.String({ maxLength: 4096, minLength: 1 }),
-        mediaId: t.Integer({ minimum: 1 }),
-        name: t.String({ maxLength: 500, minLength: 1 }),
-      }),
-      { maxItems: 500 }
+export const organization = union([
+  object({ mode: literal("shared") }),
+  object({
+    basePath: pipe(string(), minLength(1), maxLength(4096)),
+    mode: literal("per-anime"),
+    overrides: pipe(
+      array(
+        object({
+          destinationId: union([string(), nullSchema()]),
+          downloadPath: pipe(string(), minLength(1), maxLength(4096)),
+          mediaId: pipe(integerInput, integer(), minValue(1)),
+          name: pipe(string(), minLength(1), maxLength(500)),
+        })
+      ),
+      maxLength(500)
     ),
   }),
 ]);
-export const language = t.Union([t.Literal("VF"), t.Literal("VOSTFR"), t.Literal("MULTI")]);
-export const criteria = t.Array(
-  t.Union([
-    t.Literal("language"),
-    t.Literal("resolution"),
-    t.Literal("source"),
-    t.Literal("codec"),
-  ]),
-  { maxItems: 4, minItems: 4, uniqueItems: true }
+export const language = union([literal("VF"), literal("VOSTFR"), literal("MULTI")]);
+export const criteria = pipe(
+  array(union([literal("language"), literal("resolution"), literal("source"), literal("codec")])),
+  minLength(4),
+  maxLength(4),
+  check((items) => new Set(items).size === items.length, "Items must be unique")
 );
-export const preferences = t.Object({
-  automatic: t.Boolean(),
-  codecs: t.Array(t.String({ maxLength: 20 }), { maxItems: 6, uniqueItems: true }),
-  deleteReplacedFiles: t.Boolean(),
-  excludePacks: t.Boolean(),
-  intervalMinutes: t.Integer({ maximum: 1440, minimum: 1 }),
-  languages: t.Array(language, { maxItems: 3, uniqueItems: true }),
-  paused: t.Boolean(),
+export const preferences = object({
+  automatic: boolean(),
+  codecs: pipe(
+    array(pipe(string(), maxLength(20))),
+    maxLength(6),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
+  deleteReplacedFiles: boolean(),
+  excludePacks: boolean(),
+  intervalMinutes: pipe(integerInput, integer(), minValue(1), maxValue(1440)),
+  languages: pipe(
+    array(language),
+    maxLength(3),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
+  paused: boolean(),
   priority: criteria,
-  resolutions: t.Array(t.String({ maxLength: 10 }), { maxItems: 6, uniqueItems: true }),
-  sources: t.Array(source, { maxItems: 3, minItems: 1, uniqueItems: true }),
-  waitMinutes: t.Integer({ maximum: 1440, minimum: 0 }),
+  resolutions: pipe(
+    array(pipe(string(), maxLength(10))),
+    maxLength(6),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
+  sources: pipe(
+    array(source),
+    minLength(1),
+    maxLength(3),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
+  waitMinutes: pipe(integerInput, integer(), minValue(0), maxValue(1440)),
 });
-export const draft = t.Object({
-  afterEpisode: t.Optional(t.Integer({ maximum: 10_000, minimum: 0 })),
-  aliases: t.Optional(t.Array(t.String({ maxLength: 500 }), { maxItems: 30 })),
-  automatic: t.Boolean(),
-  codecs: t.Array(t.String({ maxLength: 20 }), { maxItems: 6 }),
-  deleteReplacedFiles: t.Optional(t.Boolean()),
-  destinationId: t.String(),
-  enabled: t.Boolean(),
-  excludePacks: t.Boolean(),
-  includeExisting: t.Boolean(),
-  intervalMinutes: t.Integer({ maximum: 1440, minimum: 1 }),
-  languages: t.Array(language, { maxItems: 3 }),
-  matchMode: t.Union([t.Literal("exact"), t.Literal("pattern"), t.Literal("jev")]),
-  paused: t.Boolean(),
+export const draft = object({
+  afterEpisode: optional(pipe(integerInput, integer(), minValue(0), maxValue(10_000))),
+  aliases: optional(pipe(array(pipe(string(), maxLength(500))), maxLength(30))),
+  automatic: boolean(),
+  codecs: pipe(array(pipe(string(), maxLength(20))), maxLength(6)),
+  deleteReplacedFiles: optional(boolean()),
+  destinationId: string(),
+  enabled: boolean(),
+  excludePacks: boolean(),
+  includeExisting: boolean(),
+  intervalMinutes: pipe(integerInput, integer(), minValue(1), maxValue(1440)),
+  languages: pipe(array(language), maxLength(3)),
+  matchMode: union([literal("exact"), literal("pattern"), literal("jev")]),
+  paused: boolean(),
   priority: criteria,
-  query: t.String({ maxLength: 2000, minLength: 1 }),
-  resolutions: t.Array(t.String({ maxLength: 10 }), { maxItems: 6 }),
-  season: t.Union([t.Integer({ maximum: 1000, minimum: 1 }), t.Null()]),
-  sources: t.Array(source, { maxItems: 3, minItems: 1, uniqueItems: true }),
-  title: t.String({ maxLength: 500, minLength: 1 }),
-  waitMinutes: t.Integer({ maximum: 1440, minimum: 0 }),
+  query: pipe(string(), minLength(1), maxLength(2000)),
+  resolutions: pipe(array(pipe(string(), maxLength(10))), maxLength(6)),
+  season: union([pipe(integerInput, integer(), minValue(1), maxValue(1000)), nullSchema()]),
+  sources: pipe(
+    array(source),
+    minLength(1),
+    maxLength(3),
+    check((items) => new Set(items).size === items.length, "Items must be unique")
+  ),
+  title: pipe(string(), minLength(1), maxLength(500)),
+  waitMinutes: pipe(integerInput, integer(), minValue(0), maxValue(1440)),
 });

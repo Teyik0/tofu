@@ -1,14 +1,16 @@
 import { useMutation } from "@teyik0/furin/client";
+import { useSetAtom } from "jotai";
 import { DownloadIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
+import { modalAtom, selectedTorrentAtom } from "../state/workspace";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
-import { useWorkspace } from "./workspace-state";
 
 export function TorrentDrop({ activeDestination }: { activeDestination: string | null }) {
-  const { open, setSelected } = useWorkspace();
+  const open = useSetAtom(modalAtom);
+  const setSelected = useSetAtom(selectedTorrentAtom);
   const refresh = useRefresh();
   const upload = useMutation(api.torrents.file.post);
   const [dragging, setDragging] = useState(false);
@@ -29,7 +31,7 @@ export function TorrentDrop({ activeDestination }: { activeDestination: string |
           paused: "false",
         });
         if (!(result && "id" in result)) {
-          throw new Error(result && "error" in result ? result.error : "Unable to add the torrent");
+          throw new Error("Unable to add the torrent");
         }
         setSelected(result.id);
       }

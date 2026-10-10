@@ -13,8 +13,8 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
-import { api } from "../lib/client";
-import { useRefresh } from "../lib/navigation";
+import { api } from "../../lib/client";
+import { useRefresh } from "../../lib/navigation";
 import type {
   AniListCatalog,
   AniListCatalogFilters,
@@ -23,8 +23,37 @@ import type {
   AniListEntry,
   AniListMedia,
   AniListSeason,
-} from "../types";
-import { ActionTooltip } from "./action-tooltip";
+} from "../../types";
+import { ActionTooltip } from "../action-tooltip";
+import { request } from "../api";
+import { OptionSelect } from "../option-select";
+import { SidebarToggle } from "../sidebar-toggle";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
+import { Field, FieldLabel } from "../ui/field";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "../ui/hover-card";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "../ui/input-group";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Skeleton } from "../ui/skeleton";
 import {
   airingOptions,
   BrowseAdvancedFilters,
@@ -38,42 +67,13 @@ import {
   matchesBrowseFilters,
   noBrowseFilters,
   sourceOptions,
-} from "./anilist-browse-filters";
-import { AniListCover } from "./anilist-cover";
-import { AniListEpisodeModal } from "./anilist-episode-modal";
-import { AniListIcon } from "./anilist-icon";
-import { AniListMediaInfo, animeAiringLabel } from "./anilist-media-info";
-import { AniListPanel } from "./anilist-panel";
-import { aniListStatusLabel, aniListStatusLabels } from "./anilist-status";
-import { request } from "./api";
-import { OptionSelect } from "./option-select";
-import { SidebarToggle } from "./sidebar-toggle";
-import { Alert, AlertDescription } from "./ui/alert";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
-import { Field, FieldLabel } from "./ui/field";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "./ui/input-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
-import { Skeleton } from "./ui/skeleton";
+} from "./browse-filters";
+import { AniListCover } from "./cover";
+import { AniListEpisodeModal } from "./episode-modal";
+import { AniListIcon } from "./icon";
+import { AniListMediaInfo, animeAiringLabel } from "./media-info";
+import { AniListPanel } from "./panel";
+import { aniListStatusLabel, aniListStatusLabels } from "./status";
 
 type SortValue = AniListCatalogSort | "progress" | "year";
 const sortOptions = [

@@ -1,10 +1,11 @@
 import { EdenFetchError } from "@elysia/eden";
+import { Form, getDeepError, handleSubmit, useField } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
-import { startTransition, useActionState, useRef } from "react";
+import { useRef, useState } from "react";
 import { api } from "../../lib/client";
-import { usePluginDrafts } from "../../pages/plugins/_route";
-import type { PluginState } from "../../types";
+import { confirmPluginConfiguration } from "../../lib/plugin-forms";
+import type { PluginConfiguration, PluginForm, PluginState } from "../../types";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -12,9 +13,7 @@ import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from ".
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 
-type PluginCommand =
-  | { type: "configure"; configuration: Parameters<ReturnType<typeof api.plugins>["put"]>[0] }
-  | { type: "test" };
+type PluginCommand = { type: "configure"; configuration: PluginConfiguration } | { type: "test" };
 interface PluginFeedback {
   error: string | null;
   keyRequired: boolean;
@@ -26,101 +25,112 @@ const pluginPaths = [
   "/plugins/integrations",
 ] as const;
 
-export function PluginCard({ plugin }: { plugin: PluginState }) {
+export function PluginCard({ plugin, form }: { plugin: PluginState; form: PluginForm }) {
   const router = useRouter();
   const configure = useMutation(api.plugins({ id: plugin.id }).put);
   const testConnection = useMutation(api.plugins({ id: plugin.id }).test.post);
-  const { drafts, updateDraft } = usePluginDrafts();
-  const key = drafts[plugin.id]?.apiKey ?? "";
-  const limit = drafts[plugin.id]?.dailyLimit ?? String(plugin.dailyLimit);
-  const setKey = (apiKey: string) => updateDraft(plugin.id, { apiKey });
-  const setLimit = (dailyLimit: string) => updateDraft(plugin.id, { dailyLimit });
+  const keyField = useField(form, { path: ["apiKey"] });
+  const limitField = useField(form, { path: ["dailyLimit"] });
+  const key = keyField.input ?? "";
+  const limit = limitField.input ?? String(plugin.dailyLimit);
   const keyInput = useRef<HTMLInputElement>(null);
   const keyed = plugin.id === "jev" || plugin.id === "c411";
   const errorId = `plugin-error-${plugin.id}`;
-  const [feedback, dispatchAction, isPending] = useActionState<PluginFeedback, PluginCommand>(
-    async (_previous, command) => {
-      if (
-        command.type === "configure" &&
-        command.configuration.enabled &&
-        keyed &&
-        !plugin.hasApiKey &&
-        !command.configuration.apiKey
-      ) {
-        keyInput.current?.focus();
-        return {
-          error: `Add your ${plugin.id === "jev" ? "TypeSafe" : "C411"} API key before enabling this plugin.`,
-          keyRequired: true,
-        };
+  const [feedback, setFeedback] = useState<PluginFeedback>({ error: null, keyRequired: false });
+  const [isPending, setPending] = useState(false);
+  const busy = isPending || form.isSubmitting;
+  const run = async (command: PluginCommand) => {
+    setPending(true);
+    setFeedback({ error: null, keyRequired: false });
+    if (
+      command.type === "configure" &&
+      command.configuration.enabled &&
+      keyed &&
+      !plugin.hasApiKey &&
+      !command.configuration.apiKey
+    ) {
+      keyInput.current?.focus();
+      setPending(false);
+      setFeedback({
+        error: `Add your ${plugin.id === "jev" ? "TypeSafe" : "C411"} API key before enabling this plugin.`,
+        keyRequired: true,
+      });
+      return;
+    }
+    try {
+      if (command.type === "test") {
+        await testConnection.mutateAsync();
+      } else {
+        const { configuration } = command;
+        await configure.mutateAsync(configuration, {
+          optimistic(cache) {
+            for (const path of pluginPaths) {
+              cache.update(path, (data) => ({
+                ...data,
+                initialAutomation: {
+                  ...data.initialAutomation,
+                  plugins: data.initialAutomation.plugins.map((current) =>
+                    current.id === plugin.id
+                      ? {
+                          ...current,
+                          dailyLimit: configuration.dailyLimit ?? current.dailyLimit,
+                          enabled: configuration.enabled,
+                          error: null,
+                        }
+                      : current
+                  ),
+                },
+              }));
+            }
+          },
+        });
+        confirmPluginConfiguration(form, {
+          apiKey: configuration.apiKey,
+          dailyLimit: configuration.dailyLimit ?? plugin.dailyLimit,
+        });
       }
-      try {
-        if (command.type === "test") {
-          await testConnection.mutateAsync();
-        } else {
-          const { configuration } = command;
-          await configure.mutateAsync(configuration, {
-            optimistic(cache) {
-              for (const path of pluginPaths) {
-                cache.update(path, (data) => ({
-                  ...data,
-                  initialAutomation: {
-                    ...data.initialAutomation,
-                    plugins: data.initialAutomation.plugins.map((current) =>
-                      current.id === plugin.id
-                        ? {
-                            ...current,
-                            dailyLimit: configuration.dailyLimit ?? current.dailyLimit,
-                            enabled: configuration.enabled,
-                            error: null,
-                          }
-                        : current
-                    ),
-                  },
-                }));
-              }
-            },
-          });
-          startTransition(() =>
-            updateDraft(plugin.id, (current) =>
-              current.apiKey.trim() === configuration.apiKey ? { apiKey: "" } : {}
-            )
-          );
-        }
-        return { error: null, keyRequired: false };
-      } catch (cause) {
-        const value: unknown = cause instanceof EdenFetchError ? cause.value : null;
-        return {
-          error:
-            value &&
-            typeof value === "object" &&
-            "detail" in value &&
-            typeof value.detail === "string"
-              ? value.detail
-              : cause instanceof Error
-                ? cause.message
-                : "Unable to update plugin",
-          keyRequired: false,
-        };
-      }
-    },
-    { error: null, keyRequired: false }
-  );
+      setFeedback({ error: null, keyRequired: false });
+    } catch (cause) {
+      const value: unknown = cause instanceof EdenFetchError ? cause.value : null;
+      setFeedback({
+        error:
+          value &&
+          typeof value === "object" &&
+          "detail" in value &&
+          typeof value.detail === "string"
+            ? value.detail
+            : cause instanceof Error
+              ? cause.message
+              : "Unable to update plugin",
+        keyRequired: false,
+      });
+    } finally {
+      setPending(false);
+    }
+  };
   const keyRequired = feedback.keyRequired && !plugin.hasApiKey && !key.trim();
-  const error = isPending || (feedback.keyRequired && !keyRequired) ? null : feedback.error;
-  const save = (enabled: boolean) => {
-    dispatchAction({
+  const error =
+    getDeepError(form) ?? (busy || (feedback.keyRequired && !keyRequired) ? null : feedback.error);
+  const configurePlugin = async (
+    configuration: { apiKey: string; dailyLimit: number },
+    enabled: boolean
+  ) => {
+    await run({
       configuration: {
         enabled,
-        ...(key.trim() ? { apiKey: key.trim() } : {}),
-        dailyLimit: Number(limit),
+        ...(configuration.apiKey.trim() ? { apiKey: configuration.apiKey.trim() } : {}),
+        dailyLimit: configuration.dailyLimit,
       },
       type: "configure",
     });
   };
+  const save = (enabled: boolean) => {
+    void handleSubmit(form, (configuration) => configurePlugin(configuration, enabled))();
+  };
   const dirty = key.trim() !== "" || limit !== String(plugin.dailyLimit);
   const formId = `plugin-form-${plugin.id}`;
   return (
-    <article aria-busy={isPending} aria-label={plugin.name} className="plugin-card plugins-plugin">
+    <article aria-busy={busy} aria-label={plugin.name} className="plugin-card plugins-plugin">
       <Field orientation="horizontal">
         <FieldContent>
           <div className="plugins-plugin-title">
@@ -135,17 +145,21 @@ export function PluginCard({ plugin }: { plugin: PluginState }) {
           aria-describedby={error || plugin.error ? errorId : undefined}
           aria-label={`Enable ${plugin.name}`}
           checked={plugin.enabled}
-          disabled={isPending}
+          disabled={busy}
           id={`plugin-${plugin.id}`}
-          onCheckedChange={(enabled) => startTransition(() => save(enabled))}
+          onCheckedChange={save}
         />
       </Field>
       {keyed === true && (
-        <form action={() => save(plugin.enabled)} id={formId}>
+        <Form
+          id={formId}
+          of={form}
+          onSubmit={(configuration) => configurePlugin(configuration, plugin.enabled)}
+        >
           <FieldGroup className="plugins-configuration">
             <Field
               className="plugins-credential"
-              data-invalid={keyRequired || undefined}
+              data-invalid={keyRequired || Boolean(keyField.errors) || undefined}
               orientation="responsive"
             >
               <FieldContent>
@@ -160,19 +174,26 @@ export function PluginCard({ plugin }: { plugin: PluginState }) {
               </FieldContent>
               <Input
                 aria-describedby={keyRequired ? errorId : undefined}
-                aria-invalid={keyRequired || undefined}
+                aria-invalid={keyRequired || Boolean(keyField.errors) || undefined}
                 autoComplete="off"
-                disabled={isPending}
+                {...keyField.props}
                 id={`key-${plugin.id}`}
-                onChange={(event) => setKey(event.target.value)}
+                onChange={(event) => keyField.onChange(event.target.value)}
                 placeholder={plugin.hasApiKey ? "Saved · type to replace" : "Your personal key"}
-                ref={keyInput}
+                ref={(element) => {
+                  keyInput.current = element;
+                  keyField.props.ref(element);
+                }}
                 type="password"
                 value={key}
               />
             </Field>
             {plugin.id === "jev" && (
-              <Field className="plugins-limit" orientation="horizontal">
+              <Field
+                className="plugins-limit"
+                data-invalid={Boolean(limitField.errors)}
+                orientation="horizontal"
+              >
                 <FieldContent>
                   <FieldLabel htmlFor="jev-daily-limit">Daily call limit</FieldLabel>
                   <FieldDescription>
@@ -181,11 +202,12 @@ export function PluginCard({ plugin }: { plugin: PluginState }) {
                   </FieldDescription>
                 </FieldContent>
                 <Input
-                  disabled={isPending}
+                  {...limitField.props}
+                  aria-invalid={Boolean(limitField.errors)}
                   id="jev-daily-limit"
                   max="100000"
                   min="1"
-                  onChange={(event) => setLimit(event.target.value)}
+                  onChange={(event) => limitField.onChange(event.target.value)}
                   required
                   type="number"
                   value={limit}
@@ -193,7 +215,7 @@ export function PluginCard({ plugin }: { plugin: PluginState }) {
               </Field>
             )}
           </FieldGroup>
-        </form>
+        </Form>
       )}
       {plugin.id === "anilist" && (
         <FieldDescription>
@@ -209,8 +231,8 @@ export function PluginCard({ plugin }: { plugin: PluginState }) {
         <div className="plugins-plugin-actions">
           {plugin.enabled === true && (
             <Button
-              disabled={isPending}
-              onClick={() => startTransition(() => dispatchAction({ type: "test" }))}
+              disabled={busy}
+              onClick={() => void run({ type: "test" })}
               size="sm"
               variant="outline"
             >
@@ -236,7 +258,7 @@ export function PluginCard({ plugin }: { plugin: PluginState }) {
           {keyed === true && (
             <Button
               className="plugins-save"
-              disabled={isPending || !dirty}
+              disabled={busy || !dirty}
               form={formId}
               size="sm"
               type="submit"

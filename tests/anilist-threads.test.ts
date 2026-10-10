@@ -66,7 +66,7 @@ async function setup() {
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createTestApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -91,6 +91,11 @@ async function setup() {
     async restart() {
       await service.close();
       service = await AutomationService.open(options);
+      api = await createTestApi(
+        () => context.engine,
+        context.sync.options,
+        () => service
+      );
     },
   };
 }

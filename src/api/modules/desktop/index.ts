@@ -1,58 +1,61 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
+import { contextPlugin } from "../../lib/context";
 import { UserError } from "../../lib/errors";
-import { services } from "../../lib/services";
 
-export const desktop = new Elysia({ name: "tofu-desktop-api" })
+export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
+  .use(contextPlugin)
   .use(furinSync(sync))
   .guard({ sync: false })
-  .get("/instance", () => services.instance)
-  .post("/directory", async () => {
-    if (!services.isDesktop) {
+  .get("/instance", ({ application }) => application.instance)
+  .post("/directory", async ({ application }) => {
+    if (application.platform.kind !== "desktop") {
       throw new UserError("Enter the folder path on the server", { status: 409 });
     }
-    const { Utils } = services.nativeSdk;
+    const Utils = application.platform.utils;
     const paths = await Utils.openFileDialog({
       allowsMultipleSelection: false,
       canChooseDirectory: true,
       canChooseFiles: false,
-      startingFolder: services.engine.settings.downloadPath,
+      startingFolder: application.engine.settings.downloadPath,
     });
     return { path: paths[0] ?? null };
   })
-  .post("/torrents/:id/reveal", async ({ params }) => {
-    if (!services.isDesktop) {
+  .post("/torrents/:id/reveal", async ({ application, params }) => {
+    if (application.platform.kind !== "desktop") {
       throw new UserError("The folder is on the machine hosting Tofu", { status: 409 });
     }
     return {
-      opened: services.nativeSdk.Utils.openPath((await services.engine.detail(params.id)).savePath),
+      opened: application.platform.utils.openPath(
+        (await application.engine.detail(params.id)).savePath
+      ),
     };
   })
-  .get("/desktop", () => {
-    if (!services.isDesktop) {
+  .get("/desktop", ({ application }) => {
+    if (application.platform.kind !== "desktop") {
       throw new UserError("This action requires the desktop app", { status: 409 });
     }
-    return services.desktop.snapshot();
+    return application.platform.controller.snapshot();
   })
-  .post("/desktop/open", () => {
-    if (!services.isDesktop) {
+  .post("/desktop/open", ({ application }) => {
+    if (application.platform.kind !== "desktop") {
       throw new UserError("This action requires the desktop app", { status: 409 });
     }
-    return services.desktop.open();
+    return application.platform.controller.open();
   })
-  .post("/desktop/background", () => {
-    if (!services.isDesktop) {
+  .post("/desktop/background", ({ application }) => {
+    if (application.platform.kind !== "desktop") {
       throw new UserError("This action requires the desktop app", { status: 409 });
     }
-    return services.desktop.background();
+    return application.platform.controller.background();
   })
-  .post("/updates/open-download", () => {
-    if (!services.isDesktop) {
+  .post("/updates/open-download", ({ application }) => {
+    if (application.platform.kind !== "desktop") {
       return { opened: false };
     }
-    if (services.updates.snapshot().status !== "available") {
+    if (application.updates.snapshot().status !== "available") {
       throw new UserError("No update available", { status: 409 });
     }
-    return services.desktop.openDownload();
+    return application.platform.controller.openDownload();
   });

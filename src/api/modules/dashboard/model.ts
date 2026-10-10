@@ -1,6 +1,6 @@
-import { t } from "elysia";
+import { object, optional, string } from "valibot";
 
-export const dashboardQuerySchema = t.Object({
-  detail: t.Optional(t.String()),
-  selected: t.Optional(t.String()),
+export const dashboardQuerySchema = object({
+  detail: optional(string()),
+  selected: optional(string()),
 });
