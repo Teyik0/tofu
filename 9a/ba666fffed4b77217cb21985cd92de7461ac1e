@@ -1,0 +1,36 @@
+package/plugins/tests/auth.test.ts
+  s_a0a481a34b8480::t_7bf3487e6fb06e 29-34
+apps/scaffolder/templates/tests/plugin.test.ts.template
+  s_a0a481a34b8480::t_d0a9ff2025e146 60-61
+apps/scaffolder/tests/cli.test.ts
+  s_a0a481a34b8480::t_c993774a703ec8 2,39,57
+  s_a0a481a34b8480::t_5b9f9ec27bf2db 82-84
+apps/scaffolder/templates/README.md.template
+  s_a0a481a34b8480::t_d0a9ff2025e146 21-22
+apps/scaffolder/templates/dev/preview.ts.template
+  s_a0a481a34b8480::t_c993774a703ec8 20-25
+package/plugins/src/credentials.ts
+  s_a0a481a34b8480::t_7bf3487e6fb06e 13
+package/plugins/tests/client.test.ts
+  s_a0a481a34b8480::t_7bf3487e6fb06e 2,18
+docs/plugin-architecture.md
+  s_a0a481a34b8480::t_30216efe8398e0 117
+apps/tofu/tests/plugin-install.test.ts
+  s_a0a481a34b8480::t_c993774a703ec8 3,18,85,128,212,328,376,415,442
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9aba666fffed4b77217cb21985cd92de7461ac1e",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
