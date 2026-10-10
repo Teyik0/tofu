@@ -39,7 +39,7 @@ export async function openCoreApplication(signal: AbortSignal): Promise<CoreAppl
     resources.defer(() => lease.close());
     signal.throwIfAborted();
     const db = await openDatabase(instance.dataDir);
-    resources.defer(() => db.$client.close());
+    resources.defer(() => db.$client.close(true));
     assertDatabaseReady(db);
     signal.throwIfAborted();
     const engine = await WorkerTorrentEngine.open({

@@ -281,7 +281,7 @@ test.each(["default", "saved"])(
       );
       expect((await read()).detail?.destinationId).toBe("default");
     } finally {
-      database.$client.close();
+      database.$client.close(true);
       await context.close();
     }
   }

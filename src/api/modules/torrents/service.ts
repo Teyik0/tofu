@@ -263,7 +263,7 @@ export class TorrentEngine {
         database
       );
     } catch (error) {
-      database.$client.close();
+      database.$client.close(true);
       throw error;
     }
     await mkdir(engine.settings.downloadPath, { recursive: true });
@@ -1370,6 +1370,6 @@ export class TorrentEngine {
       this.save(entry);
     }
     this.config("traffic", { received: this.received, uploaded: this.uploaded });
-    this.db.$client.close();
+    this.db.$client.close(true);
   }
 }

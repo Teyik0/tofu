@@ -186,7 +186,7 @@ export class AutomationService {
       return new AutomationService(options, db, connection === undefined);
     } catch (error) {
       if (!connection) {
-        db.$client.close();
+        db.$client.close(true);
       }
       throw error;
     }
@@ -1279,7 +1279,7 @@ export class AutomationService {
     await Promise.allSettled(this.replacements.values());
     await Promise.allSettled(this.additions.values());
     if (this.ownsDatabase) {
-      this.db.$client.close();
+      this.db.$client.close(true);
     }
   }
 }

@@ -24,7 +24,7 @@ export async function openDatabase(directory: string) {
     await chmod(path, 0o600);
     return connection;
   } catch (error) {
-    connection.$client.close();
+    connection.$client.close(true);
     throw error;
   }
 }

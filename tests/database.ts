@@ -5,7 +5,7 @@ import { sync } from "../src/sync";
 export async function openTestDatabase(directory: string) {
   const db = await openDatabase(directory);
   const resources = new AsyncDisposableStack();
-  resources.defer(() => db.$client.close());
+  resources.defer(() => db.$client.close(true));
   return {
     close: () => resources.disposeAsync(),
     db,

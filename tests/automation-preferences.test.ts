@@ -67,7 +67,7 @@ test("legacy automation and AniList settings survive opening and updating the ex
       sql`INSERT INTO anilist VALUES ('preferences', ${JSON.stringify(["CURRENT", "COMPLETED"])})`
     );
   } finally {
-    legacy.$client.close();
+    legacy.$client.close(true);
   }
   let { request, service } = await open(context.directory, context);
   try {

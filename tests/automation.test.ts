@@ -63,7 +63,7 @@ test("automation resumes recurring AniList sync after a startup database write f
     expect(subscription?.lastSyncAt).toBe(clock);
     expect(subscription?.error).toBeNull();
   } finally {
-    writer.$client.close();
+    writer.$client.close(true);
     await service.close();
     upstream.stop(true);
     await context.close();
