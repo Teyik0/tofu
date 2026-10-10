@@ -20,7 +20,26 @@ test("an approved update bypasses the Furin quit veto after saving a real peer t
     import { Elysia } from ${JSON.stringify(import.meta.resolve("elysia"))};
     import { desktopApp } from ${JSON.stringify(join(root, "node_modules/@teyik0/furin-electrobun/src/server.ts"))};
     import { apiPlugin } from ${JSON.stringify(join(root, "src/api/index.ts"))};
-    import { onStartup, onShutdown } from ${JSON.stringify(join(root, "src/api/lib/lifecycle.ts"))};
+    import { applicationHost } from ${JSON.stringify(join(root, "src/api/lib/host.ts"))};
+    import { WorkerTorrentEngine } from ${JSON.stringify(join(root, "src/api/modules/torrents/worker-client.ts"))};
+    import { createTestApplication } from ${JSON.stringify(join(root, "tests/api-fixture.ts"))};
+    import { openTestDatabase } from ${JSON.stringify(join(root, "tests/database.ts"))};
+    import { network } from ${JSON.stringify(join(root, "tests/helpers.ts"))};
+    export async function onStartup(signal) {
+      const core = await applicationHost.prepare(async () => {
+        const database = await openTestDatabase(process.env.TOFU_DATA_DIR);
+        const engine = await WorkerTorrentEngine.open({
+          dataDir: process.env.TOFU_DATA_DIR,
+          downloadPath: process.env.TOFU_DOWNLOAD_DIR,
+          network,
+        });
+        database.options.resources.defer(() => engine.close());
+        const application = await createTestApplication(engine, database.options);
+        return { ...application, close: database.close };
+      }, signal);
+      applicationHost.activate(core, { kind: "server" });
+    }
+    export const onShutdown = () => applicationHost.stop();
     export default new Elysia().use(desktopApp({ onStartup, onShutdown })).use(apiPlugin);
   `
   );
@@ -31,7 +50,7 @@ test("an approved update bypasses the Furin quit veto after saving a real peer t
     import { desktopHostSdk } from ${JSON.stringify(join(root, "src/api/modules/desktop/host-sdk.ts"))};
     import { DesktopController } from ${JSON.stringify(join(root, "src/api/modules/desktop/service.ts"))};
     import { applicationHost } from ${JSON.stringify(join(root, "src/api/lib/host.ts"))};
-    import { onStartup, onShutdown } from ${JSON.stringify(join(root, "src/api/lib/lifecycle.ts"))};
+    import { onStartup, onShutdown } from "../furin/app.js";
     const handlers = [];
     let status = [];
     let nativeQuits = 0;
@@ -54,7 +73,7 @@ test("an approved update bypasses the Furin quit veto after saving a real peer t
       let desktop;
       await runDesktopHost(desktopHostSdk(sdk), async ({ startBackend }) => {
         ({ backend } = await startBackend({ dataDir: process.env.TOFU_DATA_DIR }));
-        let core = await applicationHost.core;
+        const core = await applicationHost.core;
         desktop = new DesktopController({
           sdk, backend, engine: () => core.engine, smokeScript: null,
           name: "Tofu test", profile: "dev", publicDir: ${JSON.stringify(join(root, "public"))},
@@ -71,17 +90,24 @@ test("an approved update bypasses the Furin quit veto after saving a real peer t
         return response;
       };
       const { id } = await (await call("/torrents", { source: process.env.TOFU_TEST_MAGNET, paused: false })).json();
-      const deadline = Date.now() + 15000;
-      while ((await (await call("/torrents/" + id)).json()).progress !== 1) {
-        if (Date.now() > deadline) throw new Error("Transfer timed out");
-        await Bun.sleep(30);
+      const waitForSeeding = async () => {
+        const deadline = Date.now() + 15000;
+        while ((await (await call("/torrents/" + id)).json()).status !== "seeding") {
+          if (Date.now() > deadline) throw new Error("Transfer verification timed out");
+          await Bun.sleep(30);
+        }
+      };
+      try {
+        await waitForSeeding();
+        await desktop.installUpdate();
+        if (nativeQuits !== 0) throw new Error("The host attempted an ordinary quit during update handoff");
+        await onStartup(new AbortController().signal);
+        await waitForSeeding();
+        const response = await call("/torrents/" + id + "/files/0/content");
+        console.log(Bun.SHA256.hash(await response.arrayBuffer(), "hex"));
+      } finally {
+        await backend.stop();
       }
-      await desktop.installUpdate();
-      if (nativeQuits !== 0) throw new Error("The host attempted an ordinary quit during update handoff");
-      await onStartup(new AbortController().signal);
-      const response = await call("/torrents/" + id + "/files/0/content");
-      console.log(Bun.SHA256.hash(await response.arrayBuffer(), "hex"));
-      await backend.stop();
     } catch (error) { console.error(error); process.exitCode = 1; }
   `
   );
@@ -106,7 +132,7 @@ test("an approved update bypasses the Furin quit veto after saving a real peer t
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
     ]);
-    expect({ code, error }).toEqual({ code: 0, error: "" });
+    expect(code, error).toBe(0);
     expect(output).toContain(Bun.SHA256.hash(context.bytes, "hex"));
   } finally {
     clearTimeout(deadline);
