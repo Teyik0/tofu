@@ -1,0 +1,19 @@
+tests/desktop-update-host.test.ts
+  s_fedfaad7545ed5::t_4c58bf257d1d7e 23-42,53,76,93-109,135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "317a7e8f1d9d44368f6caa1b8871743b9dad8975",
+  "prompts": {},
+  "sessions": {
+    "s_fedfaad7545ed5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1271b-2a42-75f3-9f3c-7f473fc79c26",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
