@@ -32,6 +32,35 @@ test("AniList opening reports a native browser launch failure", async () => {
   expect(await response.json()).toEqual({ error: "Unable to open AniList in your browser" });
 });
 
+test("AniList opening reports a rejected native browser launch", async () => {
+  const app = createAniListOpeningApi({
+    isDesktop: () => true,
+    openExternal: () => Promise.reject(new Error("Native launch failed")),
+  });
+  const response = await app.handle(
+    new Request("http://localhost/api/anilist/open", json({ url: "https://anilist.co/anime/10" }))
+  );
+  expect(response.status).toBe(502);
+  expect(await response.json()).toEqual({ error: "Unable to open AniList in your browser" });
+});
+
+test.each([{}, { url: 10 }, { url: "a".repeat(2001) }])(
+  "AniList opening rejects an invalid request body with a validation status: %j",
+  async (body) => {
+    const opened: string[] = [];
+    const app = createAniListOpeningApi({
+      isDesktop: () => true,
+      openExternal: (url) => {
+        opened.push(url);
+        return Promise.resolve(true);
+      },
+    });
+    const response = await app.handle(new Request("http://localhost/api/anilist/open", json(body)));
+    expect(response.status).toBe(422);
+    expect(opened).toEqual([]);
+  }
+);
+
 test("AniList OAuth URLs still open in the desktop system browser", async () => {
   const opened: string[] = [];
   const app = createAniListOpeningApi({

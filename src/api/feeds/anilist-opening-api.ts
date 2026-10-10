@@ -1,4 +1,4 @@
-import { Elysia, t } from "elysia";
+import { Elysia, t, ValidationError } from "elysia";
 import type { AniListOpenResult } from "../../types";
 import { UserError } from "../engine";
 
@@ -10,7 +10,8 @@ export function createAniListOpeningApi(options: {
 }) {
   return new Elysia({ prefix: "/api/anilist" })
     .error(({ error, set }) => {
-      set.status = error instanceof UserError ? error.status : 500;
+      set.status =
+        error instanceof UserError || error instanceof ValidationError ? error.status : 500;
       return { error: error instanceof Error ? error.message : "Unable to open AniList" };
     })
     .post(
@@ -29,7 +30,7 @@ export function createAniListOpeningApi(options: {
         if (!options.isDesktop()) {
           return { opened: false, url: url.href };
         }
-        if (!(await options.openExternal(url.href))) {
+        if (!(await options.openExternal(url.href).catch(() => false))) {
           throw new UserError("Unable to open AniList in your browser", { status: 502 });
         }
         return { opened: true, url: url.href };

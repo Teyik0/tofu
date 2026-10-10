@@ -1576,6 +1576,8 @@ async function anilistWorkflow(config: { reportUrl: string }) {
   ];
   const releaseSearch = Promise.withResolvers<void>();
   let pluginNavigation = Promise.withResolvers<void>();
+  let pluginNavigationStarted = Promise.withResolvers<void>();
+  let pluginNavigationFinished = Promise.withResolvers<void>();
   const pluginState = Promise.withResolvers<void>();
   let openedAniListUrl: string | null = null;
   const fixtureFetch: typeof window.fetch = Object.assign(
@@ -1597,7 +1599,16 @@ async function anilistWorkflow(config: { reportUrl: string }) {
         path === "/_furin/data" &&
         new URL(url, location.origin).searchParams.get("path") === "/plugins"
       ) {
+        const finished = pluginNavigationFinished;
+        pluginNavigationStarted.resolve();
         await pluginNavigation.promise;
+        try {
+          const response = await nativeFetch(input, init);
+          await response.clone().arrayBuffer();
+          return response;
+        } finally {
+          finished.resolve();
+        }
       }
       if (path === "/api/automation") {
         await pluginState.promise;
@@ -1739,11 +1750,18 @@ async function anilistWorkflow(config: { reportUrl: string }) {
     await wait(() => !!document.querySelector(".add-button"));
     check("Plugins returns to the originating library", location.pathname === pluginsOrigin);
     pluginNavigation = Promise.withResolvers<void>();
+    pluginNavigationStarted = Promise.withResolvers<void>();
+    pluginNavigationFinished = Promise.withResolvers<void>();
     button("Plugins").click();
     await wait(() => !!document.querySelector(".plugins-page"));
+    await pluginNavigationStarted.promise;
     button("Back").click();
     await wait(() => !!document.querySelector(".add-button"));
     pluginNavigation.resolve();
+    await pluginNavigationFinished.promise;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
     check(
       "Back remains available during plugin navigation",
       !document.querySelector(".plugins-page") && location.pathname === pluginsOrigin
