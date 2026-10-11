@@ -11,6 +11,11 @@ Notable changes to Tofu are tracked here. Release tags follow the version in app
 - Share the core API contracts, server transport, validation models and UI primitives through the plugin SDK, preserving native Furin loaders and synchronized mutations.
 - Update the scaffolder to package the SDK dependency graph for a clean installation.
 
+### Fixed
+
+- Reuse lifecycle hooks from the loaded desktop backend so the native host does not bundle Furin's compiler and require its development-only parser binding.
+- Dispose a reopened plugin runtime when reusing the same application, preserving cleanup ownership across enable cycles.
+
 ## [0.2.3]
 
 ### Fixed

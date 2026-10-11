@@ -3748,7 +3748,7 @@ async function anilistCatalogWorkflow(config: { reportUrl: string; hoverOnly?: b
     const currentFilters = () => catalogRequests.findLast((filters) => (filters.page ?? 1) === 1);
     await openMenu('button[aria-labelledby^="anilist-genres-label"]');
     const genreOption = Array.from(
-      document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')
+      document.querySelectorAll<HTMLElement>('[role="menu"][data-open] [role="menuitemcheckbox"]')
     ).find((element) => element.textContent?.trim() === "Drama")!;
     genreOption.click();
     await wait(() => currentFilters()?.genres?.includes("Drama") === true);
@@ -3761,13 +3761,17 @@ async function anilistCatalogWorkflow(config: { reportUrl: string; hoverOnly?: b
     );
     check(
       "The genre menu stays open for multiple selections",
-      !!document.querySelector('[role="menu"]')
+      !!document.querySelector('[role="menu"][data-open]')
     );
-    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+    Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menu"][data-open] [role="menuitemcheckbox"]')
+    )
       .find((element) => element.textContent?.trim() === "Action")!
       .click();
     await wait(() => currentFilters()?.genres?.length === 2);
-    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+    Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menu"][data-open] [role="menuitemcheckbox"]')
+    )
       .find((element) => element.textContent?.trim() === "Space")!
       .click();
     await wait(() => currentFilters()?.tags?.includes("Space") === true);
@@ -3778,13 +3782,15 @@ async function anilistCatalogWorkflow(config: { reportUrl: string; hoverOnly?: b
         .join(",") === "Drama,Action,Space" &&
         document.querySelector(".anilist-genre-count")?.textContent === "+2" &&
         document.getElementById("anilist-genres-value")?.textContent === "Drama, Action, Space" &&
-        document.querySelectorAll('[role="menuitemcheckbox"][aria-checked="true"]').length === 3
+        document.querySelectorAll(
+          '[role="menu"][data-open] [role="menuitemcheckbox"][aria-checked="true"]'
+        ).length === 3
     );
     const genreTrigger = document.querySelector<HTMLButtonElement>(
       'button[aria-labelledby^="anilist-genres-label"]'
     )!;
     document
-      .querySelector('[role="menu"]')!
+      .querySelector('[role="menu"][data-open]')!
       .dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" })
       );
@@ -3835,7 +3841,7 @@ async function anilistCatalogWorkflow(config: { reportUrl: string; hoverOnly?: b
     await openMenu("#anilist-format");
     for (const label of ["Movie", "TV Show"]) {
       const choice = Array.from(
-        document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')
+        document.querySelectorAll<HTMLElement>('[role="menu"][data-open] [role="menuitemcheckbox"]')
       ).find((element) => element.textContent?.trim() === label)!;
       choice.click();
       await wait(() => choice.getAttribute("aria-checked") === "true");
@@ -3846,14 +3852,14 @@ async function anilistCatalogWorkflow(config: { reportUrl: string; hoverOnly?: b
       currentFilters()?.formats?.join(",") === "MOVIE,TV" &&
         document.querySelector("#anilist-format")?.getAttribute("aria-label") ===
           "Format: Movie, TV Show" &&
-        !!document.querySelector('[role="menu"]')
+        !!document.querySelector('[role="menu"][data-open]')
     );
     document
-      .querySelector('[role="menu"]')!
+      .querySelector('[role="menu"][data-open]')!
       .dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" })
       );
-    await wait(() => !document.querySelector('[role="menu"]'));
+    await wait(() => !document.querySelector('[role="menu"][data-open]'));
     const movieChip = document.querySelector<HTMLButtonElement>(
       'button[aria-label="Remove filter Movie"]'
     )!;
@@ -3884,15 +3890,17 @@ async function anilistCatalogWorkflow(config: { reportUrl: string; hoverOnly?: b
       () => !!document.querySelector('button[aria-label="View episodes for Native Library"]')
     );
     await openMenu(".anilist-status-filter");
-    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+    Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menu"][data-open] [role="menuitemcheckbox"]')
+    )
       .find((element) => element.textContent?.trim() === "None")!
       .click();
     document
-      .querySelector('[role="menu"]')!
+      .querySelector('[role="menu"][data-open]')!
       .dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" })
       );
-    await wait(() => !document.querySelector('[role="menu"]'));
+    await wait(() => !document.querySelector('[role="menu"][data-open]'));
     await wait(
       () => !!document.querySelector('button[aria-label="View episodes for Native Catalog"]')
     );
@@ -4072,7 +4080,9 @@ async function anilistCatalogWorkflow(config: { reportUrl: string; hoverOnly?: b
     check("Each catalog opening searches releases", releaseRequests.length === 3);
     document.querySelector<HTMLButtonElement>('button[aria-label="Large cards"]')!.click();
     await openMenu(".anilist-status-filter");
-    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+    Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menu"][data-open] [role="menuitemcheckbox"]')
+    )
       .find((element) => element.textContent?.trim() === "Watching")!
       .click();
     await wait(
