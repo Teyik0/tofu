@@ -49,3 +49,7 @@ if (import.meta.main) {
 }
 
 export default app;
+
+// Native recovery uses the already loaded backend instead of bundling its dependency graph twice.
+// biome-ignore lint/performance/noBarrelFile: The native host consumes these lifecycle exports from its loaded backend module.
+export { onShutdown, onStartup } from "./api/lib/lifecycle";

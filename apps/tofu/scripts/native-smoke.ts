@@ -1555,8 +1555,9 @@ async function nativeWorkflow(config: {
     );
     check(
       "Five plugins offered, initially disabled",
-      document.querySelectorAll(".plugin-card").length === 5 &&
-        (await automationState()).plugins.every((plugin) => !plugin.enabled)
+      ["nyaa", "tsundere", "c411", "jev", "anilist"].every((id) =>
+        document.querySelector(`#plugin-${id}`)
+      ) && (await automationState()).plugins.every((plugin) => !plugin.enabled)
     );
     document.querySelector<HTMLButtonElement>("#plugin-jev")!.click();
     await wait(() => !!document.querySelector('[role="alert"]'));

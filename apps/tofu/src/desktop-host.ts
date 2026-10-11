@@ -46,8 +46,11 @@ await runDesktopHost(desktopHostSdk(sdk), async ({ startBackend }) => {
     await registerDesktopProtocol(instance);
   }
 
-  const { onStartup, onShutdown } = await import("./api/lib/lifecycle");
-  const { backend } = await startBackend({ dataDir: instance.dataDir });
+  const { backend, module } = await startBackend({ dataDir: instance.dataDir });
+  const { onStartup, onShutdown } = module;
+  if (!(onStartup && onShutdown)) {
+    throw new Error("The desktop backend must export its lifecycle hooks");
+  }
   let core = await applicationHost.core;
   const { ApplicationMenu } = sdk;
   ApplicationMenu.setApplicationMenu([
@@ -108,7 +111,7 @@ await runDesktopHost(desktopHostSdk(sdk), async ({ startBackend }) => {
     checkUpdates: () => core.updates.check(),
     engine: () => core.engine,
     name: instance.name,
-    prepareUpdate: onShutdown,
+    prepareUpdate: async () => onShutdown(),
     profile: instance.profile,
     publicDir: process.env.FURIN_DESKTOP_DEV
       ? join(process.cwd(), "public")
