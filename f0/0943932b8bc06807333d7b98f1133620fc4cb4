@@ -1,0 +1,22 @@
+apps/tofu/scripts/native-smoke.ts
+  s_a0a481a34b8480::t_0d5cfaa7e3d33a 3751,3764,3766-3768,3772-3774,3785
+  s_a0a481a34b8480::t_e8159fb2793c44 3786-3787,3793,3844,3855,3858,3862,3893-3895,3899,3903,4083-4085
+CHANGELOG.md
+  s_a0a481a34b8480::t_8815d57c5fe2d1 14-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f00943932b8bc06807333d7b98f1133620fc4cb4",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
