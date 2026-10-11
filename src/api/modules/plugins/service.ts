@@ -1,4 +1,9 @@
-import type { PluginState } from "../../../types";
+import type { CredentialPluginId, PluginState } from "../../../types";
+
+export const pluginCredentialPages: Record<CredentialPluginId, string> = {
+  c411: "https://c411.org/user/integrations",
+  jev: "https://console.typesafe.ai/keys",
+};
 
 export const pluginEndpoints = {
   c411: "https://c411.org/api/torznab",

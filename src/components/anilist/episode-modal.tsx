@@ -1,21 +1,27 @@
 import { useField, useForm } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
+import { cn } from "cn";
 import {
   BookOpenIcon,
   DownloadIcon,
   ExternalLinkIcon,
+  HeartIcon,
+  ListChecksIcon,
   LoaderCircleIcon,
   RefreshCwIcon,
   SettingsIcon,
   ZapIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { object, string } from "valibot";
 import { useAutomationDraftForm } from "../../hooks/use-automation-draft-form";
 import { api } from "../../lib/client";
 import { useRefresh } from "../../lib/navigation";
+import { playSoundCue } from "../../lib/sound-cues";
 import type {
+  AniListEditor,
   AniListEntry,
+  AniListMedia,
   AniListReleases,
   AutomationDraft,
   AutomationState,
@@ -29,7 +35,7 @@ import { bytes } from "../format";
 import { OptionSelect } from "../option-select";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, buttonVariants } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
@@ -38,9 +44,21 @@ import { Skeleton } from "../ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { AniListCover } from "./cover";
+import { AniListEditorUnavailable, AniListListEditor } from "./list-editor";
 
 type Action = (task: () => Promise<void>) => void;
 type ReleaseStatus = "searching" | "ready" | "failed";
+
+interface EpisodeRowProps {
+  action: Action;
+  busy: boolean;
+  destinationId: string;
+  entry: AniListMedia | AniListEntry;
+  episode: number | null;
+  releaseStatus: ReleaseStatus;
+  releases: FeedRelease[];
+  torrents: DashboardState["torrents"];
+}
 
 function EpisodeRow({
   torrents,
@@ -51,16 +69,7 @@ function EpisodeRow({
   busy,
   releaseStatus,
   action,
-}: {
-  torrents: DashboardState["torrents"];
-  episode: number | null;
-  releases: FeedRelease[];
-  entry: AniListEntry;
-  destinationId: string;
-  busy: boolean;
-  releaseStatus: ReleaseStatus;
-  action: Action;
-}) {
+}: EpisodeRowProps) {
   const refresh = useRefresh();
   const addRelease = useMutation(api.discover.add.post);
   const completeEpisode = useMutation((episodeNumber: number, isCompleted: boolean) =>
@@ -75,7 +84,8 @@ function EpisodeRow({
     releases.find((item) => torrents.some((download) => download.id === item.infoHash)) ??
     releases[0];
   const torrent = torrents.find((item) => item.id === release?.infoHash);
-  const completed = episode !== null && entry.completedEpisodes.includes(episode);
+  const listed = "progress" in entry;
+  const completed = listed && episode !== null && entry.completedEpisodes.includes(episode);
   const label =
     episode === null ? "Pack / unnumbered release" : `Episode ${String(episode).padStart(2, "0")}`;
   return (
@@ -148,6 +158,7 @@ function EpisodeRow({
                     paused: false,
                     sourceId: release.sourceId,
                   });
+                  playSoundCue("added");
                   await refresh();
                 })
               }
@@ -162,7 +173,7 @@ function EpisodeRow({
               <Checkbox
                 aria-label={`Mark ${label} completed`}
                 checked={completed}
-                disabled={busy}
+                disabled={busy || !listed}
                 id={`anime-episode-${episode}`}
                 onCheckedChange={(checked) =>
                   action(async () => {
@@ -181,13 +192,15 @@ function EpisodeRow({
 }
 
 export function AniListEpisodeModal({
+  authenticated,
   dashboard,
   entry,
   automation,
   close,
 }: {
+  authenticated: boolean;
   dashboard: DashboardState;
-  entry: AniListEntry;
+  entry: AniListMedia | AniListEntry;
   automation: AutomationState;
   close: () => void;
 }) {
@@ -197,7 +210,17 @@ export function AniListEpisodeModal({
   );
   const runAutomation = useMutation((id: string) => api.automations({ id }).run.post());
   const openAnime = useMutation(api.anilist.open.post);
-  const rule = automation.automations.find((item) => item.id === entry.automationId);
+  const setFavourite = useMutation((enabled: boolean) =>
+    api.anilist.entries({ mediaId: entry.mediaId }).favourite.put({ enabled })
+  );
+  const [editor, setEditor] = useState<AniListEditor | null>(null);
+  const [editorError, setEditorError] = useState<string | null>(null);
+  const [editorLoading, setEditorLoading] = useState(authenticated);
+  const [editorVersion, setEditorVersion] = useState(0);
+  const listed = "progress" in entry;
+  const rule = listed
+    ? automation.automations.find((item) => item.id === entry.automationId)
+    : undefined;
   const destinationForm = useForm({
     initialInput: { destinationId: rule?.destinationId ?? "default" },
     schema: object({ destinationId: string() }),
@@ -238,6 +261,47 @@ export function AniListEpisodeModal({
     setReleaseError(null);
     setSearchVersion((value) => value + 1);
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry explicitly reloads the editor.
+  useEffect(() => {
+    if (!authenticated) {
+      setEditor(null);
+      setEditorLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setEditorLoading(true);
+    setEditorError(null);
+    void request<AniListEditor>(
+      `/anilist/entries/${entry.mediaId}/editor`,
+      "GET",
+      undefined,
+      controller.signal
+    )
+      .then(setEditor)
+      .catch((cause) => {
+        if (!controller.signal.aborted) {
+          setEditorError(
+            cause instanceof Error ? cause.message : "Unable to load your AniList entry"
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setEditorLoading(false);
+        }
+      });
+    return () => controller.abort();
+  }, [authenticated, entry.mediaId, editorVersion]);
+  const reloadEditor = async () => {
+    const updated = await request<AniListEditor>(
+      `/anilist/entries/${entry.mediaId}/editor`,
+      "GET",
+      undefined
+    );
+    setEditor(updated);
+    await refresh();
+    return updated;
+  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshing explicitly starts a new release search.
   useEffect(() => {
     let active = true;
@@ -276,7 +340,7 @@ export function AniListEpisodeModal({
   const episodes = [
     ...new Set([
       ...numbered.keys(),
-      ...entry.completedEpisodes,
+      ...(listed ? entry.completedEpisodes : []),
       ...Array.from({ length: entry.episodes ?? 0 }, (_, index) => index + 1),
     ]),
   ].sort((a, b) => a - b);
@@ -294,13 +358,15 @@ export function AniListEpisodeModal({
       open
     >
       <DialogContent className="anime-modal">
+        {/* Without a banner, AniList-style blurred cover art keeps the header from looking empty. */}
         <div
           className="anime-modal-banner"
+          data-source={entry.bannerImage ? "banner" : entry.coverImage ? "cover" : "none"}
           style={
-            entry.bannerImage
-              ? {
-                  backgroundImage: `linear-gradient(0deg, var(--card), transparent), url(${JSON.stringify(entry.bannerImage)})`,
-                }
+            entry.bannerImage || entry.coverImage
+              ? ({
+                  "--anime-banner": `url(${JSON.stringify(entry.bannerImage ?? entry.coverImage)})`,
+                } as CSSProperties)
               : undefined
           }
         />
@@ -308,39 +374,79 @@ export function AniListEpisodeModal({
           <div className="anime-modal-cover">
             <AniListCover src={entry.coverImage} />
           </div>
-          <div>
+          <div className="anime-modal-title">
             <span className="anilist-eyebrow">
               {entry.format?.replaceAll("_", " ") ?? "ANIME"} · {entry.seasonYear ?? "—"}
             </span>
             <DialogTitle>{entry.title}</DialogTitle>
             <DialogDescription>
-              {entry.progress} / {entry.episodes ?? "—"} episodes watched ·{" "}
+              {listed ? entry.progress : "—"} / {entry.episodes ?? "—"} episodes watched ·{" "}
               {result ? available : "—"} with releases
             </DialogDescription>
           </div>
-          {entry.siteUrl ? (
-            <ActionTooltip>
-              <a
-                aria-label={`Open ${entry.title} on AniList`}
-                className="anime-external-link"
-                href={entry.siteUrl}
-                onClick={(event) => {
-                  if (dashboard.session.mode !== "desktop") {
-                    return;
+          <div className="anime-modal-actions">
+            <Button
+              aria-label={editor?.isFavourite ? "Remove from favourites" : "Add to favourites"}
+              aria-pressed={editor?.isFavourite ?? false}
+              className="anime-favourite-button"
+              disabled={
+                busy ||
+                editorLoading ||
+                !authenticated ||
+                !editor ||
+                editor.isFavourite === null ||
+                editor.isFavouriteBlocked === true
+              }
+              onClick={() =>
+                action(async () => {
+                  const favouriteResult = await setFavourite.mutateAsync(!editor?.isFavourite);
+                  if (favouriteResult && "isFavourite" in favouriteResult) {
+                    setEditor((current) =>
+                      current ? { ...current, isFavourite: favouriteResult.isFavourite } : current
+                    );
+                    setNotice(
+                      favouriteResult.isFavourite
+                        ? "Added to AniList favourites."
+                        : "Removed from AniList favourites."
+                    );
                   }
-                  event.preventDefault();
-                  const url = event.currentTarget.href;
-                  action(async () => {
-                    await openAnime.mutateAsync({ url });
-                  });
-                }}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                <ExternalLinkIcon />
-              </a>
-            </ActionTooltip>
-          ) : null}
+                })
+              }
+              size="icon-lg"
+              title={
+                authenticated ? "AniList favourite" : "Connect AniList to favourite this anime"
+              }
+              variant={editor?.isFavourite ? "secondary" : "outline"}
+            >
+              <HeartIcon fill={editor?.isFavourite ? "currentColor" : "none"} />
+            </Button>
+            {entry.siteUrl ? (
+              <ActionTooltip>
+                <a
+                  aria-label={`Open ${entry.title} on AniList`}
+                  className={cn(
+                    buttonVariants({ size: "icon-lg", variant: "outline" }),
+                    "anime-external-link"
+                  )}
+                  href={entry.siteUrl}
+                  onClick={(event) => {
+                    if (dashboard.session.mode !== "desktop") {
+                      return;
+                    }
+                    event.preventDefault();
+                    const url = event.currentTarget.href;
+                    action(async () => {
+                      await openAnime.mutateAsync({ url });
+                    });
+                  }}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLinkIcon />
+                </a>
+              </ActionTooltip>
+            ) : null}
+          </div>
         </div>
         <div className="anime-modal-body">
           {error || releaseError ? (
@@ -348,23 +454,60 @@ export function AniListEpisodeModal({
               <AlertDescription>{error ?? releaseError}</AlertDescription>
             </Alert>
           ) : null}
-          {notice ? <p role="status">{notice}</p> : null}
-          <Tabs defaultValue="episodes">
+          {notice ? (
+            <p className="anime-modal-notice" role="status">
+              {notice}
+            </p>
+          ) : null}
+          <Tabs defaultValue="list">
             <TabsList variant="line">
+              <TabsTrigger value="list">
+                <ListChecksIcon />
+                My list
+              </TabsTrigger>
               <TabsTrigger value="episodes">
                 <BookOpenIcon />
                 Episodes
               </TabsTrigger>
-              <TabsTrigger value="automation">
+              <TabsTrigger disabled={!listed} value="automation">
                 <ZapIcon />
                 Automation
               </TabsTrigger>
             </TabsList>
+            <TabsContent keepMounted value="list">
+              {editorLoading ? (
+                <>
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
+                </>
+              ) : editor && authenticated ? (
+                <AniListListEditor
+                  action={action}
+                  busy={busy}
+                  editor={editor}
+                  media={entry}
+                  removed={async () => {
+                    await reloadEditor();
+                    close();
+                  }}
+                  saved={reloadEditor}
+                />
+              ) : (
+                <AniListEditorUnavailable
+                  authenticated={authenticated}
+                  error={editorError}
+                  retry={() => setEditorVersion((value) => value + 1)}
+                />
+              )}
+            </TabsContent>
             <TabsContent value="episodes">
               <div className="anime-episodes-toolbar">
-                <Field>
+                <Field className="anilist-filter">
                   <FieldLabel htmlFor="anime-download-destination">Download to</FieldLabel>
                   <OptionSelect
+                    className="anilist-filter-trigger"
+                    contentClassName="anilist-select-menu"
                     disabled={busy}
                     id="anime-download-destination"
                     onValueChange={setDestinationId}
@@ -381,8 +524,9 @@ export function AniListEpisodeModal({
                 </Button>
               </div>
               <p className="anime-sync-note">
-                Mark episodes Completed to sync consecutive progress to AniList. Skipped episodes
-                stay marked in Tofu until you catch up. An authenticated account is required.
+                {listed
+                  ? "Mark episodes Completed to sync consecutive progress to AniList. Skipped episodes stay marked in Tofu until you catch up. An authenticated account is required."
+                  : "Use My list to add this anime to AniList and sync watched episodes or customize its automation. You can download releases here without adding it to a list."}
               </p>
               {loading ? (
                 <p className="anime-sync-note" role="status">
@@ -403,6 +547,11 @@ export function AniListEpisodeModal({
                   </AlertDescription>
                 </Alert>
               ))}
+              {result?.search?.warning ? (
+                <Alert>
+                  <AlertDescription>{result.search.warning}</AlertDescription>
+                </Alert>
+              ) : null}
               {episodes.length || packs.length ? (
                 <div className="anime-episode-list">
                   {episodes.map((episode) => (
@@ -535,9 +684,12 @@ export function AniListEpisodeModal({
                 </FieldGroup>
               ) : (
                 <Button
-                  disabled={busy}
+                  disabled={busy || !listed}
                   onClick={() =>
                     action(async () => {
+                      if (!listed) {
+                        return;
+                      }
                       const template = await request<AutomationDraft>(
                         "/automations/interpret",
                         "POST",

@@ -13,7 +13,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { version } from "../../package.json";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
-import { modalAtom, selectedTorrentAtom } from "../state/workspace";
+import { armSoundCues } from "../lib/sound-cues";
+import { modalAtom, revealTorrentAtom, selectedTorrentAtom } from "../state/workspace";
 import type { DashboardState, TorrentDetail, TorrentSummary } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import type { AutomationSection } from "./automation-center";
@@ -78,8 +79,10 @@ export function App({
     // Await still receives the original promise and displays errors when the snapshot is used.
     void initialDetail.catch(() => undefined);
   }, [initialDetail]);
+  useEffect(() => armSoundCues(window), []);
   const setModal = useSetAtom(modalAtom);
   const [selected, setSelected] = useAtom(selectedTorrentAtom);
+  const [reveal, setReveal] = useAtom(revealTorrentAtom);
   const refresh = useRefresh();
   const bulk = useMutation(api.bulk.post);
   const pause = useMutation((id: string) => api.torrents({ id }).pause.post());
@@ -89,6 +92,14 @@ export function App({
   const [sort, setSort] = useState<"added" | "name" | "progress">("added");
   const [pending, setPending] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (reveal && reveal.destinationId === activeDestination) {
+      setSearch("");
+      setFilter("all");
+      setSelected(reveal.id);
+      setReveal(null);
+    }
+  }, [reveal, activeDestination, setSelected, setReveal]);
   const scoped = useMemo(
     () =>
       data.torrents.filter(
@@ -232,9 +243,9 @@ export function App({
           <div className="toolbar-controls">
             <InputGroup className="torrent-search">
               <InputGroupInput
-                aria-label="Search torrents"
+                aria-label="Filter torrents"
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search torrents"
+                placeholder="Filter torrents"
                 type="search"
                 value={search}
               />

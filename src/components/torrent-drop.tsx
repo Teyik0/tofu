@@ -5,6 +5,7 @@ import { DownloadIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
+import { playSoundCue } from "../lib/sound-cues";
 import { modalAtom, selectedTorrentAtom } from "../state/workspace";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -36,6 +37,7 @@ export function TorrentDrop({ activeDestination }: { activeDestination: string |
         }
         setSelected(result.id);
       }
+      playSoundCue("added");
     } catch (cause) {
       const value: unknown = cause instanceof EdenFetchError ? cause.value : null;
       setError(

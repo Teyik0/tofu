@@ -8,6 +8,7 @@ import { draft } from "../automation/model";
 import { catalogSchema } from "./catalog";
 import {
   aniListConfigurationSchema,
+  aniListEntrySchema,
   aniListPreferencesSchema,
   authorizationCallbackSchema,
   enabledSchema,
@@ -38,6 +39,39 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
   )
   .get("/anilist/catalog/options", ({ application }) =>
     application.automation.anilist.catalogOptions()
+  )
+  .get(
+    "/anilist/entries/:mediaId/editor",
+    { params: mediaParamsSchema },
+    ({ application, params }) => application.automation.anilist.editor(params.mediaId)
+  )
+  .put(
+    "/anilist/entries/:mediaId/editor",
+    {
+      body: aniListEntrySchema,
+      invalidate: invalidateLibrary,
+      params: mediaParamsSchema,
+    },
+    ({ application, params, body }) =>
+      application.automation.anilist.saveEntry(params.mediaId, body)
+  )
+  .put(
+    "/anilist/entries/:mediaId/favourite",
+    {
+      body: enabledSchema,
+      invalidate: invalidateLibrary,
+      params: mediaParamsSchema,
+    },
+    ({ application, params, body }) =>
+      application.automation.anilist.favourite(params.mediaId, body.enabled)
+  )
+  .delete(
+    "/anilist/entries/:mediaId/editor",
+    {
+      invalidate: invalidateLibrary,
+      params: mediaParamsSchema,
+    },
+    ({ application, params }) => application.automation.anilist.deleteEntry(params.mediaId)
   )
   .post(
     "/anilist/entries/:mediaId/releases",

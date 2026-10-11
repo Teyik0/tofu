@@ -276,6 +276,11 @@ export interface DashboardState {
 
 export type SourcePluginId = "nyaa" | "tsundere" | "c411";
 export type PluginId = SourcePluginId | "jev" | "anilist";
+export type CredentialPluginId = "c411" | "jev";
+export interface PluginCredentialPage {
+  opened: boolean;
+  url: string;
+}
 export interface PluginState {
   callsToday: number;
   checkedAt: number | null;
@@ -323,6 +328,8 @@ export interface FeedRelease {
   season: number | null;
   seeders: number | null;
   size: number | null;
+  /** Original numbering when a release is mapped to an AniList part's episodes. */
+  sourceEpisode?: number;
   sourceId: SourcePluginId;
   title: string;
   workTitle: string;
@@ -331,6 +338,18 @@ export interface DiscoveryResult {
   errors: { sourceId: SourcePluginId; message: string }[];
   releases: FeedRelease[];
   search?: DiscoverySearch;
+}
+export interface SearchReleaseGroup {
+  key: string;
+  releases: FeedRelease[];
+}
+export type GlobalSearchScope = "all" | "torrents" | "sources";
+export interface SourceSearchState {
+  error: string | null;
+  loading: boolean;
+  releases: FeedRelease[];
+  sourceId: SourcePluginId;
+  warning: string | null;
 }
 export interface DiscoverySearch {
   aliases: string[];
@@ -380,6 +399,7 @@ export interface AniListMedia {
   averageScore?: number | null;
   bannerImage: string | null;
   countryOfOrigin?: string | null;
+  coverColor?: string | null;
   coverImage: string | null;
   duration?: number | null;
   endDate?: AniListDate | null;
@@ -415,6 +435,53 @@ export interface AniListEntry extends AniListMedia {
   progress: number;
   status: AniListStatus;
 }
+export type AniListScoreFormat =
+  | "POINT_100"
+  | "POINT_10_DECIMAL"
+  | "POINT_10"
+  | "POINT_5"
+  | "POINT_3";
+export interface AniListListEntry {
+  advancedScores: { name: string; score: number }[];
+  completedAt: AniListDate | null;
+  customLists: string[];
+  hiddenFromStatusLists: boolean | null;
+  id: number;
+  mediaId: number;
+  notes: string | null;
+  priority: number | null;
+  private: boolean | null;
+  progress: number;
+  repeat: number | null;
+  score: number | null;
+  startedAt: AniListDate | null;
+  status: AniListStatus;
+}
+export interface AniListEditor {
+  entry: AniListListEntry | null;
+  isFavourite: boolean | null;
+  isFavouriteBlocked: boolean | null;
+  options: {
+    scoreFormat: AniListScoreFormat | null;
+    customLists: string[];
+    advancedScoring: string[];
+    advancedScoringEnabled: boolean;
+  };
+}
+export interface AniListListUpdate {
+  advancedScores?: number[];
+  completedAt?: AniListDate;
+  customLists?: string[];
+  hiddenFromStatusLists?: boolean;
+  notes?: string;
+  priority?: number;
+  private?: boolean;
+  progress?: number;
+  repeat?: number;
+  score?: number;
+  startedAt?: AniListDate;
+  status?: AniListStatus;
+}
 export interface AniListCatalog {
   hasNextPage: boolean;
   media: AniListMedia[];
@@ -439,6 +506,7 @@ export interface AniListCatalogFilters {
   excludedGenres?: string[];
   excludedTags?: string[];
   format?: string;
+  formats?: string[];
   genres?: string[];
   page?: number;
   search?: string;

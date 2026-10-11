@@ -4,6 +4,7 @@ import { FolderIcon, LinkIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react
 import { type ReactNode, useState } from "react";
 import { modalFormSchema } from "../api/modules/torrents/model";
 import { api } from "../lib/client";
+import { playSoundCue } from "../lib/sound-cues";
 import type { DashboardState, Destination, DestinationInput, FormModalKind } from "../types";
 import { DestinationIconPicker } from "./destination-icon";
 import { TorrentFileInput } from "./torrent-file-input";
@@ -345,6 +346,7 @@ export function Modal({
           setDroppedFiles((remaining) => remaining.filter((item) => item !== droppedFile));
         }
         savedDestination = target;
+        playSoundCue("added");
       } else if (modal.type === "add") {
         const result = file
           ? await upload.mutateAsync({
@@ -364,6 +366,7 @@ export function Modal({
         }
         selected = result.id;
         savedDestination = destinationId;
+        playSoundCue("added");
       } else if (modal.type === "destination") {
         const body: DestinationInput = {
           downloadPath: path,
@@ -385,6 +388,7 @@ export function Modal({
         await addPeer.mutateAsync(modal.torrent.id, source.trim());
       } else if (modal.type === "remove") {
         await removeTorrent.mutateAsync(modal.torrent.id, removeFiles);
+        playSoundCue("removed");
       }
       await done(selected, savedDestination);
       close();

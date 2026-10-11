@@ -6,7 +6,10 @@ import type {
   AniListCatalogFilters,
   AniListCatalogOptions,
   AniListClient,
+  AniListEditor,
   AniListEntry,
+  AniListListUpdate,
+  AniListMedia,
   AniListState,
   AniListStatus,
   AniListSubscription,
@@ -20,6 +23,7 @@ import type { DatabaseConnection, TofuDatabase } from "../../lib/db";
 import { UserError } from "../../lib/errors";
 import { refreshRecords } from "../../lib/persisted-cache";
 import { catalogMedia, catalogVariables } from "./catalog";
+import { editorState, validateEntryUpdate } from "./editor";
 import type { LibraryQuery } from "./graphql/generated";
 import { createAniListSdk } from "./graphql/transport";
 import { AniListAuthorization } from "./oauth";
@@ -123,7 +127,8 @@ export class AniListService {
   private readonly selections = new Map<string, boolean>();
   private readonly watched = new Map<string, number[]>();
   private readonly animeRules = new Map<string, string>();
-  private readonly episodeRuns = new Map<number, Promise<AniListState>>();
+  private readonly episodeRuns = new Map<number, Promise<unknown>>();
+  private listRevision = 0;
   private readonly subscriptions = new Map<string, AniListSubscription>();
   private readonly runs = new Map<string, Promise<AniListState>>();
   private readonly destinationRuns = new Map<string, Promise<Destination>>();
@@ -423,6 +428,34 @@ export class AniListService {
     }
     this.oauthState = null;
   }
+  async media(mediaId: number): Promise<AniListMedia> {
+    if (this.lifecycle.closed) {
+      throw new UserError("AniList service closed", { status: 409 });
+    }
+    const entry = this.entries.find((item) => item.mediaId === mediaId);
+    if (entry) {
+      return entry;
+    }
+    const controller = new AbortController();
+    this.requests.add(controller);
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+      15_000
+    );
+    try {
+      const { Media } = await this.sdk.Anime(
+        { mediaId },
+        { accessToken: "", signal: controller.signal }
+      );
+      if (!Media || Media.id !== mediaId) {
+        throw new UserError("Anime not found on AniList", { status: 404 });
+      }
+      return catalogMedia(Media);
+    } finally {
+      clearTimeout(timeout);
+      this.requests.delete(controller);
+    }
+  }
   async catalog(filters: AniListCatalogFilters): Promise<AniListCatalog> {
     const variables = catalogVariables(filters);
     const controller = new AbortController();
@@ -455,6 +488,162 @@ export class AniListService {
     }
   }
   private catalogOptionsCache: AniListCatalogOptions | null = null;
+  private async authenticatedRequest<Result>(
+    run: (accessToken: string, signal: AbortSignal, assertCurrent: () => void) => Promise<Result>
+  ): Promise<Result> {
+    this.checkCacheIdentity();
+    if (!this.options.enabled() || this.lifecycle.closed) {
+      throw new UserError("AniList plugin disabled", { status: 409 });
+    }
+    const accessToken = this.options.token();
+    if (!accessToken) {
+      throw new UserError("Connect your AniList account to edit your list or favourites", {
+        status: 409,
+      });
+    }
+    const key = this.cacheKey();
+    const controller = new AbortController();
+    this.requests.add(controller);
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+      15_000
+    );
+    const assertCurrent = () => {
+      if (this.lifecycle.closed || !this.options.enabled() || key !== this.cacheKey()) {
+        throw new UserError("AniList account changed; reopen the anime editor", { status: 409 });
+      }
+    };
+    try {
+      const result = await run(accessToken, controller.signal, assertCurrent);
+      assertCurrent();
+      return result;
+    } finally {
+      clearTimeout(timeout);
+      this.requests.delete(controller);
+    }
+  }
+  private async readEditor(mediaId: number, accessToken: string, signal: AbortSignal) {
+    const result = await this.sdk.Editor({ mediaId }, { accessToken, signal });
+    if (!result.Viewer?.id || (this.account && result.Viewer.id !== this.account.id)) {
+      throw new UserError("Reload your AniList list after changing accounts", { status: 409 });
+    }
+    return { editor: editorState(result, mediaId), result };
+  }
+  editor(mediaId: number): Promise<AniListEditor> {
+    return this.authenticatedRequest(
+      async (accessToken, signal) => (await this.readEditor(mediaId, accessToken, signal)).editor
+    );
+  }
+  saveEntry(mediaId: number, body: AniListListUpdate): Promise<AniListState> {
+    return this.mutateMedia(mediaId, () =>
+      this.authenticatedRequest(async (accessToken, signal, assertCurrent) => {
+        const { editor, result } = await this.readEditor(mediaId, accessToken, signal);
+        assertCurrent();
+        validateEntryUpdate(body, editor, result.Media?.episodes ?? null);
+        const { SaveMediaListEntry: saved } = await this.sdk.SaveEntry(
+          {
+            ...body,
+            mediaId,
+            ...(editor.entry || body.status ? {} : { status: "PLANNING" as const }),
+          },
+          { accessToken, signal }
+        );
+        assertCurrent();
+        if (
+          !(
+            saved?.media &&
+            saved.mediaId === mediaId &&
+            isAniListStatus(saved.status) &&
+            saved.progress !== null
+          )
+        ) {
+          throw new UserError("AniList did not save the list entry", { status: 502 });
+        }
+        const found = new Map<number, AniListEntry>();
+        collectEntries({ hasNextChunk: false, lists: [{ entries: [saved] }] }, found);
+        const entry = found.get(mediaId);
+        if (!entry) {
+          throw new UserError("Invalid AniList list entry", { status: 502 });
+        }
+        this.entries = [...this.entries.filter((item) => item.mediaId !== mediaId), entry];
+        if (body.progress !== undefined) {
+          const key = `watched:${result.Viewer?.id}:${mediaId}`;
+          const episodes = Array.from({ length: entry.progress }, (_, index) => index + 1);
+          this.watched.set(key, episodes);
+          this.writeState(key, JSON.stringify(episodes));
+        }
+        this.persistEditedList();
+        const rule = this.animeRule(mediaId);
+        if (rule) {
+          await this.options.save(rule.id, { ...rule, afterEpisode: entry.progress });
+        }
+        return this.snapshot();
+      })
+    );
+  }
+  private persistEditedList() {
+    this.listRevision += 1;
+    if (this.cache) {
+      this.cache = { ...this.cache, entries: this.entries };
+      this.writeState("list-cache", JSON.stringify(this.cache));
+    }
+    for (const subscription of this.subscriptions.values()) {
+      subscription.nextSyncAt = this.options.now();
+      this.persist(subscription);
+    }
+  }
+  favourite(mediaId: number, enabled: boolean): Promise<{ isFavourite: boolean }> {
+    return this.mutateMedia(mediaId, () =>
+      this.authenticatedRequest(async (accessToken, signal, assertCurrent) => {
+        const { editor } = await this.readEditor(mediaId, accessToken, signal);
+        assertCurrent();
+        if (editor.isFavourite === null) {
+          throw new UserError("AniList favourite state unavailable", { status: 502 });
+        }
+        if (editor.isFavourite === enabled) {
+          return { isFavourite: enabled };
+        }
+        if (editor.isFavouriteBlocked) {
+          throw new UserError("AniList does not allow favouriting this anime", { status: 409 });
+        }
+        await this.sdk.ToggleAnimeFavourite({ mediaId }, { accessToken, signal });
+        assertCurrent();
+        const updated = await this.readEditor(mediaId, accessToken, signal);
+        if (updated.editor.isFavourite !== enabled) {
+          throw new UserError("AniList did not update the favourite", { status: 502 });
+        }
+        return { isFavourite: enabled };
+      })
+    );
+  }
+  deleteEntry(mediaId: number): Promise<AniListState> {
+    return this.mutateMedia(mediaId, () =>
+      this.authenticatedRequest(async (accessToken, signal, assertCurrent) => {
+        const { editor } = await this.readEditor(mediaId, accessToken, signal);
+        assertCurrent();
+        if (editor.entry) {
+          const { DeleteMediaListEntry } = await this.sdk.DeleteEntry(
+            { id: editor.entry.id },
+            { accessToken, signal }
+          );
+          assertCurrent();
+          if (DeleteMediaListEntry?.deleted !== true) {
+            throw new UserError("AniList did not delete the list entry", { status: 502 });
+          }
+        }
+        const rule = this.animeRule(mediaId);
+        if (rule) {
+          this.options.enableRule(rule.id, false);
+        }
+        this.entries = this.entries.filter((item) => item.mediaId !== mediaId);
+        const watchedKey = `watched:${this.account?.id}:${mediaId}`;
+        this.watched.delete(watchedKey);
+        this.db.delete(anilistState).where(eq(anilistState.id, watchedKey)).run();
+        this.persistEditedList();
+        return this.snapshot();
+      })
+    );
+  }
   async catalogOptions(): Promise<AniListCatalogOptions> {
     if (this.catalogOptionsCache) {
       return this.catalogOptionsCache;
@@ -566,6 +755,7 @@ export class AniListService {
     return promise;
   }
   private async loadList(key: string, token: string): Promise<void> {
+    const revision = this.listRevision;
     if (!this.options.enabled() || this.lifecycle.closed) {
       throw new UserError("AniList plugin disabled", { status: 409 });
     }
@@ -620,6 +810,9 @@ export class AniListService {
       }
       if (key !== this.cacheKey()) {
         throw new UserError("The AniList account changed during refresh", { status: 409 });
+      }
+      if (revision !== this.listRevision) {
+        return;
       }
       this.entries = [...found.values()];
       this.account = identity;
@@ -695,17 +888,16 @@ export class AniListService {
     this.animeRules.set(input.key, rule.id);
     return rule;
   }
-  async completeEpisode(
-    mediaId: number,
-    episode: number,
-    completed: boolean
-  ): Promise<AniListState> {
+  completeEpisode(mediaId: number, episode: number, completed: boolean): Promise<AniListState> {
+    return this.mutateMedia(mediaId, () => this.updateEpisode(mediaId, episode, completed));
+  }
+  private async mutateMedia<Result>(mediaId: number, run: () => Promise<Result>): Promise<Result> {
     const pending = this.episodeRuns.get(mediaId);
     if (pending) {
       await pending.catch(() => undefined);
-      return this.completeEpisode(mediaId, episode, completed);
+      return this.mutateMedia(mediaId, run);
     }
-    const task = this.updateEpisode(mediaId, episode, completed);
+    const task = run();
     this.episodeRuns.set(mediaId, task);
     try {
       return await task;
@@ -765,6 +957,7 @@ export class AniListService {
       this.entries = this.entries.map((item) =>
         item.mediaId === mediaId ? { ...item, progress } : item
       );
+      this.listRevision += 1;
       if (this.cache) {
         this.cache = { ...this.cache, entries: this.entries };
         this.writeState("list-cache", JSON.stringify(this.cache));

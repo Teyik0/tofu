@@ -2,6 +2,261 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+.global-search-trigger[data-slot="button"] {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.global-search-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.global-search-trigger kbd {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+[data-collapsible="icon"] .global-search-trigger[data-slot="button"] {
+  width: 32px;
+  justify-content: center;
+  padding: 0;
+  margin-inline: auto;
+}
+[data-collapsible="icon"] .global-search-trigger > span,
+[data-collapsible="icon"] .global-search-trigger > kbd {
+  display: none;
+}
+.global-search-dialog[data-slot="dialog-content"] {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, calc(100vw - 32px));
+  max-width: min(720px, calc(100vw - 32px));
+  max-height: min(760px, calc(100dvh - 80px));
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 24px 80px var(--modal-shadow);
+}
+.global-search-heading {
+  padding: 20px 44px 12px 20px;
+}
+.global-search-heading [data-slot="input-group"] {
+  height: 42px;
+}
+.global-search-tabs {
+  min-height: 0;
+  gap: 0;
+}
+.global-search-scopes[data-slot="tabs-list"] {
+  margin-inline: 20px;
+  margin-bottom: 8px;
+}
+.global-search-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0 12px 12px;
+}
+.global-search-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 8px 8px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+.global-search-group-heading > span {
+  font-weight: 400;
+}
+.global-search-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  padding: 12px 10px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+}
+.global-search-result[data-highlighted],
+.global-search-result[data-reviewed] {
+  background: var(--accent);
+}
+.global-search-result[data-disabled] {
+  opacity: 0.6;
+  cursor: wait;
+}
+.global-search-result-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+.global-search-result-copy > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.global-search-result-copy > span,
+.global-search-result-action {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.global-search-result-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  text-align: right;
+}
+.global-search-result-action svg {
+  width: 14px;
+  height: 14px;
+}
+.global-search-release-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--primary);
+}
+.global-search-release-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.global-search-source-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 8px 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.global-search-source-status > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.global-search-source-status p {
+  max-width: 480px;
+}
+.global-search-empty {
+  padding: 30px 12px;
+}
+.global-search-recent {
+  padding: 12px 8px 4px;
+}
+.global-search-recent > span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.global-search-recent svg {
+  width: 13px;
+  height: 13px;
+}
+.global-search-recent > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.global-search-review {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--muted);
+}
+.global-search-review-title {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.global-search-review-title strong {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+.global-search-review-title > span,
+.global-search-destination-path {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.global-search-destination-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+.global-search-download {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.global-search-download [data-slot="field"] {
+  min-width: 0;
+  flex: 1;
+}
+.global-search-download [data-slot="field-label"] {
+  white-space: nowrap;
+}
+.global-search-feedback[data-slot="alert"] {
+  margin: 0 20px 12px;
+  width: auto;
+}
+.global-search-footer {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.global-search-footer > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.global-search-footer kbd,
+.global-search-heading kbd {
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+@media (max-width: 540px) {
+  .global-search-result-action {
+    display: none;
+  }
+  .global-search-download {
+    flex-wrap: wrap;
+  }
+  .global-search-heading {
+    padding-left: 12px;
+  }
+  .global-search-footer {
+    gap: 10px;
+    padding-inline: 12px;
+  }
+}
+
 /* Share appearance resolution between theme tokens and shadcn's dark utilities. */
 @custom-variant dark {
   &:where(:root[data-theme="dark"], :root[data-theme="dark"] *) {
@@ -69,68 +324,83 @@
 }
 
 :root {
-  --olive: #4e6b37;
-  --muted-foreground: #7d8673;
-  --background: #f8f9f4;
-  --foreground: #232a1f;
+  --olive: #3f7d3a;
+  --muted-foreground: #71786d;
+  --background: #f5f6f3;
+  --foreground: #1d211b;
   --card: #ffffff;
-  --card-foreground: #232a1f;
+  --card-foreground: #1d211b;
   --popover: #ffffff;
-  --popover-foreground: #232a1f;
-  --primary: #4e6b37;
+  --popover-foreground: #1d211b;
+  --primary: #3f7d3a;
   --primary-foreground: #ffffff;
-  --secondary: #edf1e5;
-  --secondary-foreground: #4e6b37;
-  --muted: #eff1ea;
-  --accent: #e6ecdb;
-  --accent-foreground: #3f5a2b;
-  --destructive: #b0503d;
-  --border: #e1e5d8;
-  --input: #d8ddcd;
-  --ring: #7b9564;
-  --sidebar: #eef0e7;
-  --sidebar-foreground: #5a6450;
-  --sidebar-primary: #4e6b37;
+  --secondary: #edf4ea;
+  --secondary-foreground: #33692f;
+  --muted: #f0f2ee;
+  --accent: #e6f0e2;
+  --accent-foreground: #2f6229;
+  --destructive: #c2412d;
+  --border: #e2e5df;
+  --input: #d5d9d1;
+  --ring: #6fa566;
+  --sidebar: #eef0ec;
+  --sidebar-foreground: #565d52;
+  --sidebar-primary: #3f7d3a;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e1e7d5;
-  --sidebar-accent-foreground: #3f5a2b;
-  --sidebar-border: #e1e5d8;
-  --sidebar-ring: #7b9564;
+  --sidebar-accent: #e1ecdc;
+  --sidebar-accent-foreground: #2f6229;
+  --sidebar-border: #e2e5df;
+  --sidebar-ring: #6fa566;
   /* Plain alpha colors: Bun's CSS lowering breaks color-mix() inside pseudo-elements. */
-  --sidebar-glow-strong: #7b956438;
-  --sidebar-glow-soft: #7b95641a;
+  --sidebar-glow-strong: #6fa56638;
+  --sidebar-glow-soft: #6fa5661a;
   --radius: 8px;
-  --line: #e4e7dc;
-  --line-soft: #eef0e8;
-  --soft: #f3f5ed;
+  --line: #e6e8e3;
+  --line-soft: #f0f2ee;
+  --soft: #f2f4f0;
   --panel: #ffffff;
-  --panel-shadow: #2f3a2510;
+  --panel-shadow: #1d2a1a10;
   --highlight: #ffffff;
-  --selection: #f1f5ea;
-  --brand: #3e5530;
-  --olive-soft: #8da377;
-  --primary-hover: #435c30;
-  --text-secondary: #59634f;
-  --surface-subtle: #fafbf7;
-  --surface-hover: #f6f8f1;
-  --inbound: #4e7a34;
-  --inbound-muted: #7f9a6a;
-  --inbound-soft: #ebf2e2;
-  --outbound: #a8691c;
-  --outbound-soft: #f8eedc;
-  --success: #4e7a34;
-  --success-soft: #ebf2e2;
-  --success-border: #dbe6cd;
-  --danger-soft: #fbece6;
-  --danger-border: #f2d8cd;
-  --progress-track: #e7eadf;
-  --progress-fill: #4e7a34;
+  --selection: #eff6ec;
+  --brand: #2f6229;
+  --olive-soft: #8fbb85;
+  --primary-hover: #356b31;
+  --text-secondary: #545b51;
+  --surface-subtle: #fafbf9;
+  --surface-hover: #f5f7f3;
+  --inbound: #3b8540;
+  --inbound-muted: #84a97d;
+  --inbound-soft: #e7f3e3;
+  --outbound: #c76a0a;
+  --outbound-soft: #fdf0e1;
+  --success: #3b8540;
+  --success-soft: #e7f3e3;
+  --success-border: #cfe5c8;
+  --danger-soft: #fcece8;
+  --danger-border: #f4d3ca;
+  --progress-track: #e8eae5;
+  --progress-fill: #3b8540;
   --chart-download: var(--inbound);
   --chart-upload: var(--outbound);
-  --decoration: #d3ddc5;
-  --overlay: #27321f45;
-  --modal-shadow: #303d2430;
+  --decoration: #cfe2c8;
+  --overlay: #1a221845;
+  --modal-shadow: #1d2a1a30;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --anime-status-planning: #b68170;
+  --anime-status-watching: #168ac1;
+  --anime-status-completed: #438f45;
+  --anime-status-paused: #bd8b24;
+  --anime-status-dropped: #bd535b;
+  --anime-status-repeating: #8767b4;
+  --anime-highlight: #b76c54;
+  --anime-genre: #edb921;
+  --anime-genre-foreground: #513b0b;
+  --anime-preview-surface: #edf4ea;
+  --anime-preview-heading: #365530;
+  --anime-preview-detail: #657c5d;
+  --anime-score-positive: #7bd555;
+  --anime-score-neutral: #f79a63;
+  --anime-score-negative: #e85d75;
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 13px;
   font-synthesis: none;
@@ -201,6 +471,16 @@
     --decoration: #45563a;
     --overlay: #080c07a6;
     --modal-shadow: #00000066;
+    --anime-status-planning: #dba390;
+    --anime-status-watching: #3db4f2;
+    --anime-status-completed: #7bc85d;
+    --anime-status-paused: #e6b754;
+    --anime-status-dropped: #e87980;
+    --anime-status-repeating: #b599de;
+    --anime-highlight: #ec9a80;
+    --anime-preview-surface: #263420;
+    --anime-preview-heading: #d1e3bd;
+    --anime-preview-detail: #a5bb94;
     color-scheme: dark;
   }
 }
@@ -320,7 +600,7 @@ h2 {
   letter-spacing: -0.01em;
 }
 
-/* Status colors: inbound traffic is sage, outbound traffic is amber. */
+/* Status colors: inbound traffic is green, outbound traffic is amber. */
 [data-status] {
   --status: var(--muted-foreground);
   --status-soft: var(--muted);
@@ -2861,7 +3141,15 @@ h2 {
   }
 }
 
-/* AniList uses the active Furin theme and Tofu color tokens. */
+/* AniList shares Tofu’s green theme across catalog controls and menus. */
+.anilist-library,
+.anilist-genre-menu,
+.anilist-select-menu,
+.anime-modal,
+.anime-calendar {
+  --anilist-accent: var(--primary);
+  --anilist-accent-foreground: var(--primary-foreground);
+}
 .anilist-library {
   color: var(--foreground);
   background: var(--background);
@@ -2901,25 +3189,69 @@ h2 {
   align-items: center;
   gap: 8px;
 }
-.anilist-account {
+.anilist-list-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.anilist-status-filter[data-slot="button"] {
+  max-width: 260px;
+  gap: 8px;
+}
+.anilist-status-filter > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anilist-status-filter-label {
+  flex-shrink: 0;
   color: var(--muted-foreground);
-  font-size: 12px;
-  margin-right: 8px;
+}
+.anilist-status-filter > svg {
+  color: var(--muted-foreground);
+}
+.anilist-account-button[data-slot="button"] {
+  gap: 8px;
+  padding-left: 6px;
+}
+.anilist-account-button[data-slot="button"]:has(> svg:only-child) {
+  padding-left: 0;
+}
+.anilist-account-avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+.anilist-account-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anilist-account-button > svg {
+  color: var(--muted-foreground);
 }
 /* Same rhythm as the library: the topbar margin is the only gap above the content. */
 .anilist-page-body {
   padding: 0 24px 36px;
-  max-width: 1500px;
+  max-width: 1140px;
   margin: auto;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 30px;
 }
 /* Mirrors AniList's browse layout: labeled filters in one row, results controls below. */
 .anilist-filters,
 .anilist-advanced {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) 42px;
   gap: 16px 24px;
   align-items: end;
 }
@@ -2944,41 +3276,129 @@ h2 {
   height: 40px;
 }
 .anime-preview-popup {
-  width: min(320px, calc(100vw - 32px));
-  padding: 20px;
+  animation: none;
+  transition: none;
+  width: min(290px, calc(100vw - 32px));
+  padding: 24px;
+  border-radius: 6px;
+  color: var(--anime-preview-heading);
+  background: var(--anime-preview-surface);
+  box-shadow:
+    0 14px 30px #00050f26,
+    0 4px 4px #00050f0d;
+  --tw-ring-shadow: 0 0 #0000;
+}
+.anime-preview-popup[data-closed] {
+  visibility: hidden;
+}
+.anime-preview-popup::before {
+  position: absolute;
+  top: 15%;
+  width: 0;
+  height: 0;
+  content: "";
+  border-block: 4px solid transparent;
+}
+.anime-preview-popup[data-side="right"]::before {
+  left: -6px;
+  border-right: 6px solid var(--anime-preview-surface);
+}
+.anime-preview-popup[data-side="left"]::before {
+  right: -6px;
+  border-left: 6px solid var(--anime-preview-surface);
+}
+.anime-preview-popup[data-side="top"]::before,
+.anime-preview-popup[data-side="bottom"]::before {
+  display: none;
 }
 .anime-preview {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
+}
+.anime-card,
+.anime-preview {
+  --anime-media-text: var(--anime-media-text-light);
+}
+.anime-card,
+.anime-preview {
+  @variant dark {
+    --anime-media-text: var(--anime-media-text-dark);
+  }
 }
 .anime-preview-heading {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 18px;
-  font-size: 14px;
+  gap: 12px;
+  font-size: 16px;
+}
+.anime-preview-heading > strong {
+  font-weight: 600;
+  line-height: 1.5;
 }
 .anime-preview-heading > span {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
+.anime-preview-score {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  font-weight: 600;
+}
+.anime-preview-score svg {
+  width: 20px;
+  height: 20px;
+}
+.anime-preview-score[data-sentiment="positive"] svg {
+  color: var(--anime-score-positive);
+}
+.anime-preview-score[data-sentiment="neutral"] svg {
+  color: var(--anime-score-neutral);
+}
+.anime-preview-score[data-sentiment="negative"] svg {
+  color: var(--anime-score-negative);
+}
 .anime-preview-details {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .anime-preview-details > strong {
-  color: var(--primary);
+  color: var(--anime-media-text);
+  font-size: 13px;
+  font-weight: 700;
 }
 .anime-preview-details > span {
-  color: var(--muted-foreground);
-  font-size: 12px;
+  color: var(--anime-preview-detail);
+  font-size: 13px;
+  font-weight: 600;
 }
 .anime-preview-genres {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 11px;
+  margin-top: 12px;
+}
+.anime-preview-genres [data-slot="badge"] {
+  height: 20px;
+  padding-inline: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: lowercase;
+  color: var(--anime-media-background-text);
+  background: var(--anime-media-background);
+}
+.anime-preview-library {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 11px;
 }
 @media (max-width: 700px) {
   .anilist-browse-advanced {
@@ -3001,7 +3421,7 @@ h2 {
 .anilist-filter-trigger,
 .anilist-filter [data-slot="select-trigger"] {
   width: 100%;
-  height: 40px;
+  height: 42px;
   min-width: 0;
   color: var(--text-secondary);
   background: var(--panel);
@@ -3027,13 +3447,110 @@ h2 {
 .anilist-filter-trigger svg {
   color: var(--muted-foreground);
 }
+.anilist-filter-control {
+  position: relative;
+  min-width: 0;
+}
+.anilist-filter-control[data-selected="true"] .anilist-filter-trigger {
+  padding-right: 42px;
+  color: var(--anilist-accent);
+}
+.anilist-filter-control[data-selected="true"]
+  [data-slot="select-trigger"]
+  > span:last-child {
+  visibility: hidden;
+}
+.anilist-filter-clear[data-slot="button"] {
+  position: absolute;
+  inset: 0 6px 0 auto;
+  margin-block: auto;
+  color: var(--muted-foreground);
+  border-radius: 4px;
+}
+.anilist-filter-clear:hover {
+  color: var(--anilist-accent);
+}
+.anilist-genre-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.anilist-genre-summary [data-slot="badge"] {
+  height: 26px;
+  padding-inline: 8px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.anilist-genre-value {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .anilist-genre-menu {
   width: 260px;
   max-height: 360px;
 }
+.anilist-genre-menu[data-slot="dropdown-menu-content"],
+.anilist-select-menu[data-slot="select-content"] {
+  width: var(--anchor-width);
+  min-width: 170px;
+  max-height: min(540px, var(--available-height));
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text-secondary);
+  box-shadow: 0 8px 24px var(--panel-shadow);
+  --popover: var(--panel);
+  --popover-foreground: var(--text-secondary);
+}
+.anilist-genre-menu [data-slot="dropdown-menu-label"] {
+  padding: 4px 5px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.anilist-genre-menu [data-slot="dropdown-menu-checkbox-item"],
+.anilist-select-menu [data-slot="select-item"] {
+  min-height: 38px;
+  padding-inline: 12px 28px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 5px;
+}
+.anilist-genre-menu [data-highlighted],
+.anilist-select-menu [data-highlighted],
+.anilist-genre-menu [data-checked],
+.anilist-select-menu [data-selected] {
+  background: var(--background);
+  color: var(--anilist-accent);
+}
+.anilist-genre-menu [data-slot="dropdown-menu-checkbox-item-indicator"] > span,
+.anilist-select-menu [data-slot="select-item-indicator"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--anilist-accent);
+  color: var(--anilist-accent-foreground);
+}
+.anilist-genre-menu [data-slot="dropdown-menu-checkbox-item-indicator"] svg,
+.anilist-select-menu [data-slot="select-item-indicator"] svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 3px;
+}
 .anilist-advanced-toggle {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   color: var(--muted-foreground);
   background: var(--panel);
   box-shadow: 0 4px 14px var(--panel-shadow);
@@ -3051,27 +3568,77 @@ h2 {
 .anilist-active-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 12px;
   align-items: center;
   min-width: 0;
 }
+.anilist-filter-tag {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-right: 4px;
+  color: var(--muted-foreground);
+}
 .anilist-filter-chip {
+  position: relative;
   display: inline-flex;
   gap: 6px;
   align-items: center;
   height: 26px;
-  padding: 0 8px 0 11px;
+  padding: 0 9px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--primary-foreground);
-  background: var(--primary);
+  color: var(--anilist-accent-foreground);
+  background: var(--anilist-accent);
   border: 0;
   border-radius: 5px;
 }
 .anilist-filter-chip svg {
-  width: 13px;
-  height: 13px;
-  opacity: 0.75;
+  width: 0;
+  height: 12px;
+  margin-left: -6px;
+  stroke-width: 3px;
+  opacity: 0;
+  transition:
+    width 0.15s ease,
+    margin-left 0.15s ease,
+    opacity 0.15s ease;
+}
+.anilist-filter-chip:hover svg,
+.anilist-filter-chip:focus-visible svg {
+  width: 12px;
+  margin-left: 0;
+  opacity: 1;
+}
+.anilist-clear-filters {
+  color: var(--foreground);
+  background: var(--muted-foreground);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.anilist-clear-filters svg {
+  width: 12px;
+  margin-left: 0;
+  color: var(--background);
+  opacity: 1;
+}
+.anilist-active-filters:hover .anilist-clear-filters,
+.anilist-active-filters:focus-within .anilist-clear-filters {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .anilist-clear-filters {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anilist-filter-chip svg,
+  .anilist-clear-filters {
+    transition: none;
+  }
 }
 .anilist-title-count {
   margin-left: 6px;
@@ -3105,8 +3672,8 @@ h2 {
 }
 .anime-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
-  gap: 30px 26px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 28px 40px;
 }
 .anime-grid[data-view="compact"] {
   grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
@@ -3115,8 +3682,10 @@ h2 {
 .anime-grid[data-view="compact"] .anime-card > strong {
   font-size: 12px;
 }
-.anime-grid[data-view="compact"] .anime-card-progress {
-  display: none;
+.anime-grid[data-view="compact"] .anime-status-dot {
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
 }
 .anime-grid[data-view="list"] {
   grid-template-columns: minmax(0, 1fr);
@@ -3171,7 +3740,8 @@ h2 {
   white-space: nowrap;
 }
 .anime-row-title small,
-.anime-row-meta {
+.anime-row-meta,
+.anime-row-airing {
   font-size: 12px;
   color: var(--muted-foreground);
 }
@@ -3203,27 +3773,26 @@ h2 {
 .anime-card {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 10px;
   text-align: left;
   border: 0;
   padding: 0;
   background: transparent;
-  color: var(--foreground);
+  color: var(--text-secondary);
   min-width: 0;
+  cursor: pointer;
+  outline-offset: 6px;
 }
 .anime-card-cover {
   position: relative;
-  aspect-ratio: 2 / 3;
+  aspect-ratio: 5 / 7;
   overflow: hidden;
-  border-radius: 7px;
+  border-radius: 4px;
   background: var(--card);
   display: grid;
   place-items: center;
   width: 100%;
-  box-shadow: 0 7px 22px color-mix(in srgb, var(--foreground) 8%, transparent);
-  transition:
-    transform 160ms,
-    box-shadow 160ms;
+  box-shadow: 0 4px 14px var(--panel-shadow);
 }
 .anime-card-cover > img {
   width: 100%;
@@ -3237,52 +3806,65 @@ h2 {
   height: 42px;
   color: var(--muted-foreground);
 }
-.anime-card:hover .anime-card-cover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--foreground) 16%, transparent);
-}
-.anime-card:hover > strong {
-  color: var(--primary);
+.anime-card:hover,
+.anime-card:focus-visible,
+.anime-card[data-popup-open] {
+  color: var(--anime-media-text);
 }
 .anime-card > strong {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
-  font-weight: 650;
+  font-weight: 600;
+  transition: color 150ms;
 }
-.anime-card-meta {
-  font-size: 11px;
-  color: var(--muted-foreground);
+.anime-status-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: -1px;
 }
-.anime-card-overlay {
+.anime-status-dot[data-status="PLANNING"] {
+  background: var(--anime-status-planning);
+}
+.anime-status-dot[data-status="CURRENT"] {
+  background: var(--anime-status-watching);
+}
+.anime-status-dot[data-status="COMPLETED"] {
+  background: var(--anime-status-completed);
+}
+.anime-status-dot[data-status="PAUSED"] {
+  background: var(--anime-status-paused);
+}
+.anime-status-dot[data-status="DROPPED"] {
+  background: var(--anime-status-dropped);
+}
+.anime-status-dot[data-status="REPEATING"] {
+  background: var(--anime-status-repeating);
+}
+.anime-card-automation {
   position: absolute;
-  inset: 10px 10px auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 5px;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--popover-foreground);
+  background: var(--popover);
+  border-radius: 50%;
 }
-.anime-card-overlay > svg {
-  width: 16px;
-  height: 16px;
-  color: var(--primary);
-  filter: drop-shadow(0 1px 4px #000);
-}
-.anime-card-progress {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 28px 12px 12px;
-  font-size: 11px;
-  background: linear-gradient(transparent, var(--card));
-  color: var(--card-foreground);
+.anime-card-automation > svg {
+  width: 14px;
+  height: 14px;
 }
 .anime-cover-skeleton {
-  aspect-ratio: 2 / 3;
+  aspect-ratio: 5 / 7;
   width: 100%;
 }
 .anilist-empty {
@@ -3290,8 +3872,8 @@ h2 {
   border: 1px dashed var(--border);
 }
 .anime-modal[data-slot="dialog-content"] {
-  width: min(980px, calc(100vw - 48px));
-  max-width: min(980px, calc(100vw - 48px));
+  width: min(1080px, calc(100vw - 48px));
+  max-width: min(1080px, calc(100vw - 48px));
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -3300,25 +3882,58 @@ h2 {
   display: flex;
   flex-direction: column;
 }
+/* AniList's editor header: banner art fading into the dialog, cover overlapping it. */
 .anime-modal-banner {
   flex-shrink: 0;
-  height: 175px;
-  background-color: var(--muted);
-  background-image: linear-gradient(120deg, var(--secondary), var(--card));
+  position: relative;
+  height: 200px;
+  overflow: hidden;
+  background: linear-gradient(120deg, var(--secondary), var(--card));
+}
+.anime-modal-banner::before,
+.anime-modal-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.anime-modal-banner::before {
+  background-image: var(--anime-banner);
   background-position: center;
   background-size: cover;
+}
+.anime-modal-banner[data-source="cover"]::before {
+  inset: -40px;
+  filter: blur(32px) saturate(1.3);
+  opacity: 0.55;
+}
+.anime-modal-banner::after {
+  inset: -1px;
+  background: linear-gradient(0deg, var(--card) 15%, transparent 80%);
+}
+/* Banner art can be bright, so the close control keeps its own surface. */
+.anime-modal > [data-slot="dialog-close"] {
+  z-index: 3;
+  top: 12px;
+  right: 12px;
+  color: var(--foreground);
+  background: var(--card);
+  border-radius: 50%;
+  box-shadow: 0 2px 10px var(--panel-shadow);
+}
+.anime-modal > [data-slot="dialog-close"]:hover {
+  background: var(--muted);
 }
 .anime-modal-heading {
   flex-shrink: 0;
   display: flex;
   align-items: end;
-  gap: 22px;
-  padding: 0 32px 24px;
-  margin-top: -76px;
+  gap: 24px;
+  padding: 0 40px 22px;
+  margin-top: -120px;
   position: relative;
 }
 .anime-modal-cover {
-  width: 105px;
+  width: 120px;
   flex-shrink: 0;
   aspect-ratio: 2 / 3;
   border-radius: 5px;
@@ -3339,33 +3954,48 @@ h2 {
   color: var(--muted-foreground);
 }
 .anime-modal-heading [data-slot="dialog-title"] {
-  font-size: 23px;
-  line-height: 1.4;
-  margin-bottom: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
 }
 .anime-modal-heading [data-slot="dialog-description"] {
   font-size: 12px;
 }
-.anime-external-link {
-  margin-left: auto;
-  padding: 8px;
-  color: var(--primary);
-}
-.anime-external-link svg {
-  width: 18px;
-  height: 18px;
+.anime-modal-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
 }
 .anime-modal-body {
-  padding: 0 32px 30px;
+  padding: 0 40px 32px;
   overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
+.anime-modal [data-slot="tabs"] {
+  gap: 24px;
+}
+/* The tab bar stays reachable while long episode lists scroll beneath it. */
+.anime-modal [data-slot="tabs-list"] {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  width: 100%;
+  justify-content: start;
+  background: var(--card);
+  box-shadow: inset 0 -1px var(--border);
+}
 .anime-modal [data-slot="tabs-content"] {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+.anime-modal-notice {
+  color: var(--primary);
+  font-size: 12px;
 }
 .anime-episodes-toolbar {
   display: flex;
@@ -3374,7 +4004,7 @@ h2 {
   gap: 20px;
 }
 .anime-episodes-toolbar > [data-slot="field"] {
-  max-width: 260px;
+  max-width: 280px;
 }
 .anime-sync-note {
   color: var(--muted-foreground);
@@ -3513,21 +4143,25 @@ h2 {
     grid-template-columns: 44px minmax(0, 1fr) 110px 20px;
   }
   .anime-row-meta,
-  .anime-row [data-slot="badge"] {
+  .anime-row-airing {
     display: none;
   }
-  .anilist-account {
+  .anilist-account-name,
+  .anilist-status-filter-label {
     display: none;
+  }
+  .anilist-status-filter[data-slot="button"] {
+    max-width: 150px;
   }
   .anime-grid {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 24px 16px;
   }
   .anime-modal-heading {
-    padding-inline: 20px;
+    padding-inline: 24px;
   }
   .anime-modal-body {
-    padding-inline: 20px;
+    padding-inline: 24px;
   }
 }
 @media (max-width: 560px) {
@@ -3568,11 +4202,8 @@ h2 {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .anime-card-cover {
+  .anime-card > strong {
     transition: none;
-  }
-  .anime-card:hover .anime-card-cover {
-    transform: none;
   }
 }
 
@@ -3735,7 +4366,7 @@ h2 {
 }
 .general-preferences [data-slot="field-legend"] {
   padding-left: 0;
-  margin-bottom: 0;
+  margin-bottom: 8px;
   color: var(--foreground);
 }
 .plugins-content > [hidden] {
@@ -3823,5 +4454,325 @@ h2 {
   }
   .settings-footer {
     margin-top: 0;
+  }
+}
+
+.anime-modal-title {
+  min-width: 0;
+  flex: 1;
+  padding-bottom: 4px;
+  text-shadow: 0 1px 14px var(--card);
+}
+.anime-favourite-button[aria-pressed="true"] {
+  color: var(--destructive);
+}
+.anime-modal [data-slot="tabs-trigger"] {
+  flex: none;
+  padding-inline: 10px;
+}
+/* The editor reuses the AniList page controls; inside the dialog they sit on a
+   recessed surface, like anilist.co, instead of floating panels. */
+.anime-list-editor,
+.anime-episodes-toolbar {
+  --panel: var(--background);
+  --panel-shadow: transparent;
+}
+.anime-list-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.anime-list-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 32px 40px;
+  align-items: start;
+}
+.anime-list-fields[data-slot="field-group"] {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 26px 28px;
+}
+.anime-list-wide {
+  grid-column: 1 / -1;
+}
+/* Legends are not flex items of their fieldset, so they carry the label gap themselves. */
+.anime-list-editor .anilist-filter > [data-slot="field-legend"] {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+.anime-list-editor .anilist-filter[data-slot="field-set"] {
+  gap: 12px;
+}
+.anime-list-editor .anilist-filter > [data-slot="input"],
+.anime-list-editor .anilist-filter > [data-slot="input-group"],
+.anime-list-editor .anilist-filter > [data-slot="textarea"],
+.anime-score-picker[data-slot="toggle-group"],
+.anime-date-trigger {
+  width: 100%;
+  min-height: 42px;
+  color: var(--text-secondary);
+  background: var(--panel);
+  border: 0;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px var(--panel-shadow);
+}
+.anime-list-editor .anilist-filter > [data-slot="input"],
+.anime-list-editor .anilist-filter > [data-slot="input-group"] > input {
+  height: 42px;
+  padding-inline: 14px;
+  font-size: 14px;
+}
+.anime-list-editor .anilist-filter > [data-slot="input-group"] {
+  height: 42px;
+}
+.anime-list-editor .anilist-filter > [data-slot="textarea"] {
+  min-height: 84px;
+  padding: 12px 14px;
+  font-size: 14px;
+  resize: vertical;
+}
+.anime-list-editor
+  .anilist-filter
+  > :is([data-slot="input"], [data-slot="textarea"]):focus-visible,
+.anime-list-editor .anilist-filter > [data-slot="input-group"]:focus-within,
+.anime-date-trigger:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 0;
+  box-shadow: none;
+}
+.anime-list-editor
+  .anilist-filter
+  > [data-slot="input-group"]
+  [data-slot="input-group-addon"] {
+  padding-right: 14px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.anime-score-picker[data-slot="toggle-group"] {
+  display: flex;
+  padding: 0 6px;
+}
+.anime-score-picker [data-slot="toggle-group-item"] {
+  flex: 1;
+  height: 42px;
+  color: var(--muted-foreground);
+  background: transparent;
+  border-radius: 6px;
+}
+.anime-score-picker [data-slot="toggle-group-item"]:hover {
+  color: var(--foreground);
+  background: transparent;
+}
+.anime-score-picker [data-slot="toggle-group-item"] svg {
+  width: 22px;
+  height: 22px;
+  transition:
+    color 120ms,
+    transform 120ms;
+}
+.anime-score-picker [data-slot="toggle-group-item"]:hover svg {
+  transform: scale(1.12);
+}
+.anime-score-picker [data-slot="toggle-group-item"][data-pressed] {
+  background: transparent;
+}
+.anime-score-picker [data-sentiment="positive"][data-pressed] {
+  color: var(--anime-score-positive);
+}
+.anime-score-picker [data-sentiment="neutral"][data-pressed] {
+  color: var(--anime-score-neutral);
+}
+.anime-score-picker [data-sentiment="negative"][data-pressed] {
+  color: var(--anime-score-negative);
+}
+.anime-score-picker [data-filled="true"] {
+  color: var(--anime-score-neutral);
+}
+.anime-score-picker [data-filled="true"] svg {
+  fill: currentColor;
+}
+.anime-date-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding-inline: 14px;
+  font-size: 14px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.anime-date-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.anime-date-trigger > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+}
+.anime-date-trigger > span {
+  color: var(--foreground);
+}
+/* AniList's date picker: year and month header, Sunday-first grid, today in the accent. */
+.anime-calendar[data-slot="popover-content"] {
+  width: 340px;
+  gap: 8px;
+  padding: 18px 16px 14px;
+  color: var(--text-secondary);
+  background: var(--panel);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px var(--panel-shadow);
+}
+.anime-calendar-header {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  align-items: center;
+  gap: 2px;
+}
+.anime-calendar-header > strong {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--foreground);
+}
+.anime-calendar-header > strong > span {
+  margin-left: 6px;
+}
+.anime-calendar-header [data-slot="button"] {
+  color: var(--muted-foreground);
+}
+.anime-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  row-gap: 2px;
+}
+.anime-calendar-weekday {
+  padding: 10px 0;
+  margin-bottom: 6px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+}
+.anime-calendar-day {
+  justify-self: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.anime-calendar-day[data-outside="true"] {
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+.anime-calendar-day[data-today="true"] {
+  color: var(--anilist-accent);
+  font-weight: 700;
+}
+.anime-calendar-day:hover {
+  color: var(--foreground);
+  background: var(--background);
+}
+.anime-calendar-day:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.anime-calendar-day[aria-pressed="true"] {
+  color: var(--anilist-accent-foreground);
+  background: var(--anilist-accent);
+  opacity: 1;
+}
+.anime-list-aside[data-slot="field-group"] {
+  gap: 18px;
+}
+.anime-list-custom [data-slot="field-label"] {
+  overflow-wrap: anywhere;
+}
+.anime-list-custom [data-slot="field-description"] {
+  font-size: 12px;
+}
+.anime-list-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.anime-list-actions[data-empty="true"] {
+  display: none;
+}
+.anime-save-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.anime-save-state svg {
+  width: 14px;
+  height: 14px;
+}
+.anime-save-state[data-status="saved"] {
+  color: var(--primary);
+}
+.anime-save-state[data-status="failed"] {
+  color: var(--destructive);
+}
+.anime-list-editor :is(input, textarea):invalid {
+  outline: 2px solid var(--destructive);
+}
+.anime-list-remove[data-slot="button"] {
+  color: var(--muted-foreground);
+}
+.anime-list-remove[data-slot="button"]:hover {
+  color: var(--destructive);
+  background: var(--muted);
+}
+@media (max-width: 900px) {
+  .anime-list-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .anime-list-aside[data-slot="field-group"] {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px 28px;
+  }
+  .anime-list-aside > [data-slot="separator"] {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .anime-list-fields[data-slot="field-group"],
+  .anime-list-aside[data-slot="field-group"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .anime-modal-heading {
+    flex-wrap: wrap;
+    row-gap: 14px;
+  }
+  /* Actions drop under the title so it keeps the full row beside the cover. */
+  .anime-modal-title {
+    flex-basis: calc(100% - 144px);
+  }
+  .anime-modal-actions {
+    margin-left: auto;
+  }
+}
+@media (max-width: 480px) {
+  .anime-list-fields[data-slot="field-group"],
+  .anime-list-aside[data-slot="field-group"] {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

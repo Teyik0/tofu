@@ -70,8 +70,10 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
         "/automations",
         json({
           ...draft,
+          codecs: [],
           deleteReplacedFiles: true,
           includeExisting: true,
+          languages: ["VF"],
           resolutions: ["1080p", "720p"],
           sources: ["tsundere"],
         })
@@ -162,7 +164,9 @@ test("equal and worse releases are skipped, ideal episodes stop Jev matching whi
         "/automations",
         json({
           ...draft,
+          codecs: [],
           includeExisting: true,
+          languages: ["VF"],
           matchMode: "jev",
           resolutions: ["1080p", "720p", "480p"],
           sources: ["tsundere"],
@@ -282,8 +286,10 @@ test.each([true, false])(
           "/automations",
           json({
             ...draft,
+            codecs: [],
             deleteReplacedFiles,
             includeExisting: true,
+            languages: ["VF"],
             resolutions: ["1080p", "720p"],
             sources: ["tsundere"],
           })

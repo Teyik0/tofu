@@ -115,3 +115,41 @@ export const trackingFormSchema = pipe(
     ["basePath"]
   )
 );
+
+export const aniListDateSchema = pipe(
+  object({
+    day: nullable(pipe(integerInput, integer(), minValue(1), maxValue(31))),
+    month: nullable(pipe(integerInput, integer(), minValue(1), maxValue(12))),
+    year: nullable(pipe(integerInput, integer(), minValue(1), maxValue(9999))),
+  }),
+  check((date) => {
+    if (date.day === null || date.month === null) {
+      return true;
+    }
+    const value = new Date(0);
+    value.setUTCFullYear(date.year ?? 2000, date.month - 1, date.day);
+    return value.getUTCMonth() === date.month - 1 && value.getUTCDate() === date.day;
+  }, "Enter a valid calendar date")
+);
+
+export const aniListEntrySchema = pipe(
+  object({
+    advancedScores: optional(
+      pipe(array(pipe(numericInput, minValue(0), maxValue(100))), maxLength(100))
+    ),
+    completedAt: optional(aniListDateSchema),
+    customLists: optional(
+      pipe(array(pipe(string(), minLength(1), maxLength(100))), maxLength(100))
+    ),
+    hiddenFromStatusLists: optional(boolean()),
+    notes: optional(pipe(string(), maxLength(6000))),
+    priority: optional(pipe(integerInput, integer(), minValue(0), maxValue(255))),
+    private: optional(boolean()),
+    progress: optional(pipe(integerInput, integer(), minValue(0), maxValue(10_000))),
+    repeat: optional(pipe(integerInput, integer(), minValue(0), maxValue(1000))),
+    score: optional(pipe(numericInput, minValue(0), maxValue(100))),
+    startedAt: optional(aniListDateSchema),
+    status: optional(listStatus),
+  }),
+  check((body) => Object.keys(body).length > 0, "Choose a field to update")
+);

@@ -27,7 +27,7 @@ test("Jev excludes scores below 75 percent from previews and automation decision
         });
       }
       return new Response(
-        `<rss><channel>${[1, 2, 3, 4, 5].map((episode) => `<item><guid>episode-${episode}</guid><title>Example - 0${episode} ${episode === 5 ? "VOSTFR" : "VF"} 1080p</title><link>${context.magnet.replaceAll("&", "&amp;")}</link></item>`).join("")}</channel></rss>`
+        `<rss><channel>${[1, 2, 3, 4, 5].map((episode) => `<item><guid>episode-${episode}</guid><title>Example - 0${episode} ${episode === 5 ? "VOSTFR" : "VF"} 1080p x264</title><link>${context.magnet.replaceAll("&", "&amp;")}</link></item>`).join("")}</channel></rss>`
       );
     },
     hostname: "127.0.0.1",
@@ -137,7 +137,7 @@ test("Jev resolves romaji before English and searches English only when romaji h
       queries.push(query);
       const language = query === "Romaji" && !romajiAccepted ? "VF" : "VOSTFR";
       return new Response(
-        `<rss><channel><item><guid>${query}-${language}</guid><title>${query} - 01 ${language} 1080p</title><link>${context.magnet.replaceAll("&", "&amp;")}</link></item></channel></rss>`
+        `<rss><channel><item><guid>${query}-${language}</guid><title>${query} - 01 ${language} 1080p x264</title><link>${context.magnet.replaceAll("&", "&amp;")}</link></item></channel></rss>`
       );
     },
     hostname: "127.0.0.1",
@@ -237,7 +237,7 @@ test("automation falls back to English after rejected romaji matches in previews
       const query = url.searchParams.get("q") ?? "";
       queries.push(query);
       return new Response(
-        `<rss><channel><item><guid>${query}-${episode}</guid><title>${query} - 0${episode} VF 1080p</title><link>${context.magnet.replaceAll("&", "&amp;")}</link></item></channel></rss>`
+        `<rss><channel><item><guid>${query}-${episode}</guid><title>${query} - 0${episode} VF 1080p x264</title><link>${context.magnet.replaceAll("&", "&amp;")}</link></item></channel></rss>`
       );
     },
     hostname: "127.0.0.1",

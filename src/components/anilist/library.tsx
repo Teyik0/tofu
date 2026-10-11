@@ -1,3 +1,4 @@
+import type { PreviewCard } from "@base-ui/react/preview-card";
 import { getRouteApi, useMutation } from "@teyik0/furin/client";
 import {
   ArrowUpDownIcon,
@@ -9,10 +10,12 @@ import {
   SearchIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
+  TagsIcon,
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { api } from "../../lib/client";
 import { useRefresh } from "../../lib/navigation";
 import type {
@@ -29,7 +32,6 @@ import { request } from "../api";
 import { OptionSelect } from "../option-select";
 import { SidebarToggle } from "../sidebar-toggle";
 import { Alert, AlertDescription } from "../ui/alert";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
@@ -37,8 +39,6 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
@@ -59,6 +59,8 @@ import {
   BrowseAdvancedFilters,
   type BrowseFilters,
   browseRequest,
+  CatalogMultiSelectFilter,
+  CatalogSelectFilter,
   catalogSortOptions,
   compareBrowseMedia,
   countryOptions,
@@ -70,9 +72,11 @@ import {
 import { AniListCover } from "./cover";
 import { AniListEpisodeModal } from "./episode-modal";
 import { AniListIcon } from "./icon";
+import { aniListMediaColors } from "./media-colors";
 import { AniListMediaInfo, animeAiringLabel } from "./media-info";
 import { AniListPanel } from "./panel";
 import { aniListStatusLabel, aniListStatusLabels } from "./status";
+import { AniListStatusDot } from "./status-dot";
 
 type SortValue = AniListCatalogSort | "progress" | "year";
 const sortOptions = [
@@ -88,7 +92,7 @@ const viewOptions = [
 ] satisfies { icon: typeof ListIcon; label: string; value: ViewValue }[];
 type ProgressValue = "not-started" | "in-progress" | "caught-up";
 interface Filters extends BrowseFilters {
-  format: string;
+  formats: string[];
   genres: string[];
   progress: ProgressValue | "any";
   season: AniListSeason | "any";
@@ -97,7 +101,7 @@ interface Filters extends BrowseFilters {
 }
 const noFilters: Filters = {
   ...noBrowseFilters,
-  format: "any",
+  formats: [],
   genres: [],
   progress: "any",
   season: "any",
@@ -150,9 +154,8 @@ function AnimeRow({
 }) {
   return (
     <button
-      aria-label={
-        "progress" in entry ? `View episodes for ${entry.title}` : `Open ${entry.title} on AniList`
-      }
+      aria-description={"status" in entry ? aniListStatusLabel(entry.status) : undefined}
+      aria-label={`View episodes for ${entry.title}`}
       className="anime-row"
       onClick={onOpen}
       type="button"
@@ -161,17 +164,16 @@ function AnimeRow({
         <AniListCover src={entry.coverImage} />
       </span>
       <span className="anime-row-title">
-        <strong>{entry.title}</strong>
+        <strong>
+          {"status" in entry ? <AniListStatusDot status={entry.status} /> : null}
+          {entry.title}
+        </strong>
         <small>{entry.genres.slice(0, 3).join(" · ") || "—"}</small>
       </span>
       <span className="anime-row-meta">
         {entry.format ? formatLabel(entry.format) : "—"} · {entry.seasonYear ?? "—"}
       </span>
-      {"status" in entry ? (
-        <Badge variant="secondary">{aniListStatusLabel(entry.status)}</Badge>
-      ) : (
-        <span>{animeAiringLabel(entry, now)}</span>
-      )}
+      <span className="anime-row-airing">{animeAiringLabel(entry, now)}</span>
       {"progress" in entry ? (
         <span className="anime-row-progress">
           <span>
@@ -210,47 +212,65 @@ function AnimeCard({
   onOpen: () => void;
   now: number;
 }) {
+  const previewActions = useRef<PreviewCard.Root.Actions | null>(null);
+  const scrollController = useRef<AbortController | null>(null);
+  useEffect(() => () => scrollController.current?.abort(), []);
+  const closePreview = () => flushSync(() => previewActions.current?.close());
   return (
-    <HoverCard>
+    <HoverCard
+      actionsRef={previewActions}
+      onOpenChange={(open) => {
+        scrollController.current?.abort();
+        scrollController.current = null;
+        if (open) {
+          const controller = new AbortController();
+          scrollController.current = controller;
+          window.addEventListener("scroll", closePreview, {
+            capture: true,
+            signal: controller.signal,
+          });
+        }
+      }}
+    >
       <HoverCardTrigger
-        delay={250}
+        closeDelay={0}
+        delay={0}
+        onMouseLeave={closePreview}
         render={
           <button
-            aria-label={
-              "progress" in entry
-                ? `View episodes for ${entry.title}`
-                : `Open ${entry.title} on AniList`
+            aria-description={
+              "status" in entry
+                ? `${aniListStatusLabel(entry.status)} · ${entry.progress} / ${entry.episodes ?? "—"} watched`
+                : undefined
             }
+            aria-label={`View episodes for ${entry.title}`}
             className="anime-card"
             onClick={onOpen}
+            style={aniListMediaColors(entry.coverColor)}
             type="button"
           />
         }
       >
         <div className="anime-card-cover">
           <AniListCover src={entry.coverImage} />
-          <div className="anime-card-overlay">
-            {"status" in entry ? (
-              <Badge variant="secondary">{aniListStatusLabel(entry.status)}</Badge>
-            ) : null}
-            {"automationId" in entry && entry.automationId ? (
+          {"automationId" in entry && entry.automationId ? (
+            <span className="anime-card-automation" title="Custom automation">
               <ZapIcon aria-label="Custom automation" />
-            ) : null}
-          </div>
-          {"progress" in entry ? (
-            <span className="anime-card-progress">
-              {entry.progress} / {entry.episodes ?? "—"} watched
             </span>
-          ) : (
-            <span className="anime-card-progress">{animeAiringLabel(entry, now)}</span>
-          )}
+          ) : null}
         </div>
-        <strong>{entry.title}</strong>
-        <span className="anime-card-meta">
-          {entry.format ? formatLabel(entry.format) : "—"} · {entry.seasonYear ?? "—"}
-        </span>
+        <strong>
+          {"status" in entry ? <AniListStatusDot status={entry.status} /> : null}
+          {entry.title}
+        </strong>
       </HoverCardTrigger>
-      <HoverCardContent align="start" className="anime-preview-popup" side="right" sideOffset={12}>
+      <HoverCardContent
+        align="start"
+        alignOffset={5}
+        className="anime-preview-popup"
+        side="right"
+        sideOffset={18}
+      >
         <AniListMediaInfo media={entry} now={now} />
       </HoverCardContent>
     </HoverCard>
@@ -265,7 +285,6 @@ export const AniListLibrary = () => {
   } = getRouteApi("/anilist").useLoaderData();
   const refresh = useRefresh();
   const loadList = useMutation(api.anilist.list.post);
-  const openAnime = useMutation(api.anilist.open.post);
   const savePreferences = useMutation(api.anilist.preferences.put);
   const plugin = automationState?.plugins.find((item) => item.id === "anilist");
   const [search, setSearch] = useState("");
@@ -286,6 +305,8 @@ export const AniListLibrary = () => {
   const [catalogError, setCatalogError] = useState<{ key: string; message: string } | null>(null);
   const [catalogOptions, setCatalogOptions] = useState<AniListCatalogOptions | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const catalogEnd = useRef<HTMLDivElement>(null);
+  const catalogRequest = useRef<AbortController | null>(null);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60_000);
@@ -306,7 +327,7 @@ export const AniListLibrary = () => {
   const [filters, setFilters] = useState<Filters>(noFilters);
   const catalogBody = JSON.stringify({
     ...browseRequest(filters),
-    format: filters.format === "any" ? undefined : filters.format,
+    formats: filters.formats,
     genres: filters.genres,
     search,
     season: filters.season === "any" ? undefined : filters.season,
@@ -319,6 +340,7 @@ export const AniListLibrary = () => {
     browsing && catalogError?.key === catalogKey ? catalogError.message : null;
   const loadingCatalog = browsing && !currentCatalog && !currentCatalogError;
   useEffect(() => {
+    setLoadingMore(false);
     if (!browsing) {
       return;
     }
@@ -348,12 +370,14 @@ export const AniListLibrary = () => {
     return () => {
       clearTimeout(timer);
       controller.abort();
+      catalogRequest.current?.abort();
+      catalogRequest.current = null;
     };
   }, [browsing, catalogKey, catalogBody]);
   const [advanced, setAdvanced] = useState(false);
   const [view, setView] = useState<ViewValue>("cards");
   const update = (patch: Partial<Filters>) => setFilters((previous) => ({ ...previous, ...patch }));
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<AniListMedia | null>(null);
   const [settings, setSettings] = useState(false);
   const [target, setTarget] = useState("default");
   const [busy, setBusy] = useState(false);
@@ -413,7 +437,8 @@ export const AniListLibrary = () => {
         filters.genres.every((genre) => entry.genres.includes(genre)) &&
         (filters.year === "any" || String(entry.seasonYear) === filters.year) &&
         (filters.season === "any" || entry.season === filters.season) &&
-        (filters.format === "any" || entry.format === filters.format) &&
+        (!filters.formats.length ||
+          (entry.format !== null && filters.formats.includes(entry.format))) &&
         (filters.tracking === "any" ||
           (filters.tracking === "automated") === (entry.automationId !== null)) &&
         (filters.progress === "any" || progressOf(entry) === filters.progress) &&
@@ -426,10 +451,27 @@ export const AniListLibrary = () => {
           ? (b.seasonYear ?? 0) - (a.seasonYear ?? 0) || a.title.localeCompare(b.title, "en-US")
           : compareBrowseMedia(a, b, sort)
     );
+  const trackedMedia = new Map(state.entries.map((entry) => [entry.mediaId, entry]));
   const entries: (AniListEntry | AniListMedia)[] = browsing
-    ? (currentCatalog?.media ?? [])
+    ? (currentCatalog?.media ?? []).map((media) => {
+        const tracked = trackedMedia.get(media.mediaId);
+        return tracked
+          ? {
+              ...media,
+              automationId: tracked.automationId,
+              completedEpisodes: tracked.completedEpisodes,
+              progress: tracked.progress,
+              status: tracked.status,
+            }
+          : media;
+      })
     : libraryEntries;
   const activeFilters = [
+    ...filters.genres.map((genre) => ({
+      clear: () => update({ genres: filters.genres.filter((item) => item !== genre) }),
+      key: `genre:${genre}`,
+      label: genre,
+    })),
     ...filters.tags.map((tag) => ({
       clear: () => update({ tags: filters.tags.filter((item) => item !== tag) }),
       key: `tag:${tag}`,
@@ -489,11 +531,6 @@ export const AniListLibrary = () => {
         ? [{ clear: () => update({ [key]: "" }), key, label: `${field.label} ${filters[key]}` }]
         : [];
     }),
-    ...filters.genres.map((genre) => ({
-      clear: () => update({ genres: filters.genres.filter((item) => item !== genre) }),
-      key: `genre:${genre}`,
-      label: genre,
-    })),
     ...(filters.year === "any"
       ? []
       : [{ clear: () => update({ year: "any" }), key: "year", label: filters.year }]),
@@ -506,15 +543,11 @@ export const AniListLibrary = () => {
             label: seasonOptions.find((option) => option.value === filters.season)?.label ?? "",
           },
         ]),
-    ...(filters.format === "any"
-      ? []
-      : [
-          {
-            clear: () => update({ format: "any" }),
-            key: "format",
-            label: formatLabel(filters.format),
-          },
-        ]),
+    ...filters.formats.map((format) => ({
+      clear: () => update({ formats: filters.formats.filter((item) => item !== format) }),
+      key: `format:${format}`,
+      label: formatLabel(format),
+    })),
     ...(browsing || filters.tracking === "any"
       ? []
       : [
@@ -535,26 +568,28 @@ export const AniListLibrary = () => {
         ]),
   ];
   const openMedia = (media: AniListMedia) => {
-    if (state.entries.some((entry) => entry.mediaId === media.mediaId)) {
-      setSelected(media.mediaId);
-    } else {
-      action(async () => {
-        await openAnime.mutateAsync({
-          url: `https://anilist.co/anime/${media.mediaId}`,
-        });
-      });
-    }
+    setSelected(media);
   };
   const loadMore = () => {
-    if (!currentCatalog || loadingMore) {
+    if (!(browsing && currentCatalog?.hasNextPage) || catalogRequest.current) {
       return;
     }
+    const controller = new AbortController();
+    catalogRequest.current = controller;
     setLoadingMore(true);
-    void request<AniListCatalog>("/anilist/catalog", "POST", {
-      ...JSON.parse(catalogBody),
-      page: currentCatalog.page + 1,
-    } as AniListCatalogFilters)
-      .then((data) =>
+    void request<AniListCatalog>(
+      "/anilist/catalog",
+      "POST",
+      {
+        ...(JSON.parse(catalogBody) as AniListCatalogFilters),
+        page: currentCatalog.page + 1,
+      },
+      controller.signal
+    )
+      .then((data) => {
+        if (controller.signal.aborted) {
+          return;
+        }
         setCatalog((previous) =>
           previous?.key === catalogKey
             ? {
@@ -569,17 +604,54 @@ export const AniListLibrary = () => {
                 key: catalogKey,
               }
             : previous
-        )
-      )
-      .catch((cause) =>
+        );
+        setCatalogError(null);
+      })
+      .catch((cause) => {
+        if (controller.signal.aborted) {
+          return;
+        }
         setCatalogError({
           key: catalogKey,
           message: cause instanceof Error ? cause.message : "Unable to load more anime",
-        })
-      )
-      .finally(() => setLoadingMore(false));
+        });
+      })
+      .finally(() => {
+        if (catalogRequest.current === controller) {
+          catalogRequest.current = null;
+          setLoadingMore(false);
+        }
+      });
   };
-  const selectedEntry = state?.entries.find((entry) => entry.mediaId === selected);
+  const loadNextPage = useEffectEvent(loadMore);
+  const catalogPage = currentCatalog?.page;
+  const hasNextPage = currentCatalog?.hasNextPage;
+  useEffect(() => {
+    const sentinel = catalogEnd.current;
+    if (
+      !(browsing && hasNextPage) ||
+      catalogPage === undefined ||
+      loadingMore ||
+      currentCatalogError ||
+      !sentinel
+    ) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (observations) => {
+        if (observations.some((observation) => observation.isIntersecting)) {
+          loadNextPage();
+        }
+      },
+      { rootMargin: "300px 0px" }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [browsing, hasNextPage, loadingMore, currentCatalogError, catalogPage]);
+  const selectedEntry = selected
+    ? (state.entries.find((entry) => entry.mediaId === selected.mediaId) ?? selected)
+    : null;
+  const accountName = state?.connectedUser || state?.userName || null;
   return (
     <main className="anilist-library">
       <header className="library-topbar anilist-page-header">
@@ -589,74 +661,19 @@ export const AniListLibrary = () => {
           <h1>AniList</h1>
         </div>
         <div className="anilist-header-actions">
-          <span className="anilist-account">{state?.connectedUser ?? state?.userName ?? ""}</span>
-          <ActionTooltip>
-            <Button
-              aria-label="Sync list"
-              disabled={browsing ? loadingCatalog : busy || !canLoad}
-              onClick={() =>
-                browsing
-                  ? setCatalogReload((value) => value + 1)
-                  : action(async () => {
-                      await loadList.mutateAsync();
-                    })
-              }
-              size="icon"
-              variant="outline"
-            >
-              <RefreshCwIcon className={busy ? "motion-safe:animate-spin" : undefined} />
-            </Button>
-          </ActionTooltip>
-          <ActionTooltip>
-            <Button
-              aria-label="AniList settings"
-              onClick={() => setSettings(true)}
-              size="icon"
-              variant="outline"
-            >
-              <SettingsIcon />
-            </Button>
-          </ActionTooltip>
-        </div>
-      </header>
-      <div className="anilist-page-body">
-        <div className="anilist-filters">
-          <div className="anilist-filter">
-            <label htmlFor="anime-search">Search</label>
-            <InputGroup className="anilist-search">
-              <InputGroupAddon>
-                <SearchIcon />
-              </InputGroupAddon>
-              <InputGroupInput
-                aria-label="Search anime"
-                id="anime-search"
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Title or alias"
-                value={search}
-              />
-              {search ? (
-                <InputGroupAddon align="inline-end">
-                  <InputGroupButton
-                    aria-label="Clear search"
-                    onClick={() => setSearch("")}
-                    size="icon-xs"
-                  >
-                    <XIcon />
-                  </InputGroupButton>
-                </InputGroupAddon>
-              ) : null}
-            </InputGroup>
-          </div>
-          <div className="anilist-filter">
-            <span id="anilist-lists-label">Lists</span>
+          <div className="anilist-list-selector">
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
                   <Button
-                    aria-labelledby="anilist-lists-label anilist-lists-value"
-                    className="anilist-status-filter anilist-filter-trigger"
-                    variant="ghost"
+                    aria-label={`Lists ${state.visibleStatuses.map(aniListStatusLabel).join(", ") || "None"}`}
+                    className="anilist-status-filter"
+                    size="lg"
+                    variant="outline"
                   >
+                    <span aria-hidden="true" className="anilist-status-filter-label">
+                      Lists
+                    </span>
                     <span id="anilist-lists-value">
                       {state
                         ? state.visibleStatuses.length
@@ -668,20 +685,20 @@ export const AniListLibrary = () => {
                   </Button>
                 }
               />
-              <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuContent align="start" className="anilist-genre-menu" sideOffset={10}>
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>Show anime from these lists</DropdownMenuLabel>
-                  <DropdownMenuItem
+                  <DropdownMenuCheckboxItem
+                    checked={!state.visibleStatuses.length}
                     disabled={busy || !state}
-                    onClick={() =>
+                    onCheckedChange={() =>
                       action(async () => {
                         await savePreferences.mutateAsync({ visibleStatuses: [] });
                         await refresh();
                       })
                     }
                   >
-                    None · Browse trending anime
-                  </DropdownMenuItem>
+                    None
+                  </DropdownMenuCheckboxItem>
                   {aniListStatusLabels.map(({ value, label }) => (
                     <DropdownMenuCheckboxItem
                       checked={
@@ -710,51 +727,114 @@ export const AniListLibrary = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          <span aria-hidden="true" className="toolbar-divider" />
+          <ActionTooltip>
+            <Button
+              aria-label="Sync list"
+              disabled={browsing ? loadingCatalog : busy || !canLoad}
+              onClick={() =>
+                browsing
+                  ? setCatalogReload((value) => value + 1)
+                  : action(async () => {
+                      await loadList.mutateAsync();
+                    })
+              }
+              size="icon-lg"
+              variant="outline"
+            >
+              <RefreshCwIcon className={busy ? "motion-safe:animate-spin" : undefined} />
+            </Button>
+          </ActionTooltip>
+          {/* The account doubles as the settings entry point, like AniList's avatar menu. */}
+          <ActionTooltip>
+            {accountName ? (
+              <Button
+                aria-label={`AniList settings, ${accountName}`}
+                className="anilist-account-button"
+                onClick={() => setSettings(true)}
+                size="lg"
+                variant="outline"
+              >
+                <span aria-hidden="true" className="anilist-account-avatar">
+                  {accountName.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="anilist-account-name">{accountName}</span>
+                <SettingsIcon aria-hidden="true" data-icon="inline-end" />
+              </Button>
+            ) : (
+              <Button
+                aria-label="AniList settings"
+                className="anilist-account-button"
+                onClick={() => setSettings(true)}
+                size="icon-lg"
+                variant="outline"
+              >
+                <SettingsIcon />
+              </Button>
+            )}
+          </ActionTooltip>
+        </div>
+      </header>
+      <div className="anilist-page-body">
+        <div className="anilist-filters">
+          <div className="anilist-filter">
+            <label htmlFor="anime-search">Search</label>
+            <InputGroup className="anilist-search">
+              <InputGroupAddon>
+                <SearchIcon />
+              </InputGroupAddon>
+              <InputGroupInput
+                aria-label="Search anime"
+                id="anime-search"
+                onChange={(event) => setSearch(event.target.value)}
+                value={search}
+              />
+              {search ? (
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    aria-label="Clear search"
+                    onClick={() => setSearch("")}
+                    size="icon-xs"
+                  >
+                    <XIcon />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              ) : null}
+            </InputGroup>
+          </div>
           <GenreTagFilter
             filters={filters}
             genres={genres}
             options={catalogOptions}
             update={update}
           />
-          <div className="anilist-filter">
-            <label htmlFor="anilist-year">Year</label>
-            <OptionSelect
-              className="anilist-filter-trigger"
-              disabled={!years.length}
-              id="anilist-year"
-              onValueChange={(year) => update({ year })}
-              options={[
-                { label: "Any", value: "any" },
-                ...years.map((year) => ({ label: year, value: year })),
-              ]}
-              value={filters.year}
-            />
-          </div>
-          <div className="anilist-filter">
-            <label htmlFor="anilist-season">Season</label>
-            <OptionSelect
-              className="anilist-filter-trigger"
-              disabled={false}
-              id="anilist-season"
-              onValueChange={(season) => update({ season })}
-              options={seasonOptions}
-              value={filters.season}
-            />
-          </div>
-          <div className="anilist-filter">
-            <label htmlFor="anilist-format">Format</label>
-            <OptionSelect
-              className="anilist-filter-trigger"
-              disabled={!formats.length}
-              id="anilist-format"
-              onValueChange={(format) => update({ format })}
-              options={[
-                { label: "Any", value: "any" },
-                ...formats.map((format) => ({ label: formatLabel(format), value: format })),
-              ]}
-              value={filters.format}
-            />
-          </div>
+          <CatalogSelectFilter
+            id="anilist-year"
+            label="Year"
+            onValueChange={(year) => update({ year })}
+            options={[
+              { label: "Any", value: "any" },
+              ...years.map((year) => ({ label: year, value: year })),
+            ]}
+            value={filters.year}
+          />
+
+          <CatalogSelectFilter
+            id="anilist-season"
+            label="Season"
+            onValueChange={(season) => update({ season })}
+            options={seasonOptions}
+            value={filters.season}
+          />
+
+          <CatalogMultiSelectFilter
+            id="anilist-format"
+            label="Format"
+            onValueChange={(selectedFormats) => update({ formats: selectedFormats })}
+            options={formats.map((format) => ({ label: formatLabel(format), value: format }))}
+            value={filters.formats}
+          />
+
           <ActionTooltip>
             <Button
               aria-expanded={advanced}
@@ -806,22 +886,31 @@ export const AniListLibrary = () => {
           </div>
         ) : null}
         <div className="anilist-results-bar">
-          <div className="anilist-active-filters">
+          <fieldset aria-label="Active filters" className="anilist-active-filters">
+            {activeFilters.length ? (
+              <TagsIcon aria-hidden="true" className="anilist-filter-tag" />
+            ) : null}
             {activeFilters.map((filter) => (
               <button
                 aria-label={`Remove filter ${filter.label}`}
                 className="anilist-filter-chip"
                 key={filter.key}
                 onClick={filter.clear}
+                title={`Remove ${filter.label}`}
                 type="button"
               >
                 {filter.label}
                 <XIcon aria-hidden="true" />
               </button>
             ))}
-            {activeFilters.length > 1 ? (
-              <button className="link-button" onClick={() => setFilters(noFilters)} type="button">
-                Clear all
+            {activeFilters.length ? (
+              <button
+                className="anilist-filter-chip anilist-clear-filters"
+                onClick={() => setFilters(noFilters)}
+                type="button"
+              >
+                Clear All
+                <XIcon aria-hidden="true" />
               </button>
             ) : null}
             <span className="anilist-title-count">
@@ -835,7 +924,7 @@ export const AniListLibrary = () => {
               {browsing && currentCatalog?.hasNextPage ? "+" : ""} title
               {entries.length === 1 ? "" : "s"}
             </span>
-          </div>
+          </fieldset>
           <div className="anilist-view-controls">
             <Select
               items={availableSorts}
@@ -850,7 +939,11 @@ export const AniListLibrary = () => {
                 <ArrowUpDownIcon />
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent align="end" alignItemWithTrigger={false}>
+              <SelectContent
+                align="end"
+                alignItemWithTrigger={false}
+                className="anilist-select-menu"
+              >
                 <SelectGroup>
                   {availableSorts.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
@@ -937,13 +1030,22 @@ export const AniListLibrary = () => {
           </Empty>
         )}
         {browsing && currentCatalog?.hasNextPage ? (
-          <Button disabled={loadingMore} onClick={loadMore} variant="outline">
-            {loadingMore ? "Loading…" : "Load more anime"}
-          </Button>
+          <div className="flex min-h-10 items-center justify-center" ref={catalogEnd}>
+            {currentCatalogError ? (
+              <Button disabled={loadingMore} onClick={loadMore} variant="outline">
+                {loadingMore ? "Loading…" : "Retry loading anime"}
+              </Button>
+            ) : (
+              <span className="text-muted-foreground text-sm" role="status">
+                {loadingMore ? "Loading more anime…" : ""}
+              </span>
+            )}
+          </div>
         ) : null}
       </div>
       {selectedEntry && automationState ? (
         <AniListEpisodeModal
+          authenticated={state.authenticated}
           automation={automationState}
           close={() => setSelected(null)}
           dashboard={dashboard}

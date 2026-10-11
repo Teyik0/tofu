@@ -31,8 +31,11 @@ const sections = [
 
 export const route = defineRoute()
   .config({ layout: root, mode: "ssr" })
-  .loader(async () => ({ initialAutomation: readData(await api.automation.get()) }))
-  .layout(({ children, initialAutomation: state, path }) => {
+  .loader(async () => {
+    const [automation, instance] = await Promise.all([api.automation.get(), api.instance.get()]);
+    return { desktop: readData(instance).desktop, initialAutomation: readData(automation) };
+  })
+  .layout(({ children, initialAutomation: state, desktop, path }) => {
     const router = useRouter();
     const settingsBackPath = useAtomValue(settingsBackPathAtom);
 
@@ -120,6 +123,7 @@ export const route = defineRoute()
             ) : null}
             {(path === "/plugins" || path === "/plugins/sources") && (
               <PluginGroup
+                desktop={desktop}
                 forms={forms}
                 ids={["nyaa", "tsundere", "c411"]}
                 plugins={state.plugins}
@@ -128,6 +132,7 @@ export const route = defineRoute()
             )}
             {(path === "/plugins" || path === "/plugins/intelligence") && (
               <PluginGroup
+                desktop={desktop}
                 forms={forms}
                 ids={["jev"]}
                 plugins={state.plugins}
@@ -136,6 +141,7 @@ export const route = defineRoute()
             )}
             {(path === "/plugins" || path === "/plugins/integrations") && (
               <PluginGroup
+                desktop={desktop}
                 forms={forms}
                 ids={["anilist"]}
                 plugins={state.plugins}

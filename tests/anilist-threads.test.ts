@@ -52,7 +52,7 @@ async function setup() {
         });
       }
       return new Response(
-        `<rss><channel><item><title>One Piece - 01 VOSTFR 1080p</title><guid>21</guid><link>https://nyaa.si/view/21</link><enclosure url="${context.magnet.replaceAll("&", "&amp;")}"/><nyaa:infoHash>${context.seed.infoHash}</nyaa:infoHash></item></channel></rss>`
+        `<rss><channel><item><title>One Piece - 01 VOSTFR 1080p x264</title><guid>21</guid><link>https://nyaa.si/view/21</link><enclosure url="${context.magnet.replaceAll("&", "&amp;")}"/><nyaa:infoHash>${context.seed.infoHash}</nyaa:infoHash></item></channel></rss>`
       );
     },
     hostname: "127.0.0.1",

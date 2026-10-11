@@ -44,7 +44,7 @@ test("AniList renders and navigates a large cached library without overflowing r
       title: { romaji: `Cached anime ${index}` },
     },
     progress: 0,
-    status: "CURRENT",
+    status: ["CURRENT", "PLANNING", "COMPLETED"][index % 3],
   }));
   const upstream = Bun.serve({
     async fetch(incoming) {
@@ -92,6 +92,11 @@ test("AniList renders and navigates a large cached library without overflowing r
     expect(loaded.status).toBe(200);
     expect(loaded.headers.get("x-furin-revalidate")?.split(",")).toContain("/anilist");
     expect(((await loaded.json()) as AniListState).entries).toHaveLength(500);
+    const preferences = await fetch(new URL("/api/anilist/preferences", origin), {
+      ...json({ visibleStatuses: ["CURRENT", "PLANNING", "COMPLETED"] }),
+      method: "PUT",
+    });
+    expect(preferences.status).toBe(200);
     const navigation = await fetch(new URL("/_furin/data?path=/anilist", origin));
     expect(navigation.status).toBe(200);
     const payload = await navigation.text();
@@ -99,7 +104,11 @@ test("AniList renders and navigates a large cached library without overflowing r
     expect(payload).not.toContain("__furinError");
     const page = await fetch(new URL("/anilist", origin));
     expect(page.status).toBe(200);
-    expect(await page.text()).toContain("Cached anime 499");
+    const html = await page.text();
+    expect(html).toContain("Cached anime 499");
+    expect(html.includes('aria-label="Watching"')).toBe(true);
+    expect(html.includes('aria-label="Plan to Watch"')).toBe(true);
+    expect(html.includes('aria-label="Completed"')).toBe(true);
     expect(requests).toBe(2);
   } finally {
     host.kill("SIGTERM");

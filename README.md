@@ -10,6 +10,7 @@ Built with **Bun · React · Furin · Electrobun · WebTorrent**, using **shadcn
 
 - **Download your way** — add magnets, torrent URLs, or `.torrent` files, including drag and drop.
 - **Keep things organized** — give each destination its own tab and folder.
+- **Search everywhere** — press `Cmd+K` (or `Ctrl+K`) to find torrents across all threads, search enabled sources, and review releases before downloading into a chosen thread.
 - **Stay in control** — pause, resume, set file priorities, manage trackers, and verify downloads.
 - **Follow new releases** — search Nyaa, Tsundere-Raws, and C411; automate downloads with optional Jev and AniList integrations.
 - **Pick up where you left off** — downloads and settings survive restarts; background mode keeps transfers running.
@@ -73,6 +74,8 @@ bun run test:native
 `bun run test` runs exactly `bun test --parallel --isolate --bail`. Tests use real peers, local trackers, and temporary folders. The native test also checks the actual desktop interface and requires a graphical session.
 
 Native tests launch an isolated application copy outside the repository. After `bun run build:release`, use `TOFU_NATIVE_PROFILE=release bun run test:native` to extract and test the stable update archive, or additionally set `TOFU_NATIVE_LAUNCHER` to an extracted application's launcher. Self-extracting installers are rejected to avoid modifying the installed app. User data remains separate, and the smoke script is injected only by this opt-in test command.
+
+Use `TOFU_NATIVE_WORKFLOW=global-search bun run test:native` for the global search workflow: keyboard navigation, cross-thread results, stale responses, source failures, destination selection, duplicate detection, and a real peer download. Discovery responses use an HTTP fixture; the release cache, addition API, and file transfer are real.
 
 [Architecture & configuration](docs/development.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Benchmarks](BENCHMARK.md)
 
