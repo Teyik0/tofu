@@ -1,0 +1,23 @@
+apps/tofu/tests/desktop-backend.test.ts
+  s_a0a481a34b8480::t_545ebbb001fde4 237
+apps/tofu/package.json
+  s_a0a481a34b8480::t_6749b5d93484ea 44
+vendor/README.md
+  s_a0a481a34b8480::t_d46332bcbb12ff 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf7256f9e716e6d685dfd266969dc73db460a2cc",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
