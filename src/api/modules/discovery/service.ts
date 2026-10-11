@@ -3,7 +3,7 @@ import { normalizeTitle } from "../automation/rules";
 
 const combinedEpisode = /\bs(\d{1,3})\s*e(\d{1,4})\b/gi;
 const seasonNumber = /\b(?:saison|season|s)\s*(\d{1,3})\b|\b(\d{1,3})(?:st|nd|rd|th)\s+season\b/gi;
-const episodeNumber = /\b(?:[eé]pisode|episode|[eé]p|ep|e)\s*(\d{1,4})\b/gi;
+const episodeNumber = /(?<![\p{L}\p{N}])(?:[eé]pisode|[eé]p|e)\s*(\d{1,4})\b/giu;
 const requestPrefix =
   /^(?:cherche(?:r)?|recherche(?:r)?|trouve(?:r)?|search|find)\s+(?:(?:les?\s+)?(?:[eé]pisodes?\s+)?(?:de\s+|d['’]))?/i;
 const spaces = /\s+/g;
@@ -106,6 +106,7 @@ function bestTitle(requestedTitle: string, media: AnimeTitle[]) {
 }
 
 function resolveTitles(search: DiscoverySearch, media: AnimeTitle[]) {
+  const enteredTitle = search.title;
   const best = bestTitle(search.title, media);
   if (!best) {
     return;
@@ -137,6 +138,7 @@ function resolveTitles(search: DiscoverySearch, media: AnimeTitle[]) {
       ? episode
       : `S${String(search.season).padStart(2, "0")}${episode ? `E${episode}` : ""}`;
   search.queries = uniqueTitles([
+    enteredTitle,
     ...canonical.map((title) => `${title}${marker ? ` ${marker}` : ""}`),
     ...seasonal.flatMap((entry) =>
       titles(entry)
@@ -144,7 +146,7 @@ function resolveTitles(search: DiscoverySearch, media: AnimeTitle[]) {
         .map((title) => `${title}${episode ? ` ${episode}` : ""}`)
     ),
     ...canonical,
-  ]).slice(0, 6);
+  ]).slice(0, 7);
 }
 
 export class DiscoveryResolver {
@@ -155,7 +157,12 @@ export class DiscoveryResolver {
     try {
       resolveTitles(search, await this.media(search.title, endpoint));
     } catch {
-      search.warning = "Alternative titles unavailable; searching with the entered title.";
+      search.warning = [
+        search.warning,
+        "Alternative titles unavailable; searching with the entered title.",
+      ]
+        .filter(Boolean)
+        .join(" ");
     }
   }
 
@@ -237,4 +244,14 @@ export function matchesDiscovery(search: DiscoverySearch, release: FeedRelease) 
   }
   const season = release.season ?? parseDiscovery(release.workTitle).season;
   return search.season === null || season === search.season;
+}
+
+/** Reject known conflicts before semantic ranking, while retaining unparsed evidence for Jev. */
+export function discoveryCandidate(search: DiscoverySearch, release: FeedRelease) {
+  const season = release.season ?? parseDiscovery(release.workTitle).season;
+  return !(
+    (search.episode !== null &&
+      (release.pack || (release.episode !== null && release.episode !== search.episode))) ||
+    (search.season !== null && season !== null && season !== search.season)
+  );
 }

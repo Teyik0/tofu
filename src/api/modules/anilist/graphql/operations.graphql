@@ -10,6 +10,7 @@ fragment AniListMedia on Media {
   synonyms
   siteUrl
   coverImage {
+    color
     extraLarge
     large
   }
@@ -89,6 +90,12 @@ query Library($userId: Int!, $chunk: Int!) {
   }
 }
 
+query Anime($mediaId: Int!) {
+  Media(id: $mediaId, type: ANIME) {
+    ...AniListMedia
+  }
+}
+
 query Catalog(
   $page: Int!
   $sort: [MediaSort]
@@ -100,6 +107,7 @@ query Catalog(
   $seasonYear: Int
   $season: MediaSeason
   $format: MediaFormat
+  $format_in: [MediaFormat]
   $status: MediaStatus
   $licensedById: Int
   $countryOfOrigin: CountryCode
@@ -129,6 +137,7 @@ query Catalog(
       seasonYear: $seasonYear
       season: $season
       format: $format
+      format_in: $format_in
       status: $status
       licensedById: $licensedById
       countryOfOrigin: $countryOfOrigin
@@ -164,5 +173,106 @@ query CatalogOptions {
 mutation SaveProgress($mediaId: Int!, $progress: Int!) {
   SaveMediaListEntry(mediaId: $mediaId, progress: $progress) {
     progress
+  }
+}
+
+fragment AniListListEntry on MediaList {
+  id
+  mediaId
+  status
+  progress
+  score
+  repeat
+  priority
+  private
+  notes
+  hiddenFromStatusLists
+  customLists
+  advancedScores
+  startedAt {
+    year
+    month
+    day
+  }
+  completedAt {
+    year
+    month
+    day
+  }
+}
+
+query Editor($mediaId: Int!) {
+  Viewer {
+    id
+    mediaListOptions {
+      scoreFormat
+      animeList {
+        customLists
+        advancedScoring
+        advancedScoringEnabled
+      }
+    }
+  }
+  Media(id: $mediaId, type: ANIME) {
+    id
+    episodes
+    isFavourite
+    isFavouriteBlocked
+    mediaListEntry {
+      ...AniListListEntry
+    }
+  }
+}
+
+mutation SaveEntry(
+  $mediaId: Int!
+  $status: MediaListStatus
+  $score: Float
+  $progress: Int
+  $repeat: Int
+  $priority: Int
+  $private: Boolean
+  $notes: String
+  $hiddenFromStatusLists: Boolean
+  $customLists: [String]
+  $advancedScores: [Float]
+  $startedAt: FuzzyDateInput
+  $completedAt: FuzzyDateInput
+) {
+  SaveMediaListEntry(
+    mediaId: $mediaId
+    status: $status
+    score: $score
+    progress: $progress
+    repeat: $repeat
+    priority: $priority
+    private: $private
+    notes: $notes
+    hiddenFromStatusLists: $hiddenFromStatusLists
+    customLists: $customLists
+    advancedScores: $advancedScores
+    startedAt: $startedAt
+    completedAt: $completedAt
+  ) {
+    ...AniListListEntry
+    media {
+      ...AniListMedia
+    }
+  }
+}
+
+mutation ToggleAnimeFavourite($mediaId: Int!) {
+  ToggleFavourite(animeId: $mediaId) {
+    anime(page: 1, perPage: 1) {
+      nodes {
+        id
+      }
+    }
+  }
+}
+
+mutation DeleteEntry($id: Int!) {
+  DeleteMediaListEntry(id: $id) {
+    deleted
   }
 }

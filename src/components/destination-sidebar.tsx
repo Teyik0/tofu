@@ -10,6 +10,7 @@ import { AniListIcon } from "./anilist/icon";
 import { DestinationIcon } from "./destination-icon";
 import { DestinationMenu } from "./destination-menu";
 import { bytes } from "./format";
+import { GlobalSearchTrigger } from "./global-search";
 import { Logo } from "./icon";
 import { type ModalKind, useDeleteDestination } from "./modal";
 import { SidebarToggle } from "./sidebar-toggle";
@@ -163,6 +164,7 @@ export const DestinationSidebar = memo(
             </Link>
             <SidebarToggle />
           </div>
+          <GlobalSearchTrigger />
           <nav aria-label="Sidebar shortcuts">
             <SidebarMenu className="sidebar-shortcuts">
               <SidebarMenuItem>

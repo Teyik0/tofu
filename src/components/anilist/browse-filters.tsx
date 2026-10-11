@@ -1,4 +1,4 @@
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import type {
   AniListCatalogFilters,
@@ -6,7 +6,8 @@ import type {
   AniListCatalogSort,
   AniListMedia,
 } from "../../types";
-import { OptionSelect } from "../option-select";
+import { OptionSelect, type SelectOption } from "../option-select";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -182,39 +183,53 @@ export function GenreTagFilter({
   filters: BrowseFilters & { genres: string[] };
   update: (patch: Partial<BrowseFilters & { genres: string[] }>) => void;
 }) {
-  const [search, setSearch] = useState("");
   const names = [...filters.genres, ...filters.tags];
-  const query = search.toLocaleLowerCase("en-US");
   return (
     <div className="anilist-filter">
       <span id="anilist-genres-label">Genres &amp; Tags</span>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              aria-labelledby="anilist-genres-label anilist-genres-value"
-              className="anilist-filter-trigger"
-              variant="ghost"
-            >
-              <span id="anilist-genres-value">{names.length ? names.join(", ") : "Any"}</span>
-              <ChevronDownIcon data-icon="inline-end" />
-            </Button>
-          }
-        />
-        <DropdownMenuContent align="start" className="anilist-genre-menu">
-          <Input
-            aria-label="Find genres and tags"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Find a genre or tag"
-            value={search}
+      <div className="anilist-filter-control" data-selected={names.length > 0}>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                aria-labelledby="anilist-genres-label anilist-genres-value"
+                className="anilist-filter-trigger"
+                variant="ghost"
+              >
+                <span className="sr-only" id="anilist-genres-value">
+                  {names.join(", ") || "Any"}
+                </span>
+                <span aria-hidden="true" className="anilist-genre-summary">
+                  {names.length ? (
+                    <>
+                      <Badge className="anilist-genre-value" variant="secondary">
+                        {names[0]}
+                      </Badge>
+                      {names.length > 1 ? (
+                        <Badge className="anilist-genre-count" variant="secondary">
+                          +{names.length - 1}
+                        </Badge>
+                      ) : null}
+                    </>
+                  ) : (
+                    "Any"
+                  )}
+                </span>
+                {names.length ? null : <ChevronDownIcon data-icon="inline-end" />}
+              </Button>
+            }
           />
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Genres</DropdownMenuLabel>
-            {genres
-              .filter((genre) => genre.toLocaleLowerCase("en-US").includes(query))
-              .map((genre) => (
+          <DropdownMenuContent
+            align="start"
+            className="anilist-genre-menu anilist-genre-picker"
+            sideOffset={10}
+          >
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Genres</DropdownMenuLabel>
+              {genres.map((genre) => (
                 <DropdownMenuCheckboxItem
                   checked={filters.genres.includes(genre)}
+                  closeOnClick={false}
                   key={genre}
                   onCheckedChange={(checked) =>
                     update({
@@ -227,14 +242,13 @@ export function GenreTagFilter({
                   {genre}
                 </DropdownMenuCheckboxItem>
               ))}
-          </DropdownMenuGroup>
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Tags</DropdownMenuLabel>
-            {(options?.tags ?? [])
-              .filter((tag) => tag.name.toLocaleLowerCase("en-US").includes(query))
-              .map((tag) => (
+            </DropdownMenuGroup>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Tags</DropdownMenuLabel>
+              {(options?.tags ?? []).map((tag) => (
                 <DropdownMenuCheckboxItem
                   checked={filters.tags.includes(tag.name)}
+                  closeOnClick={false}
                   disabled={filters.tags.length >= 30 && !filters.tags.includes(tag.name)}
                   key={tag.name}
                   onCheckedChange={(checked) =>
@@ -250,10 +264,155 @@ export function GenreTagFilter({
                   {tag.name}
                 </DropdownMenuCheckboxItem>
               ))}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {names.length ? (
+          <Button
+            aria-label="Clear genres and tags"
+            className="anilist-filter-clear"
+            onClick={() => update({ genres: [], tags: [] })}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <XIcon />
+          </Button>
+        ) : null}
+      </div>
     </div>
+  );
+}
+export function CatalogSelectFilter<Value extends string>({
+  id,
+  label,
+  value,
+  options,
+  onValueChange,
+}: {
+  id: string;
+  label: string;
+  value: Value | "any";
+  options: readonly SelectOption<Value | "any">[];
+  onValueChange: (value: Value | "any") => void;
+}) {
+  return (
+    <Field className="anilist-filter">
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <div className="anilist-filter-control" data-selected={value !== "any"}>
+        <OptionSelect
+          className="anilist-filter-trigger"
+          contentClassName="anilist-select-menu"
+          disabled={!options.length}
+          id={id}
+          onValueChange={onValueChange}
+          options={options}
+          value={value}
+        />
+        {value === "any" ? null : (
+          <Button
+            aria-label={`Clear ${label.toLowerCase()}`}
+            className="anilist-filter-clear"
+            onClick={() => onValueChange("any")}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <XIcon />
+          </Button>
+        )}
+      </div>
+    </Field>
+  );
+}
+export function CatalogMultiSelectFilter<Value extends string>({
+  id,
+  label,
+  value,
+  options,
+  onValueChange,
+}: {
+  id: string;
+  label: string;
+  value: Value[];
+  options: readonly SelectOption<Value>[];
+  onValueChange: (value: Value[]) => void;
+}) {
+  const summary = value.map(
+    (item) => options.find((option) => option.value === item)?.label ?? item
+  );
+  return (
+    <Field className="anilist-filter">
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <div className="anilist-filter-control" data-selected={value.length > 0}>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                aria-label={`${label}: ${summary.join(", ") || "Any"}`}
+                className="anilist-filter-trigger"
+                id={id}
+                variant="ghost"
+              >
+                <span className="anilist-genre-summary">
+                  {summary.length ? (
+                    <>
+                      <Badge className="anilist-genre-value" variant="secondary">
+                        {summary[0]}
+                      </Badge>
+                      {summary.length > 1 ? (
+                        <Badge className="anilist-genre-count" variant="secondary">
+                          +{summary.length - 1}
+                        </Badge>
+                      ) : null}
+                    </>
+                  ) : (
+                    "Any"
+                  )}
+                </span>
+                {value.length ? null : <ChevronDownIcon data-icon="inline-end" />}
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="start" className="anilist-genre-menu" sideOffset={10}>
+            <DropdownMenuGroup>
+              <DropdownMenuCheckboxItem
+                checked={!value.length}
+                closeOnClick={false}
+                onCheckedChange={() => onValueChange([])}
+              >
+                Any
+              </DropdownMenuCheckboxItem>
+              {options.map((option) => (
+                <DropdownMenuCheckboxItem
+                  checked={value.includes(option.value)}
+                  closeOnClick={false}
+                  key={option.value}
+                  onCheckedChange={(checked) =>
+                    onValueChange(
+                      checked
+                        ? [...value, option.value]
+                        : value.filter((item) => item !== option.value)
+                    )
+                  }
+                >
+                  {option.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {value.length ? (
+          <Button
+            aria-label={`Clear ${label.toLowerCase()}`}
+            className="anilist-filter-clear"
+            onClick={() => onValueChange([])}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <XIcon />
+          </Button>
+        ) : null}
+      </div>
+    </Field>
   );
 }
 function ExclusionFilter({
@@ -337,19 +496,16 @@ export function BrowseAdvancedFilters({
         { key: "countryOfOrigin", label: "Country of Origin", options: countryOptions },
         { key: "source", label: "Source Material", options: sourceOptions },
       ].map((field) => (
-        <Field className="anilist-filter" key={field.key}>
-          <FieldLabel htmlFor={`anilist-${field.key}`}>{field.label}</FieldLabel>
-          <OptionSelect
-            className="anilist-filter-trigger"
-            disabled={false}
-            id={`anilist-${field.key}`}
-            onValueChange={(value) => update({ [field.key]: value })}
-            options={field.options}
-            value={
-              filters[field.key as "airingStatus" | "streamingOn" | "countryOfOrigin" | "source"]
-            }
-          />
-        </Field>
+        <CatalogSelectFilter
+          id={`anilist-${field.key}`}
+          key={field.key}
+          label={field.label}
+          onValueChange={(value) => update({ [field.key]: value })}
+          options={field.options}
+          value={
+            filters[field.key as "airingStatus" | "streamingOn" | "countryOfOrigin" | "source"]
+          }
+        />
       ))}
       {[
         { label: "Year Range", lower: 1900, max: "yearMax", min: "yearMin", upper: 2200 },

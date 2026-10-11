@@ -38,6 +38,11 @@ const mediaSources = [
   "PICTURE_BOOK",
 ] as const;
 
+function enumValue<Value extends string>(input: string, values: readonly Value[]): Value;
+function enumValue<Value extends string>(
+  input: string | undefined,
+  values: readonly Value[]
+): Value | undefined;
 function enumValue<Value extends string>(input: string | undefined, values: readonly Value[]) {
   if (input === undefined) {
     return;
@@ -69,6 +74,13 @@ export const catalogSchema = object({
   excludedGenres: names,
   excludedTags: names,
   format: choices(mediaFormats),
+  formats: optional(
+    pipe(
+      array(picklist(mediaFormats)),
+      maxLength(mediaFormats.length),
+      check((items) => new Set(items).size === items.length, "Formats must be unique")
+    )
+  ),
   genres: names,
   page: optional(pipe(integerInput, integer(), minValue(1), maxValue(1000))),
   search: optional(pipe(string(), maxLength(200))),
@@ -107,6 +119,9 @@ export function catalogVariables(filters: AniListCatalogFilters): CatalogQueryVa
     episodes_greater: filters.episodesMin === undefined ? undefined : filters.episodesMin - 1,
     episodes_lesser: filters.episodesMax === undefined ? undefined : filters.episodesMax + 1,
     format: enumValue(filters.format, mediaFormats),
+    format_in: filters.formats?.length
+      ? filters.formats.map((format) => enumValue(format, mediaFormats))
+      : undefined,
     genre_in: filters.genres?.length ? filters.genres : undefined,
     genre_not_in: filters.excludedGenres?.length ? filters.excludedGenres : undefined,
     licensedById: filters.streamingOn,
@@ -165,6 +180,7 @@ export function catalogMedia(media: CatalogMedia): AniListMedia {
     airingStatus: media.status ?? null,
     aliases,
     bannerImage: media.bannerImage ?? null,
+    coverColor: media.coverImage?.color ?? null,
     coverImage: media.coverImage?.extraLarge ?? media.coverImage?.large ?? null,
     episodes: media.episodes ?? null,
     format: media.format ?? null,

@@ -3,11 +3,13 @@ import { FieldGroup, FieldLegend, FieldSet } from "../ui/field";
 import { PluginCard } from "./plugin-card";
 
 export function PluginGroup({
+  desktop,
   forms,
   ids,
   title,
   plugins,
 }: {
+  desktop: boolean;
   forms: PluginForms;
   ids: readonly PluginId[];
   title: string;
@@ -20,7 +22,7 @@ export function PluginGroup({
         {plugins
           .filter((plugin) => ids.includes(plugin.id))
           .map((plugin) => (
-            <PluginCard form={forms[plugin.id]} key={plugin.id} plugin={plugin} />
+            <PluginCard desktop={desktop} form={forms[plugin.id]} key={plugin.id} plugin={plugin} />
           ))}
       </FieldGroup>
     </FieldSet>

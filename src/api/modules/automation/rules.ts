@@ -30,14 +30,14 @@ export function normalizeTitle(value: string) {
 }
 export const defaultAutomationPreferences: AutomationPreferences = {
   automatic: true,
-  codecs: [],
+  codecs: ["H.265", "H.264"],
   deleteReplacedFiles: false,
   excludePacks: true,
   intervalMinutes: 15,
-  languages: [],
+  languages: ["VOSTFR", "MULTI"],
   paused: false,
   priority: ["language", "resolution", "source", "codec"],
-  resolutions: [],
+  resolutions: ["1080p", "720p"],
   sources: ["tsundere", "nyaa", "c411"],
   waitMinutes: 0,
 };

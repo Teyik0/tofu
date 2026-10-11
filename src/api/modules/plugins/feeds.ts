@@ -2,9 +2,9 @@ import type { FeedRelease, SourcePluginId } from "../../../types";
 
 const feedExpression1 = /^([\d.]+)\s*(Bytes|B|KiB|MiB|GiB|TiB|KB|MB|GB)$/i;
 const feedExpression2 = /\bS(\d{1,3})E(\d{1,4})\b/i;
-const feedExpression3 = /\s-\s(\d{1,4})(?:\s|\b)/;
+const feedExpression3 = /\s[-–]\s(\d{1,4})(?:v\d+)?(?:\s|\b)/i;
 const feedExpression4 = /\b(2160|1080|900|720|480)p\b/i;
-const feedExpression5 = /\b(VOSTFR|SUBFRENCH)\b/i;
+const feedExpression5 = /\b(VOSTFR|SUBFRENCH|FRENCH[ ._-]+(?:SUBS?|SUBTITLES))\b/i;
 const feedExpression6 = /\bMULTI\b/i;
 const feedExpression7 = /\b(VF|FRENCH|TRUEFRENCH)\b/i;
 const feedExpression8 = /\b(x265|h[ .]?265|HEVC)\b/i;
@@ -12,7 +12,7 @@ const feedExpression9 = /\b(x264|h[ .]?264|AVC)\b/i;
 const feedExpression10 = /\bAV1\b/i;
 const feedExpression11 = /^\[[^\]]+\]\s*/;
 const feedExpression12 =
-  /\s+S\d+E\d+\b|\s+-\s+\d+\b|\s+(?:VOSTFR|SUBFRENCH|MULTI|VF|FRENCH|TRUEFRENCH|\d{3,4}p)\b/i;
+  /\s+S\d+E\d+\b|\s+[-–]\s+\d+(?:v\d+)?\b|\s+[[(](?:\d{3,4}p|batch|complete|multi|HEVC|AVC|AV1|x26[45])\b|\s+(?:VOSTFR|SUBFRENCH|MULTI|VF|FRENCH|TRUEFRENCH|\d{3,4}p)\b/i;
 const feedExpression13 = /\b(batch|complete|complet|integrale|pack)\b/i;
 const feedExpression14 = /\bS\d+E\d+\s*[-–]\s*(?:E)?\d+\b/i;
 const feedExpression15 = /^(https?:\/\/|magnet:\?)/i;
@@ -30,6 +30,7 @@ const feedExpression26 = /href=["']([^"']+)["']/;
 const feedExpression27 = /title=["']([^"']+)["']/;
 const feedExpression28 = /<[^>]*>/g;
 const feedExpression29 = /href=["']([^"']*\/download\/\d+\.torrent)["']/;
+const episodeRange = /\s[-–]\s\d{1,4}(?:v\d+)?\s*[-–]\s*\d{1,4}\b/i;
 
 interface XmlAttribute {
   "@name"?: string;
@@ -105,7 +106,7 @@ export function releaseMetadata(title: string) {
     codec,
     episode: numberOrNull(episode),
     language,
-    pack: feedExpression13.test(title) || feedExpression14.test(title),
+    pack: feedExpression13.test(title) || feedExpression14.test(title) || episodeRange.test(title),
     resolution,
     season: numberOrNull(seasonEpisode?.[1]),
     workTitle,

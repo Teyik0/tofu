@@ -1,14 +1,15 @@
-import { EdenFetchError } from "@elysia/eden";
 import { Form, getDeepError, handleSubmit, useField } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
+import { ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
 import { useRef, useState } from "react";
+import { pluginCredentialPages } from "../../api/modules/plugins/service";
 import { api } from "../../lib/client";
 import { confirmPluginConfiguration } from "../../lib/plugin-forms";
 import type { PluginConfiguration, PluginForm, PluginState } from "../../types";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, buttonVariants } from "../ui/button";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "../ui/field";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
@@ -25,9 +26,19 @@ const pluginPaths = [
   "/plugins/integrations",
 ] as const;
 
-export function PluginCard({ plugin, form }: { plugin: PluginState; form: PluginForm }) {
+export function PluginCard({
+  plugin,
+  form,
+  desktop,
+}: {
+  plugin: PluginState;
+  form: PluginForm;
+  desktop: boolean;
+}) {
   const router = useRouter();
   const configure = useMutation(api.plugins({ id: plugin.id }).put);
+  const connect = useMutation(api.plugins({ id: plugin.id }).connect.post);
+  const openCredentials = useMutation(api.plugins({ id: plugin.id }).credentials.open.post);
   const testConnection = useMutation(api.plugins({ id: plugin.id }).test.post);
   const keyField = useField(form, { path: ["apiKey"] });
   const limitField = useField(form, { path: ["dailyLimit"] });
@@ -38,10 +49,16 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
   const errorId = `plugin-error-${plugin.id}`;
   const [feedback, setFeedback] = useState<PluginFeedback>({ error: null, keyRequired: false });
   const [isPending, setPending] = useState(false);
+  const [isValidating, setValidating] = useState(false);
+  const [isOpening, setOpening] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [rejectedKey, setRejectedKey] = useState<string | null>(null);
   const busy = isPending || form.isSubmitting;
   const run = async (command: PluginCommand) => {
     setPending(true);
     setFeedback({ error: null, keyRequired: false });
+    setNotice(null);
+    setRejectedKey(null);
     if (
       command.type === "configure" &&
       command.configuration.enabled &&
@@ -62,29 +79,35 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
         await testConnection.mutateAsync();
       } else {
         const { configuration } = command;
-        await configure.mutateAsync(configuration, {
-          optimistic(cache) {
-            for (const path of pluginPaths) {
-              cache.update(path, (data) => ({
-                ...data,
-                initialAutomation: {
-                  ...data.initialAutomation,
-                  plugins: data.initialAutomation.plugins.map((current) =>
-                    current.id === plugin.id
-                      ? {
-                          ...current,
-                          dailyLimit: configuration.dailyLimit ?? current.dailyLimit,
-                          enabled: configuration.enabled,
-                          error: null,
-                          hasApiKey: Boolean(configuration.apiKey?.trim()) || current.hasApiKey,
-                        }
-                      : current
-                  ),
-                },
-              }));
-            }
-          },
-        });
+        if (keyed && configuration.apiKey?.trim()) {
+          setValidating(true);
+          await connect.mutateAsync(configuration);
+          setNotice("API key verified and saved.");
+        } else {
+          await configure.mutateAsync(configuration, {
+            optimistic(cache) {
+              for (const path of pluginPaths) {
+                cache.update(path, (data) => ({
+                  ...data,
+                  initialAutomation: {
+                    ...data.initialAutomation,
+                    plugins: data.initialAutomation.plugins.map((current) =>
+                      current.id === plugin.id
+                        ? {
+                            ...current,
+                            dailyLimit: configuration.dailyLimit ?? current.dailyLimit,
+                            enabled: configuration.enabled,
+                            error: null,
+                            hasApiKey: Boolean(configuration.apiKey?.trim()) || current.hasApiKey,
+                          }
+                        : current
+                    ),
+                  },
+                }));
+              }
+            },
+          });
+        }
         confirmPluginConfiguration(form, {
           apiKey: configuration.apiKey,
           dailyLimit: configuration.dailyLimit ?? plugin.dailyLimit,
@@ -92,24 +115,33 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
       }
       setFeedback({ error: null, keyRequired: false });
     } catch (cause) {
-      const value: unknown = cause instanceof EdenFetchError ? cause.value : null;
+      if (command.type === "configure" && keyed && command.configuration.apiKey?.trim()) {
+        setRejectedKey(command.configuration.apiKey.trim());
+        keyInput.current?.focus();
+      }
+      const value: unknown =
+        cause && typeof cause === "object" && "value" in cause ? cause.value : null;
       setFeedback({
         error:
-          value &&
-          typeof value === "object" &&
-          "detail" in value &&
-          typeof value.detail === "string"
-            ? value.detail
-            : cause instanceof Error
-              ? cause.message
-              : "Unable to update plugin",
+          value && typeof value === "object" && "error" in value && typeof value.error === "string"
+            ? value.error
+            : value &&
+                typeof value === "object" &&
+                "detail" in value &&
+                typeof value.detail === "string"
+              ? value.detail
+              : cause instanceof Error
+                ? cause.message
+                : "Unable to update plugin",
         keyRequired: false,
       });
     } finally {
       setPending(false);
+      setValidating(false);
     }
   };
   const keyRequired = feedback.keyRequired && !plugin.hasApiKey && !key.trim();
+  const keyInvalid = keyRequired || rejectedKey === key.trim() || Boolean(keyField.errors);
   const error =
     getDeepError(form) ?? (busy || (feedback.keyRequired && !keyRequired) ? null : feedback.error);
   const configurePlugin = async (
@@ -164,27 +196,38 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
           <FieldGroup className="plugins-configuration">
             <Field
               className="plugins-credential"
-              data-invalid={keyRequired || Boolean(keyField.errors) || undefined}
+              data-invalid={keyInvalid || undefined}
               orientation="responsive"
             >
               <FieldContent>
                 <FieldLabel htmlFor={`key-${plugin.id}`}>
-                  {`${plugin.id === "jev" ? "TypeSafe" : "C411"} API key`}
+                  {plugin.id === "c411" ? "C411 API key or Torznab link" : "TypeSafe API key"}
                 </FieldLabel>
                 <FieldDescription>
                   {plugin.id === "jev"
-                    ? "A TypeSafe API key is required to enable Jev. Without Jev, use keywords or an exact title or pattern. Evaluated titles and metadata are sent to TypeSafe."
-                    : "Available in C411 → API integrations. The key stays on the server."}
+                    ? "Get a key from TypeSafe, then paste it here. Validation uses one Jev call. Evaluated titles and metadata are sent to TypeSafe."
+                    : "Open C411 API integrations, then paste your key or the full Torznab link. Tofu extracts the key automatically."}
+                </FieldDescription>
+                <FieldDescription id={`key-help-${plugin.id}`}>
+                  {plugin.hasApiKey
+                    ? "Your key is saved. Leave this field empty to keep it."
+                    : "Validate and save once. Your key stays on the machine running Tofu."}
                 </FieldDescription>
               </FieldContent>
               <Input
-                aria-describedby={keyRequired ? errorId : undefined}
-                aria-invalid={keyRequired || Boolean(keyField.errors) || undefined}
-                autoComplete="off"
                 {...keyField.props}
+                aria-describedby={`key-help-${plugin.id}${keyInvalid ? ` ${errorId}` : ""}`}
+                aria-invalid={keyInvalid || undefined}
+                autoComplete="off"
                 id={`key-${plugin.id}`}
                 onChange={(event) => keyField.onChange(event.target.value)}
-                placeholder={plugin.hasApiKey ? "Saved · type to replace" : "Your personal key"}
+                placeholder={
+                  plugin.hasApiKey
+                    ? "Saved · type to replace"
+                    : plugin.id === "c411"
+                      ? "API key or Torznab link"
+                      : "Your personal key"
+                }
                 ref={(element) => {
                   keyInput.current = element;
                   keyField.props.ref(element);
@@ -232,8 +275,44 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
           <AlertDescription>{error ?? plugin.error}</AlertDescription>
         </Alert>
       )}
+      {notice !== null && (
+        <p className="automation-caption" role="status">
+          {notice}
+        </p>
+      )}
       {(plugin.enabled || keyed || plugin.id === "anilist") && (
         <div className="plugins-plugin-actions">
+          {keyed === true && (
+            <a
+              aria-disabled={isOpening || undefined}
+              className={buttonVariants({ size: "sm", variant: "outline" })}
+              href={pluginCredentialPages[plugin.id === "c411" ? "c411" : "jev"]}
+              onClick={(event) => {
+                if (!desktop) {
+                  return;
+                }
+                event.preventDefault();
+                if (isOpening) {
+                  return;
+                }
+                setOpening(true);
+                void openCredentials
+                  .mutateAsync()
+                  .catch(() =>
+                    setFeedback({
+                      error: "Unable to open the API key page in your browser",
+                      keyRequired: false,
+                    })
+                  )
+                  .finally(() => setOpening(false));
+              }}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <ExternalLinkIcon data-icon="inline-start" />
+              {plugin.id === "c411" ? "Open C411 API integrations" : "Get a TypeSafe API key"}
+            </a>
+          )}
           {plugin.enabled === true && (
             <Button
               disabled={busy}
@@ -268,7 +347,10 @@ export function PluginCard({ plugin, form }: { plugin: PluginState; form: Plugin
               size="sm"
               type="submit"
             >
-              Save
+              {isValidating ? (
+                <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+              ) : null}
+              {isValidating ? "Validating…" : key.trim() ? "Validate and save" : "Save"}
             </Button>
           )}
         </div>

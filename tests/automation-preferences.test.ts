@@ -117,17 +117,21 @@ test("general preferences shape new rules, explicit requests override them, and 
     const initial = (await (await request("/automation", undefined)).json()) as AutomationState;
     expect(initial.preferences).toEqual({
       automatic: true,
-      codecs: [],
+      codecs: ["H.265", "H.264"],
       deleteReplacedFiles: false,
       excludePacks: true,
       intervalMinutes: 15,
-      languages: [],
+      languages: ["VOSTFR", "MULTI"],
       paused: false,
       priority: ["language", "resolution", "source", "codec"],
-      resolutions: [],
+      resolutions: ["1080p", "720p"],
       sources: ["tsundere", "nyaa", "c411"],
       waitMinutes: 0,
     });
+    const firstDraft = (await (
+      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
+    ).json()) as AutomationDraft;
+    expect(firstDraft).toMatchObject({ ...initial.preferences, title: "Example" });
 
     const saved = await request("/automation/preferences", {
       ...json(preferences),

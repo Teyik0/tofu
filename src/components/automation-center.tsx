@@ -24,6 +24,7 @@ import { useAutomationDraftForm } from "../hooks/use-automation-draft-form";
 import { createAutomationMutations } from "../lib/automation-mutations";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
+import { playSoundCue } from "../lib/sound-cues";
 import type {
   AutomationDecision,
   AutomationDraft,
@@ -860,6 +861,7 @@ export function AutomationCenter({
                                       paused: false,
                                       sourceId: release.sourceId,
                                     });
+                                    playSoundCue("added");
                                     await refresh();
                                     setNotice(`Added to ${destination?.name ?? "the thread"}.`);
                                   })

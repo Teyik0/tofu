@@ -33,7 +33,7 @@ test("AniList catalog browses trending anime without an account and keeps person
             media: [
               {
                 averageScore: null,
-                coverImage: { large: "https://example.com/cover.jpg" },
+                coverImage: { color: "#e4a33a", large: "https://example.com/cover.jpg" },
                 endDate: { day: null, month: null, year: null },
                 genres: ["Action"],
                 id: 99,
@@ -86,6 +86,7 @@ test("AniList catalog browses trending anime without an account and keeps person
           airingStatus: "RELEASING",
           aliases: ["Trending Example", "Example", "Alias"],
           averageScore: null,
+          coverColor: "#e4a33a",
           episodes: null,
           mediaId: 99,
           title: "Trending Example",
@@ -173,6 +174,20 @@ test("AniList catalog browses trending anime without an account and keeps person
     });
     await api.handle(new Request("http://localhost/api/anilist/catalog/options"));
     expect(requests).toHaveLength(3);
+    const multipleFormats = await api.handle(
+      new Request("http://localhost/api/anilist/catalog", json({ formats: ["TV", "MOVIE"] }))
+    );
+    expect(multipleFormats.status).toBe(200);
+    expect(requests.at(-1)?.variables).toMatchObject({ format_in: ["TV", "MOVIE"] });
+    const clearedFormats = await api.handle(
+      new Request("http://localhost/api/anilist/catalog", json({ formats: [] }))
+    );
+    expect(clearedFormats.status).toBe(200);
+    expect(requests.at(-1)?.variables).not.toHaveProperty("format_in");
+    const invalidFormats = await api.handle(
+      new Request("http://localhost/api/anilist/catalog", json({ formats: ["INVALID"] }))
+    );
+    expect(invalidFormats.status).toBe(422);
   } finally {
     await service.close();
     provider.stop(true);

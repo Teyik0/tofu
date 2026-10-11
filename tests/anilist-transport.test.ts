@@ -142,6 +142,7 @@ test("AniList catalog handles nullable schema fields without inventing metadata"
       media: [
         {
           averageScore: null,
+          coverColor: null,
           episodes: null,
           genres: ["Drama"],
           mediaId: 7,

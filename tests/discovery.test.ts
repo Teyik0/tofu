@@ -213,7 +213,7 @@ test("natural discovery falls back during a catalogue outage and reads episode n
     expect(result.releases[0]?.seeders).toBeNull();
     expect(result.search?.warning).toContain("unavailable");
     expect(result.errors.map((error) => error.sourceId)).toEqual(["nyaa"]);
-    expect(calls.sort()).toEqual(["/anilist", "/nyaa", "/nyaa", "/tsundere"]);
+    expect(calls.sort()).toEqual(["/", "/anilist", "/nyaa", "/nyaa", "/tsundere"]);
   } finally {
     await service.close();
     upstream.stop(true);

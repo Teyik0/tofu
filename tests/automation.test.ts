@@ -82,7 +82,7 @@ test("pattern rules exclude existing releases and still download newly published
         `<rss><channel>${episodes
           .map(
             (episode) =>
-              `<item><title>Example S01E0${episode} VF 1080p</title><link>${context.magnet.replaceAll("&", "&amp;")}</link><guid>episode-${episode}</guid></item>`
+              `<item><title>Example S01E0${episode} VF 1080p x264</title><link>${context.magnet.replaceAll("&", "&amp;")}</link><guid>episode-${episode}</guid></item>`
           )
           .join("")}</channel></rss>`
       );
@@ -114,6 +114,7 @@ test("pattern rules exclude existing releases and still download newly published
       json({
         ...draft,
         includeExisting: false,
+        languages: ["VF"],
         matchMode: "pattern",
         sources: ["nyaa"],
         title: "Example\\s+S01E\\d+",
@@ -318,7 +319,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
             language: "FRENCH",
             quality: "720p",
             season: 1,
-            title: "Example S01E01 VF 720p",
+            title: "Example S01E01 VF 720p x264",
             torrentUrl: context.magnet,
           },
         ],
@@ -352,6 +353,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
         json({
           ...draft,
           includeExisting: true,
+          languages: ["VF"],
           resolutions: ["1080p", "720p"],
           sources: ["tsundere"],
           waitMinutes: 1,
@@ -402,7 +404,7 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
               language: "FRENCH",
               quality: "1080p",
               season: 1,
-              title: "Japanese alias S01E02 VF 1080p",
+              title: "Japanese alias S01E02 VF 1080p x264",
               torrentUrl: context.magnet,
             },
           ],
@@ -523,7 +525,7 @@ test("an automation chooses one preferred version, downloads into its thread and
             quality: "1080p",
             season: 1,
             size: 8192,
-            title: `Example S01E0${episode} VF 1080p`,
+            title: `Example S01E0${episode} VF 1080p x264`,
             torrentUrl: high.magnet,
           },
         ],
@@ -783,7 +785,7 @@ test("disabling a rule while its torrent file is loading cancels the automatic a
         return new Response(new Uint8Array(context.seed.torrentFile).buffer);
       }
       return new Response(
-        `<rss><channel><item><title>Example S01E01 VF 1080p</title><guid>cancel-1</guid><enclosure url="http://127.0.0.1:${upstream.port}/torrent"/><nyaa:infoHash>${context.seed.infoHash}</nyaa:infoHash></item></channel></rss>`
+        `<rss><channel><item><title>Example S01E01 VOSTFR 1080p x264</title><guid>cancel-1</guid><enclosure url="http://127.0.0.1:${upstream.port}/torrent"/><nyaa:infoHash>${context.seed.infoHash}</nyaa:infoHash></item></channel></rss>`
       );
     },
     hostname: "127.0.0.1",
@@ -842,7 +844,7 @@ test("without Jev an explicit pattern matches release names and downloads from r
             id: "pattern-1",
             infohash: context.seed.infoHash,
             season: 1,
-            title: "[Team] Example S01E01 VOSTFR 1080p",
+            title: "[Team] Example S01E01 VOSTFR 1080p x264",
             torrentUrl: context.magnet,
           },
         ],

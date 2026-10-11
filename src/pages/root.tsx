@@ -4,6 +4,7 @@ import { defineRootRoute, HeadContent, Scripts } from "@teyik0/furin";
 import { Provider } from "jotai";
 import { type CSSProperties, useState } from "react";
 import { DestinationSidebar } from "../components/destination-sidebar";
+import { GlobalSearch } from "../components/global-search";
 import { TofuStateSync } from "../components/tofu-state-sync";
 import { TorrentDrop } from "../components/torrent-drop";
 import { SidebarInset, SidebarProvider } from "../components/ui/sidebar";
@@ -49,6 +50,7 @@ export const route = defineRootRoute()
                   <>
                     <TorrentDrop activeDestination={activeDestination} />
                     <WorkspaceDialogs activeDestination={activeDestination} dashboard={dashboard} />
+                    <GlobalSearch activeDestination={activeDestination} dashboard={dashboard} />
                   </>
                 )}
               </SidebarProvider>
