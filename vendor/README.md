@@ -11,4 +11,4 @@ The downloads are `https://pkg.pr.new/Teyik0/furin/@teyik0/furin@53e7c56a05fa0c2
 
 Core is byte-identical to the prior `914e82a` preview. Electrobun is independently versioned at `0.1.0` and scans resolved backend inputs through Bun's build metafile, avoiding a Bun panic when file-loader assets pass through an `onLoad` hook.
 
-The preview uses unified desktop configuration, `desktopApp()` lifecycle callbacks and `runDesktopHost()`. Tofu retains immutable local archives for reproducible installation. The [integration report](../docs/furin-electrobun-preview.md) describes the native boundary and validation.
+The preview uses unified desktop configuration, `desktopApp()` lifecycle callbacks and `runDesktopHost()`. Tofu retains immutable local archives for reproducible installation. The [development guide](../apps/docs/src/pages/docs/development.tsx) describes the native boundary and validation.

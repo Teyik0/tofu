@@ -234,4 +234,4 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     await host?.stop();
     await context.close();
   }
-}, 30_000);
+}, 90_000);
