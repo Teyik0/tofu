@@ -1,0 +1,19 @@
+apps/tofu/tests/anilist-catalog-download.test.ts
+  s_a0a481a34b8480::t_a17f9dcdfda307 61-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0a2f12ff76b8a917cb4b6c70e698705d1d30e03b",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
