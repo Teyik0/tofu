@@ -20,6 +20,16 @@ import { aniListStatusLabel, aniListStatusLabels } from "./status";
 
 type CatalogModel = ReturnType<typeof useAniListCatalog>;
 type Actions = ReturnType<typeof useAsyncAction>;
+
+interface LibraryHeaderProps {
+  actions: Actions;
+  browsing: boolean;
+  canLoad: boolean;
+  catalog: CatalogModel;
+  openSettings: () => void;
+  state: AniListState;
+}
+
 export function LibraryHeader({
   state,
   browsing,
@@ -27,14 +37,7 @@ export function LibraryHeader({
   actions,
   canLoad,
   openSettings,
-}: {
-  state: AniListState;
-  browsing: boolean;
-  catalog: CatalogModel;
-  actions: Actions;
-  canLoad: boolean;
-  openSettings: () => void;
-}) {
+}: LibraryHeaderProps) {
   const refresh = useRefresh();
   const loadList = useMutation(api.anilist.list.post);
   const savePreferences = useMutation(api.anilist.preferences.put);
@@ -42,6 +45,7 @@ export function LibraryHeader({
   const statuses = new Set(state.visibleStatuses);
   const loadingCatalog = catalog.loading;
   const accountName = state.connectedUser || state.userName || null;
+
   return (
     <header className="library-topbar anilist-page-header">
       <div className="library-title anilist-page-heading">
