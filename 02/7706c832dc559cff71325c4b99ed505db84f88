@@ -1,0 +1,14 @@
+src/pages/anilist.tsx
+  h_a2cbd1b0e3ae6e 2-20,28,31,40-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "027706c832dc559cff71325c4b99ed505db84f88",
+  "prompts": {},
+  "humans": {
+    "h_a2cbd1b0e3ae6e": {
+      "author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
