@@ -35,7 +35,11 @@
     "./sidebar-toggle": "./src/sidebar-toggle.tsx",
     "./format": "./src/format.ts",
     "./use-now": "./src/use-now.ts",
-    "./use-mobile": "./src/use-mobile.ts"
+    "./use-mobile": "./src/use-mobile.ts",
+    "./hover-card": "./src/ui/hover-card.tsx",
+    "./popover": "./src/ui/popover.tsx",
+    "./toggle": "./src/ui/toggle.tsx",
+    "./toggle-group": "./src/ui/toggle-group.tsx"
   },
   "scripts": {
     "build": "bun build ./src/ui/button.tsx --target=browser --packages=external --outdir=dist",

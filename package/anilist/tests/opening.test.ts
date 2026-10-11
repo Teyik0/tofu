@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createAniListOpeningApi } from "../src/server/opening-api";
+import { createAniListOpeningApi } from "../src/server/opening";
 
 function json(body: object): RequestInit {
   return {

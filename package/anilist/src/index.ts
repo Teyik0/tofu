@@ -10,7 +10,7 @@ export function createAniListPlugin(dependencies: AniListApiDependencies) {
     id: "anilist",
     name: "AniList",
     setup({ scope }) {
-      scope.onDispose(() => dependencies.automation?.().anilist.suspend());
+      scope.onDispose(() => dependencies.application().automation.anilist.suspend());
     },
     ui,
     version: "0.0.0",

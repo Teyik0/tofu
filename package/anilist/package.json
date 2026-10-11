@@ -9,25 +9,44 @@
     "./service": "./src/server/service.ts",
     "./oauth": "./src/server/oauth.ts",
     "./api": "./src/server/api.ts",
-    "./opening-api": "./src/server/opening-api.ts",
+    "./opening-api": "./src/server/opening.ts",
     "./client": "./src/client.tsx",
     "./components/*": "./src/components/*.tsx",
-    "./components/anilist-status": "./src/components/anilist-status.ts"
+    "./client-config": "./src/server/client.ts",
+    "./storage": "./src/server/storage.ts",
+    "./server/*": "./src/server/*.ts",
+    "./lib/*": "./src/lib/*.ts",
+    "./components/status": "./src/components/status.ts",
+    "./components/media-colors": "./src/components/media-colors.ts"
   },
   "scripts": {
     "build": "bun build ./src/index.ts --target=bun --packages=external --outdir=dist",
-    "test": "bun test tests",
-    "tscheck": "tsc --noEmit"
+    "codegen": "bun scripts/codegen.ts",
+    "codegen:check": "bun scripts/codegen.ts --check",
+    "codegen:schema": "bun scripts/schema.ts",
+    "test": "bun run codegen && bun test tests",
+    "tscheck": "bun run codegen && tsc --noEmit"
   },
   "dependencies": {
-    "@teyik0/furin": "file:../../vendor/furin-pr163-914e82a.tgz",
+    "@base-ui/react": "catalog:",
+    "@formisch/react": "catalog:",
+    "@teyik0/furin": "file:../../vendor/furin-pr163-53e7c56.tgz",
     "@tofu/plugins": "workspace:*",
     "@tofu/ui": "workspace:*",
+    "cn": "catalog:",
+    "drizzle-orm": "catalog:",
     "elysia": "catalog:",
+    "graphql": "catalog:",
+    "graphql-request": "catalog:",
     "lucide-react": "catalog:",
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "valibot": "catalog:"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "catalog:",
+    "@graphql-codegen/typescript-generic-sdk": "catalog:",
+    "@graphql-codegen/typescript-operations": "catalog:",
     "@types/bun": "catalog:",
     "@types/react": "catalog:",
     "typescript": "catalog:"

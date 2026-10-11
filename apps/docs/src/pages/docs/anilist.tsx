@@ -47,9 +47,10 @@ export const route = defineRoute()
         <code>threadLayout</code> as third-party plugins.
       </p>
       <p>
-        The host supplies the existing AniList service, automation capabilities, and credential
-        adapter. The server retains account verification, discovery, watched-episode writes, and
-        download controls. The client renders the library inside Tofu’s native shell.
+        The package owns its service, GraphQL operations, persistent cache, and Drizzle table. The
+        host injects typed database access and core automation operations, including the transaction
+        shared by AniList state and automation rules. The package never imports the desktop app. Its
+        client calls typed AniList and core Elysia APIs inside Tofu’s native shell.
       </p>
       <p>
         Its disposer suspends linked automations when the plugin’s scope ends. This makes the
@@ -58,8 +59,9 @@ export const route = defineRoute()
       </p>
       <Callout>
         <p>
-          AniList uses its established implicit OAuth flow through a custom adapter. Release
-          callbacks use <code>tofu://oauth/anilist</code>; development callbacks use{" "}
+          AniList uses a custom adapter for its established implicit OAuth flow and
+          authorization-code flow for a configured client with a secret. Release callbacks use{" "}
+          <code>tofu://oauth/anilist</code>; development callbacks use{" "}
           <code>tofu-dev://oauth/anilist</code>. A generic OAuth 2 declaration is not a drop-in
           replacement for those provider semantics.
         </p>
@@ -72,9 +74,8 @@ export const route = defineRoute()
         interface.
       </p>
       <p>
-        See the{" "}
-        <a href="https://github.com/Teyik0/Tofu/blob/main/docs/plugins.md">integration guide</a> for
-        the complete tracking and automation workflow.
+        See the <a href="/docs/plugin-api">plugin API guide</a> for the complete tracking and
+        automation workflow.
       </p>
     </>
   ));

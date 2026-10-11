@@ -1,31 +1,19 @@
-import { defineRoute } from "@teyik0/furin";
-import { createTofuClient } from "../../client";
-import { AppShell } from "../../components/app-shell";
+import { createThreadLayout } from "@tofu/plugins/routes";
+import { readData } from "../../lib/api-data";
+import { api } from "../../lib/client";
+import { destinationFromPath } from "../../lib/navigation";
 import { route as root } from "../root";
 
-export const route = defineRoute()
-  .config({ layout: root, mode: "ssr" })
-  .loader(async ({ request, path }) => {
-    const client = createTofuClient(new URL(request.url).origin, request);
-    const [{ data, error }, extensions] = await Promise.all([
-      client.api.state.get({ query: { detail: "false" } }),
-      client.api.extensions.get(),
-    ]);
-    if (error || !data || !("destinations" in data)) {
-      throw new Error("The Tofu engine is unavailable");
-    }
-    const destinationId = path.startsWith("/library/destinations/")
-      ? decodeURIComponent(path.slice("/library/destinations/".length))
-      : null;
+export const route = createThreadLayout(
+  root,
+  async ({ path }) => {
+    const dashboard = readData(await api.state.get({ query: { detail: "false" } }));
+    const id = destinationFromPath(path);
     return {
-      dashboard: data,
-      extensions: extensions.data && "plugins" in extensions.data ? extensions.data : undefined,
-      settings: data.settings,
-      thread: data.destinations.find((destination) => destination.id === destinationId) ?? null,
+      dashboard,
+      settings: dashboard.settings,
+      thread: dashboard.destinations.find((thread) => thread.id === id) ?? null,
     };
-  })
-  .layout(({ children, dashboard, extensions, path }) => (
-    <AppShell dashboard={dashboard} initialExtensions={extensions} path={path}>
-      {children}
-    </AppShell>
-  ));
+  },
+  ({ children }) => children
+);

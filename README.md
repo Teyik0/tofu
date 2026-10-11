@@ -1,4 +1,4 @@
-<img src="apps/tofu/assets/tofu-icon.png" alt="Tofu" width="128" height="128" />
+<img src="apps/tofu/public/tofu-icon.png" alt="Tofu" width="128" height="128" />
 
 # Tofu
 
@@ -10,6 +10,7 @@ Built with **Bun · React · Furin · Electrobun · WebTorrent**, using **shadcn
 
 - **Download your way** — add magnets, torrent URLs, or `.torrent` files, including drag and drop.
 - **Keep things organized** — give each destination its own tab and folder.
+- **Search everywhere** — press `Cmd+K` (or `Ctrl+K`) to search torrents across threads and enabled sources, then download into a chosen thread.
 - **Stay in control** — pause, resume, set file priorities, manage trackers, and verify downloads.
 - **Follow new releases** — search Nyaa, Tsundere-Raws, and C411; automate downloads with optional Jev and AniList integrations.
 - **Pick up where you left off** — downloads and settings survive restarts; background mode keeps transfers running.
@@ -24,11 +25,11 @@ On macOS, open the DMG and move Tofu to Applications. On Windows, extract the en
 
 On macOS, choose **Tofu → Set as default torrent app** to open `.torrent` files and magnet links with Tofu. Opening a torrent starts it in your saved download folder; reopening an existing torrent preserves its destination and paused state. You can also select Tofu in Finder's **Get Info → Open with → Change All…** for `.torrent` files. The development app does not advertise file or magnet associations.
 
-See the [release guide](docs/releases.md) for updates and signing details. macOS Apple Silicon is the currently validated platform.
+Updates are prepared in the app and installed when you choose to restart. macOS Apple Silicon is the currently validated platform.
 
 ## 🚀 Run from source
 
-You need **Bun 1.4.2+**. macOS also requires **Xcode Command Line Tools**. Linux requires GTK 3, WebKitGTK 4.1, Ayatana AppIndicator, and librsvg; see the [development guide](docs/development.md).
+You need **Bun 1.4.3+**. macOS also requires **Xcode Command Line Tools**. Linux requires GTK 3, WebKitGTK 4.1, Ayatana AppIndicator, and librsvg; see the [documentation site](apps/docs/README.md).
 
 ```sh
 git clone https://github.com/Teyik0/Tofu.git
@@ -58,7 +59,7 @@ Built-in discovery integrations are optional and start disabled. Enable them fro
 | Jev · TypeSafe | Natural language search and release matching |
 | AniList | Track selected anime from Watching and Plan to Watch |
 
-[Plugin guide →](docs/plugins.md)
+[Plugin documentation →](apps/docs/src/pages/docs/plugins.tsx)
 
 The experimental `@tofu/plugins` SDK is version `0.0.0` and is currently a local workspace package. Generate a plugin against this checkout with `bun run apps/scaffolder/src/cli.ts ../my-plugin`. It uses one `definePlugin` definition for a typed Elysia API, thread actions, native Furin pages, settings, authentication, and cleanup. AniList is the official plugin built on the same contracts.
 
@@ -66,7 +67,7 @@ After building and reviewing that package, run `bun run plugin:install ../my-plu
 
 For synchronized APIs, `createPluginApi(context)` uses the host's actual Furin Sync options. Explicit GET identities and PATCH invalidations refresh the native `createClient` / `useQuery` / `useMutation` flow. Account/configuration pages can opt into `availableWhenDisabled`; AniList uses this to keep account access available while tracking is disabled.
 
-Third-party local installation requires explicit trust. Plugins execute in the host process and share its React/Furin runtime and Bun engine capabilities. Native pages compile through generated physical route adapters and require rebuilding or restarting; there is no iframe or process isolation. See [Plugin architecture](docs/plugin-architecture.md) and the [scaffolder guide](apps/scaffolder/README.md) for the workflow and its current limits.
+Third-party local installation requires explicit trust. Plugins execute in the host process and share its React/Furin runtime and Bun engine capabilities. Native pages compile through generated physical route adapters and require rebuilding or restarting; there is no iframe or process isolation. See [Plugin architecture](apps/docs/src/pages/docs/plugin-api.tsx) and the [scaffolder guide](apps/scaffolder/README.md) for the workflow and its current limits.
 
 ## 🛠️ Development
 
@@ -78,8 +79,10 @@ bun run build:desktop
 bun run test:native
 ```
 
+The desktop uses the Furin Electrobun CLI directly, with bundles and artifacts under `apps/tofu/.furin/electrobun`. Build once before typechecking to prepare the Hutch SDK types.
+
 `bun run test` runs the workspace test scripts. Desktop integration tests use real peers, local trackers, and temporary folders. The native test also checks the actual desktop interface and requires a graphical session.
 
-[Architecture & configuration](docs/development.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Benchmarks](BENCHMARK.md)
+[Architecture & configuration](apps/docs/src/pages/docs/development.tsx) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Benchmarks](BENCHMARK.md)
 
 Licensed under [MIT](LICENSE.md).

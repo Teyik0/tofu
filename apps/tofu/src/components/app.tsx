@@ -1,4 +1,4 @@
-import { Await, useQuery } from "@teyik0/furin/client";
+import { Await, useMutation, useQuery } from "@teyik0/furin/client";
 import { ActionTooltip } from "@tofu/ui/action-tooltip";
 import { Alert, AlertDescription } from "@tofu/ui/alert";
 import { Button } from "@tofu/ui/button";
@@ -28,6 +28,7 @@ import {
 } from "@tofu/ui/select";
 import { SidebarToggle } from "@tofu/ui/sidebar-toggle";
 import { Skeleton } from "@tofu/ui/skeleton";
+import { useAtom, useSetAtom } from "jotai";
 import {
   AlertCircleIcon,
   DownloadIcon,
@@ -39,10 +40,11 @@ import {
 } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { version } from "../../package.json";
-import { api } from "../client";
-import type { TorrentDetail, TorrentSummary } from "../types";
-import { request } from "./api";
-import { useDashboard } from "./app-shell";
+import { api } from "../lib/client";
+import { useRefresh } from "../lib/navigation";
+import { armSoundCues } from "../lib/sound-cues";
+import { modalAtom, revealTorrentAtom, selectedTorrentAtom } from "../state/workspace";
+import type { DashboardState, TorrentDetail, TorrentSummary } from "../types";
 import type { AutomationSection } from "./automation-center";
 import { DestinationIcon } from "./destination-icon";
 import { Detail } from "./detail";
@@ -68,9 +70,13 @@ const matches = (torrent: TorrentSummary, filter: Filter) =>
     : torrent.status === filter);
 
 export function App({
+  dashboard: data,
+  activeDestination,
   initialDetail,
   initialTorrentId,
 }: {
+  dashboard: DashboardState;
+  activeDestination: string | null;
   initialDetail: Promise<TorrentDetail | null>;
   initialTorrentId: string | null;
 }) {
@@ -79,22 +85,30 @@ export function App({
     // Await still receives the original promise and displays errors when the snapshot is used.
     void initialDetail.catch(() => undefined);
   }, [initialDetail]);
-  const {
-    data,
-    activeDestination,
-    open: setModal,
-    refresh,
-    selectedId: currentId,
-    setSelected,
-  } = useDashboard();
+  useEffect(() => armSoundCues(window), []);
+  const setModal = useSetAtom(modalAtom);
+  const [selected, setSelected] = useAtom(selectedTorrentAtom);
+  const [reveal, setReveal] = useAtom(revealTorrentAtom);
+  const refresh = useRefresh();
+  const bulk = useMutation(api.bulk.post);
+  const pause = useMutation((id: string) => api.torrents({ id }).pause.post());
+  const resume = useMutation((id: string) => api.torrents({ id }).resume.post());
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"added" | "name" | "progress">("added");
   const [pending, setPending] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (reveal && reveal.destinationId === activeDestination) {
+      setSearch("");
+      setFilter("all");
+      setSelected(reveal.id);
+      setReveal(null);
+    }
+  }, [reveal, activeDestination, setSelected, setReveal]);
   const scoped = useMemo(
     () =>
-      (data?.torrents ?? []).filter(
+      data.torrents.filter(
         (torrent) => activeDestination === null || torrent.destinationId === activeDestination
       ),
     [data, activeDestination]
@@ -132,16 +146,16 @@ export function App({
         ),
     [scoped, filter, search, sort]
   );
+  const currentId = scoped.find((torrent) => torrent.id === selected)?.id ?? scoped[0]?.id;
   const selectedId = torrents.find((torrent) => torrent.id === currentId)?.id ?? torrents[0]?.id;
   const destination = data.destinations.find((item) => item.id === activeDestination);
   const add = () => setModal({ destinationId: activeDestination ?? "default", type: "add" });
   const act = useCallback(
-    async (path: string, method: string, body: object | undefined) => {
-      const key = path.split("/")[2] ?? "bulk";
+    async (key: string, task: () => Promise<unknown>) => {
       setPending((previous) => new Set(previous).add(key));
       setError(null);
       try {
-        await request(path, method, body);
+        await task();
         await refresh();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "An error occurred");
@@ -177,7 +191,9 @@ export function App({
                 dashboard: data,
                 settings: data.settings,
                 thread: destination,
-                torrents: scoped,
+                torrents: data.torrents.filter(
+                  (torrent) => torrent.destinationId === destination.id
+                ),
               }}
             />
           )}
@@ -245,9 +261,9 @@ export function App({
           <div className="toolbar-controls">
             <InputGroup className="torrent-search">
               <InputGroupInput
-                aria-label="Search torrents"
+                aria-label="Filter torrents"
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search torrents"
+                placeholder="Filter torrents"
                 type="search"
                 value={search}
               />
@@ -320,10 +336,12 @@ export function App({
                 aria-label="Pause all"
                 disabled={pending.has("bulk") || !torrents.length}
                 onClick={() =>
-                  void act("/bulk", "POST", {
-                    action: "pause",
-                    ids: torrents.map((torrent) => torrent.id),
-                  })
+                  void act("bulk", () =>
+                    bulk.mutateAsync({
+                      action: "pause",
+                      ids: torrents.map((torrent) => torrent.id),
+                    })
+                  )
                 }
                 size="icon-sm"
                 type="button"
@@ -337,10 +355,12 @@ export function App({
                 aria-label="Resume all"
                 disabled={pending.has("bulk") || !torrents.length}
                 onClick={() =>
-                  void act("/bulk", "POST", {
-                    action: "resume",
-                    ids: torrents.map((torrent) => torrent.id),
-                  })
+                  void act("bulk", () =>
+                    bulk.mutateAsync({
+                      action: "resume",
+                      ids: torrents.map((torrent) => torrent.id),
+                    })
+                  )
                 }
                 size="icon-sm"
                 type="button"
@@ -434,10 +454,10 @@ export function App({
                             className="row-action"
                             disabled={pending.has(torrent.id)}
                             onClick={() =>
-                              void act(
-                                `/torrents/${torrent.id}/${stopped ? "resume" : "pause"}`,
-                                "POST",
-                                undefined
+                              void act(torrent.id, () =>
+                                stopped
+                                  ? resume.mutateAsync(torrent.id)
+                                  : pause.mutateAsync(torrent.id)
                               )
                             }
                             size="icon-sm"
@@ -483,7 +503,7 @@ export function App({
                     : "Add a magnet link or a .torrent file. Tofu takes care of the rest."}
                 </EmptyDescription>
               </EmptyHeader>
-              {data !== null && !search && filter === "all" && (
+              {!search && filter === "all" && (
                 <EmptyContent>
                   <Button onClick={add} variant="outline">
                     <PlusIcon data-icon="inline-start" />
@@ -500,6 +520,7 @@ export function App({
           <SelectedDetail
             act={act}
             busy={pending.has(selectedId)}
+            data={data}
             id={selectedId}
             initial={selectedId === initialTorrentId ? initialDetail : null}
           />
@@ -507,21 +528,21 @@ export function App({
       )}
       <footer className="status-bar">
         <span className="status-port">
-          Port <b>{data?.session.port ?? "—"}</b>
+          Port <b>{data.session.port}</b>
         </span>
         <span className="status-throughput">
           <span data-direction="down">
             <Icon name="download" size={12} />
-            {speed(data?.session.downloadSpeed ?? 0)}
+            {speed(data.session.downloadSpeed)}
           </span>
           <span data-direction="up">
             <Icon name="upload" size={12} />
-            {speed(data?.session.uploadSpeed ?? 0)}
+            {speed(data.session.uploadSpeed)}
           </span>
         </span>
         <span className="status-version">
           Tofu {version} <span>·</span>{" "}
-          {data?.session.mode === "desktop" ? "Native app" : "Web workspace"}
+          {data.session.mode === "desktop" ? "Native app" : "Web workspace"}
         </span>
       </footer>
     </div>
@@ -530,7 +551,7 @@ export function App({
 
 /** Opens the automation Inbox directly when releases are waiting for a decision. */
 function AutomationsButton({ open }: { open: (section: AutomationSection) => void }) {
-  const { data } = useQuery(api.api.automation.get);
+  const { data } = useQuery(api.automation.get);
   const waiting =
     data && "decisions" in data
       ? data.decisions.filter(
@@ -573,18 +594,20 @@ function DetailLoading() {
 }
 
 function SelectedDetail({
+  data,
   id,
   initial,
   act,
   busy,
 }: {
+  data: DashboardState;
   id: string;
   initial: Promise<TorrentDetail | null> | null;
-  act: (path: string, method: string, body: object | undefined) => Promise<void>;
+  act: (id: string, task: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
 }) {
-  const { data, open } = useDashboard();
-  const { data: live, error } = useQuery(api.api.torrents({ id }).get);
+  const open = useSetAtom(modalAtom);
+  const { data: live, error } = useQuery(api.torrents({ id }).get);
   const summary = data.torrents.find((item) => item.id === id);
   const cached = live && "id" in live ? live : null;
   const torrent = useMemo(

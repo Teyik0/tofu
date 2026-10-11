@@ -2,11 +2,25 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import desktopConfig from "../electrobun.config";
-import { readBundleIdentity } from "../src/api/instance";
+import config from "../furin.config";
+import { readBundleIdentity } from "../src/api/lib/instance";
+import { desktopLauncher } from "../src/platform";
+
+test("desktop launchers use the Furin Electrobun output directly", () => {
+  expect(desktopLauncher("/project", { arch: "arm64", platform: "macos" }, "dev")).toBe(
+    join("/project", ".furin/electrobun/build/dev-macos-arm64/Tofu-dev.app/Contents/MacOS/launcher")
+  );
+  expect(desktopLauncher("/project", { arch: "x64", platform: "win" }, "release")).toBe(
+    join("/project", ".furin/electrobun/build/stable-win-x64/Tofu/bin/launcher.exe")
+  );
+});
 
 test("the Windows PNG icon fits the dimensions supported by ICO", async () => {
-  const path = join(import.meta.dir, "..", desktopConfig.build.win.icon);
+  const icon = config.desktop?.sdk?.build?.win?.icon;
+  if (!icon) {
+    throw new Error("The Windows icon is missing from the desktop configuration");
+  }
+  const path = join(import.meta.dir, "..", icon);
   const png = Buffer.from(await Bun.file(path).arrayBuffer());
   expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
   const width = png.readUInt32BE(16);

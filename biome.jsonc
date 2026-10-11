@@ -24,10 +24,18 @@
   },
   "overrides": [
     {
+      "includes": ["package/anilist/src/server/graphql/schema.graphql"],
+      "formatter": {
+        "enabled": false
+      },
+      "linter": {
+        "enabled": false
+      }
+    },
+    {
       "includes": [
         "apps/tofu/src/components/**",
-        "package/anilist/src/components/**",
-        "package/ui/src/**"
+        "package/anilist/src/components/**"
       ],
       "linter": {
         "rules": {

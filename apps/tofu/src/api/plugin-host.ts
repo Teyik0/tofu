@@ -1,7 +1,9 @@
+const catalogReleasePath = /^\/api\/anilist\/entries\/\d+\/releases$/;
+
 import { mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { createAniListPlugin } from "@tofu/anilist";
-import { createAniListApi } from "@tofu/anilist/api";
+import { type AniListApiDependencies, createAniListApi } from "@tofu/anilist/api";
 import type { PluginAuthDefinition } from "@tofu/plugins";
 import {
   createApiKeyAuth,
@@ -19,7 +21,15 @@ import {
 import { Type } from "typebox";
 import { Check } from "typebox/value";
 import { externalPlugins } from "../plugin-generated/server";
-import type { CoreDependencies } from "./core";
+import type { Application, EnginePort } from "../types";
+
+interface CoreDependencies {
+  application: () => Application;
+  automation: () => Application["automation"];
+  directory: string;
+  engine: () => EnginePort;
+  sync: AniListApiDependencies["sync"];
+}
 
 const preferenceSchema = Type.Object({
   disabled: Type.Array(Type.String()),
@@ -47,7 +57,7 @@ function publicAuth(
   const connected =
     auth?.status().authenticated ??
     (definition.id === "anilist"
-      ? (dependencies.automation?.().anilist.snapshot().authenticated ?? false)
+      ? (dependencies.automation().anilist.snapshot().authenticated ?? false)
       : false);
   return {
     connected,
@@ -145,7 +155,7 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
       mountAt: definition.id === "anilist" ? null : undefined,
     });
   const officialEnabled = (id: string) =>
-    id === "anilist" && dependencies.automation
+    id === "anilist"
       ? (dependencies
           .automation()
           .snapshot()
@@ -154,7 +164,7 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
   const initialize = () => {
     ready ??= (async () => {
       const engine = dependencies.engine();
-      directory = join(engine.dataDirectory, "plugins");
+      directory = join(dependencies.directory, "plugins");
       const file = Bun.file(join(directory, "host.json"));
       if (await file.exists()) {
         const stored: unknown = await file.json();
@@ -226,10 +236,8 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
     async authorize(id: string, apiKey?: string) {
       const definition = definitionFor(id);
       if (definition.id === "anilist") {
-        const service = dependencies.automation?.().anilist;
-        if (!service) {
-          throw new UserError("AniList unavailable", { status: 503 });
-        }
+        const service = dependencies.automation().anilist;
+
         return service.connect();
       }
       const auth = runtime.auth(id);
@@ -281,8 +289,12 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
       await initialize();
       const path = new URL(request.url).pathname;
       const administrative =
+        (path === "/api/anilist/catalog" && request.method === "POST") ||
+        (path === "/api/anilist/catalog/options" && request.method === "GET") ||
+        (catalogReleasePath.test(path) && request.method === "POST") ||
         (path === "/api/anilist" && ["GET", "PUT"].includes(request.method)) ||
         (path === "/api/anilist/connect" && ["POST", "DELETE"].includes(request.method)) ||
+        (path === "/api/anilist/open" && request.method === "POST") ||
         (path === "/api/anilist/callback" && request.method === "POST") ||
         (path === "/api/anilist/threads/preview" && request.method === "POST") ||
         (path === "/api/anilist/preferences" && request.method === "PUT");
@@ -333,7 +345,7 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
           await runtime.disable(id);
         }
         if (id === "anilist") {
-          dependencies.automation?.().configure(id, { enabled });
+          dependencies.automation().configure(id, { enabled });
         }
         await persist({
           ...preferences,

@@ -14,7 +14,14 @@
       "types": "./src/routes.ts",
       "browser": "./src/routes.client.ts",
       "default": "./src/routes.ts"
-    }
+    },
+    "./automation-model": "./src/automation-model.ts",
+    "./destination-model": "./src/destination-model.ts",
+    "./validation": "./src/validation.ts",
+    "./core-actions-api": "./src/core-actions-api.ts",
+    "./plugin-model": "./src/plugin-model.ts",
+    "./transport": "./src/transport.ts",
+    "./api-errors": "./src/api-errors.ts"
   },
   "scripts": {
     "build": "bun build ./src/index.ts ./src/server.ts --target=bun --packages=external --outdir=dist && bun build ./src/client.ts --target=browser --packages=external --outdir=dist/client",
@@ -22,11 +29,12 @@
     "tscheck": "bun x tsc --noEmit"
   },
   "dependencies": {
-    "@teyik0/furin": "file:../../vendor/furin-pr163-914e82a.tgz",
+    "@teyik0/furin": "file:../../vendor/furin-pr163-53e7c56.tgz",
     "elysia": "catalog:",
     "evlog": "catalog:",
     "react": "catalog:",
-    "typebox": "catalog:"
+    "typebox": "catalog:",
+    "valibot": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",

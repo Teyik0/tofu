@@ -43,10 +43,8 @@ export interface Settings {
   uploadLimit: number;
 }
 
-export interface SettingsInput extends Omit<Settings, "runInBackground" | "theme"> {
+export interface SettingsInput extends Partial<Settings> {
   moveFiles?: boolean;
-  runInBackground?: boolean;
-  theme?: ThemePreference;
 }
 
 export interface UpdateState {
@@ -228,6 +226,11 @@ export interface DashboardState {
 
 export type SourcePluginId = "nyaa" | "tsundere" | "c411";
 export type PluginId = SourcePluginId | "jev" | "anilist";
+export type CredentialPluginId = "c411" | "jev";
+export interface PluginCredentialPage {
+  opened: boolean;
+  url: string;
+}
 export interface PluginState {
   callsToday: number;
   checkedAt: number | null;
@@ -253,7 +256,7 @@ export interface AutomationPreferences {
   deleteReplacedFiles: boolean;
   excludePacks: boolean;
   intervalMinutes: number;
-  languages: string[];
+  languages: NonNullable<FeedRelease["language"]>[];
   paused: boolean;
   priority: AutomationCriterion[];
   resolutions: string[];
@@ -275,6 +278,8 @@ export interface FeedRelease {
   season: number | null;
   seeders: number | null;
   size: number | null;
+  /** Original numbering when a release is mapped to an AniList part's episodes. */
+  sourceEpisode?: number;
   sourceId: SourcePluginId;
   title: string;
   workTitle: string;
@@ -283,6 +288,18 @@ export interface DiscoveryResult {
   errors: { sourceId: SourcePluginId; message: string }[];
   releases: FeedRelease[];
   search?: DiscoverySearch;
+}
+export interface SearchReleaseGroup {
+  key: string;
+  releases: FeedRelease[];
+}
+export type GlobalSearchScope = "all" | "torrents" | "sources";
+export interface SourceSearchState {
+  error: string | null;
+  loading: boolean;
+  releases: FeedRelease[];
+  sourceId: SourcePluginId;
+  warning: string | null;
 }
 export interface DiscoverySearch {
   aliases: string[];
@@ -306,7 +323,7 @@ export interface AutomationDraft {
   excludePacks: boolean;
   includeExisting: boolean;
   intervalMinutes: number;
-  languages: string[];
+  languages: NonNullable<FeedRelease["language"]>[];
   matchMode: "exact" | "pattern" | "jev";
   paused: boolean;
   priority: AutomationCriterion[];
@@ -326,22 +343,136 @@ export type AniListStatus =
   | "DROPPED"
   | "REPEATING";
 export type AniListSeason = "WINTER" | "SPRING" | "SUMMER" | "FALL";
-export interface AniListEntry {
+export interface AniListMedia {
+  airingStatus?: string | null;
   aliases: string[];
-  automationId: string | null;
+  averageScore?: number | null;
   bannerImage: string | null;
-  completedEpisodes: number[];
+  countryOfOrigin?: string | null;
+  coverColor?: string | null;
   coverImage: string | null;
+  duration?: number | null;
+  endDate?: AniListDate | null;
   episodes: number | null;
+  favourites?: number | null;
   format: string | null;
   genres: string[];
+  isAdult?: boolean | null;
+  isLicensed?: boolean | null;
   mediaId: number;
-  progress: number;
+  nextAiringEpisode?: { episode: number; airingAt: number } | null;
+  popularity?: number | null;
+  releaseDate?: AniListDate | null;
   season: AniListSeason | null;
   seasonYear: number | null;
   siteUrl: string | null;
-  status: AniListStatus;
+  source?: string | null;
+  startDate?: number | null;
+  streamingOn?: number[];
+  studios?: string[];
+  tags?: { name: string; rank: number; isAdult: boolean }[];
   title: string;
+  trending?: number | null;
+}
+export interface AniListDate {
+  day: number | null;
+  month: number | null;
+  year: number | null;
+}
+export interface AniListEntry extends AniListMedia {
+  automationId: string | null;
+  completedEpisodes: number[];
+  progress: number;
+  status: AniListStatus;
+}
+export type AniListScoreFormat =
+  | "POINT_100"
+  | "POINT_10_DECIMAL"
+  | "POINT_10"
+  | "POINT_5"
+  | "POINT_3";
+export interface AniListListEntry {
+  advancedScores: { name: string; score: number }[];
+  completedAt: AniListDate | null;
+  customLists: string[];
+  hiddenFromStatusLists: boolean | null;
+  id: number;
+  mediaId: number;
+  notes: string | null;
+  priority: number | null;
+  private: boolean | null;
+  progress: number;
+  repeat: number | null;
+  score: number | null;
+  startedAt: AniListDate | null;
+  status: AniListStatus;
+}
+export interface AniListEditor {
+  entry: AniListListEntry | null;
+  isFavourite: boolean | null;
+  isFavouriteBlocked: boolean | null;
+  options: {
+    scoreFormat: AniListScoreFormat | null;
+    customLists: string[];
+    advancedScoring: string[];
+    advancedScoringEnabled: boolean;
+  };
+}
+export interface AniListListUpdate {
+  advancedScores?: number[];
+  completedAt?: AniListDate;
+  customLists?: string[];
+  hiddenFromStatusLists?: boolean;
+  notes?: string;
+  priority?: number;
+  private?: boolean;
+  progress?: number;
+  repeat?: number;
+  score?: number;
+  startedAt?: AniListDate;
+  status?: AniListStatus;
+}
+export interface AniListCatalog {
+  hasNextPage: boolean;
+  media: AniListMedia[];
+  page: number;
+}
+export type AniListCatalogSort =
+  | "title"
+  | "popularity"
+  | "score"
+  | "trending"
+  | "favourites"
+  | "added"
+  | "released";
+export interface AniListCatalogFilters {
+  airingStatus?: string;
+  countryOfOrigin?: string;
+  doujin?: "any" | "only" | "exclude";
+  durationMax?: number;
+  durationMin?: number;
+  episodesMax?: number;
+  episodesMin?: number;
+  excludedGenres?: string[];
+  excludedTags?: string[];
+  format?: string;
+  formats?: string[];
+  genres?: string[];
+  page?: number;
+  search?: string;
+  season?: AniListSeason;
+  sort?: AniListCatalogSort;
+  source?: string;
+  streamingOn?: number;
+  tags?: string[];
+  year?: number;
+  yearMax?: number;
+  yearMin?: number;
+}
+export interface AniListCatalogOptions {
+  genres: string[];
+  streaming: { id: number; name: string }[];
+  tags: { name: string; category: string; isAdult: boolean }[];
 }
 export interface AniListReleases extends DiscoveryResult {
   torrents: TorrentSummary[];
@@ -376,7 +507,10 @@ export interface AniListState {
   connectedUser: string | null;
   entries: AniListEntry[];
   hasClientSecret: boolean;
+  lastSyncedAt: number | null;
   redirectUri: string;
+  refreshError: string | null;
+  refreshing: boolean;
   selections: { mediaId: number; enabled: boolean }[];
   subscriptions: AniListSubscription[];
   userName: string;

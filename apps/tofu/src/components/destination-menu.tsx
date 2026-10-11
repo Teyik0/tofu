@@ -1,3 +1,4 @@
+import { useMutation } from "@teyik0/furin/client";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -8,28 +9,31 @@ import {
 } from "@tofu/ui/context-menu";
 import { PencilIcon, PinIcon, PinOffIcon, ShapesIcon, Trash2Icon } from "lucide-react";
 import { type ReactElement, useState } from "react";
+import { api } from "../lib/client";
+import { useRefresh } from "../lib/navigation";
 import type { Destination } from "../types";
-import { request } from "./api";
-import { useDashboard } from "./app-shell";
 import type { ModalKind } from "./modal";
 
 export function DestinationMenu({
   children,
   destination,
   open,
+  deletable,
 }: {
   children: ReactElement;
   destination: Destination;
   open: (modal: ModalKind) => void;
+  deletable: boolean;
 }) {
-  const { data, refresh } = useDashboard();
+  const refresh = useRefresh();
+  const updateDestination = useMutation(api.destinations({ id: destination.id }).patch);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toggle = async () => {
     setBusy(true);
     setError(null);
     try {
-      await request<Destination>(`/destinations/${destination.id}`, "PATCH", {
+      await updateDestination.mutateAsync({
         pinned: !destination.pinned,
       });
       await refresh();
@@ -59,7 +63,7 @@ export function DestinationMenu({
               <PencilIcon />
               Edit thread…
             </ContextMenuItem>
-            {data.destinations.length > 1 && (
+            {deletable === true && (
               <ContextMenuItem
                 onClick={() => open({ destination, type: "deleteDestination" })}
                 variant="destructive"

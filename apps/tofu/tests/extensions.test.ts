@@ -3,8 +3,66 @@ import { definePlugin } from "@tofu/plugins";
 import type { PluginCore } from "@tofu/plugins/server";
 import { Elysia } from "elysia";
 import { Type } from "typebox";
-import { createApi } from "../src/api";
+import { closePluginHost, createApplicationPluginHost } from "../src/api/lib/extensions";
+import type { PluginHostOptions } from "../src/api/plugin-host";
+import type { EnginePort } from "../src/types";
+import { createTestApplication, mountTestApplication } from "./api-fixture";
+import type { TestSyncOptions } from "./database";
+
+async function createApi(
+  engine: () => EnginePort,
+  options: TestSyncOptions,
+  _automation: undefined,
+  _desktop: undefined,
+  plugins: PluginHostOptions
+) {
+  const core = await createTestApplication(engine(), options);
+  const app = await mountTestApplication(core, { kind: "server" });
+  createApplicationPluginHost({ ...core, platform: { kind: "server" } }, plugins);
+  return Object.assign(app, { closePlugins: () => closePluginHost(engine()) });
+}
+
 import { fixture, json, waitFor } from "./helpers";
+
+test("reopening plugins on the same application owns and disposes the new runtime", async () => {
+  const context = await fixture(4096, []);
+  const core = await createTestApplication(context.engine, context.sync.options);
+  const application = { ...core, platform: { kind: "server" as const } };
+  let disposed = 0;
+  const options: PluginHostOptions = {
+    load: () =>
+      Promise.resolve([
+        definePlugin({
+          api: new Elysia().get("/status", () => "ready"),
+          id: "reopened",
+          name: "Reopened",
+          setup({ scope }) {
+            scope.onDispose(() => {
+              disposed += 1;
+            });
+          },
+          version: "0.0.0",
+        }),
+      ]),
+  };
+  try {
+    const first = createApplicationPluginHost(application, options);
+    expect(
+      (await first.handle(new Request("http://localhost/api/plugins/reopened/status"))).status
+    ).toBe(200);
+    await closePluginHost(context.engine);
+    expect(disposed).toBe(1);
+    const second = createApplicationPluginHost(application, options);
+    expect(
+      (await second.handle(new Request("http://localhost/api/plugins/reopened/status"))).status
+    ).toBe(200);
+    await closePluginHost(context.engine);
+    expect(disposed).toBe(2);
+  } finally {
+    await closePluginHost(context.engine);
+    await context.close();
+  }
+});
 
 test("installed plugins retain settings and credentials across disable and restart without deleting real downloads", async () => {
   const context = await fixture(65_536, []);
@@ -49,7 +107,7 @@ test("installed plugins retain settings and credentials across disable and resta
     ]);
   const open = () =>
     createApi(() => context.engine, context.sync.options, undefined, undefined, { load });
-  let api = open();
+  let api = await open();
   const request = (path: string, init?: RequestInit) =>
     api.handle(new Request(`http://localhost/api${path}`, init));
   try {
@@ -120,7 +178,7 @@ test("installed plugins retain settings and credentials across disable and resta
     expect((await request("/plugins/example/state")).status).toBe(404);
     expect(await Bun.file(file.path).exists()).toBe(true);
     await api.closePlugins();
-    api = open();
+    api = await open();
     expect((await request("/plugins/example/state")).status).toBe(404);
     expect(
       (
@@ -148,8 +206,8 @@ test("installed plugins retain settings and credentials across disable and resta
 
 test("a failing plugin disposer still closes real transfer resources through ordered application shutdown", async () => {
   const context = await fixture(65_536, []);
-  const { shutdownServices } = await import("../src/api/shutdown");
-  const api = createApi(() => context.engine, context.sync.options, undefined, undefined, {
+  const resources = new AsyncDisposableStack();
+  const api = await createApi(() => context.engine, context.sync.options, undefined, undefined, {
     load: () =>
       Promise.resolve([
         definePlugin({
@@ -176,9 +234,9 @@ test("a failing plugin disposer still closes real transfer resources through ord
     );
     const file = await context.engine.file(id, 0);
     expect((await api.handle("http://localhost/api/plugins/faulty/status")).status).toBe(200);
-    await expect(
-      shutdownServices([() => api.closePlugins(), () => context.engine.close()])
-    ).rejects.toThrow("Application shutdown failed");
+    resources.defer(() => context.engine.close());
+    resources.defer(() => api.closePlugins());
+    await expect(resources.disposeAsync()).rejects.toThrow("Plugin runtime disposal failed");
     expect(context.engine.client.destroyed).toBe(true);
     expect(new Uint8Array(await Bun.file(file.path).arrayBuffer())).toEqual(
       new Uint8Array(context.bytes)
@@ -195,7 +253,7 @@ test("plugin OAuth uses a scoped loopback callback and never requires the privat
     hostname: "127.0.0.1",
     port: 0,
   });
-  const api = createApi(() => context.engine, context.sync.options, undefined, undefined, {
+  const api = await createApi(() => context.engine, context.sync.options, undefined, undefined, {
     load: () =>
       Promise.resolve([
         definePlugin({
@@ -258,7 +316,7 @@ test("plugin OAuth uses a scoped loopback callback and never requires the privat
 test("a plugin startup failure leaves healthy plugins and management available for recovery", async () => {
   const context = await fixture(1024, []);
   let fail = true;
-  const api = createApi(() => context.engine, context.sync.options, undefined, undefined, {
+  const api = await createApi(() => context.engine, context.sync.options, undefined, undefined, {
     load: () =>
       Promise.resolve([
         definePlugin({

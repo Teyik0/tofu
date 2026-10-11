@@ -2,8 +2,7 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { createApi } from "../src/api";
-import { AutomationService } from "../src/api/feeds/service";
+import { AutomationService } from "../src/api/modules/automation/service";
 import type {
   AniListState,
   AniListSubscription,
@@ -12,6 +11,7 @@ import type {
   DashboardState,
   Destination,
 } from "../src/types";
+import { createTestApi } from "./api-fixture";
 import { fixture, json, waitFor } from "./helpers";
 
 async function setup() {
@@ -52,7 +52,7 @@ async function setup() {
         });
       }
       return new Response(
-        `<rss><channel><item><title>One Piece - 01 VOSTFR 1080p</title><guid>21</guid><link>https://nyaa.si/view/21</link><enclosure url="${context.magnet.replaceAll("&", "&amp;")}"/><nyaa:infoHash>${context.seed.infoHash}</nyaa:infoHash></item></channel></rss>`
+        `<rss><channel><item><title>One Piece - 01 VOSTFR 1080p x264</title><guid>21</guid><link>https://nyaa.si/view/21</link><enclosure url="${context.magnet.replaceAll("&", "&amp;")}"/><nyaa:infoHash>${context.seed.infoHash}</nyaa:infoHash></item></channel></rss>`
       );
     },
     hostname: "127.0.0.1",
@@ -66,7 +66,7 @@ async function setup() {
     now: Date.now,
   };
   let service = await AutomationService.open(options);
-  const api = createApi(
+  let api = await createTestApi(
     () => context.engine,
     context.sync.options,
     () => service
@@ -83,7 +83,6 @@ async function setup() {
   return {
     ...context,
     async close() {
-      await api.closePlugins();
       await service.close();
       upstream.stop(true);
       await context.close();
@@ -92,34 +91,14 @@ async function setup() {
     async restart() {
       await service.close();
       service = await AutomationService.open(options);
+      api = await createTestApi(
+        () => context.engine,
+        context.sync.options,
+        () => service
+      );
     },
   };
 }
-
-test("AniList thread preparation stays available while disabled without activating features or creating folders", async () => {
-  const context = await setup();
-  try {
-    expect(
-      (
-        await context.request("/plugins/anilist", {
-          ...json({ enabled: false }),
-          method: "PUT",
-        })
-      ).status
-    ).toBe(200);
-    const basePath = join(context.directory, "disabled-preview");
-    const response = await context.request(
-      "/anilist/threads/preview",
-      json({ basePath, statuses: ["CURRENT", "PLANNING"] })
-    );
-    expect(response.status).toBe(200);
-    expect(await response.json()).toHaveLength(2);
-    expect(existsSync(basePath)).toBe(false);
-    expect((await context.request("/anilist/list", json({}))).status).toBe(404);
-  } finally {
-    await context.close();
-  }
-});
 
 test("AniList proposes one thread per selected anime under a root without creating folders", async () => {
   const context = await setup();

@@ -11,7 +11,7 @@
     "tscheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@teyik0/furin": "file:../../vendor/furin-pr163-914e82a.tgz",
+    "@teyik0/furin": "file:../../vendor/furin-pr163-53e7c56.tgz",
     "elysia": "catalog:",
     "evlog": "catalog:",
     "react": "catalog:",

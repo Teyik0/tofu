@@ -3,7 +3,6 @@ import { Badge } from "@tofu/ui/badge";
 import { Button } from "@tofu/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@tofu/ui/empty";
 import { bytes, relative } from "@tofu/ui/format";
-import { useNow } from "@tofu/ui/use-now";
 import {
   AlertTriangleIcon,
   CheckIcon,
@@ -12,6 +11,7 @@ import {
   InboxIcon,
   RefreshCwIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type {
   AutomationDecision,
   AutomationRule,
@@ -26,6 +26,16 @@ export const isPending = (
   decision: AutomationDecision
 ): decision is AutomationDecision & { status: PendingStatus } =>
   (pendingStatuses as string[]).includes(decision.status);
+
+/** Re-renders periodically so countdowns stay accurate while the dialog is open. */
+export function useNow(interval: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), interval);
+    return () => clearInterval(timer);
+  }, [interval]);
+  return now;
+}
 
 export function ReleaseLine({ release }: { release: FeedRelease }) {
   return (

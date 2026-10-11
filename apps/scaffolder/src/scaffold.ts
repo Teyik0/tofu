@@ -38,7 +38,7 @@ export async function scaffold(
   }
   const root = resolve(import.meta.dir, "../../..");
   const sdk = resolve(options.sdk ?? join(root, "package/plugins"));
-  const furin = resolve(options.furin ?? join(root, "vendor/furin-pr163-914e82a.tgz"));
+  const furin = resolve(options.furin ?? join(root, "vendor/furin-pr163-53e7c56.tgz"));
   const sdkManifest: unknown = await Bun.file(join(sdk, "package.json")).json();
   if (
     !sdkManifest ||
@@ -57,16 +57,26 @@ export async function scaffold(
     throw new Error("--furin must point to an existing local Furin tarball");
   }
   const workspace = (await Bun.file(join(root, "package.json")).json()) as {
-    catalog: {
-      elysia: string;
-      react: string;
-      typebox: string;
-      "@elysia/eden": string;
-      "@types/bun": string;
-      "@types/react": string;
-      typescript: string;
-    };
+    catalog: Record<string, string>;
   };
+  if (
+    !("dependencies" in sdkManifest && sdkManifest.dependencies) ||
+    typeof sdkManifest.dependencies !== "object"
+  ) {
+    throw new Error("The SDK manifest must declare its runtime dependencies");
+  }
+  const sdkDependencies = Object.fromEntries(
+    Object.entries(sdkManifest.dependencies).map(([dependency, version]) => {
+      if (typeof version !== "string") {
+        throw new Error(`Invalid SDK dependency: ${dependency}`);
+      }
+      const resolved = version === "catalog:" ? workspace.catalog[dependency] : version;
+      if (!resolved) {
+        throw new Error(`Missing catalog version for SDK dependency: ${dependency}`);
+      }
+      return [dependency, resolved];
+    })
+  );
   const manifest = {
     dependencies: {
       "@teyik0/furin": "file:./.tofu-vendor/furin.tgz",
@@ -113,10 +123,8 @@ export async function scaffold(
     JSON.stringify(
       {
         dependencies: {
+          ...sdkDependencies,
           "@teyik0/furin": "file:../.tofu-vendor/furin.tgz",
-          elysia: workspace.catalog.elysia,
-          react: workspace.catalog.react,
-          typebox: workspace.catalog.typebox,
         },
         exports: sdkManifest.exports,
         name: "@tofu/plugins",

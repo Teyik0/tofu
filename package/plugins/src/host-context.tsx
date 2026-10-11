@@ -4,6 +4,7 @@ import type { DashboardState } from "./domain";
 
 export interface PluginHost {
   dashboard: DashboardState;
+  playSound?: (cue: "added" | "removed") => void;
   refresh: () => Promise<void>;
   toggleSidebar?: () => void;
 }

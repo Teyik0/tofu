@@ -23,6 +23,7 @@ export function OptionSelect<Value extends string>({
   id,
   onValueChange,
   options,
+  placeholder,
   value,
 }: {
   ariaDescribedBy?: string;
@@ -33,7 +34,9 @@ export function OptionSelect<Value extends string>({
   id?: string;
   onValueChange: (value: Value) => void;
   options: readonly SelectOption<Value>[];
-  value: Value;
+  /** Shown while `value` is null. */
+  placeholder?: string;
+  value: Value | null;
 }) {
   return (
     <Select
@@ -53,7 +56,7 @@ export function OptionSelect<Value extends string>({
         className={cn("w-full min-w-0", className)}
         id={id}
       >
-        <SelectValue />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} className={contentClassName}>
         <SelectGroup>

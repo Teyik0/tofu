@@ -3,6 +3,38 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { version } from "../package.json";
+import { hostDesktopTarget, installerExtension, installerName } from "../src/platform";
+
+const artifacts = ".furin/electrobun/artifacts";
+
+test("release processing renames only the installer in the Furin output", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "tofu-release-artifacts-"));
+  const target = hostDesktopTarget();
+  const prefix = `${target.platform}-${target.arch}`;
+  const original = `${prefix}-Tofu${target.platform === "macos" ? "" : "-Setup"}.${installerExtension(target)}`;
+  const archive = `stable-${prefix}-Tofu.tar.zst`;
+  try {
+    await Bun.write(join(directory, artifacts, original), "installer bytes");
+    await Bun.write(join(directory, artifacts, archive), "update bytes");
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, "../scripts/release.ts"), "artifacts"],
+      {
+        cwd: directory,
+        stderr: "pipe",
+        stdout: "ignore",
+      }
+    );
+    const error = await new Response(child.stderr).text();
+    expect({ code: await child.exited, error }).toEqual({ code: 0, error: "" });
+    expect(await Bun.file(join(directory, artifacts, installerName(version, target))).text()).toBe(
+      "installer bytes"
+    );
+    expect(await Bun.file(join(directory, artifacts, original)).exists()).toBe(false);
+    expect(await Bun.file(join(directory, artifacts, archive)).text()).toBe("update bytes");
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
 
 const updateMetadataPattern: RegExp = /^stable-(macos|win|linux)-(arm64|x64)-update\.json$/;
 
@@ -31,7 +63,7 @@ async function publish(
               version,
             })
           : "installer content";
-        return Bun.write(join(directory, "artifacts", name), content);
+        return Bun.write(join(directory, artifacts, name), content);
       })
     );
     const commandsPath = join(directory, "github-commands.json");
@@ -78,7 +110,7 @@ process.exit(1);`
     const commands: string[][] = (await Bun.file(commandsPath).exists())
       ? await Bun.file(commandsPath).json()
       : [];
-    const checksums = Bun.file(join(directory, "artifacts/SHA256SUMS"));
+    const checksums = Bun.file(join(directory, artifacts, "SHA256SUMS"));
     return {
       checksums: (await checksums.exists()) ? await checksums.text() : null,
       code,
@@ -147,10 +179,10 @@ test("publication attaches installers and checksums to an existing release witho
   expect(result.commands[1]).toContain("--clobber");
   expect(result.commands[1]?.[2]).toBe(`v${version}`);
   for (const name of expectedInstallers) {
-    expect(result.commands[1]).toContain(join("artifacts", name));
+    expect(result.commands[1]).toContain(join(artifacts, name));
     expect(result.checksums).toContain(`${Bun.SHA256.hash("installer content", "hex")}  ${name}\n`);
   }
-  expect(result.commands[1]).toContain("artifacts/SHA256SUMS");
+  expect(result.commands[1]).toContain(join(artifacts, "SHA256SUMS"));
 });
 
 test("publication creates a release when the validated tag has no release yet", async () => {

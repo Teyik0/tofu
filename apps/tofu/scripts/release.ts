@@ -1,8 +1,14 @@
-import { chmod, mkdir, rm } from "node:fs/promises";
+import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { version } from "../package.json";
-import { hostDesktopTarget, installerName, releaseTargets } from "../src/platform";
+import {
+  hostDesktopTarget,
+  installerExtension,
+  installerName,
+  releaseTargets,
+} from "../src/platform";
 
+const artifacts = ".furin/electrobun/artifacts";
 const temporary = process.env.RUNNER_TEMP;
 const keychain = temporary ? join(temporary, "tofu-signing.keychain-db") : null;
 async function command(args: string[]) {
@@ -107,14 +113,26 @@ if (Bun.argv[2] === "validate") {
       )
     );
   }
+} else if (Bun.argv[2] === "artifacts") {
+  const target = hostDesktopTarget();
+  const suffix = target.platform === "macos" ? "*.dmg" : `*-Setup.${installerExtension(target)}`;
+  const installers = [
+    ...new Bun.Glob(`${target.platform}-${target.arch}-${suffix}`).scanSync(artifacts),
+  ];
+  if (installers.length !== 1 || !installers[0]) {
+    throw new Error(
+      `Expected exactly one ${target.platform}/${target.arch} installer in ${artifacts}`
+    );
+  }
+  await rename(join(artifacts, installers[0]), join(artifacts, installerName(version, target)));
 } else if (Bun.argv[2] === "publish") {
   const tag = process.env.RELEASE_TAG ?? process.env.GITHUB_REF_NAME;
   const repository = process.env.GITHUB_REPOSITORY;
   if (tag !== `v${version}` || repository?.toLowerCase() !== "teyik0/tofu") {
     throw new Error("Incorrect publication tag or repository");
   }
-  await mkdir("artifacts", { recursive: true });
-  const paths = [...new Bun.Glob("*").scanSync("artifacts")]
+  await mkdir(artifacts, { recursive: true });
+  const paths = [...new Bun.Glob("*").scanSync(artifacts)]
     .filter((name) => name !== "SHA256SUMS")
     .sort();
   for (const target of releaseTargets) {
@@ -139,7 +157,7 @@ if (Bun.argv[2] === "validate") {
         platform?: string;
         arch?: string;
         artifact?: { file?: string };
-      } = await Bun.file(join("artifacts", metadata)).json();
+      } = await Bun.file(join(artifacts, metadata)).json();
       if (
         manifest.schemaVersion !== 1 ||
         manifest.version !== version ||
@@ -157,10 +175,10 @@ if (Bun.argv[2] === "validate") {
   const checksums = await Promise.all(
     paths.map(
       async (name) =>
-        `${Bun.SHA256.hash(await Bun.file(join("artifacts", name)).arrayBuffer(), "hex")}  ${name}`
+        `${Bun.SHA256.hash(await Bun.file(join(artifacts, name)).arrayBuffer(), "hex")}  ${name}`
     )
   );
-  await Bun.write("artifacts/SHA256SUMS", `${checksums.join("\n")}\n`);
+  await Bun.write(join(artifacts, "SHA256SUMS"), `${checksums.join("\n")}\n`);
   const existing = Bun.spawn(["gh", "release", "view", tag, "--repo", repository], {
     stderr: "ignore",
     stdout: "ignore",
@@ -171,8 +189,8 @@ if (Bun.argv[2] === "validate") {
     "release",
     releaseExists ? "upload" : "create",
     tag,
-    ...paths.map((name) => join("artifacts", name)),
-    "artifacts/SHA256SUMS",
+    ...paths.map((name) => join(artifacts, name)),
+    join(artifacts, "SHA256SUMS"),
     "--repo",
     repository,
     ...(releaseExists

@@ -49,8 +49,10 @@ export const route = defineRoute()
         <p>
           macOS Apple Silicon is the currently validated platform. Windows and Linux targets need
           their own native validation. Read the{" "}
-          <a href="https://github.com/Teyik0/Tofu/blob/main/docs/releases.md">release guide</a> for
-          signing, first-launch approval, and updates.
+          <a href="https://github.com/Teyik0/Tofu/blob/main/.github/workflows/release.yml">
+            release guide
+          </a>{" "}
+          for signing, first-launch approval, and updates.
         </p>
       </Callout>
       <h2>Your first download</h2>

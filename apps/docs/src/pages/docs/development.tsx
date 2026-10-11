@@ -14,12 +14,9 @@ export const route = defineRoute()
       />
       <h2>Set up the workspace</h2>
       <p>
-        Use Bun 1.4.2 or newer. On macOS, install Xcode Command Line Tools. Linux needs GTK 3,
-        WebKitGTK 4.1, Ayatana AppIndicator, and librsvg. The{" "}
-        <a href="https://github.com/Teyik0/Tofu/blob/main/docs/development.md">
-          native development guide
-        </a>{" "}
-        lists platform prerequisites.
+        Use Bun 1.4.3 or newer. On macOS, install Xcode Command Line Tools. Linux needs GTK 3,
+        WebKitGTK 4.1, Ayatana AppIndicator, and librsvg. Install the matching system packages
+        before building the native app.
       </p>
       <Code>{`git clone https://github.com/Teyik0/Tofu.git
 cd Tofu
@@ -29,8 +26,10 @@ bun run prepare
 bun run build:desktop
 bun run desktop`}</Code>
       <p>
-        Run these commands from the repository root. <code>setup</code> prepares the Hutch devkit
-        used by Electrobun. <code>prepare</code> installs the Git hooks.
+        Run these commands from the repository root. <code>setup</code> prepares native addons and
+        application resources.
+        <code>build:desktop</code> prepares the Electrobun SDK through Hutch. <code>prepare</code>
+        installs the Git hooks.
       </p>
       <h2>Choose your workspace</h2>
       <table>

@@ -66,7 +66,7 @@ test("generated projects install, typecheck, build, and serve a native plugin pr
       "--sdk",
       join(root, "package/plugins"),
       "--furin",
-      join(root, "vendor/furin-pr163-914e82a.tgz"),
+      join(root, "vendor/furin-pr163-53e7c56.tgz"),
     ]);
     expect(generated.code).toBe(0);
     await rename(initial, project);
