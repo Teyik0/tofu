@@ -1,25 +1,67 @@
-import type { SyncRuntimeOptions, TransactionalSyncAdapter } from "@teyik0/furin/sync";
 import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
+import {
+  type DesktopBackend,
+  type DesktopCapabilities,
+  getDesktopDevelopment,
+  type ReadyContext,
+  type StartupContext,
+} from "@teyik0/furin-electrobun/host";
 import { version } from "../../../package.json";
-import type { CoreApplication, EnginePort } from "../../types";
+import type { CoreApplication } from "../../types";
 import { readAniListClient } from "../modules/anilist/client";
 import { AutomationService } from "../modules/automation/service";
 import { pluginEndpoints } from "../modules/plugins/service";
 import { WorkerTorrentEngine } from "../modules/torrents/worker-client";
 import { UpdatesService } from "../modules/updates/service";
-import { assertDatabaseReady, type DatabaseTransaction, openDatabase } from "./db";
-import { applicationHost, hostIntegration, instance } from "./host";
-import { acquireInstance } from "./instance";
+import { assertDatabaseReady, openDatabase } from "./db";
+import { applicationHost } from "./host";
+import { acquireInstance, currentInstanceConfig } from "./instance";
+import { writeServerInfo } from "./server-info";
+import { ObservedSyncNotifier } from "./sync-notifier";
+
+// Update recovery replaces application resources, while the native supervisor stays alive.
+const developmentHosts = new WeakSet<DesktopCapabilities>();
 
 export async function assertApplicationReady(application: Pick<CoreApplication, "db" | "engine">) {
   assertDatabaseReady(application.db);
   await application.engine.assertReady();
 }
 
-export async function onStartup(signal: AbortSignal) {
-  const core = await applicationHost.prepare(openCoreApplication, signal);
-  if (!instance.desktop) {
-    applicationHost.activate(core, { kind: "server" });
+export async function onStartup(context: StartupContext) {
+  await applicationHost.prepare(
+    (signal) => openCoreApplication({ ...context, signal }),
+    context.signal
+  );
+}
+
+export async function onReady({ runtime, backend }: ReadyContext) {
+  const core = await applicationHost.core;
+  applicationHost.activate(core, runtime);
+  await writeServerInfo(core, backend.origin, backend.cookie);
+  if (
+    runtime.kind === "desktop" &&
+    process.env.FURIN_DESKTOP_DEV &&
+    !developmentHosts.has(runtime.desktop)
+  ) {
+    const development = await getDesktopDevelopment();
+    // The runtime passes its backend; ReadyContext exposes only its trusted session fields.
+    if (
+      !(
+        "bootstrapOrigin" in backend &&
+        typeof backend.bootstrapOrigin === "string" &&
+        "createWindowUrl" in backend &&
+        typeof backend.createWindowUrl === "function" &&
+        "stop" in backend &&
+        typeof backend.stop === "function" &&
+        "url" in backend &&
+        typeof backend.url === "string" &&
+        typeof backend.cookie === "string"
+      )
+    ) {
+      throw new Error("Furin development requires the desktop backend capabilities");
+    }
+    await development?.ready(backend as DesktopBackend, () => runtime.desktop.quit());
+    developmentHosts.add(runtime.desktop);
   }
 }
 
@@ -27,14 +69,14 @@ export function onShutdown() {
   return applicationHost.stop();
 }
 
-export async function openCoreApplication(signal: AbortSignal): Promise<CoreApplication> {
+export async function openCoreApplication({
+  signal,
+  runtime,
+}: StartupContext): Promise<CoreApplication> {
   const resources = new AsyncDisposableStack();
   try {
     signal.throwIfAborted();
-    const sdk = hostIntegration.tofuNativeSdk;
-    if (instance.desktop && !sdk) {
-      throw new Error("The native SDK must be supplied before desktop startup");
-    }
+    const instance = await currentInstanceConfig(runtime);
     const lease = await acquireInstance(instance);
     resources.defer(() => lease.close());
     signal.throwIfAborted();
@@ -45,7 +87,7 @@ export async function openCoreApplication(signal: AbortSignal): Promise<CoreAppl
     const engine = await WorkerTorrentEngine.open({
       dataDir: instance.dataDir,
       downloadPath: instance.downloadPath,
-      network: { maxConns: 100, userAgent: `Tofu/${version}`, utp: false },
+      network: { maxConns: 40, userAgent: `Tofu/${version}`, utp: false },
     });
     resources.defer(() => engine.close());
     engine.mode = instance.desktop ? "desktop" : "server";
@@ -73,48 +115,31 @@ export async function openCoreApplication(signal: AbortSignal): Promise<CoreAppl
       arch: process.arch,
       dataDir: instance.dataDir,
       native:
-        sdk && instance.profile === "release"
-          ? {
-              applyUpdate: async () => {
-                const application = await applicationHost.application;
-                if (application.platform.kind === "desktop") {
-                  await application.platform.controller.installUpdate();
-                }
-              },
-              checkForUpdate: sdk.Updater.checkForUpdate,
-              downloadUpdate: sdk.Updater.downloadUpdate,
-              onStatusChange: sdk.Updater.onStatusChange,
-              updateInfo: sdk.Updater.updateInfo,
-            }
+        runtime.kind === "desktop" && instance.profile === "release"
+          ? runtime.desktop.updates
           : undefined,
       notify: (latest) => {
-        if (sdk) {
-          Promise.resolve(
-            sdk.Utils.showNotification({
-              body: `Open ${instance.name} to update to the new version.`,
-              title: `${instance.name} : Tofu ${latest} is available`,
-            })
-          ).catch(console.error);
+        if (runtime.kind === "desktop") {
+          runtime.desktop.notifications.show({
+            body: `Open ${instance.name} to update to the new version.`,
+            title: `${instance.name} : Tofu ${latest} is available`,
+          });
         }
       },
       platform: process.platform,
       version,
     });
     resources.defer(() => updates.close());
-    const sync = {
-      adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),
-      principal: () => "local",
-    };
-    const publishChanges = createEngineChangePublisher(sync, engine);
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let publishing: Promise<void> | null = null;
-    let started = false;
-    resources.defer(async () => {
-      if (timer) {
-        clearInterval(timer);
+    const adapter = drizzleSyncAdapter({ db, namespace: "tofu" });
+    const notifier = new ObservedSyncNotifier(engine.setObserved.bind(engine));
+    const sync = { adapter, notifier, principal: () => "local" };
+    const unsubscribe: () => void = engine.subscribeChanges(({ cursor }) => {
+      if (cursor !== undefined) {
+        void notifier.publish(cursor).catch(console.error);
       }
-      await publishing;
     });
+    resources.defer(unsubscribe);
+    let started = false;
     signal.throwIfAborted();
     const lifetime = resources.move();
     return {
@@ -131,14 +156,6 @@ export async function openCoreApplication(signal: AbortSignal): Promise<CoreAppl
         // External feeds are optional; their availability must not prevent local startup.
         void automation.start().catch(console.error);
         updates.start();
-        timer = setInterval(() => {
-          publishing ??= publishChanges()
-            .catch(console.error)
-            .finally(() => {
-              publishing = null;
-            });
-        }, 1000);
-        timer.unref();
       },
       sync,
       updates,
@@ -153,43 +170,5 @@ export async function openCoreApplication(signal: AbortSignal): Promise<CoreAppl
       });
     }
     throw error;
-  }
-}
-
-export function createEngineChangePublisher(
-  options: SyncRuntimeOptions<TransactionalSyncAdapter<DatabaseTransaction, "sync">>,
-  engine: Pick<EnginePort, "snapshot">
-) {
-  const fingerprint = () => {
-    const { destinations, session, settings, torrents } = engine.snapshot(null, false);
-    // History appends timestamped samples even while idle; current speeds are in the session.
-    return JSON.stringify({ destinations, session, settings, torrents });
-  };
-  let previous = fingerprint();
-  return async () => {
-    const current = fingerprint();
-    if (current === previous) {
-      return;
-    }
-    await publishEngineChanges(options);
-    previous = current;
-  };
-}
-
-// Worker events originate outside HTTP mutations and still need durable invalidations.
-export async function publishEngineChanges(
-  options: SyncRuntimeOptions<TransactionalSyncAdapter<DatabaseTransaction, "sync">>
-) {
-  const reservation = await options.adapter.beginMutation({
-    fingerprint: "live",
-    key: crypto.randomUUID(),
-    principal: "local",
-  });
-  if (reservation.kind === "execute") {
-    await options.adapter.executeMutation(reservation.lease, () => ({
-      invalidations: [{ kind: "path", path: "/", type: "layout" }],
-      response: { body: new Uint8Array(), headers: [], status: 204 },
-      value: undefined,
-    }));
   }
 }

@@ -17,14 +17,6 @@ const worker = await Bun.build({
 if (!worker.success) {
   throw new AggregateError(worker.logs, "Torrent worker build failed");
 }
-const protocol = await Bun.build({
-  entrypoints: [join(root, "scripts/desktop-protocol.ts")],
-  outdir: runtime,
-  target: "bun",
-});
-if (!protocol.success) {
-  throw new AggregateError(protocol.logs, "Protocol helper build failed");
-}
 await Bun.write(
   join(runtime, "anilist-client.json"),
   JSON.stringify(

@@ -1,5 +1,6 @@
 import { isAbsolute, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
+import { HTTPError } from "elysia";
 import { anilistState } from "../../../db/schema";
 import type {
   AniListCatalog,
@@ -20,7 +21,6 @@ import type {
   DestinationInput,
 } from "../../../types";
 import type { DatabaseConnection, TofuDatabase } from "../../lib/db";
-import { UserError } from "../../lib/errors";
 import { refreshRecords } from "../../lib/persisted-cache";
 import { catalogMedia, catalogVariables } from "./catalog";
 import { editorState, validateEntryUpdate } from "./editor";
@@ -295,9 +295,9 @@ export class AniListService {
         redirect.search ||
         redirect.hash)
     ) {
-      throw new UserError("The OAuth callback must be a local HTTP URL with an explicit port", {
-        status: 400,
-      });
+      throw new (HTTPError.id("BAD_REQUEST", 400))(
+        "The OAuth callback must be a local HTTP URL with an explicit port"
+      );
     }
     this.stopCallback();
     this.config = {
@@ -311,15 +311,14 @@ export class AniListService {
   }
   connect(): { url: string } {
     if (this.lifecycle.closed) {
-      throw new UserError("AniList unavailable", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("AniList unavailable");
     }
     if (
       !this.config.clientId ||
       (this.config.clientId === "9037" && this.config.redirectUri === "tofu-dev://oauth/anilist")
     ) {
-      throw new UserError(
-        "This development build needs its own AniList client. Set TOFU_ANILIST_CLIENT_ID and rebuild Tofu Dev.",
-        { status: 409 }
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "This development build needs its own AniList client. Set TOFU_ANILIST_CLIENT_ID and rebuild Tofu Dev."
       );
     }
     if (this.config.clientId === "9037" || !this.config.clientSecret) {
@@ -327,9 +326,7 @@ export class AniListService {
       return this.authorization.connect(this.config.clientId, this.config.redirectUri);
     }
     if (!(this.config.clientId && this.config.clientSecret)) {
-      throw new UserError("Add your AniList OAuth client ID and secret", {
-        status: 400,
-      });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Add your AniList OAuth client ID and secret");
     }
     this.stopCallback();
     const config = { ...this.config };
@@ -404,9 +401,9 @@ export class AniListService {
       });
     } catch (cause) {
       this.oauthState = null;
-      throw new UserError(
+      throw new (HTTPError.id("CONFLICT", 409))(
         "The OAuth callback port is busy. Choose the same available port in Tofu and your AniList client.",
-        { cause, status: 409 }
+        { cause }
       );
     }
     this.callbackTimeout = setTimeout(() => this.stopCallback(), 600_000);
@@ -430,7 +427,7 @@ export class AniListService {
   }
   async media(mediaId: number): Promise<AniListMedia> {
     if (this.lifecycle.closed) {
-      throw new UserError("AniList service closed", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("AniList service closed");
     }
     const entry = this.entries.find((item) => item.mediaId === mediaId);
     if (entry) {
@@ -448,7 +445,7 @@ export class AniListService {
         { accessToken: "", signal: controller.signal }
       );
       if (!Media || Media.id !== mediaId) {
-        throw new UserError("Anime not found on AniList", { status: 404 });
+        throw new (HTTPError.id("NOT_FOUND", 404))("Anime not found on AniList");
       }
       return catalogMedia(Media);
     } finally {
@@ -475,7 +472,7 @@ export class AniListService {
         page.pageInfo.hasNextPage === null ||
         !page.media
       ) {
-        throw new UserError("Invalid AniList catalog", { status: 502 });
+        throw new (HTTPError.id("BAD_GATEWAY", 502))("Invalid AniList catalog");
       }
       return {
         hasNextPage: page.pageInfo.hasNextPage,
@@ -493,13 +490,13 @@ export class AniListService {
   ): Promise<Result> {
     this.checkCacheIdentity();
     if (!this.options.enabled() || this.lifecycle.closed) {
-      throw new UserError("AniList plugin disabled", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("AniList plugin disabled");
     }
     const accessToken = this.options.token();
     if (!accessToken) {
-      throw new UserError("Connect your AniList account to edit your list or favourites", {
-        status: 409,
-      });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Connect your AniList account to edit your list or favourites"
+      );
     }
     const key = this.cacheKey();
     const controller = new AbortController();
@@ -510,7 +507,9 @@ export class AniListService {
     );
     const assertCurrent = () => {
       if (this.lifecycle.closed || !this.options.enabled() || key !== this.cacheKey()) {
-        throw new UserError("AniList account changed; reopen the anime editor", { status: 409 });
+        throw new (HTTPError.id("CONFLICT", 409))(
+          "AniList account changed; reopen the anime editor"
+        );
       }
     };
     try {
@@ -525,7 +524,7 @@ export class AniListService {
   private async readEditor(mediaId: number, accessToken: string, signal: AbortSignal) {
     const result = await this.sdk.Editor({ mediaId }, { accessToken, signal });
     if (!result.Viewer?.id || (this.account && result.Viewer.id !== this.account.id)) {
-      throw new UserError("Reload your AniList list after changing accounts", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("Reload your AniList list after changing accounts");
     }
     return { editor: editorState(result, mediaId), result };
   }
@@ -557,13 +556,13 @@ export class AniListService {
             saved.progress !== null
           )
         ) {
-          throw new UserError("AniList did not save the list entry", { status: 502 });
+          throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList did not save the list entry");
         }
         const found = new Map<number, AniListEntry>();
         collectEntries({ hasNextChunk: false, lists: [{ entries: [saved] }] }, found);
         const entry = found.get(mediaId);
         if (!entry) {
-          throw new UserError("Invalid AniList list entry", { status: 502 });
+          throw new (HTTPError.id("BAD_GATEWAY", 502))("Invalid AniList list entry");
         }
         this.entries = [...this.entries.filter((item) => item.mediaId !== mediaId), entry];
         if (body.progress !== undefined) {
@@ -598,19 +597,21 @@ export class AniListService {
         const { editor } = await this.readEditor(mediaId, accessToken, signal);
         assertCurrent();
         if (editor.isFavourite === null) {
-          throw new UserError("AniList favourite state unavailable", { status: 502 });
+          throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList favourite state unavailable");
         }
         if (editor.isFavourite === enabled) {
           return { isFavourite: enabled };
         }
         if (editor.isFavouriteBlocked) {
-          throw new UserError("AniList does not allow favouriting this anime", { status: 409 });
+          throw new (HTTPError.id("CONFLICT", 409))(
+            "AniList does not allow favouriting this anime"
+          );
         }
         await this.sdk.ToggleAnimeFavourite({ mediaId }, { accessToken, signal });
         assertCurrent();
         const updated = await this.readEditor(mediaId, accessToken, signal);
         if (updated.editor.isFavourite !== enabled) {
-          throw new UserError("AniList did not update the favourite", { status: 502 });
+          throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList did not update the favourite");
         }
         return { isFavourite: enabled };
       })
@@ -628,7 +629,7 @@ export class AniListService {
           );
           assertCurrent();
           if (DeleteMediaListEntry?.deleted !== true) {
-            throw new UserError("AniList did not delete the list entry", { status: 502 });
+            throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList did not delete the list entry");
           }
         }
         const rule = this.animeRule(mediaId);
@@ -695,7 +696,7 @@ export class AniListService {
         { accessToken: token, signal: controller.signal }
       );
       if (!(identity?.id && identity.name && current()) || this.lifecycle.closed) {
-        throw new UserError("AniList authorization expired", { status: 400 });
+        throw new (HTTPError.id("BAD_REQUEST", 400))("AniList authorization expired");
       }
       this.options.setToken(token);
       this.entries = [];
@@ -757,12 +758,12 @@ export class AniListService {
   private async loadList(key: string, token: string): Promise<void> {
     const revision = this.listRevision;
     if (!this.options.enabled() || this.lifecycle.closed) {
-      throw new UserError("AniList plugin disabled", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("AniList plugin disabled");
     }
     if (!(this.options.token() || this.config.userName)) {
-      throw new UserError("Connect AniList or enter your public account name", {
-        status: 400,
-      });
+      throw new (HTTPError.id("BAD_REQUEST", 400))(
+        "Connect AniList or enter your public account name"
+      );
     }
     const controller = new AbortController();
     this.requests.add(controller);
@@ -780,7 +781,7 @@ export class AniListService {
             )
           ).User;
       if (!identity?.id) {
-        throw new UserError("AniList account not found", { status: 404 });
+        throw new (HTTPError.id("NOT_FOUND", 404))("AniList account not found");
       }
       const found = new Map<number, AniListEntry>();
       let more = true;
@@ -795,21 +796,19 @@ export class AniListService {
           !(collection && Array.isArray(collection.lists)) ||
           typeof collection.hasNextChunk !== "boolean"
         ) {
-          throw new UserError("Invalid AniList list", { status: 502 });
+          throw new (HTTPError.id("BAD_GATEWAY", 502))("Invalid AniList list");
         }
         more = collection.hasNextChunk;
         collectEntries(collection, found);
       }
       if (more) {
-        throw new UserError("AniList list too large for a full sync", {
-          status: 400,
-        });
+        throw new (HTTPError.id("BAD_REQUEST", 400))("AniList list too large for a full sync");
       }
       if (!this.options.enabled() || this.lifecycle.closed) {
-        throw new UserError("AniList plugin disabled", { status: 409 });
+        throw new (HTTPError.id("CONFLICT", 409))("AniList plugin disabled");
       }
       if (key !== this.cacheKey()) {
-        throw new UserError("The AniList account changed during refresh", { status: 409 });
+        throw new (HTTPError.id("CONFLICT", 409))("The AniList account changed during refresh");
       }
       if (revision !== this.listRevision) {
         return;
@@ -835,11 +834,11 @@ export class AniListService {
   }
   entry(mediaId: number) {
     if (!this.options.enabled() || this.lifecycle.closed) {
-      throw new UserError("AniList plugin disabled", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("AniList plugin disabled");
     }
     const entry = this.entries.find((item) => item.mediaId === mediaId);
     if (!(entry && this.account)) {
-      throw new UserError("Load this anime from your AniList list first", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Load this anime from your AniList list first");
     }
     return entry;
   }
@@ -862,7 +861,7 @@ export class AniListService {
     const entry = this.entry(mediaId);
     const accountId = this.account?.id;
     if (accountId === undefined) {
-      throw new UserError("Load this anime from your AniList list first", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Load this anime from your AniList list first");
     }
     return {
       accountId,
@@ -877,7 +876,7 @@ export class AniListService {
     ruleId: string
   ) {
     if (this.lifecycle.closed || this.account?.id !== input.accountId) {
-      throw new UserError("AniList account changed; reload your list", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("AniList account changed; reload your list");
     }
     this.writeState(input.key, JSON.stringify(ruleId), tx);
   }
@@ -909,10 +908,12 @@ export class AniListService {
     const entry = this.entry(mediaId);
     const accessToken = this.options.token();
     if (!accessToken) {
-      throw new UserError("Connect your AniList account to sync episode progress", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Connect your AniList account to sync episode progress"
+      );
     }
     if (entry.episodes !== null && episode > entry.episodes) {
-      throw new UserError("Episode exceeds the anime episode count", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Episode exceeds the anime episode count");
     }
     const accountId = this.account?.id;
     const watched = new Set(this.completedEpisodes(entry));
@@ -934,7 +935,9 @@ export class AniListService {
     try {
       const { Viewer } = await this.sdk.Viewer({}, { accessToken, signal: controller.signal });
       if (Viewer?.id !== accountId || this.options.token() !== accessToken) {
-        throw new UserError("Reload your AniList list after changing accounts", { status: 409 });
+        throw new (HTTPError.id("CONFLICT", 409))(
+          "Reload your AniList list after changing accounts"
+        );
       }
       if (progress !== entry.progress) {
         const { SaveMediaListEntry } = await this.sdk.SaveProgress(
@@ -942,13 +945,13 @@ export class AniListService {
           { accessToken, signal: controller.signal }
         );
         if (SaveMediaListEntry?.progress !== progress) {
-          throw new UserError("AniList did not save the episode progress", { status: 502 });
+          throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList did not save the episode progress");
         }
       }
       if (this.lifecycle.closed || !this.options.enabled() || this.account?.id !== accountId) {
-        throw new UserError("AniList account changed during episode sync; reload the list", {
-          status: 409,
-        });
+        throw new (HTTPError.id("CONFLICT", 409))(
+          "AniList account changed during episode sync; reload the list"
+        );
       }
       const key = `watched:${accountId}:${mediaId}`;
       const episodes = [...watched].sort((a, b) => a - b);
@@ -978,11 +981,12 @@ export class AniListService {
   }
   previewThreads(basePath: string, statuses: AniListStatus[]): AniListThreadProposal[] {
     if (!isAbsolute(basePath)) {
-      throw new UserError("Enter an absolute root folder path", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Enter an absolute root folder path");
     }
     const destinations = this.options.destinations();
+    const trackedStatuses = new Set(statuses);
     return this.entries
-      .filter((entry) => statuses.includes(entry.status) && this.accepted(entry.mediaId))
+      .filter((entry) => trackedStatuses.has(entry.status) && this.accepted(entry.mediaId))
       .map((entry) => {
         const folder = animeFolder(entry);
         const collision = this.entries.some(
@@ -1001,11 +1005,14 @@ export class AniListService {
       });
   }
   select(mediaIds: number[], enabled: boolean) {
+    const selectedIds = new Set(mediaIds);
     if (
       !this.account ||
       mediaIds.some((id) => !this.entries.some((entry) => entry.mediaId === id))
     ) {
-      throw new UserError("Load the AniList list before choosing its titles", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))(
+        "Load the AniList list before choosing its titles"
+      );
     }
     for (const mediaId of mediaIds) {
       const key = `selection:${this.account.id}:${mediaId}`;
@@ -1014,7 +1021,7 @@ export class AniListService {
     }
     for (const subscription of this.subscriptions.values()) {
       for (const binding of subscription.bindings) {
-        if (!enabled && mediaIds.includes(binding.mediaId)) {
+        if (!enabled && selectedIds.has(binding.mediaId)) {
           this.options.enableRule(binding.ruleId, false);
           binding.active = false;
         }
@@ -1025,11 +1032,14 @@ export class AniListService {
     return this.snapshot();
   }
   writeSelection(tx: DatabaseConnection, mediaIds: number[], enabled: boolean) {
+    const selectedIds = new Set(mediaIds);
     if (
       !this.account ||
       mediaIds.some((id) => !this.entries.some((entry) => entry.mediaId === id))
     ) {
-      throw new UserError("Load the AniList list before choosing its titles", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))(
+        "Load the AniList list before choosing its titles"
+      );
     }
     for (const mediaId of mediaIds) {
       this.writeState(`selection:${this.account.id}:${mediaId}`, JSON.stringify(enabled), tx);
@@ -1037,7 +1047,7 @@ export class AniListService {
     for (const current of this.subscriptions.values()) {
       const subscription = structuredClone(current);
       for (const binding of subscription.bindings) {
-        if (!enabled && mediaIds.includes(binding.mediaId)) {
+        if (!enabled && selectedIds.has(binding.mediaId)) {
           this.options.enableRule(binding.ruleId, false, tx);
           binding.active = false;
         }
@@ -1084,7 +1094,7 @@ export class AniListService {
     >
   ) {
     if (!this.options.destinationExists(input.template.destinationId)) {
-      throw new UserError("Unknown destination", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
     }
     if (input.organization?.mode === "per-anime") {
       this.previewThreads(input.organization.basePath, input.statuses);
@@ -1097,7 +1107,9 @@ export class AniListService {
           (override.destinationId !== null &&
             !this.options.destinationExists(override.destinationId))
         ) {
-          throw new UserError("Check the proposed names, folders, and threads", { status: 400 });
+          throw new (HTTPError.id("BAD_REQUEST", 400))(
+            "Check the proposed names, folders, and threads"
+          );
         }
         ids.add(override.mediaId);
       }
@@ -1117,7 +1129,7 @@ export class AniListService {
   private subscription(id: string) {
     const subscription = this.subscriptions.get(id);
     if (!subscription) {
-      throw new UserError("Unknown AniList tracking", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown AniList tracking");
     }
     return subscription;
   }
@@ -1161,11 +1173,11 @@ export class AniListService {
         (item) => item.mediaId === entry.mediaId
       );
     if (!proposal) {
-      throw new UserError("Thread proposal not found", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Thread proposal not found");
     }
     if (proposal.destinationId !== null) {
       if (!this.options.destinationExists(proposal.destinationId)) {
-        throw new UserError("The selected thread no longer exists", { status: 400 });
+        throw new (HTTPError.id("BAD_REQUEST", 400))("The selected thread no longer exists");
       }
       return proposal.destinationId;
     }
@@ -1234,11 +1246,12 @@ export class AniListService {
     }
     if (subscription.userId !== undefined && subscription.userId !== this.account?.id) {
       this.pause(subscription);
-      throw new UserError("This tracking belongs to another AniList account", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("This tracking belongs to another AniList account");
     }
     subscription.userId = this.account?.id;
+    const trackedStatuses = new Set(subscription.statuses);
     const selected = entries.filter(
-      (entry) => subscription.statuses.includes(entry.status) && this.accepted(entry.mediaId)
+      (entry) => trackedStatuses.has(entry.status) && this.accepted(entry.mediaId)
     );
     for (const entry of selected) {
       if (

@@ -10,16 +10,19 @@ import { TorrentDrop } from "../components/torrent-drop";
 import { SidebarInset, SidebarProvider } from "../components/ui/sidebar";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { WorkspaceDialogs } from "../components/workspace-dialogs";
-import { readData } from "../lib/api-data";
 import { api } from "../lib/client";
 import { destinationFromPath, isPreferencesPath } from "../lib/navigation";
 import { createTofuStore } from "../state/workspace";
 
 export const route = defineRootRoute()
   .config({ mode: "ssr" })
-  .loader(async () => ({
-    dashboard: readData(await api.state.get({ query: { detail: "false" } })),
-  }))
+  .loader(async () => {
+    const { data, error } = await api.state.get({ query: { detail: "false" } });
+    if (error) {
+      throw error;
+    }
+    return { dashboard: data };
+  })
   .layout(({ children, dashboard, path }) => {
     const initialTheme = dashboard?.settings.theme ?? "system";
     const [store] = useState(() => createTofuStore(initialTheme));

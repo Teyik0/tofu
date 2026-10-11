@@ -2,72 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { treaty } from "@elysia/eden";
 import { Elysia } from "elysia";
-import { TorrentEngine } from "../src/api/modules/torrents/service";
-import { DesktopUpdateInstaller } from "../src/api/modules/updates/installer";
 import { UpdatesService } from "../src/api/modules/updates/service";
-import { createTestUpdatesApi } from "./api-fixture";
-import { openTestDatabase } from "./database";
-import { fixture, json, network, waitFor } from "./helpers";
-
-test("an update restart saves a real peer transfer and recovers when the native handoff fails", async () => {
-  const context = await fixture(256 * 1024, []);
-  let reopened: TorrentEngine | null = null;
-  const response = await context.request(
-    "/torrents",
-    json({ paused: false, source: context.magnet })
-  );
-  expect(response.status).toBe(200);
-  const added = await response.json();
-  await waitFor(
-    async () => context.engine.get(added.id).detail,
-    (detail) => detail.progress === 1
-  );
-  const destination = context.engine.get(added.id).detail.savePath;
-  const source = join(destination, context.seed.name);
-  let allowQuit = false;
-  const installer = new DesktopUpdateInstaller({
-    allowQuit: (allowed) => {
-      allowQuit = allowed;
-    },
-    recover: async () => {
-      reopened = await TorrentEngine.open({
-        dataDir: join(context.directory, "state"),
-        downloadPath: join(context.directory, "downloads"),
-        network,
-      });
-    },
-    shutdown: () => context.engine.close(),
-    updater: {
-      applyUpdate: () => {
-        expect(allowQuit).toBe(true);
-        return Promise.resolve();
-      },
-      getStatusHistory: () => [],
-      updateInfo: () => ({
-        error: "Unable to start update helper",
-        hash: "new",
-        updateAvailable: true,
-        updateReady: true,
-        version: "0.2.0",
-      }),
-    },
-  });
-  try {
-    await expect(installer.install()).rejects.toThrow("Unable to start update helper");
-    expect(allowQuit).toBe(false);
-    expect(await Bun.file(source).bytes()).toEqual(context.bytes);
-    const restored = reopened as TorrentEngine | null;
-    expect(restored).not.toBeNull();
-    await waitFor(
-      async () => restored?.get(added.id).detail,
-      (detail) => detail?.progress === 1
-    );
-  } finally {
-    await (reopened as TorrentEngine | null)?.close();
-    await context.close();
-  }
-});
+import { createTestUpdatesApi } from "./helpers/application";
+import { openTestDatabase } from "./helpers/database";
+import { expectSuccess } from "./helpers/problem";
+import { torrentBytes, waitFor } from "./helpers/torrent";
 
 test("desktop updates prepare in app and only restart after an explicit install action", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-native-"));
@@ -95,57 +36,56 @@ test("desktop updates prepare in app and only restart after an explicit install 
     arch: "arm64",
     dataDir: folder,
     native: {
-      applyUpdate: () => {
-        installed = true;
-        return Promise.resolve();
-      },
-      checkForUpdate: async () => ({
+      check: async () => ({
         error: "",
         hash: "new",
         updateAvailable: true,
         updateReady: ready,
         version: "0.2.0",
       }),
-      downloadUpdate: async () => {
+      download: async () => {
         downloads += 1;
         await gate;
         ready = true;
       },
-      onStatusChange: () => undefined,
-      updateInfo: () => ({
+      install: () => {
+        installed = true;
+        return Promise.resolve();
+      },
+      snapshot: () => ({
         error: "",
         hash: "new",
         updateAvailable: true,
         updateReady: ready,
         version: "0.2.0",
       }),
+      subscribe: () => () => undefined,
     },
     notify: () => undefined,
     platform: "darwin",
     version: "0.1.0",
   });
   const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
-  const call = (path: string) =>
-    app.handle(new Request(`http://localhost/api/updates${path}`, json({})));
+  const client = treaty(app).api;
   try {
-    expect((await call("/install")).status).toBe(409);
-    const checked = await (await call("/check")).json();
+    expect((await client.updates.install.post({})).status).toBe(409);
+    const checked = expectSuccess(await client.updates.check.post({}));
     expect(checked.automatic).toBe(true);
     expect(checked.status).toBe("available");
-    expect((await call("/prepare")).status).toBe(200);
-    expect(updates.snapshot().status).toBe("downloading");
-    expect((await call("/prepare")).status).toBe(200);
+    expect((await client.updates.prepare.post({})).status).toBe(200);
+    expect(expectSuccess(await client.updates.get()).status).toBe("downloading");
+    expect((await client.updates.prepare.post({})).status).toBe(200);
     expect(downloads).toBe(1);
-    expect((await (await call("/check")).json()).status).toBe("downloading");
-    expect((await call("/install")).status).toBe(409);
+    expect(expectSuccess(await client.updates.check.post({})).status).toBe("downloading");
+    expect((await client.updates.install.post({})).status).toBe(409);
     expect(installed).toBe(false);
     finish();
     await waitFor(
-      async () => updates.snapshot(),
+      async () => expectSuccess(await client.updates.get()),
       (state) => state.status === "ready"
     );
-    expect((await call("/install")).status).toBe(200);
-    expect(updates.snapshot().status).toBe("restarting");
+    expect((await client.updates.install.post({})).status).toBe(200);
+    expect(expectSuccess(await client.updates.get()).status).toBe("restarting");
     await waitFor(async () => installed, Boolean);
   } finally {
     finish();
@@ -155,14 +95,17 @@ test("desktop updates prepare in app and only restart after an explicit install 
     await rm(folder, { force: true, recursive: true });
   }
 });
-
 test("failed native downloads can be retried and scheduled checks preserve the prepared version", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-retry-"));
   const sync = await openTestDatabase(join(folder, "sync"));
   let fail = true;
   let checks = 0;
   let downloads = 0;
-  let progress: ((entry: import("electrobun/main").UpdateStatusEntry) => void) | null = null;
+  let progress:
+    | Parameters<
+        import("@teyik0/furin-electrobun/host").DesktopCapabilities["updates"]["subscribe"]
+      >[0]
+    | null = null;
   const info = {
     error: "",
     hash: "new",
@@ -188,9 +131,8 @@ test("failed native downloads can be retried and scheduled checks preserve the p
     arch: "arm64",
     dataDir: folder,
     native: {
-      applyUpdate: () => Promise.reject(new Error("Cannot start helper")),
-      checkForUpdate: async () => info,
-      downloadUpdate: () => {
+      check: async () => info,
+      download: async () => {
         downloads += 1;
         progress?.({
           details: { progress: 42 },
@@ -198,49 +140,52 @@ test("failed native downloads can be retried and scheduled checks preserve the p
           status: "download-progress",
           timestamp: Date.now(),
         });
-        expect(updates.snapshot().progress).toBe(42);
+        expect(expectSuccess(await client.updates.get()).progress).toBe(42);
         info.error = fail ? "Connection interrupted" : "";
         info.updateReady = !fail;
         return Promise.resolve();
       },
-      onStatusChange: (callback) => {
+      install: () => Promise.reject(new Error("Cannot start helper")),
+      snapshot: () => info,
+      subscribe: (callback) => {
         progress = callback;
+        return () => {
+          progress = null;
+        };
       },
-      updateInfo: () => info,
     },
     notify: () => undefined,
     platform: "darwin",
     version: "0.1.0",
   });
   const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
-  const call = (path: string) =>
-    app.handle(new Request(`http://localhost/api/updates${path}`, json({})));
+  const client = treaty(app).api;
   try {
-    await call("/check");
-    await call("/prepare");
+    await client.updates.check.post({});
+    await client.updates.prepare.post({});
     await waitFor(
-      async () => updates.snapshot(),
+      async () => expectSuccess(await client.updates.get()),
       (state) => state.status === "available"
     );
-    expect(updates.snapshot().error).toBe("Connection interrupted");
-    expect(updates.snapshot().progress).toBeNull();
+    expect(expectSuccess(await client.updates.get()).error).toBe("Connection interrupted");
+    expect(expectSuccess(await client.updates.get()).progress).toBeNull();
     fail = false;
-    await call("/prepare");
+    await client.updates.prepare.post({});
     await waitFor(
-      async () => updates.snapshot(),
+      async () => expectSuccess(await client.updates.get()),
       (state) => state.status === "ready"
     );
-    await call("/check");
-    expect(updates.snapshot().status).toBe("ready");
+    await client.updates.check.post({});
+    expect(expectSuccess(await client.updates.get()).status).toBe("ready");
     expect(checks).toBe(1);
     expect(downloads).toBe(2);
-    await call("/install");
-    expect((await call("/install")).status).toBe(409);
+    await client.updates.install.post({});
+    expect((await client.updates.install.post({})).status).toBe(409);
     await waitFor(
-      async () => updates.snapshot(),
+      async () => expectSuccess(await client.updates.get()),
       (state) => state.status === "ready"
     );
-    expect(updates.snapshot().error).toBe("Cannot start helper");
+    expect(expectSuccess(await client.updates.get()).error).toBe("Cannot start helper");
   } finally {
     updates.close();
     await sync.close();
@@ -248,7 +193,6 @@ test("failed native downloads can be retried and scheduled checks preserve the p
     await rm(folder, { force: true, recursive: true });
   }
 });
-
 test("update checks require no signed-in access", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-access-"));
   const sync = await openTestDatabase(join(folder, "sync"));
@@ -262,16 +206,14 @@ test("update checks require no signed-in access", async () => {
   };
   const updates = await UpdatesService.open(options);
   const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
+  const client = treaty(app).api;
   try {
     // No access configuration exists: the first check runs against the public API.
-    const first = await app.handle(new Request("http://localhost/api/updates/check", json({})));
+    const first = await client.updates.check.post({});
     expect(first.status).toBe(200);
-    const state = (await first.json()) as { status: string };
-    // 127.0.0.1:1 refuses the connection, so the check reports a transient error.
-    expect(state.status).toBe("error");
-
-    // A second manual check is allowed even while schedules continue in background.
-    const second = await app.handle(new Request("http://localhost/api/updates/check", json({})));
+    const state = expectSuccess(first) as { status: string }; // 127.0.0.1:1 refuses the connection, so the check reports a transient error.
+    expect(state.status).toBe("error"); // A second manual check is allowed even while schedules continue in background.
+    const second = await client.updates.check.post({});
     expect(second.status).toBe(200);
   } finally {
     updates.close();
@@ -279,7 +221,6 @@ test("update checks require no signed-in access", async () => {
     await rm(folder, { force: true, recursive: true });
   }
 });
-
 test("a release check during an installer download keeps the original filename and payload", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-concurrent-"));
   const sync = await openTestDatabase(join(folder, "sync"));
@@ -315,19 +256,20 @@ test("a release check during an installer download keeps the original filename a
     version: "0.1.0",
   });
   const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
-  const call = (path: string, init: RequestInit | undefined) =>
-    app.handle(new Request(`http://localhost/api/updates${path}`, init));
+  const client = treaty(app).api;
   try {
-    await call("/check", json({}));
-    const pending = call("/download", undefined);
+    await client.updates.check.post({});
+    const pending = client.updates.download.get();
     await waitFor(async () => started, Boolean);
     releaseVersion = "0.3.0";
-    await call("/check", json({}));
+    await client.updates.check.post({});
     finish();
     const installer = await pending;
     expect(installer.status).toBe(200);
-    expect(installer.headers.get("content-disposition")).toContain("Tofu-0.2.0-macos-arm64.dmg");
-    expect(await installer.text()).toBe("original-installer");
+    expect(installer.response.headers.get("content-disposition")).toContain(
+      "Tofu-0.2.0-macos-arm64.dmg"
+    );
+    expect(new TextDecoder().decode(torrentBytes(installer))).toBe("original-installer");
   } finally {
     finish();
     updates.close();
@@ -336,7 +278,6 @@ test("a release check during an installer download keeps the original filename a
     await rm(folder, { force: true, recursive: true });
   }
 });
-
 test("a refused asset download reports the failure and clears the stale download", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-refused-"));
   const sync = await openTestDatabase(join(folder, "sync"));
@@ -363,14 +304,13 @@ test("a refused asset download reports the failure and clears the stale download
     version: "0.1.0",
   });
   const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
-  const call = (path: string, init: RequestInit | undefined) =>
-    app.handle(new Request(`http://localhost/api/updates${path}`, init));
+  const client = treaty(app).api;
   try {
-    await call("/check", json({}));
-    const download = await call("/download", undefined);
+    await client.updates.check.post({});
+    const download = await client.updates.download.get();
     expect(download.status).toBe(502);
-    expect((await (await call("", undefined)).json()).status).toBe("error");
-    expect((await (await call("", undefined)).json()).downloadName).toBeNull();
+    expect(expectSuccess(await client.updates.get()).status).toBe("error");
+    expect(expectSuccess(await client.updates.get()).downloadName).toBeNull();
   } finally {
     updates.close();
     await sync.close();
@@ -378,7 +318,6 @@ test("a refused asset download reports the failure and clears the stale download
     await rm(folder, { force: true, recursive: true });
   }
 });
-
 test("a repository without a stable release reports no-release", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-empty-"));
   const sync = await openTestDatabase(join(folder, "sync"));
@@ -400,11 +339,10 @@ test("a repository without a stable release reports no-release", async () => {
     version: "0.1.0",
   });
   const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
-  const call = (path: string, init: RequestInit | undefined) =>
-    app.handle(new Request(`http://localhost/api/updates${path}`, init));
+  const client = treaty(app).api;
   try {
-    const checked = await call("/check", json({}));
-    const state = await checked.json();
+    const checked = await client.updates.check.post({});
+    const state = expectSuccess(checked);
     expect(state.status).toBe("no-release");
     expect(state.checkedAt).not.toBeNull();
     expect(state.error).toBeNull();
@@ -415,7 +353,6 @@ test("a repository without a stable release reports no-release", async () => {
     await rm(folder, { force: true, recursive: true });
   }
 });
-
 test.each([
   { arch: "arm64", installer: "Tofu-0.2.0-macos-arm64.dmg", platform: "darwin" },
   { arch: "x64", installer: "Tofu-0.2.0-win-x64.zip", platform: "win32" },
@@ -462,21 +399,21 @@ test.each([
     try {
       const updates = await UpdatesService.open(options);
       const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
-      const call = (path: string, init: RequestInit | undefined) =>
-        app.handle(new Request(`http://localhost/api/updates${path}`, init));
-      const checked = await call("/check", json({}));
-      const state = await checked.json();
+      const client = treaty(app).api;
+      const checked = await client.updates.check.post({});
+      const state = expectSuccess(checked);
       expect(state.status).toBe("available");
       expect(state.latestVersion).toBe("0.2.0");
       expect(state.downloadName).toBe(filename);
       expect(notified).toBe("0.2.0");
-      const installer = await call("/download", undefined);
+      const installer = await client.updates.download.get();
       expect(installer.status).toBe(200);
-      expect(await installer.text()).toBe("installer-bytes");
-      expect(installer.headers.get("content-disposition")).toContain(filename);
+      expect(new TextDecoder().decode(torrentBytes(installer))).toBe("installer-bytes");
+      expect(installer.response.headers.get("content-disposition")).toContain(filename);
       updates.close();
       const reopened = await UpdatesService.open(options);
-      await reopened.check();
+      const reopenedClient = treaty(await createTestUpdatesApi(() => reopened, sync.options)).api;
+      expectSuccess(await reopenedClient.updates.check.post({}));
       expect(requests).toBe(3);
       expect(notified).toBe("0.2.0");
       reopened.close();
@@ -487,7 +424,6 @@ test.each([
     }
   }
 );
-
 test("an unavailable GitHub API surfaces an error state without blocking later checks", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-error-"));
   const sync = await openTestDatabase(join(folder, "sync"));
@@ -515,16 +451,15 @@ test("an unavailable GitHub API surfaces an error state without blocking later c
     version: "0.1.0",
   });
   const app = new Elysia().use(await createTestUpdatesApi(() => updates, sync.options));
-  const call = (path: string, init: RequestInit | undefined) =>
-    app.handle(new Request(`http://localhost/api/updates${path}`, init));
+  const client = treaty(app).api;
   try {
-    const checked = await call("/check", json({}));
-    const state = await checked.json();
+    const checked = await client.updates.check.post({});
+    const state = expectSuccess(checked);
     expect(state.status).toBe("error");
     expect(state.error).toBe("GitHub rejected the update check (HTTP 403)");
     failing = false;
-    const retried = await call("/check", json({}));
-    const next = await retried.json();
+    const retried = await client.updates.check.post({});
+    const next = expectSuccess(retried);
     expect(next.status).toBe("available");
   } finally {
     updates.close();

@@ -1,6 +1,7 @@
 import type {
   AniListEntry,
   AniListMedia,
+  AniListReleaseSearchPlan,
   AutomationPreferences,
   FeedRelease,
 } from "../../../types";
@@ -9,19 +10,120 @@ import { parseDiscovery } from "./service";
 
 const partNumber = /\bpart\s*(\d+)\b/i;
 const partSuffix = /\s+part\s*\d+$/i;
+const romanSeasonSuffix = /\s+([IVX]+)$/i;
+const courPartSuffix = /\s+(?:\(\s*)?(?:part|cour)\s*(\d+)\s*\)?$/i;
+const subtitleSeparator = /:\s+/;
+const romanSeasons = [
+  "I",
+  "II",
+  "III",
+  "IV",
+  "V",
+  "VI",
+  "VII",
+  "VIII",
+  "IX",
+  "X",
+  "XI",
+  "XII",
+  "XIII",
+  "XIV",
+  "XV",
+  "XVI",
+  "XVII",
+  "XVIII",
+  "XIX",
+  "XX",
+];
+
+export function animeSeriesTitle(title: string, season: number | null) {
+  const parsed = parseDiscovery(title);
+  const series = parsed.season === season ? parsed.title : title;
+  const roman = series.match(romanSeasonSuffix);
+  if (
+    season !== null &&
+    roman?.[1] &&
+    romanSeasons.indexOf(roman[1].toUpperCase()) + 1 === season
+  ) {
+    return series.slice(0, roman.index).trim();
+  }
+  return series;
+}
+
+export function animeSearchPlan(
+  entry: AniListMedia,
+  seriesTitles: string[],
+  season: number | null,
+  part: number | null
+): AniListReleaseSearchPlan {
+  const names = [...new Set(seriesTitles)];
+  const requestedPart = part ?? 1;
+  return {
+    entry: {
+      ...entry,
+      aliases: [
+        ...new Set([
+          ...entry.aliases,
+          ...names.map(
+            (title) =>
+              `${title}${season ? ` Season ${season}` : ""}${requestedPart > 1 ? ` Part ${requestedPart}` : ""}`
+          ),
+        ]),
+      ],
+      // Search metadata is ephemeral: catalogue titles and user data remain intact.
+      title:
+        requestedPart > 1 && !partNumber.test(entry.title)
+          ? `${entry.title} Part ${requestedPart}`
+          : entry.title,
+    },
+    part,
+    season,
+    seriesTitles: names,
+    titles: names.map((title) => `${title}${season ? ` S${String(season).padStart(2, "0")}` : ""}`),
+    warning: null,
+  };
+}
+
+export function localAnimeSearch(entry: AniListMedia) {
+  const aliases = [
+    ...new Map(
+      [entry.title, ...entry.aliases].map((title) => [normalizeTitle(title), title])
+    ).values(),
+  ];
+  const part = aliases.map((title) => title.match(courPartSuffix)?.[1]).find(Boolean);
+  const withoutParts = aliases.map((title) => title.replace(courPartSuffix, "").trim());
+  const explicitSeason = withoutParts
+    .map((title) => parseDiscovery(title).season)
+    .find((candidate) => candidate !== null);
+  const romanVotes = withoutParts.map((title) => {
+    const roman = title.match(romanSeasonSuffix)?.[1];
+    return roman ? romanSeasons.indexOf(roman.toUpperCase()) + 1 : 0;
+  });
+  // Require agreement between distinct aliases before interpreting a Roman numeral as a season.
+  const romanSeason = romanVotes.find(
+    (candidate) => candidate > 1 && romanVotes.filter((vote) => vote === candidate).length > 1
+  );
+  const season = explicitSeason ?? romanSeason ?? null;
+  const titles = withoutParts.slice(0, 2).map((title) => {
+    const series = animeSeriesTitle(title, season);
+    // Short subtitles may identify a different work; only shorten verbose catalogue titles.
+    return series.length > 80 ? series.split(subtitleSeparator)[0]?.trim() || series : series;
+  });
+  return animeSearchPlan(entry, titles, season, part ? Number(part) : null);
+}
 
 export function animeEpisodeOffset(entry: AniListMedia, library: AniListEntry[]) {
   const part = Number(entry.title.match(partNumber)?.[1] ?? 1);
   let offset = 0;
-  const bases = entry.aliases.map((alias) => normalizeTitle(alias.replace(partSuffix, "")));
+  const bases = new Set(
+    entry.aliases.map((alias) => normalizeTitle(alias.replace(partSuffix, "")))
+  );
   for (let previous = 1; previous < part; previous += 1) {
     const predecessor = library.find(
       (candidate) =>
         candidate.mediaId !== entry.mediaId &&
         Number(candidate.title.match(partNumber)?.[1] ?? 1) === previous &&
-        candidate.aliases.some((alias) =>
-          bases.includes(normalizeTitle(alias.replace(partSuffix, "")))
-        )
+        candidate.aliases.some((alias) => bases.has(normalizeTitle(alias.replace(partSuffix, ""))))
     );
     if (!predecessor?.episodes) {
       return null;
@@ -134,8 +236,12 @@ export function matchesAnimeRelease(
   return identity && localMatch(matcher, release) === null;
 }
 
-export function animeQueries(entry: AniListMedia, preferences: AutomationPreferences) {
-  const titles = [...new Set([entry.title, ...entry.aliases])].slice(0, 2);
+export function animeQueries(
+  entry: AniListMedia,
+  preferences: AutomationPreferences,
+  searchTitles?: string[]
+) {
+  const titles = searchTitles ?? [...new Set([entry.title, ...entry.aliases])].slice(0, 2);
   return preferences.languages.length
     ? titles.flatMap((title) => preferences.languages.map((language) => `${title} ${language}`))
     : titles;

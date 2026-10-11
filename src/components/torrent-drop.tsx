@@ -1,9 +1,9 @@
-import { EdenFetchError } from "@elysia/eden";
 import { useMutation } from "@teyik0/furin/client";
 import { useSetAtom } from "jotai";
 import { DownloadIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { api } from "../lib/client";
+import { errorMessage } from "../lib/errors";
 import { useRefresh } from "../lib/navigation";
 import { playSoundCue } from "../lib/sound-cues";
 import { modalAtom, selectedTorrentAtom } from "../state/workspace";
@@ -39,19 +39,7 @@ export function TorrentDrop({ activeDestination }: { activeDestination: string |
       }
       playSoundCue("added");
     } catch (cause) {
-      const value: unknown = cause instanceof EdenFetchError ? cause.value : null;
-      setError(
-        value && typeof value === "object" && "error" in value && typeof value.error === "string"
-          ? value.error
-          : value &&
-              typeof value === "object" &&
-              "detail" in value &&
-              typeof value.detail === "string"
-            ? value.detail
-            : cause instanceof Error
-              ? cause.message
-              : "Unable to add the torrent"
-      );
+      setError(errorMessage(cause, "Unable to add the torrent"));
     } finally {
       await refresh();
     }

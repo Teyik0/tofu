@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { DashboardState, DesktopState, ServerInfo } from "../src/types";
-import { fixture, json, waitFor } from "../tests/helpers";
+import { fixture, json, waitFor } from "../tests/helpers/torrent";
 import { nativeRequest } from "./native-request";
 
 const root = join(import.meta.dir, "..");
@@ -81,7 +81,12 @@ try {
   ).json();
   await waitFor(dashboard, (state) =>
     state.torrents.some(
-      (torrent) => torrent.id === id && torrent.downloaded > 0 && torrent.progress < 1
+      (torrent) =>
+        torrent.id === id &&
+        torrent.downloaded !== null &&
+        torrent.downloaded > 0 &&
+        torrent.progress !== null &&
+        torrent.progress < 1
     )
   );
   await call("/desktop/background", json({}));

@@ -1,10 +1,9 @@
 import { createIsomorphicFn } from "@teyik0/furin";
 import { createClient } from "@teyik0/furin/client";
-import type { Api } from "@/api";
-import { serverApiFetch } from "../api/lib/transport";
+import { type Api, apiPlugin } from "@/api";
 
 export const api = createIsomorphicFn()
-  .server(() => createClient<Api>("http://tofu.internal", { fetcher: serverApiFetch }).api)
+  .server(() => createClient(apiPlugin).api)
   .client(
     () =>
       createClient<Api>(window.location.origin, {

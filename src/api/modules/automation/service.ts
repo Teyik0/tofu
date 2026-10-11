@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { HTTPError } from "elysia";
 import parseTorrent from "parse-torrent";
 import {
   automationDecisions,
@@ -10,6 +11,7 @@ import {
 } from "../../../db/schema";
 import type {
   AniListClient,
+  AniListMedia,
   AniListReleases,
   AutomationDecision,
   AutomationDraft,
@@ -21,8 +23,8 @@ import type {
   EnginePort,
   FeedRelease,
   PluginId,
-  PluginState,
   SourcePluginId,
+  StoredPlugin,
 } from "../../../types";
 import {
   type DatabaseConnection,
@@ -30,7 +32,6 @@ import {
   openDatabase,
   type TofuDatabase,
 } from "../../lib/db";
-import { UserError } from "../../lib/errors";
 import { refreshRecords } from "../../lib/persisted-cache";
 import { AniListService } from "../anilist/service";
 import {
@@ -38,6 +39,9 @@ import {
   animeEpisodeRelease,
   animeQueries,
   animeReleaseCandidate,
+  animeSearchPlan,
+  animeSeriesTitle,
+  localAnimeSearch,
   matchesAnimeRelease,
 } from "../discovery/anime";
 import {
@@ -48,18 +52,19 @@ import {
   matchesDiscovery,
   parseDiscovery,
 } from "../discovery/service";
+import { collectSourceQueries, uniqueReleases } from "../discovery/sources";
 import {
+  animeSearchQuestions,
   discoveryMatchQuestions,
   discoveryTitleQuestions,
   interpretationQuestions,
+  type JevAnswer,
   type JevQuestions,
   type JevResult,
   matchQuestions,
-  parseJevResponse,
   safeReleaseState,
 } from "../jev/service";
-import { normalizePluginCredential, validatePluginCredential } from "../plugins/credentials";
-import { parseNyaaHtml, parseRss, parseTsundere } from "../plugins/feeds";
+import { ProviderAccess } from "../plugins/providers";
 import { type PluginEndpoints, plugins } from "../plugins/service";
 import {
   compareQuality,
@@ -74,16 +79,20 @@ import {
 
 const feedExpression1 = /^(Source unavailable|Invalid RSS feed|RSS feed missing|Invalid JSON feed)/;
 
+function confidentAnimeNumber(answer: JevAnswer | undefined) {
+  if ((answer?.confidence ?? 0) < 0.8) {
+    return null;
+  }
+  const value = Number(answer?.choice);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
 export interface AutomationOptions {
   anilistClient?: AniListClient;
   dataDir: string;
   endpoints: PluginEndpoints;
   engine: () => EnginePort;
   now: () => number;
-}
-interface StoredPlugin extends PluginState {
-  apiKey: string;
-  callsDay: string;
 }
 
 interface PreparedRule {
@@ -101,7 +110,7 @@ export class AutomationService {
   private isEnabled(id: PluginId): boolean {
     return this.plugins.get(id)?.enabled === true;
   }
-  private readonly requests = new Map<PluginId, Set<AbortController>>();
+  private readonly providers: ProviderAccess;
   private readonly rules = new Map<string, AutomationRule>();
   private readonly decisions = new Map<string, AutomationDecision>();
   private readonly runs = new Map<string, Promise<AutomationState>>();
@@ -110,8 +119,6 @@ export class AutomationService {
   private readonly startupState: { started: boolean } = { started: false };
   private readonly releases = new Map<string, FeedRelease>();
   private readonly additions = new Map<string, Promise<{ id: string }>>();
-  private c411Queue: Promise<void> = Promise.resolve();
-  private c411NextAt = 0;
   private readonly discoveryResolver = new DiscoveryResolver();
   private preferences: AutomationPreferences = defaultAutomationPreferences;
 
@@ -120,6 +127,12 @@ export class AutomationService {
   private readonly ownsDatabase: boolean;
   private constructor(options: AutomationOptions, db: TofuDatabase, ownsDatabase: boolean) {
     this.options = options;
+    this.providers = new ProviderAccess({
+      ...options,
+      isClosed: () => this.isClosed(),
+      plugins: this.plugins,
+      storePlugin: (plugin) => this.storePlugin(plugin),
+    });
     this.ownsDatabase = ownsDatabase;
     this.db = db;
     const storedPreferences = this.db
@@ -302,7 +315,7 @@ export class AutomationService {
   configure(id: string, input: { enabled: boolean; apiKey?: string; dailyLimit?: number }) {
     const plugin = this.plugins.get(id as PluginId);
     if (!plugin) {
-      throw new UserError("Unknown plugin", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown plugin");
     }
     const next = {
       ...plugin,
@@ -311,13 +324,11 @@ export class AutomationService {
       error: null,
     };
     if (next.enabled && (id === "c411" || id === "jev") && !next.apiKey) {
-      throw new UserError("Add your API key before enabling this plugin", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Add your API key before enabling this plugin");
     }
     this.plugins.set(next.id, next);
     if (!next.enabled) {
-      for (const controller of this.requests.get(next.id) ?? []) {
-        controller.abort();
-      }
+      this.providers.abort(next.id);
       if (next.id === "anilist") {
         this.anilist.suspend();
       }
@@ -334,9 +345,9 @@ export class AutomationService {
         { connected: { instructions: "Does the message say connection test?", type: "noul" } }
       );
     } else if (id === "nyaa" || id === "tsundere" || id === "c411") {
-      await this.fetchSource(id, "");
+      await this.providers.fetchSource(id, "");
     } else {
-      throw new UserError("Unknown plugin", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown plugin");
     }
     return this.snapshot();
   }
@@ -345,39 +356,14 @@ export class AutomationService {
     input: { apiKey?: string; enabled: boolean; dailyLimit?: number }
   ) {
     if (id !== "c411" && id !== "jev") {
-      throw new UserError("This plugin does not use an API key", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("This plugin does not use an API key");
     }
     const plugin = this.plugins.get(id);
     if (!plugin || this.isClosed()) {
-      throw new UserError("Plugin unavailable", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("Plugin unavailable");
     }
-    const apiKey = normalizePluginCredential(id, input.apiKey ?? "");
-    if (!apiKey) {
-      throw new UserError("Paste your API key before validating the connection", { status: 400 });
-    }
-    const controller = new AbortController();
-    const active = this.requests.get(id) ?? new Set<AbortController>();
-    active.add(controller);
-    this.requests.set(id, active);
-    let timeout: ReturnType<typeof setTimeout> | null = null;
     try {
-      if (id === "c411") {
-        await this.reserveC411(controller);
-      } else {
-        this.reserveJevCall(plugin);
-      }
-      timeout = setTimeout(() => controller.abort(), 15_000);
-      await validatePluginCredential({
-        apiKey,
-        endpoint: this.options.endpoints[id],
-        id,
-        signal: controller.signal,
-      });
-      if (this.isClosed() || controller.signal.aborted || this.plugins.get(id) !== plugin) {
-        throw new UserError("Plugin settings changed. Try validating the key again.", {
-          status: 409,
-        });
-      }
+      const apiKey = await this.providers.validateCredential(id, input.apiKey ?? "", plugin);
       this.configure(id, { ...input, apiKey });
       const updated = this.plugins.get(id);
       if (updated) {
@@ -386,119 +372,20 @@ export class AutomationService {
       }
       return this.snapshot();
     } catch (cause) {
-      throw cause instanceof UserError
+      throw cause instanceof HTTPError
         ? cause
-        : new UserError(
-            `Unable to validate your ${id === "c411" ? "C411" : "TypeSafe"} API key. Check your connection and try again.`,
-            { status: 502 }
+        : new (HTTPError.id("BAD_GATEWAY", 502))(
+            `Unable to validate your ${id === "c411" ? "C411" : "TypeSafe"} API key. Check your connection and try again.`
           );
-    } finally {
-      if (timeout !== null) {
-        clearTimeout(timeout);
-      }
-      active.delete(controller);
     }
   }
-  private reserveJevCall(plugin: StoredPlugin) {
-    const day = new Date(this.options.now()).toISOString().slice(0, 10);
-    if (plugin.callsDay !== day) {
-      plugin.callsDay = day;
-      plugin.callsToday = 0;
-    }
-    if (plugin.callsToday >= plugin.dailyLimit) {
-      throw new UserError("Jev daily limit reached", { status: 429 });
-    }
-    plugin.callsToday += 1;
-    this.storePlugin(plugin);
-  }
-  private reserveC411(controller: AbortController) {
-    const reservation = this.c411Queue.then(async () => {
-      controller.signal.throwIfAborted();
-      const delay = Math.max(0, this.c411NextAt - Date.now());
-      if (delay > 0) {
-        await new Promise<void>((resolve, reject) => {
-          const abort = () => {
-            clearTimeout(timer);
-            reject(controller.signal.reason);
-          };
-          const timer = setTimeout(() => {
-            controller.signal.removeEventListener("abort", abort);
-            resolve();
-          }, delay);
-          controller.signal.addEventListener("abort", abort, { once: true });
-        });
-      }
-      controller.signal.throwIfAborted();
-      this.c411NextAt = Date.now() + 4100;
-    });
-    this.c411Queue = reservation.catch(() => undefined);
-    return reservation;
-  }
-  private async fetchSource(sourceId: SourcePluginId, query: string) {
-    const plugin = this.plugins.get(sourceId);
-    if (!plugin?.enabled) {
-      return [];
-    }
-    const url = new URL(this.options.endpoints[sourceId]);
-    if (sourceId === "nyaa") {
-      url.searchParams.set("page", "rss");
-      url.searchParams.set("q", query);
-    }
-    if (sourceId === "tsundere") {
-      url.searchParams.set("limit", "250");
-      url.searchParams.set("provider", "nyaa.si");
-    }
-    if (sourceId === "c411") {
-      url.searchParams.set("t", "search");
-      url.searchParams.set("q", query);
-      url.searchParams.set("apikey", plugin.apiKey);
-      url.searchParams.set("limit", "100");
-    }
-    const controller = new AbortController();
-    const active = this.requests.get(sourceId) ?? new Set<AbortController>();
-    active.add(controller);
-    this.requests.set(sourceId, active);
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    try {
-      if (sourceId === "c411") {
-        await this.reserveC411(controller);
-      }
-      timeout = setTimeout(() => controller.abort(), 12_000);
-      const response = await fetch(url, { signal: controller.signal });
-      let releases: FeedRelease[];
-      if (sourceId === "nyaa" && !response.ok) {
-        url.searchParams.delete("page");
-        const fallback = await fetch(url, { signal: controller.signal });
-        if (!fallback.ok) {
-          throw new Error(`Source unavailable (HTTP ${fallback.status})`);
-        }
-        releases = parseNyaaHtml(await fallback.text(), url.href);
-      } else {
-        if (!response.ok) {
-          throw new Error(`Source unavailable (HTTP ${response.status})`);
-        }
-        const text = await response.text();
-        releases = sourceId === "tsundere" ? parseTsundere(text) : parseRss(text, sourceId);
-      }
-      if (!this.plugins.get(sourceId)?.enabled || this.isClosed()) {
-        return [];
-      }
-      plugin.error = null;
-      plugin.checkedAt = this.options.now();
-      return releases;
-    } finally {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      active.delete(controller);
-    }
-  }
+
   private async discovery(query: string, sources: SourcePluginId[]): Promise<DiscoveryResult> {
     const result: DiscoveryResult = { errors: [], releases: [] };
     await Promise.all(
       [...new Set(sources)].map(async (sourceId) => {
         try {
-          result.releases.push(...(await this.fetchSource(sourceId, query)));
+          result.releases.push(...(await this.providers.fetchSource(sourceId, query)));
         } catch (cause) {
           if (!this.plugins.get(sourceId)?.enabled || this.isClosed()) {
             return;
@@ -571,39 +458,22 @@ export class AutomationService {
     if (!search.queries.length) {
       search.queries = [search.title];
     }
-    const releases = new Map<string, FeedRelease>();
-    const errors = new Map<SourcePluginId, DiscoveryResult["errors"][number]>();
-    await Promise.all(
-      active.map(async (sourceId) => {
-        // Tsundere exposes a recent feed, not a search endpoint: fetch it once and filter locally.
-        const queries = sourceId === "tsundere" ? [search.title] : search.queries;
-        for (const variant of queries) {
-          if (this.isClosed() || !this.isEnabled(sourceId)) {
-            break;
-          }
-          // biome-ignore lint/performance/noAwaitInLoops: bound each provider's requests and preserve C411 rate limiting.
-          const result = await this.discovery(variant, [sourceId]);
-          for (const release of result.releases) {
-            if (discoveryCandidate(search, release)) {
-              releases.set(`${release.sourceId}:${release.id}`, release);
-            }
-          }
-          const [error] = result.errors;
-          if (error) {
-            errors.set(sourceId, error);
-            break;
-          }
-        }
-      })
-    );
-    const candidates = [...releases.values()];
+    const result = await collectSourceQueries({
+      accept: (release) => discoveryCandidate(search, release),
+      active: (source) => !this.isClosed() && this.isEnabled(source),
+      enough: () => Promise.resolve(false),
+      queries: (source) => (source === "tsundere" ? [search.title] : search.queries),
+      search: (variant, source) => this.discovery(variant, [source]),
+      sources: active,
+    });
+    const candidates = uniqueReleases(result.releases);
     const ranked = semantic
       ? await this.rankDiscovery(query, search, candidates, (release) =>
           matchesDiscovery(search, release)
         )
       : candidates.filter((release) => matchesDiscovery(search, release));
     return {
-      errors: [...errors.values()],
+      errors: result.errors,
       releases: ranked
         .filter((release) => !this.isClosed() && this.isEnabled(release.sourceId))
         .map((release) => this.publicRelease(release)),
@@ -674,34 +544,56 @@ export class AutomationService {
       )
       .map(({ release }) => release);
   }
+  private async animeSearch(entry: AniListMedia) {
+    const interpretation = animeSearchQuestions(entry);
+    const fallback = localAnimeSearch(entry);
+    try {
+      const result = await this.askJev(
+        { anime: { aliases: entry.aliases, titles: interpretation.titles } },
+        interpretation.questions
+      );
+      if (!result) {
+        return fallback;
+      }
+      const season = fallback.season ?? confidentAnimeNumber(result.answers.season);
+      const titles = interpretation.prefixes.map((values, index) => {
+        const answer = result.answers[`title_${index}`];
+        const original = fallback.seriesTitles[index] ?? fallback.seriesTitles[0] ?? entry.title;
+        // Equivalent prefixes can split confidence; manual searches still verify each release.
+        return answer?.confidence !== undefined && answer.confidence >= 0.5
+          ? animeSeriesTitle(values[Number(answer.choice)] ?? original, season)
+          : original;
+      });
+      const part = fallback.part ?? confidentAnimeNumber(result.answers.part);
+      return animeSearchPlan(entry, titles, season, part);
+    } catch {
+      return {
+        ...fallback,
+        warning: "Jev search interpretation unavailable; searching with local title matching.",
+      };
+    }
+  }
   async animeReleases(mediaId: number): Promise<AniListReleases> {
-    const entry = await this.anilist.media(mediaId);
+    const original = await this.anilist.media(mediaId);
+    const plan = await this.animeSearch(original);
+    const { entry, titles } = plan;
     const sources = (["nyaa", "tsundere", "c411"] as const).filter((id) => this.isEnabled(id));
     const { preferences } = this;
     const offset = animeEpisodeOffset(entry, this.anilist.snapshot().entries);
     const contextual = (release: FeedRelease) => animeEpisodeRelease(entry, offset, release);
-    const titles = [...new Set([entry.title, ...entry.aliases])].slice(0, 2);
-    const results = await Promise.all(
-      sources.map(async (sourceId) => {
-        let queries = titles;
-        if (sourceId === "nyaa") {
-          queries = animeQueries(entry, preferences);
-        } else if (sourceId === "tsundere") {
-          queries = titles.slice(0, 1);
+    const result = await collectSourceQueries({
+      accept: () => true,
+      active: () => true,
+      enough: () => Promise.resolve(false),
+      queries: (source) => {
+        if (source === "nyaa") {
+          return animeQueries(entry, preferences, titles);
         }
-        const found: DiscoveryResult = { errors: [], releases: [] };
-        for (const query of queries) {
-          // biome-ignore lint/performance/noAwaitInLoops: preserve provider rate limits and stop on outages.
-          const result = await this.discovery(query, [sourceId]);
-          found.releases.push(...result.releases);
-          found.errors.push(...result.errors);
-          if (result.errors.length) {
-            break;
-          }
-        }
-        return found;
-      })
-    );
+        return source === "tsundere" ? titles.slice(0, 1) : titles;
+      },
+      search: (sourceQuery, source) => this.discovery(sourceQuery, [source]),
+      sources,
+    });
     const matches = (release: FeedRelease) => matchesAnimeRelease(entry, preferences, release);
     const stored = [...this.releases.values()]
       .map(contextual)
@@ -709,14 +601,20 @@ export class AutomationService {
       .filter(matches);
     const candidates = [
       ...new Map(
-        [...stored, ...results.flatMap((result) => result.releases)]
+        [...stored, ...result.releases]
           .map(contextual)
           .filter((release): release is FeedRelease => release !== null)
           .filter((release) => animeReleaseCandidate(entry, preferences, release))
           .map((release) => [`${release.sourceId}:${release.id}`, this.publicRelease(release)])
       ).values(),
     ];
-    const search = { ...classicDiscovery(entry.title), aliases: entry.aliases, resolved: true };
+    const search = {
+      ...classicDiscovery(original.title),
+      aliases: entry.aliases,
+      resolved: true,
+      season: plan.season,
+      warning: plan.warning,
+    };
     const jev = this.plugins.get("jev");
     const query = `Find releases for "${entry.title}". Allowed languages: ${preferences.languages.join(", ") || "any"}. Allowed resolutions: ${preferences.resolutions.join(", ") || "any"}. Allowed codecs: ${preferences.codecs.join(", ") || "any"}. ${offset ? `The preceding parts have ${offset} episodes; sourceEpisode uses continuous numbering and episode is relative to this part.` : ""}`;
     const ranked =
@@ -734,11 +632,7 @@ export class AutomationService {
       }
     }
     return {
-      errors: [
-        ...new Map(
-          results.flatMap((result) => result.errors).map((error) => [error.sourceId, error])
-        ).values(),
-      ],
+      errors: result.errors,
       releases,
       search,
       torrents: this.options
@@ -756,7 +650,7 @@ export class AutomationService {
   ) {
     const release = this.releases.get(`${sourceId}:${id}`);
     if (!release) {
-      throw new UserError("Search for this release before adding it", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Search for this release before adding it");
     }
     const key = release.infoHash ?? `${sourceId}:${id}`;
     const pending = this.additions.get(key);
@@ -778,30 +672,11 @@ export class AutomationService {
     allowed: (() => boolean) | undefined
   ) {
     if (!this.isEnabled(release.sourceId) || this.isClosed()) {
-      throw new UserError("Plugin disabled", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("Plugin disabled");
     }
     let input: string | Uint8Array = release.downloadUrl;
     if (!input.startsWith("magnet:")) {
-      const controller = new AbortController();
-      const active = this.requests.get(release.sourceId) ?? new Set<AbortController>();
-      active.add(controller);
-      this.requests.set(release.sourceId, active);
-      const timeout = setTimeout(() => controller.abort(), 15_000);
-      try {
-        const response = await fetch(input, { signal: controller.signal });
-        if (!response.ok) {
-          throw new UserError(`Torrent file unavailable (HTTP ${response.status})`, {
-            status: 502,
-          });
-        }
-        input = new Uint8Array(await response.arrayBuffer());
-        if (input.byteLength > 8 * 1024 * 1024) {
-          throw new UserError("Torrent file too large", { status: 400 });
-        }
-      } finally {
-        clearTimeout(timeout);
-        active.delete(controller);
-      }
+      input = await this.providers.downloadFile(release);
     }
     const parsed = await parseTorrent(input);
     if (parsed.infoHash && release.infoHash !== parsed.infoHash) {
@@ -809,10 +684,10 @@ export class AutomationService {
       this.storeRelease(release);
     }
     if (this.isClosed() || !this.isEnabled(release.sourceId)) {
-      throw new UserError("Plugin disabled", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("Plugin disabled");
     }
     if (allowed && !allowed()) {
-      throw new UserError("Automation changed or release ignored", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("Automation changed or release ignored");
     }
     const existing = this.options
       .engine()
@@ -837,47 +712,16 @@ export class AutomationService {
     if (cached && cached.createdAt > this.options.now() - 86_400_000) {
       return JSON.parse(cached.value) as JevResult;
     }
-    this.reserveJevCall(plugin);
-    const controller = new AbortController();
-    const active = this.requests.get("jev") ?? new Set<AbortController>();
-    active.add(controller);
-    this.requests.set("jev", active);
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-    try {
-      const response = await fetch(this.options.endpoints.jev, {
-        body: JSON.stringify({ model: "jev-latest", questions, state }),
-        headers: { authorization: `Bearer ${plugin.apiKey}`, "content-type": "application/json" },
-        method: "POST",
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new UserError(`Jev unavailable (HTTP ${response.status})`, { status: 503 });
-      }
-      const result = parseJevResponse(await response.json(), questions);
-      if (this.isClosed() || !this.isEnabled("jev")) {
-        throw new UserError("Jev plugin disabled", { status: 409 });
-      }
-      plugin.error = null;
-      plugin.checkedAt = this.options.now();
-      const judgement = { createdAt: this.options.now(), value: JSON.stringify(result) };
-      this.db
-        .insert(automationJudgements)
-        .values({ id: key, ...judgement })
-        .onConflictDoUpdate({ set: judgement, target: automationJudgements.id })
-        .run();
-      return result;
-    } catch (cause) {
-      if (plugin.enabled) {
-        plugin.error = "Jev evaluation unavailable";
-      }
-      throw cause instanceof UserError
-        ? cause
-        : new UserError("Unable to connect to Jev", { status: 503 });
-    } finally {
-      clearTimeout(timeout);
-      active.delete(controller);
-    }
+    const result = await this.providers.evaluate(state, questions, plugin);
+    const judgement = { createdAt: this.options.now(), value: JSON.stringify(result) };
+    this.db
+      .insert(automationJudgements)
+      .values({ id: key, ...judgement })
+      .onConflictDoUpdate({ set: judgement, target: automationJudgements.id })
+      .run();
+    return result;
   }
+
   async interpret(query: string, destinationId: string): Promise<AutomationDraft> {
     const draft = interpretLocally(query, destinationId, this.preferences);
     const interpretation = interpretationQuestions(draft);
@@ -918,34 +762,17 @@ export class AutomationService {
       draft.matchMode === "pattern"
         ? [""]
         : [...new Map(titles.map((title) => [normalizeTitle(title), title])).values()].slice(0, 2);
-    const result: DiscoveryResult = { errors: [], releases: [] };
-    await Promise.all(
-      [...new Set(draft.sources)].map(async (sourceId) => {
-        const variants = sourceId === "tsundere" ? queries.slice(0, 1) : queries;
-        for (const [index, query] of variants.entries()) {
-          if (this.isClosed() || !this.isEnabled(sourceId)) {
-            break;
-          }
-          // biome-ignore lint/performance/noAwaitInLoops: try English only after the primary search has no acceptable match.
-          const found = await this.discovery(query, [sourceId]);
-          result.releases.push(...found.releases);
-          result.errors.push(...found.errors);
-          if (found.errors.length || index === variants.length - 1) {
-            break;
-          }
-          if (await this.hasAutomationMatch(draft, found.releases)) {
-            break;
-          }
-        }
-      })
-    );
-    result.releases = [
-      ...new Map(
-        result.releases.map((release) => [`${release.sourceId}:${release.id}`, release])
-      ).values(),
-    ];
-    return result;
+    const result = await collectSourceQueries({
+      accept: () => true,
+      active: (source) => !this.isClosed() && this.isEnabled(source),
+      enough: (releases) => this.hasAutomationMatch(draft, releases),
+      queries: (source) => (source === "tsundere" ? queries.slice(0, 1) : queries),
+      search: (query, source) => this.discovery(query, [source]),
+      sources: draft.sources,
+    });
+    return { ...result, releases: uniqueReleases(result.releases) };
   }
+
   private async hasAutomationMatch(draft: AutomationDraft, releases: FeedRelease[]) {
     for (const release of releases) {
       // biome-ignore lint/performance/noAwaitInLoops: stop evaluating once a primary match is accepted.
@@ -1017,7 +844,7 @@ export class AutomationService {
   private rule(id: string) {
     const rule = this.rules.get(id);
     if (!rule) {
-      throw new UserError("Unknown automation", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown automation");
     }
     return rule;
   }
@@ -1034,20 +861,20 @@ export class AutomationService {
         .snapshot(null, false)
         .destinations.some((destination) => destination.id === draft.destinationId)
     ) {
-      throw new UserError("Unknown destination", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
     }
     if (draft.matchMode === "pattern") {
       if (draft.title.length > 256) {
-        throw new UserError("Pattern too long", { status: 400 });
+        throw new (HTTPError.id("BAD_REQUEST", 400))("Pattern too long");
       }
       try {
         new RegExp(draft.title, "iu").test("");
       } catch (cause) {
-        throw new UserError("Invalid pattern", { cause, status: 400 });
+        throw new (HTTPError.id("BAD_REQUEST", 400))("Invalid pattern", { cause });
       }
     }
     if (!(draft.title.trim() && draft.sources.length)) {
-      throw new UserError("Enter a title and at least one source", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Enter a title and at least one source");
     }
     const previous = id ? this.rule(id) : null;
     const rule: AutomationRule = {
@@ -1381,7 +1208,7 @@ export class AutomationService {
   async approve(id: string) {
     const decision = this.decisions.get(id);
     if (!decision) {
-      throw new UserError("Unknown release", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown release");
     }
     if (decision.status === "added" || decision.status === "ignored") {
       return this.snapshot();
@@ -1397,7 +1224,7 @@ export class AutomationService {
   ignoreDecision(tx: DatabaseConnection, id: string) {
     const decision = this.decisions.get(id);
     if (!decision) {
-      throw new UserError("Unknown release", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown release");
     }
     this.persistDecision({ ...decision, reason: "Ignored manually", status: "ignored" }, tx);
     return { ok: true };
@@ -1459,11 +1286,7 @@ export class AutomationService {
     if (this.timer) {
       clearInterval(this.timer);
     }
-    for (const requests of this.requests.values()) {
-      for (const controller of requests) {
-        controller.abort();
-      }
-    }
+    this.providers.close();
     await Promise.allSettled(this.runs.values());
     await Promise.allSettled(this.replacements.values());
     await Promise.allSettled(this.additions.values());

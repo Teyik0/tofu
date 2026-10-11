@@ -7,6 +7,7 @@ import {
   bulkActionSchema,
   createTorrentSchema,
   filePrioritySchema,
+  locateTorrentSchema,
   removeTorrentSchema,
   trackersSchema,
   uploadTorrentSchema,
@@ -45,6 +46,10 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
     application.engine.reannounce(params.id)
   )
   .post("/torrents/:id/verify", ({ application, params }) => application.engine.verify(params.id))
+  .post("/torrents/:id/repair", ({ application, params }) => application.engine.repair(params.id))
+  .post("/torrents/:id/locate", { body: locateTorrentSchema }, ({ application, params, body }) =>
+    application.engine.locate(params.id, body.downloadPath)
+  )
   .put("/torrents/:id/trackers", { body: trackersSchema }, ({ application, params, body }) =>
     application.engine.replaceTrackers(params.id, body.urls)
   )

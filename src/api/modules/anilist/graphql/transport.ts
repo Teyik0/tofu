@@ -1,6 +1,6 @@
+import { HTTPError } from "elysia";
 import type { DocumentNode } from "graphql";
 import { ClientError, GraphQLClient, type Variables } from "graphql-request";
-import { UserError } from "../../../lib/errors";
 import { getSdk } from "./generated";
 
 interface RequestOptions {
@@ -43,10 +43,10 @@ export function createAniListSdk(endpoint: string, token: () => string) {
               : "AniList: account or list inaccessible";
           // Do not expose upstream query variables or credentials in API errors.
           // biome-ignore lint/style/useErrorCause: ClientError contains sensitive upstream request and response data.
-          throw new UserError(message, { status: 502 });
+          throw new (HTTPError.id("BAD_GATEWAY", 502))(message);
         }
         // biome-ignore lint/style/useErrorCause: Transport errors may contain upstream request details or credentials.
-        throw new UserError("AniList unavailable", { status: 502 });
+        throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList unavailable");
       }
     }
   );

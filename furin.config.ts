@@ -21,6 +21,7 @@ export default defineConfig({
     },
     external: ["webtorrent", "parse-torrent"],
     hostEntry: "src/desktop-host.ts",
+    protocols: [release ? "tofu" : "tofu-dev"],
     sdk: {
       app: {
         fileAssociations: release
@@ -34,7 +35,6 @@ export default defineConfig({
         copy: {
           "LICENSE.md": "bun/LICENSE.md",
           "runtime/anilist-client.json": "bun/anilist-client.json",
-          "runtime/desktop-protocol.js": "bun/desktop-protocol.js",
           "src/db/drizzle": "bun/drizzle",
         },
         linux: { icon: "public/tofu-icon.png" },
@@ -52,6 +52,11 @@ export default defineConfig({
       },
       release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },
     },
+    tray: {
+      linux: { image: "public/icon.png" },
+      mac: { image: "public/tray-template.png", template: true },
+      win: { image: "public/icon.png" },
+    },
     window: { height: 940, width: 1400 },
   }),
   plugins: [
@@ -59,7 +64,6 @@ export default defineConfig({
     {
       name: tailwind.name,
       setup(builder) {
-        // Furin also probes plugins with a resolver-only runtime builder.
         if ("onBeforeParse" in builder) {
           return tailwind.setup(builder);
         }

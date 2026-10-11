@@ -2,7 +2,6 @@ import { defineRoute, notFound } from "@teyik0/furin";
 import { defer } from "@teyik0/furin/client";
 import { t } from "elysia";
 import { App } from "../../components/app";
-import { readData } from "../../lib/api-data";
 import { api } from "../../lib/client";
 import { route as root } from "../root";
 
@@ -15,9 +14,16 @@ export const route = defineRoute()
     }
     const initialTorrentId =
       state.torrents.find((torrent) => torrent.destinationId === params.id)?.id ?? null;
-    const initialDetail = initialTorrentId
-      ? api.torrents({ id: initialTorrentId }).get().then(readData)
-      : Promise.resolve(null);
+    const initialDetail = (async () => {
+      if (!initialTorrentId) {
+        return null;
+      }
+      const { data, error } = await api.torrents({ id: initialTorrentId }).get();
+      if (error !== null) {
+        throw error;
+      }
+      return data;
+    })();
     return defer({ initialDetail, initialTorrentId });
   })
   .head(() => ({ meta: [{ title: "Your downloads — Tofu" }] }))

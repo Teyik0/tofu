@@ -14,19 +14,77 @@ import {
 } from "../../components/ui/field";
 import { Switch } from "../../components/ui/switch";
 import { useSettingsAction } from "../../hooks/use-settings-action";
+import { api } from "../../lib/client";
 import { route as options } from "./_route";
 
 export const route = defineRoute()
   .config({ layout: options, mode: "ssr" })
+  .loader(async () => {
+    const { data, error } = await api.instance.get();
+    if (error !== null) {
+      throw error;
+    }
+    return { instance: data };
+  })
   .head(() => ({ meta: [{ title: "General settings — Tofu" }] }))
-  .page(() => {
+  .page(({ instance }) => {
     const { dashboard: data } = getRouteApi("/options").useLoaderData();
-    const { dispatchAction, busy, error } = useSettingsAction();
+    const { dispatchAction, busy, error, feedback } = useSettingsAction();
     return (
       <div aria-busy={busy}>
         <FieldSet>
           <FieldLegend>Behavior</FieldLegend>
           <FieldGroup className="settings-group">
+            {data.session.mode === "desktop" && (
+              <>
+                <Field className="settings-row" orientation="horizontal">
+                  <FieldContent>
+                    <FieldLabel htmlFor="default-torrent-app">
+                      Default .torrent application
+                    </FieldLabel>
+                    <FieldDescription id="default-torrent-app-description">
+                      {instance.profile === "release"
+                        ? "Open .torrent files from your file manager with Tofu. Your system may ask you to choose Tofu in its default application settings."
+                        : "Use the installed release of Tofu to change default applications. Development builds keep your current associations."}
+                    </FieldDescription>
+                  </FieldContent>
+                  <Button
+                    aria-describedby="default-torrent-app-description"
+                    disabled={busy || instance.profile !== "release"}
+                    id="default-torrent-app"
+                    onClick={() =>
+                      startTransition(() => dispatchAction({ type: "default-torrent-app" }))
+                    }
+                    variant="outline"
+                  >
+                    Set Tofu as default
+                  </Button>
+                </Field>
+                <Field className="settings-row" orientation="horizontal">
+                  <FieldContent>
+                    <FieldLabel htmlFor="delete-torrent-file-after-add">
+                      Delete .torrent file after adding
+                    </FieldLabel>
+                    <FieldDescription id="delete-torrent-file-after-add-description">
+                      Permanently delete the original .torrent file after a successful import from
+                      your file manager. Downloaded content is kept. Browser uploads and
+                      drag-and-drop imports keep the original file.
+                    </FieldDescription>
+                  </FieldContent>
+                  <Switch
+                    aria-describedby="delete-torrent-file-after-add-description"
+                    checked={data.settings.deleteTorrentFileAfterAdd}
+                    disabled={busy}
+                    id="delete-torrent-file-after-add"
+                    onCheckedChange={(deleteTorrentFileAfterAdd) =>
+                      startTransition(() =>
+                        dispatchAction({ settings: { deleteTorrentFileAfterAdd }, type: "update" })
+                      )
+                    }
+                  />
+                </Field>
+              </>
+            )}
             {data.session.mode === "desktop" ? (
               <Field className="settings-row" orientation="horizontal">
                 <FieldContent>
@@ -80,6 +138,11 @@ export const route = defineRoute()
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
+        )}
+        {feedback !== null && (
+          <p aria-live="polite" className="settings-feedback" role="status">
+            {feedback}
+          </p>
         )}
         <p className="settings-note">Your transfers and preferences are stored on this machine.</p>
       </div>

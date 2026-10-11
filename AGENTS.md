@@ -1,17 +1,174 @@
-# Tofu
+# Project rules
 
-Desktop torrent client: React/Furin → Elysia API → WebTorrent running on Bun, packaged with Electrobun. Use Bun for all commands; do not introduce Node, npm, Vite, or another torrent engine.
+These rules apply throughout the repository, to both new files and changes to existing code.
 
-- Use English throughout the repository: identifiers, comments, documentation, UI text, accessibility labels, API errors, logs, native menus, test descriptions, and commit scopes. Do not introduce French project-authored text. User-provided content, proper names, and language codes such as VF and VOSTFR retain their original meaning.
-- When translating text, update related test assertions and native selectors together. Use English date/number formatting and byte units (B, KiB, MiB, GiB, TiB). Preserve support for existing user input and persisted data; do not rewrite user-authored content merely to change its language.
-- Read the TDD skill before changing behavior. Test transfers and lifecycle behavior through public APIs with real peers in temporary directories.
-- Keep the engine on the Bun side and shared types in `src/types.ts`.
-- WebTorrent addons are external to the bundle. Resolve the Electrobun SDK from the Hutch devkit.
-- The tracker/wire bridge depends on WebTorrent 3.0.21; rerun the tests when upgrading it.
-- Never delete files when pausing, changing trackers, or resuming. Deleting data requires the explicit form option.
-- Display real statistics. Unknown values remain `null` in the API and `—` in the UI.
-- Do not use default function parameter values; prefer precise types over unstructured dictionaries.
-- Keep changes focused and explain the architecture choice and its alternative.
-- After changes, run `bun run tscheck`, `bun run fix`, `bun run test`, and `bun run build:desktop`. For UI or native integration changes, also run `bun run test:native`.
-- The native test script is opt-in through `TOFU_SMOKE_SCRIPT`. Never inject it by default.
-- Run the existing Git hooks before committing or pushing.
+## No function wrappers
+
+- Never create a function that simply wraps a call, a configuration object, or a construction chain. Write that code directly where it is used.
+- Do not move this indirection into a helper, a factory, a class, or a proxy. Renaming a wrapper does not make it acceptable.
+- Do not extract code merely to give it a name or avoid repeating a few lines. Prefer direct code.
+- Functions that perform actual processing are allowed; function wrappers are prohibited.
+
+Prohibited:
+
+```ts
+export function createSync(db: TofuDatabase) {
+  return {
+    adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),
+    principal: () => "local",
+  };
+}
+
+const sync = createSync(db);
+```
+
+Required, directly where the database is available:
+
+```ts
+const sync = {
+  adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),
+  principal: () => "local",
+};
+```
+
+## Elysia plugins
+
+- Always declare plugins directly as constants using `new Elysia()` and chain their configuration.
+- Never create plugin or application factories: no `createApi`, `createDashboardApi`, `createServer`, or equivalents under other names.
+- Do not wrap a plugin declaration in a function to inject its configuration.
+- Keep direct exports and infer types from the constants.
+
+```ts
+export const plugin = new Elysia({ name: "tofu-plugin" })
+  .use(contextPlugin)
+  .get("/example", handler);
+
+export type Plugin = typeof plugin;
+```
+
+## No interfaces that mirror implementations
+
+- Never introduce an interface that merely copies a class's public methods or properties. Use the class's instance type directly.
+- Infer function and method result types with `ReturnType<typeof functionOrMethod>`, using `Awaited` for asynchronous results, instead of maintaining duplicate result interfaces.
+- Do not create large service or port interfaces solely to wrap an existing implementation's type.
+- Interfaces for inputs, options, and configuration are allowed.
+
+Prohibited:
+
+```ts
+interface TorrentEnginePort {
+  pause(id: string): Promise<{ ok: boolean }>;
+  resume(id: string): Promise<{ ok: boolean }>;
+  close(): Promise<void>;
+}
+
+let engine: TorrentEnginePort | null = null;
+```
+
+Use the class directly:
+
+```ts
+let engine: TorrentEngine | null = null;
+```
+
+Or infer the result of its initialization method:
+
+```ts
+type Engine = Awaited<ReturnType<typeof TorrentEngine.open>>;
+
+let engine: Engine | null = null;
+```
+
+Input interfaces remain valid:
+
+```ts
+interface TorrentEngineOptions {
+  dataDir: string;
+  downloadPath: string;
+}
+```
+
+## Isomorphic Eden client: required implementation
+
+- Preserve the implementation below in `src/lib/client.ts`. This is an explicit project decision, not a workaround to refactor.
+- The server branch must use `createClient(apiPlugin).api` directly. Eden dispatches to the API plugin without a network request.
+- The browser branch must use `createClient<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).api`.
+- Never replace `apiPlugin` with the root application or import `app` or `server` into this client.
+- Never add a custom `fetcher`, manual `app.handle()` dispatch, an internal HTTP origin, request-scoped `AsyncLocalStorage`, or cookie/origin/header forwarding for this client.
+- Do not introduce transport middleware or application restructuring to route server-side Eden calls through desktop or HTTP guards. Direct dispatch to `apiPlugin` is intentional.
+- Do not change this architecture unless the user explicitly requests a change to the isomorphic client transport. Preserve it during unrelated fixes and refactors.
+
+Required implementation:
+
+```ts
+import { createIsomorphicFn } from "@teyik0/furin";
+import { createClient } from "@teyik0/furin/client";
+import { type Api, apiPlugin } from "@/api";
+
+export const api = createIsomorphicFn()
+  .server(() => createClient(apiPlugin).api)
+  .client(
+    () =>
+      createClient<Api>(window.location.origin, {
+        fetch: { cache: "no-store", credentials: "include" },
+      }).api
+  )();
+```
+
+## Route loaders and the Eden client
+
+- All route loaders must use the shared isomorphic Eden client from `src/lib/client.ts` directly for API reads.
+- Destructure `{ data, error }` from each Eden response. Check `error` in the loader and throw the original error when present before using or returning `data`.
+- When a missing resource should render a 404 page, check `error.status === 404` directly and call Furin's `notFound()` inside the loader. Throw the original error for other statuses.
+- Never wrap Eden reads in helpers, service functions, or generic response-unwrapping functions. Call the typed endpoint directly.
+- Never introduce wrappers to read, extract, normalize, classify, or rethrow the typed client's errors. Handle the typed error directly where the request is made.
+- Apply the same direct error handling to each response when a loader performs multiple or deferred reads.
+
+Required pattern:
+
+```ts
+import { defineRootRoute } from "@teyik0/furin";
+import { api } from "../lib/client";
+
+export const route = defineRootRoute()
+  .config({ mode: "ssr" })
+  .loader(async () => {
+    const { data, error } = await api.state.get({ query: { detail: "false" } });
+    if (error) {
+      throw error;
+    }
+    return { dashboard: data };
+  });
+```
+
+For a resource that should render a 404 page:
+
+```ts
+const { data, error } = await api.torrents({ id: params.id }).get();
+if (error) {
+  if (error.status === 404) {
+    notFound({ message: "This torrent does not exist" });
+  }
+  throw error;
+}
+return { torrent: data };
+```
+
+## Startup
+
+- Required dependencies must be initialized and validated before the server starts listening or the interface opens.
+- Initialization failures must prevent the application from opening and release resources that have already been initialized.
+- Do not work around startup order with a deferred adapter or a wrapper that waits for dependencies on every call. Resolve the initialization order directly.
+
+## English throughout the repository
+
+- Use English for all project-authored content throughout the repository, including documentation, agent instructions, comments, identifiers, UI text, accessibility labels, errors, logs, scripts, tests, and configuration descriptions.
+- Translate existing non-English project-authored content into English when editing it. Write all new content in English.
+- Preserve proper names, external API contracts, user-provided data, and third-party content as required for correctness. Do not translate machine-readable values whose meaning depends on their exact spelling.
+
+## Integration tests
+
+- Keep only essential integration scenarios. Exercise API behavior through typed Eden endpoints with real application services; do not add function unit tests, component snapshots, or tests of framework internals.
+- Test torrent transfers and lifecycle behavior with real peers in temporary directories. Simulate external providers only at their HTTP or native SDK boundaries.
+- Put shared fixtures, resource cleanup, and assertion helpers in `tests/helpers/`. Keep endpoint calls visible in the tests rather than wrapping them in request helpers.
+- Keep AniList tests in `tests/anilist/` and omit redundant `anilist-` filename prefixes.

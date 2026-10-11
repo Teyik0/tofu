@@ -15,7 +15,7 @@ export const dashboardPlugin = new Elysia({ name: "tofu-dashboard-api" })
       sync: { id: "tofu.dashboard", scope: {} },
     },
     async ({ application, query }) => {
-      const state = application.engine.snapshot(null, false);
+      const state = await application.engine.refreshSnapshot(1000);
       const selected = query.selected ?? state.torrents[0]?.id;
       const detail =
         query.detail !== "false" &&

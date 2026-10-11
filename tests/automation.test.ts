@@ -1,16 +1,15 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: exercise ordered public API mutations and real transfer lifecycle.
-
 import { afterAll, expect, test } from "bun:test";
 import { chmod, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { sql } from "drizzle-orm";
-import { createDatabase } from "../src/api/lib/db";
+import { treaty } from "@elysia/eden";
 import { AutomationService } from "../src/api/modules/automation/service";
 import { pluginEndpoints } from "../src/api/modules/plugins/service";
 import { TorrentEngine } from "../src/api/modules/torrents/service";
 import type { AutomationState } from "../src/types";
-import { createTestApi } from "./api-fixture";
-import { fixture, json, network, waitFor } from "./helpers";
+import { createTestApi } from "./helpers/application";
+import { expectDefined, expectSuccess } from "./helpers/problem";
+import { fixture, network, torrentBytes, waitFor } from "./helpers/torrent";
 
 const catalog = Bun.serve({
   fetch: () => Response.json({ data: { Page: { media: [] } } }),
@@ -18,58 +17,6 @@ const catalog = Bun.serve({
   port: 0,
 });
 afterAll(() => catalog.stop(true));
-
-test("automation resumes recurring AniList sync after a startup database write failure", async () => {
-  const context = await fixture(1024, []);
-  let clock = Date.now();
-  const upstream = Bun.serve({
-    async fetch(request) {
-      const { query } = (await request.json()) as { query: string };
-      return Response.json({
-        data: query.includes("Viewer")
-          ? { Viewer: { id: 42, name: "ExampleUser" } }
-          : { MediaListCollection: { hasNextChunk: false, lists: [] } },
-      });
-    },
-    hostname: "127.0.0.1",
-    port: 0,
-  });
-  const dataDir = join(context.directory, "feeds");
-  const service = await AutomationService.open({
-    dataDir,
-    endpoints: { ...pluginEndpoints, anilist: upstream.url.href },
-    engine: () => context.engine,
-    now: () => clock,
-  });
-  const writer = createDatabase(join(dataDir, "feeds.sqlite"));
-  try {
-    service.configure("anilist", { apiKey: "startup-test-token", enabled: true });
-    service.anilist.subscribe({
-      enabled: true,
-      intervalMinutes: 15,
-      organization: { mode: "shared" },
-      statuses: ["CURRENT"],
-      template: await service.interpret("Example", "default"),
-    });
-    writer.run(sql`BEGIN IMMEDIATE`);
-    await expect(service.start()).rejects.toThrow("database is locked");
-    writer.run(sql`ROLLBACK`);
-    clock += 60_001;
-    const subscription = await waitFor(
-      async () => service.anilist.snapshot().subscriptions[0],
-      (value) => value?.lastSyncAt === clock,
-      20_000
-    );
-    expect(subscription?.lastSyncAt).toBe(clock);
-    expect(subscription?.error).toBeNull();
-  } finally {
-    writer.$client.close(true);
-    await service.close();
-    upstream.stop(true);
-    await context.close();
-  }
-}, 45_000);
-
 test("pattern rules exclude existing releases and still download newly published episodes", async () => {
   const context = await fixture(4096, []);
   let publishNew = false;
@@ -79,12 +26,7 @@ test("pattern rules exclude existing releases and still download newly published
       const published = publishNew ? [1, 2] : [1];
       const episodes = url.searchParams.get("q") === "" ? published : [];
       return new Response(
-        `<rss><channel>${episodes
-          .map(
-            (episode) =>
-              `<item><title>Example S01E0${episode} VF 1080p x264</title><link>${context.magnet.replaceAll("&", "&amp;")}</link><guid>episode-${episode}</guid></item>`
-          )
-          .join("")}</channel></rss>`
+        `<rss><channel>${episodes.map((episode) => `<item><title>Example S01E0${episode} VF 1080p x264</title><link>${context.magnet.replaceAll("&", "&amp;")}</link><guid>episode-${episode}</guid></item>`).join("")}</channel></rss>`
       );
     },
     hostname: "127.0.0.1",
@@ -102,35 +44,31 @@ test("pattern rules exclude existing releases and still download newly published
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
-    const draft = await (
-      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
-    ).json();
-    const saved = await request(
-      "/automations",
-      json({
-        ...draft,
-        includeExisting: false,
-        languages: ["VF"],
-        matchMode: "pattern",
-        sources: ["nyaa"],
-        title: "Example\\s+S01E\\d+",
-      })
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({ destinationId: "default", query: "Example" })
     );
+    const saved = await client.automations.post({
+      ...draft,
+      includeExisting: false,
+      languages: ["VF"],
+      matchMode: "pattern",
+      sources: ["nyaa"],
+      title: "Example\\s+S01E\\d+",
+    });
     expect(saved.status).toBe(200);
-    const rule = (await saved.json()) as { id: string };
-    const before = (await (
-      await request(`/automations/${rule.id}/run`, json({}))
-    ).json()) as AutomationState;
+    const rule = expectSuccess(saved) as { id: string };
+    const before = expectSuccess(
+      await client.automations({ id: rule.id }).run.post({})
+    ) as AutomationState;
     expect(before.decisions[0]?.status).toBe("ignored");
-    expect(context.engine.snapshot(null).torrents).toHaveLength(0);
+    expect(expectSuccess(await context.client.state.get()).torrents).toHaveLength(0);
     publishNew = true;
-    const after = (await (
-      await request(`/automations/${rule.id}/run`, json({}))
-    ).json()) as AutomationState;
+    const after = expectSuccess(
+      await client.automations({ id: rule.id }).run.post({})
+    ) as AutomationState;
     expect(after.decisions.find((decision) => decision.release.episode === 1)?.status).toBe(
       "ignored"
     );
@@ -138,12 +76,15 @@ test("pattern rules exclude existing releases and still download newly published
       "added"
     );
     await waitFor(
-      async () => context.engine.detail(context.seed.infoHash),
+      async () => expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).get()),
       (detail) => detail.status === "seeding"
     );
-    const content = await request(`/torrents/${context.seed.infoHash}/files/0/content`, undefined);
+    const content = await client
+      .torrents({ id: context.seed.infoHash })
+      .files({ index: "0" })
+      .content.get();
     expect(content.status).toBe(200);
-    expect(Bun.SHA256.hash(await content.arrayBuffer(), "hex")).toBe(
+    expect(Bun.SHA256.hash(torrentBytes(content), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
     );
   } finally {
@@ -152,7 +93,6 @@ test("pattern rules exclude existing releases and still download newly published
     await context.close();
   }
 });
-
 test("plugin credentials stay private when automation reuses an existing data directory", async () => {
   const context = await fixture(1024, []);
   const dataDir = join(context.directory, "state");
@@ -168,16 +108,15 @@ test("plugin credentials stay private when automation reuses an existing data di
     context.sync.options,
     () => service
   );
+  const client = treaty(api).api;
   try {
-    const configured = await api.handle(
-      new Request("http://localhost/api/plugins/c411", {
-        ...json({ apiKey: "test-private-key", enabled: true }),
-        method: "PUT",
-      })
-    );
+    const configured = await client
+      .plugins({ id: "c411" })
+      .put({ apiKey: "test-private-key", enabled: true });
     expect(configured.status).toBe(200);
-    expect(await configured.text()).not.toContain("test-private-key");
-    // Windows protects AppData with account ACLs; chmod cannot express POSIX group permissions.
+    expect(JSON.stringify(configured.error?.value ?? configured.data)).not.toContain(
+      "test-private-key"
+    ); // Windows protects AppData with account ACLs; chmod cannot express POSIX group permissions.
     if (process.platform !== "win32") {
       expect((await stat(dataDir)).mode % 0o100).toBe(0);
     }
@@ -186,7 +125,6 @@ test("plugin credentials stay private when automation reuses an existing data di
     await context.close();
   }
 });
-
 test("C411 downloads the enclosure server-side without exposing its API key", async () => {
   const context = await fixture(4096, []);
   let downloads = 0;
@@ -217,44 +155,37 @@ test("C411 downloads the enclosure server-side without exposing its API key", as
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/c411", {
-      ...json({ apiKey: "c411-secret", enabled: true }),
-      method: "PUT",
-    });
-    const search = await request("/discover", json({ query: "Example", sources: ["c411"] }));
-    const catalogue = (await search.json()) as import("../src/types").DiscoveryResult;
+    await client.plugins({ id: "c411" }).put({ apiKey: "c411-secret", enabled: true });
+    const search = await client.discover.post({ query: "Example", sources: ["c411"] });
+    const catalogue = expectSuccess(search) as import("../src/types").DiscoveryResult;
     expect(JSON.stringify(catalogue)).not.toContain("c411-secret");
-    const added = await request(
-      "/discover/add",
-      json({
-        destinationId: "default",
-        id: catalogue.releases[0]?.id,
-        paused: false,
-        sourceId: "c411",
-      })
-    );
+    const [release] = catalogue.releases;
+    expectDefined(release);
+    const added = await client.discover.add.post({
+      destinationId: "default",
+      id: release.id,
+      paused: false,
+      sourceId: "c411",
+    });
     expect(added.status).toBe(200);
-    const result = (await added.json()) as { id: string };
-    await request(
-      `/torrents/${result.id}/peers`,
-      json({ peer: `127.0.0.1:${context.seeder.torrentPort}` })
-    );
+    const result = expectSuccess(added) as { id: string };
+    await client
+      .torrents({ id: result.id })
+      .peers.post({ peer: `127.0.0.1:${context.seeder.torrentPort}` });
     await waitFor(
-      async () => context.engine.snapshot(result.id),
+      async () => expectSuccess(await context.client.state.get({ query: { selected: result.id } })),
       (state) => state.detail?.status === "seeding"
     );
     expect(downloads).toBe(1);
-    expect(await (await request("/automation", undefined)).text()).not.toContain("c411-secret");
+    expect(JSON.stringify((await client.automation.get()).data)).not.toContain("c411-secret");
   } finally {
     await service.close();
     upstream.stop(true);
     await context.close();
   }
 });
-
 test("Nyaa search falls back to the HTML catalogue when RSS is unavailable", async () => {
   const context = await fixture(1024, []);
   let htmlSearches = 0;
@@ -284,17 +215,11 @@ test("Nyaa search falls back to the HTML catalogue when RSS is unavailable", asy
     context.sync.options,
     () => service
   );
+  const client = treaty(api).api;
   try {
-    await api.handle(
-      new Request("http://localhost/api/plugins/nyaa", {
-        ...json({ enabled: true }),
-        method: "PUT",
-      })
-    );
-    const response = await api.handle(
-      new Request("http://localhost/api/discover", json({ query: "Example", sources: ["nyaa"] }))
-    );
-    const result = (await response.json()) as import("../src/types").DiscoveryResult;
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
+    const response = await client.discover.post({ query: "Example", sources: ["nyaa"] });
+    const result = expectSuccess(response) as import("../src/types").DiscoveryResult;
     expect(result.releases[0]?.title).toBe("Example S01E01 VF 1080p");
     expect(result.releases[0]?.downloadUrl).toBe(`${base}/download/123.torrent`);
     expect(htmlSearches).toBe(1);
@@ -304,7 +229,6 @@ test("Nyaa search falls back to the HTML catalogue when RSS is unavailable", asy
     await context.close();
   }
 });
-
 test("a waiting candidate survives restart and disabling its plugin suspends the download", async () => {
   const context = await fixture(4096, []);
   let clock = Date.now();
@@ -340,29 +264,25 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  let client = treaty(api).api;
   try {
-    await request("/plugins/tsundere", { ...json({ enabled: true }), method: "PUT" });
-    const draft = (await (
-      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
-    ).json()) as import("../src/types").AutomationDraft;
-    const rule = (await (
-      await request(
-        "/automations",
-        json({
-          ...draft,
-          includeExisting: true,
-          languages: ["VF"],
-          resolutions: ["1080p", "720p"],
-          sources: ["tsundere"],
-          waitMinutes: 1,
-        })
-      )
-    ).json()) as { id: string };
-    await request(`/automations/${rule.id}/run`, json({}));
-    expect(service.snapshot().decisions[0]?.status).toBe("waiting");
-    await request("/plugins/tsundere", { ...json({ enabled: false }), method: "PUT" });
+    await client.plugins({ id: "tsundere" }).put({ enabled: true });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({ destinationId: "default", query: "Example" })
+    ) as import("../src/types").AutomationDraft;
+    const rule = expectSuccess(
+      await client.automations.post({
+        ...draft,
+        includeExisting: true,
+        languages: ["VF"],
+        resolutions: ["1080p", "720p"],
+        sources: ["tsundere"],
+        waitMinutes: 1,
+      })
+    ) as { id: string };
+    await client.automations({ id: rule.id }).run.post({});
+    expect(expectSuccess(await client.automation.get()).decisions[0]?.status).toBe("waiting");
+    await client.plugins({ id: "tsundere" }).put({ enabled: false });
     await service.close();
     service = await AutomationService.open(options);
     api = await createTestApi(
@@ -370,24 +290,29 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
       context.sync.options,
       () => service
     );
+    client = treaty(api).api;
     clock += 120_000;
     await service.start();
-    expect(context.engine.snapshot(null).torrents).toHaveLength(0);
-    expect(service.snapshot().automations[0]?.status).toBe("source-disabled");
-    await request("/plugins/tsundere", { ...json({ enabled: true }), method: "PUT" });
-    await request(`/automations/${rule.id}/run`, json({}));
+    expect(expectSuccess(await context.client.state.get()).torrents).toHaveLength(0);
+    expect(expectSuccess(await client.automation.get()).automations[0]?.status).toBe(
+      "source-disabled"
+    );
+    await client.plugins({ id: "tsundere" }).put({ enabled: true });
+    await client.automations({ id: rule.id }).run.post({});
     await waitFor(
-      async () => context.engine.snapshot(context.seed.infoHash),
+      async () =>
+        expectSuccess(
+          await context.client.state.get({ query: { selected: context.seed.infoHash } })
+        ),
       (state) => state.detail?.status === "seeding"
     );
-    expect(service.snapshot().decisions[0]?.status).toBe("added");
+    expect(expectSuccess(await client.automation.get()).decisions[0]?.status).toBe("added");
   } finally {
     await service.close();
     upstream.stop(true);
     await context.close();
   }
 });
-
 test("Jev interprets natural language, sends no tracker credentials and uncertain matches require review", async () => {
   const context = await fixture(4096, []);
   let probability = 0.8;
@@ -456,44 +381,41 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/tsundere", { ...json({ enabled: true }), method: "PUT" });
-    await request("/plugins/c411", {
-      ...json({ apiKey: "tracker-secret", enabled: false }),
-      method: "PUT",
-    });
-    await request("/plugins/jev", {
-      ...json({ apiKey: "jev-secret", enabled: true }),
-      method: "PUT",
-    });
-    const draft = (await (
-      await request(
-        "/automations/interpret",
-        json({ destinationId: "default", query: "Download Example with VF 1080p" })
-      )
-    ).json()) as import("../src/types").AutomationDraft;
+    await client.plugins({ id: "tsundere" }).put({ enabled: true });
+    await client.plugins({ id: "c411" }).put({ apiKey: "tracker-secret", enabled: false });
+    await client.plugins({ id: "jev" }).put({ apiKey: "jev-secret", enabled: true });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({
+        destinationId: "default",
+        query: "Download Example with VF 1080p",
+      })
+    ) as import("../src/types").AutomationDraft;
     expect(draft.matchMode).toBe("jev");
     expect(calls).toBe(1);
-    const rule = (await (
-      await request(
-        "/automations",
-        json({ ...draft, includeExisting: true, sources: ["tsundere"], title: "Example" })
-      )
-    ).json()) as { id: string };
-    await request(`/automations/${rule.id}/run`, json({}));
-    const state = (await (await request("/automation", undefined)).json()) as AutomationState;
+    const rule = expectSuccess(
+      await client.automations.post({
+        ...draft,
+        includeExisting: true,
+        sources: ["tsundere"],
+        title: "Example",
+      })
+    ) as { id: string };
+    await client.automations({ id: rule.id }).run.post({});
+    const state = expectSuccess(await client.automation.get()) as AutomationState;
     expect(state.decisions[0]?.status).toBe("review");
-    expect(context.engine.snapshot(null).torrents).toHaveLength(0);
-    await request(`/automations/${rule.id}/run`, json({}));
+    expect(expectSuccess(await context.client.state.get()).torrents).toHaveLength(0);
+    await client.automations({ id: rule.id }).run.post({});
     expect(calls).toBe(2); // Same evidence reuses the cached judgement.
-    probability = 0.99;
-    // User approval executes only the concrete candidate selected in the review.
+    probability = 0.99; // User approval executes only the concrete candidate selected in the review.
     const id = state.decisions[0]?.id;
-    await request(`/automation-decisions/${encodeURIComponent(id ?? "")}/approve`, json({}));
+    await client["automation-decisions"]({ id: id ?? "" }).approve.post({});
     await waitFor(
-      async () => context.engine.snapshot(context.seed.infoHash),
+      async () =>
+        expectSuccess(
+          await context.client.state.get({ query: { selected: context.seed.infoHash } })
+        ),
       (value) => value.detail?.status === "seeding"
     );
   } finally {
@@ -502,7 +424,6 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
     await context.close();
   }
 });
-
 test("an automation chooses one preferred version, downloads into its thread and catches up at startup", async () => {
   const low = await fixture(4096, []);
   const high = await fixture(8192, []);
@@ -554,61 +475,55 @@ test("an automation chooses one preferred version, downloads into its thread and
     low.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  let client = treaty(api).api;
   try {
     const target = join(low.directory, "anime");
-    const destination = (await (
-      await request("/destinations", json({ downloadPath: target, name: "Anime" }))
-    ).json()) as { id: string };
+    const destination = expectSuccess(
+      await client.destinations.post({ downloadPath: target, name: "Anime" })
+    ) as { id: string };
     for (const id of ["nyaa", "tsundere"]) {
-      await request(`/plugins/${id}`, { ...json({ enabled: true }), method: "PUT" });
+      await client.plugins({ id }).put({ enabled: true });
     }
-    const interpreted = await request(
-      "/automations/interpret",
-      json({
-        destinationId: destination.id,
-        query: "Download Example season 1 with VF, prefer 1080p then 720p",
-      })
-    );
+    const interpreted = await client.automations.interpret.post({
+      destinationId: destination.id,
+      query: "Download Example season 1 with VF, prefer 1080p then 720p",
+    });
     expect(interpreted.status).toBe(200);
-    const draft = (await interpreted.json()) as import("../src/types").AutomationDraft;
+    const draft = expectSuccess(interpreted) as import("../src/types").AutomationDraft;
     expect(draft.languages).toEqual(["VF"]);
     expect(draft.title).toBe("Example");
     expect(draft.season).toBe(1);
-    const saved = await request(
-      "/automations",
-      json({
-        ...draft,
-        enabled: true,
-        includeExisting: true,
-        matchMode: "exact",
-        sources: ["tsundere", "nyaa"],
-        title: "Example",
-        waitMinutes: 0,
-      })
-    );
+    const saved = await client.automations.post({
+      ...draft,
+      enabled: true,
+      includeExisting: true,
+      matchMode: "exact",
+      sources: ["tsundere", "nyaa"],
+      title: "Example",
+      waitMinutes: 0,
+    });
     expect(saved.status).toBe(200);
-    const rule = (await saved.json()) as { id: string };
-    const run = await request(`/automations/${rule.id}/run`, json({}));
+    const rule = expectSuccess(saved) as { id: string };
+    const run = await client.automations({ id: rule.id }).run.post({});
     expect(run.status).toBe(200);
     await waitFor(
-      async () => engine.snapshot(high.seed.infoHash),
+      async () =>
+        expectSuccess(await client.state.get({ query: { selected: high.seed.infoHash } })),
       (state) => state.detail?.status === "seeding"
     );
-    expect(engine.detail(high.seed.infoHash).destinationId).toBe(destination.id);
-    expect(engine.detail(high.seed.infoHash).savePath).toBe(target);
+    expect(
+      expectSuccess(await client.torrents({ id: high.seed.infoHash }).get()).destinationId
+    ).toBe(destination.id);
+    expect(expectSuccess(await client.torrents({ id: high.seed.infoHash }).get()).savePath).toBe(
+      target
+    );
     expect(Bun.SHA256.hash(await Bun.file(join(target, "source.bin")).arrayBuffer(), "hex")).toBe(
       Bun.SHA256.hash(high.bytes, "hex")
     );
-    expect(engine.snapshot(null).torrents).toHaveLength(1);
-    await request(`/torrents/${high.seed.infoHash}`, {
-      ...json({ deleteFiles: false }),
-      method: "DELETE",
-    });
-    await request(`/automations/${rule.id}/run`, json({}));
-    expect(engine.snapshot(null).torrents).toHaveLength(0);
-    // A genuinely new release appears while the application is closed.
+    expect(expectSuccess(await client.state.get()).torrents).toHaveLength(1);
+    await client.torrents({ id: high.seed.infoHash }).delete({ deleteFiles: false });
+    await client.automations({ id: rule.id }).run.post({});
+    expect(expectSuccess(await client.state.get()).torrents).toHaveLength(0); // A genuinely new release appears while the application is closed.
     episode = 3;
     await service.close();
     await engine.close();
@@ -623,14 +538,17 @@ test("an automation chooses one preferred version, downloads into its thread and
       low.sync.options,
       () => service
     );
+    client = treaty(api).api;
     clock += 60_000;
     await service.start();
     await waitFor(
-      async () => engine.snapshot(low.seed.infoHash),
+      async () => expectSuccess(await client.state.get({ query: { selected: low.seed.infoHash } })),
       (state) => state.detail?.status === "seeding"
     );
-    expect(engine.snapshot(null).torrents).toHaveLength(1);
-    expect(engine.detail(low.seed.infoHash).destinationId).toBe(destination.id);
+    expect(expectSuccess(await client.state.get()).torrents).toHaveLength(1);
+    expect(
+      expectSuccess(await client.torrents({ id: low.seed.infoHash }).get()).destinationId
+    ).toBe(destination.id);
   } finally {
     await service.close();
     await engine.close();
@@ -638,7 +556,6 @@ test("an automation chooses one preferred version, downloads into its thread and
     await Promise.all([low.close(), high.close()]);
   }
 });
-
 test("search reads real RSS/JSON, preserves unknown values and isolates a failing source", async () => {
   const context = await fixture(1024, []);
   const upstream = Bun.serve({
@@ -691,21 +608,17 @@ test("search reads real RSS/JSON, preserves unknown values and isolates a failin
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
     for (const id of ["nyaa", "tsundere", "c411"]) {
-      await request(`/plugins/${id}`, {
-        ...json({ apiKey: "test-key", enabled: true }),
-        method: "PUT",
-      });
+      await client.plugins({ id }).put({ apiKey: "test-key", enabled: true });
     }
-    const response = await request(
-      "/discover",
-      json({ query: "Example", sources: ["nyaa", "tsundere", "c411"] })
-    );
+    const response = await client.discover.post({
+      query: "Example",
+      sources: ["nyaa", "tsundere", "c411"],
+    });
     expect(response.status).toBe(200);
-    const result = (await response.json()) as {
+    const result = expectSuccess(response) as {
       releases: import("../src/types").FeedRelease[];
       errors: { sourceId: string }[];
     };
@@ -713,16 +626,15 @@ test("search reads real RSS/JSON, preserves unknown values and isolates a failin
     expect(result.releases.find((release) => release.sourceId === "nyaa")?.seeders).toBe(5);
     expect(result.releases.find((release) => release.sourceId === "tsundere")?.seeders).toBeNull();
     expect(result.errors.map((error) => error.sourceId)).toEqual(["c411"]);
-    await request("/plugins/nyaa", { ...json({ enabled: false }), method: "PUT" });
-    const disabled = await request("/discover", json({ query: "Example", sources: ["nyaa"] }));
-    expect(((await disabled.json()) as { releases: unknown[] }).releases).toEqual([]);
+    await client.plugins({ id: "nyaa" }).put({ enabled: false });
+    const disabled = await client.discover.post({ query: "Example", sources: ["nyaa"] });
+    expect((expectSuccess(disabled) as { releases: unknown[] }).releases).toEqual([]);
   } finally {
     await service.close();
     upstream.stop(true);
     await context.close();
   }
 });
-
 test("plugins are opt-in, preserve their settings and never return API keys", async () => {
   const context = await fixture(1024, []);
   let service: AutomationService | null = null;
@@ -741,24 +653,25 @@ test("plugins are opt-in, preserve their settings and never return API keys", as
       return service;
     };
     let api = await createTestApi(() => context.engine, context.sync.options, getService);
-    const request = (path: string, init: RequestInit | undefined) =>
-      api.handle(new Request(`http://localhost/api${path}`, init));
-    const initial = await request("/automation", undefined);
+    let client = treaty(api).api;
+    const initial = await client.automation.get();
     expect(initial.status).toBe(200);
     expect(
-      ((await initial.json()) as AutomationState).plugins.every((plugin) => !plugin.enabled)
+      (expectSuccess(initial) as AutomationState).plugins.every((plugin) => !plugin.enabled)
     ).toBe(true);
-    const configured = await request("/plugins/jev", {
-      ...json({ apiKey: "private-test-key", enabled: false }),
-      method: "PUT",
-    });
+    const configured = await client
+      .plugins({ id: "jev" })
+      .put({ apiKey: "private-test-key", enabled: false });
     expect(configured.status).toBe(200);
-    expect(await configured.text()).not.toContain("private-test-key");
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
+    expect(JSON.stringify(configured.error?.value ?? configured.data)).not.toContain(
+      "private-test-key"
+    );
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
     await service.close();
     service = await AutomationService.open(options);
     api = await createTestApi(() => context.engine, context.sync.options, getService);
-    const state = (await (await request("/automation", undefined)).json()) as AutomationState;
+    client = treaty(api).api;
+    const state = expectSuccess(await client.automation.get()) as AutomationState;
     expect(state.plugins.find((plugin) => plugin.id === "nyaa")?.enabled).toBe(true);
     expect(state.plugins.find((plugin) => plugin.id === "jev")?.hasApiKey).toBe(true);
   } finally {
@@ -766,7 +679,6 @@ test("plugins are opt-in, preserve their settings and never return API keys", as
     await context.close();
   }
 });
-
 test("disabling a rule while its torrent file is loading cancels the automatic addition", async () => {
   const context = await fixture(4096, []);
   let announceDownload: () => void = () => undefined;
@@ -803,26 +715,26 @@ test("disabling a rule while its torrent file is loading cancels the automatic a
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
-    const draft = await (
-      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
-    ).json();
-    const rule = await (
-      await request("/automations", json({ ...draft, includeExisting: true, sources: ["nyaa"] }))
-    ).json();
-    const run = request(`/automations/${rule.id}/run`, json({}));
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({ destinationId: "default", query: "Example" })
+    );
+    const rule = expectSuccess(
+      await client.automations.post({ ...draft, includeExisting: true, sources: ["nyaa"] })
+    );
+    const run = client.automations({ id: rule.id }).run.post({});
     await downloadStarted;
-    await request(`/automations/${rule.id}`, {
-      ...json({ ...draft, enabled: false, includeExisting: true, sources: ["nyaa"] }),
-      method: "PUT",
-    });
+    await client
+      .automations({ id: rule.id })
+      .put({ ...draft, enabled: false, includeExisting: true, sources: ["nyaa"] });
     finishDownload();
     await run;
-    expect(context.engine.snapshot(null, false).torrents).toHaveLength(0);
-    const state = (await (await request("/automation", undefined)).json()) as AutomationState;
+    expect(
+      expectSuccess(await context.client.state.get({ query: { detail: "false" } })).torrents
+    ).toHaveLength(0);
+    const state = expectSuccess(await client.automation.get()) as AutomationState;
     expect(state.automations[0]?.enabled).toBe(false);
     expect(state.decisions.some((decision) => decision.status === "added")).toBe(false);
   } finally {
@@ -832,7 +744,6 @@ test("disabling a rule while its torrent file is loading cancels the automatic a
     await context.close();
   }
 });
-
 test("without Jev an explicit pattern matches release names and downloads from real peers", async () => {
   const context = await fixture(4096, []);
   const upstream = Bun.serve({
@@ -864,43 +775,44 @@ test("without Jev an explicit pattern matches release names and downloads from r
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/tsundere", { ...json({ enabled: true }), method: "PUT" });
-    const draft = await (
-      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
-    ).json();
-    const rule = await (
-      await request(
-        "/automations",
-        json({
-          ...draft,
-          includeExisting: true,
-          matchMode: "pattern",
-          sources: ["tsundere"],
-          title: "Example\\s+S01E\\d+",
-        })
-      )
-    ).json();
-    const result = (await (
-      await request(`/automations/${rule.id}/run`, json({}))
-    ).json()) as AutomationState;
+    await client.plugins({ id: "tsundere" }).put({ enabled: true });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({ destinationId: "default", query: "Example" })
+    );
+    const rule = expectSuccess(
+      await client.automations.post({
+        ...draft,
+        includeExisting: true,
+        matchMode: "pattern",
+        sources: ["tsundere"],
+        title: "Example\\s+S01E\\d+",
+      })
+    );
+    const result = expectSuccess(
+      await client.automations({ id: rule.id }).run.post({})
+    ) as AutomationState;
     expect(result.decisions[0]?.status).toBe("added");
     await waitFor(
-      async () => context.engine.snapshot(context.seed.infoHash),
+      async () =>
+        expectSuccess(
+          await context.client.state.get({ query: { selected: context.seed.infoHash } })
+        ),
       (state) => state.detail?.status === "seeding"
     );
-    const content = await request(`/torrents/${context.seed.infoHash}/files/0/content`, undefined);
+    const content = await client
+      .torrents({ id: context.seed.infoHash })
+      .files({ index: "0" })
+      .content.get();
     expect(content.status).toBe(200);
-    expect(new Uint8Array(await content.arrayBuffer())).toEqual(context.bytes);
+    expect(new Uint8Array(torrentBytes(content))).toEqual(context.bytes);
   } finally {
     await service.close();
     upstream.stop(true);
     await context.close();
   }
 });
-
 test("C411 paces searches and disabling the plugin cancels queued requests", async () => {
   const context = await fixture(1024, []);
   const calls: number[] = [];
@@ -924,19 +836,15 @@ test("C411 paces searches and disabling the plugin cancels queued requests", asy
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/c411", {
-      ...json({ apiKey: "private", enabled: true }),
-      method: "PUT",
-    });
-    await request("/discover", json({ query: "first", sources: ["c411"] }));
-    await request("/discover", json({ query: "second", sources: ["c411"] }));
+    await client.plugins({ id: "c411" }).put({ apiKey: "private", enabled: true });
+    await client.discover.post({ query: "first", sources: ["c411"] });
+    await client.discover.post({ query: "second", sources: ["c411"] });
     expect(calls).toHaveLength(2);
     expect((calls[1] ?? 0) - (calls[0] ?? 0)).toBeGreaterThanOrEqual(4000);
-    const queued = request("/discover", json({ query: "third", sources: ["c411"] }));
-    await request("/plugins/c411", { ...json({ enabled: false }), method: "PUT" });
+    const queued = client.discover.post({ query: "third", sources: ["c411"] });
+    await client.plugins({ id: "c411" }).put({ enabled: false });
     await queued;
     expect(calls).toHaveLength(2);
   } finally {

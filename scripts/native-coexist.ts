@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { resolveInstanceConfig } from "../src/api/lib/instance";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { DashboardState, DesktopState, InstanceConfig, ServerInfo } from "../src/types";
-import { fixture, json, waitFor } from "../tests/helpers";
+import { fixture, json, waitFor } from "../tests/helpers/torrent";
 import { nativeRequest } from "./native-request";
 
 const root = join(import.meta.dir, "..");

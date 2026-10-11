@@ -1,5 +1,6 @@
 import "@teyik0/furin/server-only";
-import type { TransactionalSyncAdapter } from "@teyik0/furin/sync";
+
+import type { SyncNotifier, TransactionalSyncAdapter } from "@teyik0/furin/sync";
 import type { DatabaseTransaction } from "./api/lib/db";
 import { applicationHost, applicationScope } from "./api/lib/host";
 import type { CoreApplication } from "./types";
@@ -18,7 +19,12 @@ export function createDeferredSync(ready: () => Promise<CoreApplication>) {
     scope: "host-local",
     transactionMode: "sync",
   } satisfies TransactionalSyncAdapter<DatabaseTransaction, "sync">;
-  return { adapter, principal: () => "local" };
+  const notifier = {
+    publish: async (cursor) => (await ready()).sync.notifier.publish(cursor),
+    recovery: "self",
+    subscribe: async (listener) => (await ready()).sync.notifier.subscribe(listener),
+  } satisfies SyncNotifier;
+  return { adapter, notifier, principal: () => "local" };
 }
 
 export const sync = createDeferredSync(() => {

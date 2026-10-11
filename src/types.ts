@@ -1,29 +1,20 @@
 import type { FormStore } from "@formisch/react";
 import type { SyncRuntimeOptions } from "@teyik0/furin/sync";
 import type { DrizzleSqliteSyncAdapter } from "@teyik0/furin/sync/drizzle";
+import type { ApplicationRuntime } from "@teyik0/furin-electrobun/host";
 import type { InferOutput } from "valibot";
 import type { Options as TorrentNetworkOptions } from "webtorrent";
 import type { TofuDatabase } from "./api/lib/db";
+import type { ObservedSyncNotifier } from "./api/lib/sync-notifier";
 import type { AutomationService } from "./api/modules/automation/service";
-import type { DesktopController } from "./api/modules/desktop/service";
 import type { pluginConfigurationSchema, pluginFormSchema } from "./api/modules/plugins/model";
 import type { UpdatesService } from "./api/modules/updates/service";
 
-export type ApplicationSync = SyncRuntimeOptions<DrizzleSqliteSyncAdapter<TofuDatabase>>;
+export type ApplicationSync = SyncRuntimeOptions<DrizzleSqliteSyncAdapter<TofuDatabase>> & {
+  notifier: ObservedSyncNotifier;
+};
 export type ApplicationInstance = InstanceConfig & { desktop: boolean };
-export type NativeSdk = typeof import("electrobun/main");
-export type ApplicationPlatform =
-  | { kind: "server" }
-  | {
-      kind: "desktop";
-      utils: Pick<NativeSdk["Utils"], "openFileDialog" | "openPath"> & {
-        openExternal: (url: string) => boolean | Promise<boolean>;
-      };
-      controller: Pick<
-        DesktopController,
-        "snapshot" | "open" | "background" | "openDownload" | "installUpdate"
-      >;
-    };
+export type ApplicationPlatform = ApplicationRuntime;
 
 export interface CoreApplication {
   readonly automation: AutomationService;
@@ -84,11 +75,14 @@ export type TorrentStatus =
   | "error";
 export type FilePriority = "skip" | "normal" | "high";
 export type ThemePreference = "system" | "light" | "dark";
+export type SeedingConnectionMode = "balanced" | "incoming-only";
 
 export interface Settings {
+  deleteTorrentFileAfterAdd: boolean;
   downloadLimit: number;
   downloadPath: string;
   runInBackground: boolean;
+  seedingConnectionMode: SeedingConnectionMode;
   theme: ThemePreference;
   uploadLimit: number;
 }
@@ -181,13 +175,27 @@ export interface TrackerStats {
 }
 
 export interface FileStats {
-  downloaded: number;
+  downloaded: number | null;
   index: number;
   length: number;
   name: string;
   path: string;
   priority: FilePriority;
-  progress: number;
+  progress: number | null;
+}
+
+export interface TorrentStorageIssue {
+  detectedAt: number;
+  kind:
+    | "missing-files"
+    | "modified-files"
+    | "storage-unavailable"
+    | "permission-denied"
+    | "no-space"
+    | "invalid-path"
+    | "io-error";
+  message: string;
+  paths: string[];
 }
 
 export interface PeerStats {
@@ -207,7 +215,7 @@ export interface TorrentSummary {
   addedAt: number;
   completedAt: number | null;
   destinationId: string;
-  downloaded: number;
+  downloaded: number | null;
   downloadSpeed: number;
   error: string | null;
   eta: number | null;
@@ -215,11 +223,12 @@ export interface TorrentSummary {
   length: number;
   name: string;
   peers: number;
-  progress: number;
+  progress: number | null;
   ratio: number | null;
   received: number;
   seeds: number;
   status: TorrentStatus;
+  storageIssue: TorrentStorageIssue | null;
   swarmPeers: number | null;
   swarmSeeds: number | null;
   uploaded: number;
@@ -241,7 +250,7 @@ export interface TorrentDetail extends TorrentSummary {
   savePath: string;
   seedSeconds: number;
   trackers: TrackerStats[];
-  verifiedPieces: number;
+  verifiedPieces: number | null;
 }
 
 export interface SpeedSample {
@@ -281,6 +290,11 @@ export interface PluginCredentialPage {
   opened: boolean;
   url: string;
 }
+export interface StoredPlugin extends PluginState {
+  apiKey: string;
+  callsDay: string;
+}
+
 export interface PluginState {
   callsToday: number;
   checkedAt: number | null;
@@ -527,6 +541,14 @@ export interface AniListCatalogOptions {
 export interface AniListReleases extends DiscoveryResult {
   torrents: TorrentSummary[];
 }
+export interface AniListReleaseSearchPlan {
+  entry: AniListMedia;
+  part: number | null;
+  season: number | null;
+  seriesTitles: string[];
+  titles: string[];
+  warning: string | null;
+}
 export interface AniListThreadProposal {
   destinationId: string | null;
   downloadPath: string;
@@ -593,9 +615,62 @@ export interface AniListClient {
 }
 
 export interface EngineOpenOptions {
+  connectionPolicy?: ConnectionPolicy;
+  cryptoDiagnostics?: boolean;
   dataDir: string;
   downloadPath: string;
   network: TorrentNetworkOptions;
+}
+
+export interface ConnectionPolicy {
+  attemptsPerSecond: number;
+  burst: number;
+  cooldownTtlMs: number;
+  maxConnections: number;
+  maxConnectionsPerTorrent: number;
+  maxCooldownEntries: number;
+  maxPending: number;
+  retryDelaysMs: readonly number[];
+  seedAttemptsPerSecond: number;
+  seedBurst: number;
+  seedIntervalMs: number;
+  stableConnectionMs: number;
+}
+
+export interface ConnectionDiagnostics {
+  connectedIncoming: number;
+  connectedOutgoing: number;
+  crypto: CryptoDiagnostics | null;
+  deferredByCapacity: number;
+  deferredByCooldown: number;
+  deferredByRate: number;
+  incomingHandshakes: number;
+  outgoingAttempts: number;
+  outgoingHandshakes: number;
+  outgoingRetries: number;
+  pendingOutgoing: number;
+  queuedOutgoing: number;
+}
+
+export interface CryptoDiagnostics {
+  attempts: number;
+  failures: number;
+  maxConstructorMilliseconds: number;
+  totalConstructorMilliseconds: number;
+}
+
+export interface EngineSnapshot {
+  sampledAt: number;
+  state: DashboardState;
+  stateRevision: number;
+  telemetryRevision: number;
+}
+
+export interface EngineChange {
+  cursor?: string;
+  kind: "state" | "telemetry";
+  stateRevision: number;
+  telemetryRevision: number;
 }
 
 export interface TorrentAddOptions {
@@ -610,16 +685,21 @@ export interface EngineOperations {
   addPeer: (id: string, peer: string) => Promise<{ ok: boolean }>;
   assertReady: () => void | Promise<void>;
   close: () => Promise<void>;
+  connectionDiagnostics: () => ConnectionDiagnostics | Promise<ConnectionDiagnostics>;
   detail: (id: string) => TorrentDetail | Promise<TorrentDetail>;
   file: (id: string, index: number) => Promise<{ name: string; path: string }>;
+  locate: (id: string, downloadPath: string) => Promise<{ ok: boolean }>;
   pause: (id: string) => Promise<{ ok: boolean }>;
   priority: (id: string, index: number, priority: FilePriority) => Promise<{ ok: boolean }>;
   reannounce: (id: string) => { ok: boolean } | Promise<{ ok: boolean }>;
+  refreshSnapshot: (maxAgeMs: number) => Promise<DashboardState>;
   remove: (id: string, deleteFiles: boolean) => Promise<{ ok: boolean }>;
   removeDestination: (id: string) => Promise<{ ok: boolean; removed: string }>;
+  repair: (id: string) => Promise<{ ok: boolean }>;
   replaceTrackers: (id: string, urls: string[]) => Promise<{ ok: boolean }>;
   resume: (id: string) => Promise<{ ok: boolean }>;
   saveDestination: (id: string | null, input: DestinationInput) => Promise<Destination>;
+  setObserved: (observed: boolean) => void | Promise<void>;
   updateDestinationPresentation: (
     id: string,
     input: DestinationPresentation
@@ -632,6 +712,9 @@ export interface EnginePort extends EngineOperations {
   mode: "desktop" | "server";
   readonly settings: Settings;
   snapshot: (selected: string | null, includeDetail?: boolean) => DashboardState;
+  readonly stateRevision: number;
+  subscribeChanges: (listener: (change: EngineChange) => void) => () => void;
+  readonly telemetryRevision: number;
 }
 
 export type EngineRequest =
@@ -644,11 +727,15 @@ export type EngineRequest =
     }[keyof EngineOperations]
   | { id: number; method: "open"; args: [EngineOpenOptions] };
 
+export type EngineFailure =
+  | { kind: "http"; code: string; message: string; status: number }
+  | { kind: "internal"; message: string };
+
 export type EngineMessage =
   | { type: "ready" }
-  | { type: "snapshot"; state: DashboardState }
-  | { type: "result"; id: number; value: unknown; state: DashboardState }
-  | { type: "error"; id: number; message: string; status: number };
+  | { type: "snapshot"; snapshot: EngineSnapshot; cursor: string }
+  | { type: "result"; id: number; value: unknown; snapshot: EngineSnapshot | null }
+  | { type: "error"; id: number; failure: EngineFailure };
 
 export type PluginForm = FormStore<typeof pluginFormSchema>;
 export type PluginConfiguration = InferOutput<typeof pluginConfigurationSchema>;
@@ -664,6 +751,7 @@ export type FormModalKind =
   | { type: "destination"; destination: Destination | null }
   | { type: "remove"; torrent: TorrentSummary }
   | { type: "trackers"; torrent: TorrentDetail }
+  | { type: "locate"; torrent: TorrentDetail }
   | { type: "peer"; torrent: TorrentDetail };
 
 export type AutomationSection =
@@ -673,3 +761,5 @@ export type AutomationSection =
   | "discover"
   | "history"
   | "preferences";
+
+export type AsyncAction = (task: () => Promise<unknown>) => void;

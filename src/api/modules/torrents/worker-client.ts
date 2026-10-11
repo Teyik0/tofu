@@ -1,19 +1,21 @@
 import { existsSync } from "node:fs";
+import { HTTPError } from "elysia";
 import workerBundle from "../../../../runtime/engine-worker.worker" with { type: "file" };
 import type {
   DashboardState,
   DestinationInput,
   DestinationPresentation,
+  EngineChange,
   EngineMessage,
   EngineOpenOptions,
   EngineOperations,
   EnginePort,
   EngineRequest,
+  EngineSnapshot,
   FilePriority,
   SettingsInput,
   TorrentAddOptions,
 } from "../../../types";
-import { UserError } from "../../lib/errors";
 
 interface PendingOperation {
   reject: (error: Error) => void;
@@ -25,6 +27,11 @@ export class WorkerTorrentEngine implements EnginePort {
   private readonly pending = new Map<number, PendingOperation>();
   private readonly ready = Promise.withResolvers<void>();
   private state!: DashboardState;
+  private currentStateRevision = 0;
+  private currentTelemetryRevision = 0;
+  private sampledAt = 0;
+  private refresh: Promise<DashboardState> | null = null;
+  private readonly listeners = new Set<(change: EngineChange) => void>();
   private sequence = 0;
   private failure: Error | null = null;
   private shutdown: Promise<void> | null = null;
@@ -38,22 +45,85 @@ export class WorkerTorrentEngine implements EnginePort {
         return;
       }
       if (data.type === "snapshot") {
-        this.state = data.state;
+        this.receive(data.snapshot, data.cursor);
         return;
       }
       const operation = this.pending.get(data.id);
       this.pending.delete(data.id);
       if (data.type === "error") {
-        operation?.reject(new UserError(data.message, { status: data.status }));
+        const { failure } = data;
+        operation?.reject(
+          failure.kind === "http"
+            ? new (HTTPError.id(failure.code, failure.status))(failure.message)
+            : new Error(failure.message)
+        );
       } else {
-        this.state = data.state;
+        if (data.snapshot) {
+          this.receive(data.snapshot);
+        }
         operation?.resolve(data.value);
       }
     });
     this.worker.addEventListener("error", (event) => this.fail(new Error(event.message)));
     this.worker.addEventListener("close", () =>
-      this.fail(new UserError("The torrent engine has stopped", { status: 503 }))
+      this.fail(new (HTTPError.id("SERVICE_UNAVAILABLE", 503))("The torrent engine has stopped"))
     );
+  }
+
+  private receive(snapshot: EngineSnapshot, cursor?: string) {
+    const structural = snapshot.stateRevision !== this.currentStateRevision;
+    const telemetry = snapshot.telemetryRevision !== this.currentTelemetryRevision;
+    this.state = snapshot.state;
+    this.sampledAt = snapshot.sampledAt;
+    this.currentStateRevision = snapshot.stateRevision;
+    this.currentTelemetryRevision = snapshot.telemetryRevision;
+    if (structural || telemetry || cursor !== undefined) {
+      const change: EngineChange = {
+        cursor,
+        kind: structural ? "state" : "telemetry",
+        stateRevision: this.currentStateRevision,
+        telemetryRevision: this.currentTelemetryRevision,
+      };
+      for (const listener of this.listeners) {
+        try {
+          listener(change);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    }
+  }
+
+  get stateRevision() {
+    return this.currentStateRevision;
+  }
+
+  get telemetryRevision() {
+    return this.currentTelemetryRevision;
+  }
+
+  subscribeChanges(listener: (change: EngineChange) => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  refreshSnapshot(maxAgeMs: number): Promise<DashboardState> {
+    if (this.failure) {
+      return Promise.reject(this.failure);
+    }
+    if (maxAgeMs > 0 && Date.now() - this.sampledAt <= maxAgeMs) {
+      return Promise.resolve(this.snapshot(null, false));
+    }
+    this.refresh ??= this.call("refreshSnapshot", [0])
+      .then(() => this.snapshot(null, false))
+      .finally(() => {
+        this.refresh = null;
+      });
+    return this.refresh;
+  }
+
+  setObserved(observed: boolean) {
+    return this.call("setObserved", [observed]);
   }
 
   static async open(options: EngineOpenOptions) {
@@ -68,7 +138,17 @@ export class WorkerTorrentEngine implements EnginePort {
     const engine = new WorkerTorrentEngine(entry);
     try {
       await engine.ready.promise;
-      await engine.send({ args: [options], id: engine.nextId(), method: "open" });
+      await engine.send({
+        args: [
+          {
+            ...options,
+            cryptoDiagnostics:
+              options.cryptoDiagnostics ?? process.env.TOFU_CRYPTO_DIAGNOSTICS === "1",
+          },
+        ],
+        id: engine.nextId(),
+        method: "open",
+      });
       return engine;
     } catch (error) {
       engine.worker.terminate();
@@ -109,7 +189,9 @@ export class WorkerTorrentEngine implements EnginePort {
     args: Parameters<EngineOperations[Method]>
   ) {
     if (this.shutdown) {
-      return Promise.reject(new UserError("The torrent engine is shutting down", { status: 503 }));
+      return Promise.reject(
+        new (HTTPError.id("SERVICE_UNAVAILABLE", 503))("The torrent engine is shutting down")
+      );
     }
     return this.send({ args, id: this.nextId(), method } as EngineRequest) as Promise<
       Awaited<ReturnType<EngineOperations[Method]>>
@@ -131,6 +213,10 @@ export class WorkerTorrentEngine implements EnginePort {
     return this.call("assertReady", []);
   }
 
+  connectionDiagnostics() {
+    return this.call("connectionDiagnostics", []);
+  }
+
   add(input: string | Uint8Array, options: TorrentAddOptions) {
     return this.call("add", [input, options]);
   }
@@ -143,6 +229,9 @@ export class WorkerTorrentEngine implements EnginePort {
   file(id: string, index: number) {
     return this.call("file", [id, index]);
   }
+  locate(id: string, downloadPath: string) {
+    return this.call("locate", [id, downloadPath]);
+  }
   pause(id: string) {
     return this.call("pause", [id]);
   }
@@ -151,6 +240,9 @@ export class WorkerTorrentEngine implements EnginePort {
   }
   reannounce(id: string) {
     return this.call("reannounce", [id]);
+  }
+  repair(id: string) {
+    return this.call("repair", [id]);
   }
   remove(id: string, deleteFiles: boolean) {
     return this.call("remove", [id, deleteFiles]);
