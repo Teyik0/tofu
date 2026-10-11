@@ -24,11 +24,10 @@ export const route = defineRootRoute()
     return { dashboard: data };
   })
   .layout(({ children, dashboard, path }) => {
-    const initialTheme = dashboard?.settings.theme ?? "system";
-    const [store] = useState(() => createTofuStore(initialTheme));
+    const [store] = useState(() => createTofuStore(dashboard.settings.theme));
     const activeDestination = destinationFromPath(path);
     return (
-      <html data-theme={initialTheme} lang="en">
+      <html data-theme={dashboard.settings.theme} lang="en">
         <head>
           <link href="/favicon.ico" rel="icon" sizes="16x16 32x32 48x48" />
           <link href="/public/icon.png" rel="icon" sizes="256x256" type="image/png" />
@@ -37,7 +36,7 @@ export const route = defineRootRoute()
         </head>
         <body>
           <Provider store={store}>
-            <TofuStateSync initialTheme={initialTheme} path={path} />
+            <TofuStateSync initialTheme={dashboard.settings.theme} path={path} />
             <TooltipProvider>
               <SidebarProvider
                 className="app-shell"

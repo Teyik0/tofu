@@ -9,17 +9,16 @@ export const route = defineRoute()
   .loader(async ({ dashboard }) => {
     const state = await dashboard;
     const initialTorrentId = state.torrents[0]?.id ?? null;
-    const initialDetail = initialTorrentId
-      ? api
-          .torrents({ id: initialTorrentId })
-          .get()
-          .then(({ data, error }) => {
-            if (error !== null) {
-              throw error;
-            }
-            return data;
-          })
-      : Promise.resolve(null);
+    const initialDetail = (async () => {
+      if (!initialTorrentId) {
+        return null;
+      }
+      const { data, error } = await api.torrents({ id: initialTorrentId }).get();
+      if (error) {
+        throw error;
+      }
+      return data;
+    })();
     return defer({ initialDetail, initialTorrentId });
   })
   .head(() => ({ meta: [{ title: "All torrents — Tofu" }] }))
