@@ -1,0 +1,30 @@
+src/pages/index.tsx
+  s_95decbce1eb2e6::t_a0e93c391f77e4 12-16,18-21
+  s_95decbce1eb2e6::t_878c6f9258ca32 17
+src/pages/root.tsx
+  s_1b18cb5e79ea20::t_1b1ef46a513571 27,30,39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "660c473cf9f80501b7f34010baf0885e1636d6fd",
+  "prompts": {},
+  "sessions": {
+    "s_1b18cb5e79ea20": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12bde-d44b-7d11-81d6-4d259b92ed78",
+        "model": "unknown"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_95decbce1eb2e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12c6e-1ec8-76e2-aabe-2614b5912f4c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
