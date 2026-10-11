@@ -58,7 +58,10 @@ test("catalog anime can find and download episodes without joining a personal li
     expect(added.status).toBe(200);
     const dashboard = await waitFor(
       async () => (await (await request("/state", undefined)).json()) as DashboardState,
-      (snapshot) => snapshot.torrents.some((download) => download.progress === 1)
+      (snapshot) =>
+        snapshot.torrents.some(
+          (download) => download.progress === 1 && download.status === "seeding"
+        )
     );
     const torrent = dashboard.torrents.find((item) => item.id === context.seed.infoHash);
     expect(torrent?.progress).toBe(1);
