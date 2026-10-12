@@ -1,0 +1,28 @@
+src/api/index.ts
+  s_e766a880040bcc::t_976fe9a53eb4bb 60
+  s_e766a880040bcc::t_944651a9d50d95 2,4-7,24-25,41,43-44,58-59,61-109
+AGENTS.md
+  s_e766a880040bcc::t_944651a9d50d95 51-54,102
+src/server.ts
+  s_e766a880040bcc::t_279feb7742a310 7-8,10,20-22
+  s_e766a880040bcc::t_976fe9a53eb4bb 11-12,14
+  s_e766a880040bcc::t_794035759545bd 26
+  s_e766a880040bcc::t_944651a9d50d95 4
+  s_e766a880040bcc::t_16f952e94c350c 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c9907f0a574f96d060b2cc27a61ce3185b9f09e",
+  "prompts": {},
+  "sessions": {
+    "s_e766a880040bcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12cc3-4f79-7310-8f04-78b637c894b7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
