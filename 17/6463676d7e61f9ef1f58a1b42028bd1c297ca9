@@ -1,0 +1,521 @@
+tests/helpers/anilist/threads.ts
+  s_e766a880040bcc::t_2639aed0aca6d6 72,77
+  s_87e44248de7d03::t_1835d62e7e6130 4
+  s_e766a880040bcc::t_0b66e98e243bc9 57,78
+src/api/modules/automation/rules.ts
+  s_e766a880040bcc::t_9f650e8eed5d50 7
+tests/instance.test.ts
+  s_95decbce1eb2e6::t_bde43082bf66a9 134-138
+  s_e766a880040bcc::t_243bb53c0010a6 10
+  s_95decbce1eb2e6::t_8c5dc870d75dd6 79,82,84,90-92,98-99,103,115-116,126,148
+package.json
+  s_1b18cb5e79ea20::t_a9bfc579ac52d8 48
+scripts/native-background.ts
+  s_1b18cb5e79ea20::t_3c0a400740fa40 32
+src/api/lib/database-plugin.ts
+  s_1b18cb5e79ea20::t_518888334aba6f 3-4,12
+  s_e766a880040bcc::t_151a05cc557c1d 5,7-11,13
+src/api/lib/server-info.ts
+  s_e766a880040bcc::t_d4a6b2025fed5b 3,7-8
+  s_e766a880040bcc::t_d5eed58a5c6fa2 4
+src/api/modules/dashboard/index.ts
+  s_e766a880040bcc::t_36c5cd74bc9725 4,8,17-18,24
+src/api/index.ts
+  s_e766a880040bcc::t_68b9d392fc1948 51-66
+  s_e766a880040bcc::t_e14e423a45ba30 20
+  s_e766a880040bcc::t_8ba9f7b6cfdb55 38-41,45-48
+  s_e766a880040bcc::t_fc0d1c93f39d33 43-44
+  s_e766a880040bcc::t_4b40c85e0cce4d 3,35,50
+  s_e766a880040bcc::t_917c4fad894b4c 49
+  s_e766a880040bcc::t_812cc2b42d2676 5,21-34,36-37
+  s_e766a880040bcc::t_dfbec3346d7dab 42
+  s_e766a880040bcc::t_654898cc7c3543 6-19
+src/api/modules/updates/index.ts
+  s_e766a880040bcc::t_0b6f95882f4f32 4,7,10-14
+src/api/modules/automation/model.ts
+  s_e766a880040bcc::t_5cd2c580ea392f 17
+  s_e766a880040bcc::t_5034ecc83b7fee 23,82,109
+src/api/modules/anilist/service.ts
+  s_e766a880040bcc::t_9f650e8eed5d50 49
+  s_e766a880040bcc::t_9c9bab10ab6bed 14,30,34,82-89,199-202,204-232,236-252,255-281,285-295,297-300,332,357,509,625,628,644,841,864,866,881,900,903,947,976,1057,1087,1104,1316,1406,1426
+  s_87e44248de7d03::t_1835d62e7e6130 22,28,40-48,54,59,233-235,253-254,282-284,296
+  s_e766a880040bcc::t_d29444f162f360 510-512,642-643,645-646,1085-1086,1088,1102-1103,1105-1106,1335-1339,1345-1347,1366,1405,1407-1408
+  s_e766a880040bcc::t_1e6a11dbe3ff04 160-164,175
+  s_e766a880040bcc::t_cb31d692c5593b 1030-1032
+  s_e766a880040bcc::t_7f99230ba6fed5 1141,1251,1503,1506
+  s_e766a880040bcc::t_bb3e43577b95da 998
+  s_e766a880040bcc::t_5cd2c580ea392f 27,32-33,57,714-717,1025-1028,1375-1390
+  s_e766a880040bcc::t_445f06af2dfa38 1367
+  s_e766a880040bcc::t_ea75a35e2ad430 26,31,60,203,1125,1402
+  s_e766a880040bcc::t_6a9ad19acf7f81 777,1180,1206,1398,1440,1466,1475,1482
+  s_e766a880040bcc::t_9944a8d6b6fb45 29,1029,1033-1035
+  s_e766a880040bcc::t_b269261c63d2f6 21,52,56,1252,1264,1355,1502,1504-1505,1507-1517,1519-1521,1536-1538
+src/api/modules/jev/index.ts
+  s_e766a880040bcc::t_bca76cd21cf872 4,7-8,16
+src/api/modules/discovery/index.ts
+  s_e766a880040bcc::t_99fe463cb4130c 8,16,23-24
+  s_e766a880040bcc::t_5cd2c580ea392f 5
+src/sync.ts
+  s_e766a880040bcc::t_e5befe1dd72f0c 7
+  s_e766a880040bcc::t_7263a887249874 5
+  s_e766a880040bcc::t_6ee05f4c79c804 21-22
+  s_e766a880040bcc::t_3332ced762d6ee 2-4,6,9-14,16-20
+src/api/modules/discovery/model.ts
+  s_e766a880040bcc::t_5034ecc83b7fee 1
+  s_e766a880040bcc::t_5cd2c580ea392f 6
+src/api/modules/automation/management.ts
+  s_e766a880040bcc::t_da73572c0aab46 1-5,7-18,20-24,26-60,62-67,69-70,72-78,80-85
+  s_e766a880040bcc::t_5cd2c580ea392f 6
+  s_e766a880040bcc::t_bddff3a6053fb6 19,25,61,68,71,79
+AGENTS.md
+  s_e766a880040bcc::t_b77543cac44546 49,51-54,101
+  s_1b18cb5e79ea20::t_6eceed4f5f7305 50,55
+  s_1b18cb5e79ea20::t_754c7e7813473f 98,100
+src/components/automation-fields.tsx
+  s_e766a880040bcc::t_cb31d692c5593b 205,211
+tests/sync-writes.test.ts
+  s_87e44248de7d03::t_1835d62e7e6130 7
+  s_e766a880040bcc::t_46a889fc2496e9 12
+src/components/plugins/plugin-group.tsx
+  s_e766a880040bcc::t_cb31d692c5593b 25-26,30
+  s_e766a880040bcc::t_e360459b41491e 27-29
+scripts/route-types.ts
+  s_e766a880040bcc::t_6d4fad175238af 3,13-18
+src/api/modules/anilist/plugin.ts
+  s_e766a880040bcc::t_e5befe1dd72f0c 9
+  s_1b18cb5e79ea20::t_518888334aba6f 6-8,10-11
+  s_e766a880040bcc::t_d5eed58a5c6fa2 2,4-5
+  s_e766a880040bcc::t_6ee05f4c79c804 18,29-34
+  s_e766a880040bcc::t_91903c7b9527ee 1
+  s_e766a880040bcc::t_8ba9f7b6cfdb55 13-17,19-28,36-38
+  s_e766a880040bcc::t_36c3d8d02d92eb 12
+  s_e766a880040bcc::t_7263a887249874 3,35
+tests/helpers/plugin-integration.ts
+  s_e766a880040bcc::t_0ba7320a41f263 1-103
+scripts/release.ts
+  s_1e696aeb829f5a::t_c426a0100e36f7 127-129
+tests/desktop-update-host.test.ts
+  s_e766a880040bcc::t_235b64501c07ac 48,50-51,73-77
+  s_e766a880040bcc::t_47c111f637bba7 49
+  s_1b18cb5e79ea20::t_eb4d51812a08a7 19-21
+  s_e766a880040bcc::t_dbfc02567d786b 6,10-13,22-24,40,80,82-89,92-97,99-122
+  s_1b18cb5e79ea20::t_7b683f761aef69 18,136
+tests/helpers/application-services.ts
+  s_e766a880040bcc::t_fc0d1c93f39d33 12-24
+  s_e766a880040bcc::t_14794aa00f8b91 1-11,25-64
+src/api/modules/anilist/index.ts
+  s_1b18cb5e79ea20::t_cca316cf18dcdf 188-189
+  s_e766a880040bcc::t_348bd8c4fce6d4 34-36,38,40,54,63,71,76,108,117,129,138,153,168,174,187,196,204,216
+  s_e766a880040bcc::t_5cd2c580ea392f 8,23,44-45,87-90,170,179-180,205
+  s_1b18cb5e79ea20::t_bd99f5a945e2af 92,96,206
+  s_e766a880040bcc::t_7e178ba3134457 6,28-30,41,43,85-86,93,97,109,118,140,142-143,155,157-158,176-177,207,217-219
+src/api/modules/plugins/index.ts
+  s_e766a880040bcc::t_fcba94c8e3a7e6 49,56,69
+  s_e766a880040bcc::t_5237c854c0a02b 55,57,65
+  s_e766a880040bcc::t_80cefa8d021b98 7
+  s_e766a880040bcc::t_3db84e3b9a5dfa 39
+  s_e766a880040bcc::t_793f0be8b51596 37-38,40,50,66-68,70
+  s_e766a880040bcc::t_662b90b705afb4 36,54,64
+  s_e766a880040bcc::t_1c4274cf884476 41-48
+  s_e766a880040bcc::t_e5e718f65da1d7 21,24
+  s_e766a880040bcc::t_d4a6b2025fed5b 8,13,16
+src/api/modules/desktop/service.ts
+  s_e766a880040bcc::t_3d3a4ac9858801 3,7,9,21-22,72
+  s_1b18cb5e79ea20::t_fac43e83524667 67-68,97-98
+  s_e766a880040bcc::t_c016a744f44a23 64
+src/api/lib/title.ts
+  s_e766a880040bcc::t_f36e313afd2497 1-11
+src/api/modules/torrents/worker-client.ts
+  s_1b18cb5e79ea20::t_aec1b6ef83e191 24
+src/api/modules/plugins/service.ts
+  s_e766a880040bcc::t_ec8462974db5b8 1-2,12-14,48-53,67-68,71,73-98,103-104,137,142-148,160-193,195-200,202-205,207-230,232-236,240-248,252-259,265-270,274-305,330-365,367-375,377-383,385-396,398-408,421-434,436-440,442-446
+  s_e766a880040bcc::t_cb31d692c5593b 28,107
+  s_87e44248de7d03::t_1835d62e7e6130 4-11,99-102,201
+  s_e766a880040bcc::t_7d6f21a8048d8f 54,61-66,69,105-106,108,112,119,132-136,194,306-308,317-320,325-329,409-411,415-420
+  s_e766a880040bcc::t_93b150cc13139b 3
+  s_e766a880040bcc::t_5cd2c580ea392f 55-60,109-111,113-118,120-131,237-239,262-264,309-316,321-324,412-414
+  s_e766a880040bcc::t_23e5ff6406a272 72
+  s_e766a880040bcc::t_41d89ecb2915fc 139-141,150-152
+  s_e766a880040bcc::t_0f49d18a607fbd 271-273
+  s_e766a880040bcc::t_c4d4eddf0f0bbe 138,149,153-159,231,249-251,260-261,384
+  s_e766a880040bcc::t_445f06af2dfa38 376,435
+  s_e766a880040bcc::t_11295b5fdfe1b7 70,206,366,397,441
+tests/anilist/catalog.test.ts
+  s_e766a880040bcc::t_c62bbf2a3d8f78 170
+  s_87e44248de7d03::t_1835d62e7e6130 6
+  s_e766a880040bcc::t_4f7496b0cd622e 60
+src/api/modules/jev/plugin.ts
+  s_e766a880040bcc::t_6ee05f4c79c804 8,11
+  s_1b18cb5e79ea20::t_518888334aba6f 2,4-7
+  s_e766a880040bcc::t_151a05cc557c1d 3,12
+  s_e766a880040bcc::t_95580ddb6a7190 1,9-10
+scripts/native-coexist.ts
+  s_1b18cb5e79ea20::t_caf7a76072caf4 27
+tests/anilist/transport.test.ts
+  s_e766a880040bcc::t_e990c56eb454fd 45,116,171,213,218,294,305
+  s_e766a880040bcc::t_954948cf5fbca8 178
+  s_e766a880040bcc::t_26ff284594016c 22,80,141,192,272,295
+  s_87e44248de7d03::t_1835d62e7e6130 6
+src/api/modules/updates/plugin.ts
+  s_e766a880040bcc::t_6ee05f4c79c804 7,14-17
+  s_1b18cb5e79ea20::t_518888334aba6f 1-2,5-6
+  s_e766a880040bcc::t_e5befe1dd72f0c 3
+  s_e766a880040bcc::t_7263a887249874 4,18
+  s_e766a880040bcc::t_8ba9f7b6cfdb55 8-13,19-21
+tests/helpers/torrent.ts
+  s_e766a880040bcc::t_b733fd3be379b0 58
+tests/discovery.test.ts
+  s_87e44248de7d03::t_1835d62e7e6130 8
+  s_e766a880040bcc::t_b444ae6ea14f05 11
+  s_e766a880040bcc::t_303a336f7e21f6 26,98,167,269
+  s_e766a880040bcc::t_eed9f57c1a503b 39
+tests/automation.test.ts
+  s_e766a880040bcc::t_3d5db66fb8d444 640
+  s_e766a880040bcc::t_3fd5c98af39e6f 36,100,147,207,261,287,367,472,535,594,648,671,707,767,828
+  s_87e44248de7d03::t_1835d62e7e6130 11
+  s_e766a880040bcc::t_906d24b8341dd1 295,543
+tests/helpers/native-update-host.ts
+  s_1b18cb5e79ea20::t_0382ea766bc905 1,19
+  s_1b18cb5e79ea20::t_5a5be23b9fb786 2,5-18,20-84,86-90,93-98,100-123,130,133-140,142-143,146-151,155-159,161,192
+  s_1b18cb5e79ea20::t_5e6fff7333cb83 124-129
+  s_1b18cb5e79ea20::t_7eac83d31750b9 131
+  s_1b18cb5e79ea20::t_341ba9870252dd 132
+  s_1b18cb5e79ea20::t_7781b952daaf0c 91-92
+  s_1b18cb5e79ea20::t_1201ed44ea586e 3-4,152-154,162-177,182-191
+  s_e766a880040bcc::t_0df49264e908a5 85
+  s_1b18cb5e79ea20::t_f37fd6f7c295a0 144-145
+  s_1b18cb5e79ea20::t_4281859595f2a6 160
+  s_1b18cb5e79ea20::t_c69da588e3cf0d 179
+  s_1b18cb5e79ea20::t_691c5c00d89846 141
+  s_1b18cb5e79ea20::t_7b683f761aef69 178,180-181
+  s_1b18cb5e79ea20::t_762cd117dbb416 99
+src/api/modules/plugins/plugin.ts
+  s_e766a880040bcc::t_fdac2cf9bc228b 1,7-8
+  s_e766a880040bcc::t_6ee05f4c79c804 6,9
+  s_1b18cb5e79ea20::t_518888334aba6f 2,4-5
+  s_e766a880040bcc::t_151a05cc557c1d 3,10
+vendor/README.md
+  s_1b18cb5e79ea20::t_e2e0a892607f39 3,5-8,10-13,15-19,21-25,27-31,33-35
+src/server.ts
+  s_e766a880040bcc::t_2b803cc4be8331 5,54-55
+  s_95decbce1eb2e6::t_8c5dc870d75dd6 60-61
+  s_e766a880040bcc::t_b4bb4deeb718af 23
+  s_e766a880040bcc::t_0a01159b562a15 3,7-11,14-22,24-50,63
+src/api/modules/health/index.ts
+  s_e766a880040bcc::t_36c5cd74bc9725 4,7,9-11
+tests/automation-title-fallback.test.ts
+  s_e766a880040bcc::t_3830cd935f279a 39,147,242
+  s_87e44248de7d03::t_1835d62e7e6130 8
+tests/helpers/server-process.ts
+  s_95decbce1eb2e6::t_8c5dc870d75dd6 7-8
+tests/plugin-credentials.test.ts
+  s_87e44248de7d03::t_1835d62e7e6130 9
+  s_e766a880040bcc::t_de115fd0021dad 30,64
+src/api/modules/torrents/plugin.ts
+  s_e766a880040bcc::t_151a05cc557c1d 4,7,9-10,12
+  s_e766a880040bcc::t_e5befe1dd72f0c 2-3,5,13-15,17
+  s_1b18cb5e79ea20::t_d132c435178188 1,16
+  s_e766a880040bcc::t_8abd2f995bbb04 18
+tests/upgrades.test.ts
+  s_e766a880040bcc::t_b4b60227680e2a 338
+  s_87e44248de7d03::t_1835d62e7e6130 9
+  s_e766a880040bcc::t_80d783f8d2439f 52,146,265,306,321
+src/lib/automation-mutations.ts
+  s_e766a880040bcc::t_5cd2c580ea392f 39
+src/api/modules/desktop/index.ts
+  s_e766a880040bcc::t_c016a744f44a23 4,6,12,16-17,23,28,32,40,46,52,56,65
+  s_1b18cb5e79ea20::t_d132c435178188 7,13
+  s_e766a880040bcc::t_e5e718f65da1d7 5,18,21,24,27,33,37,41,44,47,50,53,59,62,66,69,72
+tests/helpers/credentials.ts
+  s_e766a880040bcc::t_4bcddfae32764b 12
+  s_87e44248de7d03::t_1835d62e7e6130 5
+tests/anilist/sync.test.ts
+  s_e766a880040bcc::t_704a1dc2ad03c6 380
+  s_e766a880040bcc::t_bcee283a0b62e7 172,182,268,371,379,393
+  s_87e44248de7d03::t_1835d62e7e6130 8
+  s_e766a880040bcc::t_6fc617369c3930 95,173,214,329,372
+src/api/modules/anilist/opening.ts
+  s_e766a880040bcc::t_e5e718f65da1d7 5,24,27
+  s_e766a880040bcc::t_d5eed58a5c6fa2 8-22,25,28-31
+  s_e766a880040bcc::t_9ff8b5833ba6c6 23
+src/api/modules/anilist/releases.ts
+  s_e766a880040bcc::t_f36e313afd2497 8-10
+src/api/modules/automation/plugin.ts
+  s_e766a880040bcc::t_8ba9f7b6cfdb55 10-14,21-23
+  s_e766a880040bcc::t_ba453e421d61db 1
+  s_e766a880040bcc::t_e5befe1dd72f0c 5
+  s_1b18cb5e79ea20::t_518888334aba6f 4,7-8
+  s_e766a880040bcc::t_6ee05f4c79c804 9,15-19
+  s_e766a880040bcc::t_d5eed58a5c6fa2 3,6
+  s_e766a880040bcc::t_151a05cc557c1d 2,20
+src/api/modules/destinations/index.ts
+  s_e766a880040bcc::t_793f0be8b51596 40-45
+  s_e766a880040bcc::t_608612a1998ab5 4
+  s_e766a880040bcc::t_36c5cd74bc9725 5,13-14,22,29,36,38-39
+tests/helpers/automation.ts
+  s_87e44248de7d03::t_1835d62e7e6130 4
+  s_e766a880040bcc::t_a51413ea3a9b84 12
+src/api/modules/discovery/service.ts
+  s_e766a880040bcc::t_9896a6823ee5d7 177,208,220,236,251,274,287-290,304,389,401,490,493
+  s_e766a880040bcc::t_005183c1898d4c 13,172,257
+  s_e766a880040bcc::t_7d6f21a8048d8f 231
+  s_e766a880040bcc::t_e94be70dc924aa 310
+  s_e766a880040bcc::t_3d5db66fb8d444 19,212
+  s_e766a880040bcc::t_5cd2c580ea392f 14-15,173
+  s_e766a880040bcc::t_751cd7cfea0376 1-3,11,16-17,169-170,174-176,178-207,209-211,213-219,221-230,232-235,237-250,252-256,258-267,269-273,275-281,283-286,291-303,305-309,311-388,390-400,402-406,408-414,489
+  s_e766a880040bcc::t_9f650e8eed5d50 12
+  s_e766a880040bcc::t_cf4075c0853539 18
+  s_e766a880040bcc::t_23e5ff6406a272 418,431,433-436,498
+  s_87e44248de7d03::t_1835d62e7e6130 4-10,171,268,282,407,491-492
+tests/helpers/application-routes.ts
+  s_e766a880040bcc::t_3332ced762d6ee 4,11
+  s_e766a880040bcc::t_0ba7320a41f263 5
+  s_e766a880040bcc::t_654898cc7c3543 3
+  s_e766a880040bcc::t_08de5fe1cb5bb8 1-2,7-10
+  s_e766a880040bcc::t_2d0a16eb755004 6
+tests/helpers/application.ts
+  s_e766a880040bcc::t_80cefa8d021b98 13,108,122,131,136,149
+  s_e766a880040bcc::t_eb9053e71af854 77,107
+  s_1b18cb5e79ea20::t_f34871119120b1 42,97,120,147,150-153,174,177
+  s_1b18cb5e79ea20::t_0e8dbd123abb68 252
+  s_e766a880040bcc::t_3d5db66fb8d444 99
+  s_e766a880040bcc::t_86b75246e8d7ab 74
+  s_e766a880040bcc::t_36828232bcfe67 164,176
+  s_e766a880040bcc::t_1e95baf78cf267 138-145
+  s_e766a880040bcc::t_814100c9ad5380 123
+  s_e766a880040bcc::t_b5c95ed8402fc0 11,114-117,124-125,127,135,137,146,148
+  s_e766a880040bcc::t_278283dbadb7e2 15
+  s_e766a880040bcc::t_4a64ddbc361663 16-30,128,134,154-155,159
+  s_e766a880040bcc::t_bdcb844997bcaa 7,40-41,67-68,70,72-73,75,78-79,98,183
+  s_e766a880040bcc::t_454b5c8c191070 14,39,57-58,69,182,188
+  s_1b18cb5e79ea20::t_cc3e1ffa957c4a 118,157-158,160,162
+  s_e766a880040bcc::t_14794aa00f8b91 119,121,126,129-130,132-133,156,161
+  s_e766a880040bcc::t_d29444f162f360 185-187,189-191
+  s_87e44248de7d03::t_1835d62e7e6130 71,76,102,105-106
+  s_e766a880040bcc::t_cbfa2367a37574 163
+  s_e766a880040bcc::t_23e5ff6406a272 80-83
+src/types.ts
+  s_e766a880040bcc::t_64774f717435ed 575
+  s_1b18cb5e79ea20::t_8faf2dd9ba9bf1 565
+  s_1b18cb5e79ea20::t_8de2e93c97e525 659-682
+  s_e766a880040bcc::t_62807c64f54e87 6-7,683-684
+  s_e766a880040bcc::t_5034ecc83b7fee 256
+  s_e766a880040bcc::t_5cd2c580ea392f 310,567,570-571
+src/api/modules/plugins/releases.ts
+  s_e766a880040bcc::t_c238af97a5eb1a 1-3,5-6,10-12
+  s_e766a880040bcc::t_5cd2c580ea392f 8-9
+  s_e766a880040bcc::t_5034ecc83b7fee 4,7
+tests/anilist/release-search.test.ts
+  s_87e44248de7d03::t_1835d62e7e6130 9
+  s_e766a880040bcc::t_4e32c49f390f04 138,302,402
+  s_e766a880040bcc::t_29082fb1b62a93 199,368,430
+src/api/modules/settings/index.ts
+  s_e766a880040bcc::t_36c5cd74bc9725 4,8,11,17,19-20
+src/api/modules/jev/service.ts
+  s_e766a880040bcc::t_c6d00458397d79 298-299,310-312,326,330,334,337-342,391-393,397
+  s_e766a880040bcc::t_e064502ff30849 375
+  s_e766a880040bcc::t_5cd2c580ea392f 11-12,302-305,325
+  s_e766a880040bcc::t_41d89ecb2915fc 327-329,331-333,335-336,343-347
+  s_e766a880040bcc::t_8d8db518f3ed13 399
+  s_e766a880040bcc::t_411b2bcc131e91 2,301,348-356,358,363-374,376-386,389-390
+  s_e766a880040bcc::t_f131d33917d2b6 1,3,295-297,306-309,313-324,398
+  s_e766a880040bcc::t_a4016d11a15f82 300,357,362,387-388
+  s_e766a880040bcc::t_2755e17a3285f1 359-361,394-396
+tests/plugin-integration.test.ts
+  s_e766a880040bcc::t_0ba7320a41f263 1-53,57-138
+  s_e766a880040bcc::t_047c1ab941ed76 54-56
+tests/helpers/plugin-integration-routes.ts
+  s_e766a880040bcc::t_0ba7320a41f263 1-84
+tests/anilist/catalog-download.test.ts
+  s_87e44248de7d03::t_1835d62e7e6130 7
+  s_e766a880040bcc::t_b3b4fd7c1c1cf7 29
+  s_e766a880040bcc::t_f4750ec855733e 42
+  s_e766a880040bcc::t_dd6de99b23da7d 73
+tests/validation.test.ts
+  s_e766a880040bcc::t_629c46eb556f0d 4,28
+  s_e766a880040bcc::t_ef60ce70da01a2 29-33,71-75
+  s_e766a880040bcc::t_74104e5a23c218 22,65
+  s_e766a880040bcc::t_7ad0973fb5dd66 23-26,55-57,66-69,93-95
+  s_e766a880040bcc::t_209ed0667df1e2 21,27,37-38,48,64,70,85
+src/api/modules/automation/index.ts
+  s_e766a880040bcc::t_6ee05f4c79c804 6,9
+  s_1b18cb5e79ea20::t_518888334aba6f 2,4
+  s_e766a880040bcc::t_27662432620b12 7-8,10
+  s_e766a880040bcc::t_151a05cc557c1d 3
+tests/helpers/services.ts
+  s_e766a880040bcc::t_5cd2c580ea392f 5,26,31-36,39-45,55,58
+  s_87e44248de7d03::t_1835d62e7e6130 6,19,52
+  s_e766a880040bcc::t_fd5c223c7ec433 2,38,48
+  s_e766a880040bcc::t_5237c854c0a02b 1,3-4,7-18,20-25,37,50-51,53-54,56-57,59-64
+  s_e766a880040bcc::t_c6d00458397d79 27-30
+  s_e766a880040bcc::t_23e5ff6406a272 46-47,49
+tests/helpers/anilist/editor.ts
+  s_87e44248de7d03::t_1835d62e7e6130 5
+  s_e766a880040bcc::t_357061f7a78cdd 110
+  s_e766a880040bcc::t_64239c9e67972f 92
+tests/helpers/service-registry.ts
+  s_e766a880040bcc::t_14794aa00f8b91 1-10
+furin.config.ts
+  s_e766a880040bcc::t_4968f4f93b8b18 67
+  s_e766a880040bcc::t_9ef3ce0272ab9c 66,68-74
+  s_1e696aeb829f5a::t_c426a0100e36f7 10
+  s_e766a880040bcc::t_56b7d5a95c2a8f 23
+  s_fdfc7b46fb89f9::t_ec29d05b4dd39c 65
+tests/helpers/anilist/oauth.ts
+  s_87e44248de7d03::t_1835d62e7e6130 5
+  s_e766a880040bcc::t_fb8344a58de9eb 49,66
+  s_e766a880040bcc::t_857f153a288a1e 60,65
+  s_e766a880040bcc::t_bdcb844997bcaa 53-54,70-71
+tests/anilist/cache.test.ts
+  s_e766a880040bcc::t_e69f29685d11fb 71,85,152,229,244,329
+  s_87e44248de7d03::t_1835d62e7e6130 7
+  s_e766a880040bcc::t_a20e4658a5ee00 59,72,109,209,230,277
+tests/anilist/threads.test.ts
+  s_e766a880040bcc::t_7f99230ba6fed5 114-121,125-126
+  s_e766a880040bcc::t_d29444f162f360 122-124
+src/api/modules/automation/integration.ts
+  s_1b18cb5e79ea20::t_50d6ad955b75ce 30-33
+  s_e766a880040bcc::t_0e9d46b250120a 76-78,139-140,149,392,443
+  s_1b18cb5e79ea20::t_8faf2dd9ba9bf1 393-395,408-410,429-434
+  s_e766a880040bcc::t_ac1149b5d174b9 16
+  s_e766a880040bcc::t_e360459b41491e 51-52,54-59,132-136,385
+  s_e766a880040bcc::t_5cd2c580ea392f 2-10,14,17,67-69,73-75,123-127,141-143,145-148,150,154-156,187-188,201-202,216-218,221,223-225,227-232,274-275,299-306,313-315,318-322,347-355,374-375,377-380,406-407,411,427-428,438-440,446-454
+  s_e766a880040bcc::t_cb31d692c5593b 49-50,60-61,130-131,137
+  s_e766a880040bcc::t_64774f717435ed 376
+  s_e766a880040bcc::t_bebb4042aef1aa 399-405,412-418,420,422-424,426,435-437,441-442,444-445,455-457,459-465,467-469
+  s_e766a880040bcc::t_8010edb3949906 44-46,53,204-209,211-212,325-331
+  s_e766a880040bcc::t_0acac5d0cb9a00 11-13,15,19-22,24,27-29,34-38,41-42,47-48,63-66,70-72,79-106,108-112,115,118,128-129,138,144,151-153,157-186,190,192-197,200,214-215,219,222,226,233-273,276-277,279-281,283-284,286-296,298,307-308,311-312,316-317,323-324,332-346,356-364,366-368,370-373,381,383-384,386-391,396-398
+  s_e766a880040bcc::t_0f49d18a607fbd 43,62,119-122,210,220
+tests/helpers/discovery.ts
+  s_e766a880040bcc::t_f6841bb88ff459 12
+  s_87e44248de7d03::t_1835d62e7e6130 4
+src/api/modules/automation/service.ts
+  s_e766a880040bcc::t_0f49d18a607fbd 425-429,436-437
+  s_e766a880040bcc::t_59c28e48cbd617 328-330
+  s_e766a880040bcc::t_91c76967c9b91a 41-43,261,453-454,473,475
+  s_e766a880040bcc::t_445f06af2dfa38 111-113,115,117
+  s_e766a880040bcc::t_e360459b41491e 299-314
+  s_e766a880040bcc::t_ae3ebaceadd9c8 31-33,35,37,46-47,49,55,77,85-86,88-89,102-104,116,139-140,142,147,168,176,180-183,194,218,240,331-334,347,351,369-378,382-383,396,398,414,416-420,422,452,491,527-529,533,551-552,570,572-574
+  s_e766a880040bcc::t_793f0be8b51596 206-208,213-217,220
+  s_e766a880040bcc::t_bd15dbf271f23f 114
+  s_e766a880040bcc::t_3da8054be448ac 36,247,281-282
+  s_e766a880040bcc::t_691e76ed51bfd0 30,263-267,270,276-277
+  s_e766a880040bcc::t_65df461a983098 3,12,61-62,94,96
+  s_e766a880040bcc::t_23e5ff6406a272 87,101
+  s_e766a880040bcc::t_834f52b9c22686 20
+  s_1b18cb5e79ea20::t_8faf2dd9ba9bf1 250-253,268-269,278-279
+  s_e766a880040bcc::t_a3f24dc897c21e 394-395
+  s_e766a880040bcc::t_0e9d46b250120a 490
+  s_1b18cb5e79ea20::t_50d6ad955b75ce 497-500,504,534-539
+  s_e766a880040bcc::t_64774f717435ed 502,508
+  s_e766a880040bcc::t_cb31d692c5593b 248-249,254,280,296-297,317,389
+  s_e766a880040bcc::t_5cd2c580ea392f 16,38,48,50-52,209-212,241-246,256-259,271-275,319-327,335-346,348-350,352,379-381,385-388,390-393,399-406,408-413,424,430,439-442,530-531,543-550,554-559,561-569,575-579
+src/api/modules/updates/service.ts
+  s_e766a880040bcc::t_7263a887249874 145-152
+scripts/native-smoke.ts
+  s_e766a880040bcc::t_bd5fdb3e06bb3e 12,365-366,368,371-374
+  s_e766a880040bcc::t_894e44cb1c6a7a 406
+  s_e766a880040bcc::t_3a9e8f83fe2fc7 15,292-295,307,361-364,401-405,412-415
+  s_e766a880040bcc::t_c6d00458397d79 297-300,407-409
+  s_87e44248de7d03::t_1835d62e7e6130 10,17,369
+  s_e766a880040bcc::t_6f0e98af25245b 16,211,296,303-304,314,367,370,411
+  s_e766a880040bcc::t_f6a6440fd7e0a5 13,301,305-306,308-312,316
+tests/anilist/library.test.ts
+  s_e766a880040bcc::t_e98095d05f0d0e 96,106,238,252,327,384
+  s_87e44248de7d03::t_1835d62e7e6130 7
+  s_e766a880040bcc::t_08d10011655bac 65,97,167,239,308,328
+src/api/modules/torrents/index.ts
+  s_e766a880040bcc::t_36c5cd74bc9725 17,20-21,28,35-36,43-49,51-52,54-55,65-66,73,76,81-82,85-86
+  s_e766a880040bcc::t_d5eed58a5c6fa2 14,62-63,74
+src/api/lib/runtime.ts
+  s_e766a880040bcc::t_151a05cc557c1d 1-4
+README.md
+  s_1b18cb5e79ea20::t_23e11f51902a50 81
+  s_1e696aeb829f5a::t_c426a0100e36f7 32-33
+  s_e766a880040bcc::t_a4016d11a15f82 75,77-79,83-88,91-98,100-121
+  s_e766a880040bcc::t_c016a744f44a23 80
+  s_1b18cb5e79ea20::t_62cfcaf472c44f 82
+  s_e766a880040bcc::t_0ba7320a41f263 74,76,89-90,99
+  s_3cd3f92774beb1::t_b5fb7577ee607d 10
+  s_1b18cb5e79ea20::t_0382ea766bc905 124
+  s_87e44248de7d03::t_7f83ba3d3b3d23 7-9
+src/api/lib/lifecycle.ts
+  s_1b18cb5e79ea20::t_518888334aba6f 1,6
+  s_e766a880040bcc::t_c016a744f44a23 7-11
+  s_e766a880040bcc::t_3d3a4ac9858801 2,13,15-17
+  s_e766a880040bcc::t_2b803cc4be8331 3
+bun.lock
+  s_1b18cb5e79ea20::t_4336fc4114743d 12,430
+src/api/modules/discovery/plugin.ts
+  s_e766a880040bcc::t_d5eed58a5c6fa2 4
+  s_e766a880040bcc::t_e5befe1dd72f0c 7
+  s_e766a880040bcc::t_8ba9f7b6cfdb55 11-14
+  s_e766a880040bcc::t_151a05cc557c1d 3,20
+  s_e766a880040bcc::t_9886fc09c64f9d 1
+  s_e766a880040bcc::t_6ee05f4c79c804 10,15-19
+  s_1b18cb5e79ea20::t_518888334aba6f 2,5-6,8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "176463676d7e61f9ef1f58a1b42028bd1c297ca9",
+  "prompts": {},
+  "sessions": {
+    "s_1b18cb5e79ea20": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12bde-d44b-7d11-81d6-4d259b92ed78",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_1e696aeb829f5a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a131a2-4792-79f2-ad26-67af6339077b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_3cd3f92774beb1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12cca-b7e4-7370-bbba-eb3fc5ec4040",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_87e44248de7d03": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12cd0-008d-7e53-8667-52d87f1a5848",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_95decbce1eb2e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12c6e-1ec8-76e2-aabe-2614b5912f4c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_e766a880040bcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12cc3-4f79-7310-8f04-78b637c894b7",
+        "model": "gpt-6-sol"
+      },
+      "human_author": null
+    },
+    "s_fdfc7b46fb89f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1057a-ce6d-7fb3-997b-5ca33ae3bc7a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
