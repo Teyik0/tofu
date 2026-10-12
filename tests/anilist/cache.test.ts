@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import type { AniListState } from "../../src/types";
 import { createTestApi } from "../helpers/application";
 import { expectSuccess } from "../helpers/problem";
+import { openTestServices } from "../helpers/services";
 import { fixture, waitFor } from "../helpers/torrent";
 
 function collection(title: string) {
@@ -56,7 +56,7 @@ test("AniList restores its cached list after restart without contacting upstream
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -68,8 +68,8 @@ test("AniList restores its cached list after restart without contacting upstream
     const loaded = await client.anilist.list.post({});
     expect(loaded.status).toBe(200);
     expect(requests).toBe(2);
-    await service.close();
-    service = await AutomationService.open(options);
+    await api.application.close();
+    service = await openTestServices(options);
     api = await createTestApi(
       () => context.engine,
       context.sync.options,
@@ -82,7 +82,7 @@ test("AniList restores its cached list after restart without contacting upstream
     expect(state.connectedUser).toBe("ExampleUser");
     expect(requests).toBe(2);
   } finally {
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }
@@ -106,7 +106,7 @@ test("AniList serves fresh cache and shares concurrent refreshes", async () => {
     port: 0,
   });
   const endpoint = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: endpoint,
@@ -149,7 +149,7 @@ test("AniList serves fresh cache and shares concurrent refreshes", async () => {
     await client.anilist.list.post({});
     expect(requests).toBe(6);
   } finally {
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }
@@ -206,7 +206,7 @@ test.each([true, false])(
       engine: () => context.engine,
       now: Date.now,
     };
-    let service = await AutomationService.open(options);
+    let service = await openTestServices(options);
     let api = await createTestApi(
       () => context.engine,
       context.sync.options,
@@ -226,8 +226,8 @@ test.each([true, false])(
         progress: completed ? 1 : 0,
       });
       expect(requests).toBe(4);
-      await service.close();
-      service = await AutomationService.open(options);
+      await api.application.close();
+      service = await openTestServices(options);
       api = await createTestApi(
         () => context.engine,
         context.sync.options,
@@ -241,7 +241,7 @@ test.each([true, false])(
       });
       expect(requests).toBe(4);
     } finally {
-      await service.close();
+      await api.application.close();
       upstream.stop(true);
       await context.close();
     }
@@ -274,7 +274,7 @@ test("AniList returns stale entries immediately, refreshes after the response an
     port: 0,
   });
   const endpoint = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: endpoint,
@@ -326,7 +326,7 @@ test("AniList returns stale entries immediately, refreshes after the response an
     expect(expectSuccess(switched).entries).toEqual([]);
   } finally {
     release?.();
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }

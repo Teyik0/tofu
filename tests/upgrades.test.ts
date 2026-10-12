@@ -3,10 +3,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../src/api/modules/automation/service";
 import type { AutomationDraft, AutomationRule, AutomationState } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectDefined, expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
 import { fixture, waitFor } from "./helpers/torrent";
 
 test("failed upgrades keep the old files and a manually removed fallback is never resurrected", async () => {
@@ -49,7 +49,7 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -143,7 +143,7 @@ test("equal and worse releases are skipped, ideal episodes stop Jev matching whi
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { c411: base, jev: `${base}/jev`, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -262,7 +262,7 @@ test.each([true, false])(
       engine: () => fallback.engine,
       now: Date.now,
     };
-    let service = await AutomationService.open(options);
+    let service = await openTestServices(options);
     let api = await createTestApi(
       () => fallback.engine,
       fallback.sync.options,
@@ -303,7 +303,7 @@ test.each([true, false])(
       const oldPath = join(oldDetail.savePath, oldFile.path);
       expect(await Bun.file(oldPath).bytes()).toEqual(new Uint8Array(fallback.bytes));
       await service.close();
-      service = await AutomationService.open(options);
+      service = await openTestServices(options);
       api = await createTestApi(
         () => fallback.engine,
         fallback.sync.options,
@@ -318,7 +318,7 @@ test.each([true, false])(
       ).toHaveLength(2);
       expect(await Bun.file(oldPath).exists()).toBe(true);
       await service.close();
-      service = await AutomationService.open(options);
+      service = await openTestServices(options);
       api = await createTestApi(
         () => fallback.engine,
         fallback.sync.options,
@@ -335,7 +335,7 @@ test.each([true, false])(
           ),
         (state) => state.detail?.status === "seeding"
       );
-      await service.tick();
+      await service.releaseAutomation.tick();
       expect(
         expectSuccess(await fallback.client.state.get({ query: { detail: "false" } })).torrents.map(
           (torrent) => torrent.id

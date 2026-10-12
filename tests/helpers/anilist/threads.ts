@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../../src/api/modules/automation/service";
 import { createTestApi } from "../application";
+import { openTestServices } from "../services";
 import { fixture } from "../torrent";
 export async function threadFixture() {
   const context = await fixture(4096, []);
@@ -54,7 +54,7 @@ export async function threadFixture() {
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -69,13 +69,13 @@ export async function threadFixture() {
     ...context,
     client: treaty(api).api,
     async close() {
-      await service.close();
+      await api.application.close();
       upstream.stop(true);
       await context.close();
     },
     async restart() {
-      await service.close();
-      service = await AutomationService.open(options);
+      await api.application.close();
+      service = await openTestServices(options);
       api = await createTestApi(
         () => context.engine,
         context.sync.options,

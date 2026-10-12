@@ -4,9 +4,8 @@ import type {
   FeedRelease,
   SourcePluginId,
 } from "../../../types";
+import { normalizeTitle } from "../../lib/title";
 
-const feedExpression1 = /\p{M}/gu;
-const feedExpression2 = /[^\p{L}\p{N}]+/gu;
 const feedExpression3 = /[«"“]([^»"”]+)[»"”]/;
 const feedExpression4 =
   /^(?:t[eé]l[eé]charge(?:r)?|suivre|r[eé]cup[eè]re|download|follow)\s+(?:les\s+|the\s+)?(?:nouveaux\s+|new\s+)?(?:[eé]pisodes\s+(?:de\s+)?|episodes\s+(?:of\s+)?)?/i;
@@ -20,14 +19,6 @@ const feedExpression10 = /c411/i;
 const feedExpression11 = /\b(?:saison|season)\s+(\d+)\b/i;
 const codecExpression = /\b(?:x26[45]|h[ .]?26[45]|HEVC|AVC|AV1)\b/gi;
 
-export function normalizeTitle(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(feedExpression1, "")
-    .toLocaleLowerCase("en-US")
-    .replace(feedExpression2, " ")
-    .trim();
-}
 export const defaultAutomationPreferences: AutomationPreferences = {
   automatic: true,
   codecs: ["H.265", "H.264"],

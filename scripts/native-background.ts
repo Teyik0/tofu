@@ -29,10 +29,10 @@ const native = Bun.spawn([desktopLauncher(root, hostDesktopTarget(), "dev")], {
   cwd: root,
   env: {
     ...process.env,
+    FURIN_NATIVE_TEST_SCRIPT: script,
     TOFU_DATA_DIR: join(context.directory, "native-state"),
     TOFU_DOWNLOAD_DIR: join(context.directory, "native-downloads"),
     TOFU_MODE: "desktop",
-    TOFU_SMOKE_SCRIPT: script,
   },
   stderr: "pipe",
   stdout: "pipe",

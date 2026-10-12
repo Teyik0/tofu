@@ -36,6 +36,7 @@ export function createAutomationMutations(client: typeof api) {
               id,
               lastRunAt: null,
               nextRunAt: null,
+              revision: 1,
               status: ruleStatus(draft, state),
             };
             return { ...state, automations: [...state.automations, rule] };

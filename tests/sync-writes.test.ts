@@ -1,15 +1,15 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../src/api/modules/automation/service";
 import { pluginEndpoints } from "../src/api/modules/plugins/service";
 import { createTestApi } from "./helpers/application";
 import { expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
 import { fixture } from "./helpers/torrent";
 
 test("creating and deleting an automation can be replayed without creating a second rule or restoring a deleted rule", async () => {
   const context = await fixture(1024, []);
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: pluginEndpoints,
     engine: () => context.engine,

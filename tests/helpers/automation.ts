@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import { createTestApi } from "./application";
+import { openTestServices } from "./services";
 import type { fixture } from "./torrent";
 export async function automationFixture(
   directory: string,
@@ -9,7 +9,7 @@ export async function automationFixture(
   endpoint: string
 ) {
   const base = endpoint;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(directory, "feeds"),
     endpoints: { anilist: base, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,

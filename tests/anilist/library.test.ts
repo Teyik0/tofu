@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import type { AniListState, AutomationRule } from "../../src/types";
 import { createTestApi } from "../helpers/application";
 import { expectSuccess } from "../helpers/problem";
+import { openTestServices } from "../helpers/services";
 import { fixture, torrentBytes, waitFor } from "../helpers/torrent";
 
 test("AniList library returns artwork, genres, seasons and all list statuses, and remembers the visible statuses", async () => {
@@ -62,7 +62,7 @@ test("AniList library returns artwork, genres, seasons and all list statuses, an
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -93,8 +93,8 @@ test("AniList library returns artwork, genres, seasons and all list statuses, an
     expect(state.visibleStatuses).toEqual(["CURRENT", "PLANNING"]);
     const changed = await client.anilist.preferences.put({ visibleStatuses: ["COMPLETED"] });
     expect(changed.status).toBe(200);
-    await service.close();
-    service = await AutomationService.open(options);
+    await api.application.close();
+    service = await openTestServices(options);
     api = await createTestApi(
       () => context.engine,
       context.sync.options,
@@ -103,7 +103,7 @@ test("AniList library returns artwork, genres, seasons and all list statuses, an
     client = treaty(api).api;
     expect(expectSuccess(await client.anilist.get()).visibleStatuses).toEqual(["COMPLETED"]);
   } finally {
-    await service.close();
+    await api.application.close();
     provider.stop(true);
     await context.close();
   }
@@ -164,7 +164,7 @@ test("anime episodes offer matching releases, download through real peers and re
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -235,8 +235,8 @@ test("anime episodes offer matching releases, download through real peers and re
       id: rule.id,
       languages: ["MULTI"],
     });
-    await service.close();
-    service = await AutomationService.open(options);
+    await api.application.close();
+    service = await openTestServices(options);
     api = await createTestApi(
       () => context.engine,
       context.sync.options,
@@ -249,7 +249,7 @@ test("anime episodes offer matching releases, download through real peers and re
       expectSuccess(await context.client.state.get({ query: { detail: "false" } })).torrents
     ).toHaveLength(1);
   } finally {
-    await service.close();
+    await api.application.close();
     provider.stop(true);
     await context.close();
   }
@@ -305,7 +305,7 @@ test("episode completion syncs only consecutive progress and preserves out-of-or
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -324,8 +324,8 @@ test("episode completion syncs only consecutive progress and preserves out-of-or
       ).status
     ).toBe(200);
     expect(mutations).toEqual([]);
-    await service.close();
-    service = await AutomationService.open(options);
+    await api.application.close();
+    service = await openTestServices(options);
     api = await createTestApi(
       () => context.engine,
       context.sync.options,
@@ -381,7 +381,7 @@ test("episode completion syncs only consecutive progress and preserves out-of-or
       ).status
     ).toBe(409);
   } finally {
-    await service.close();
+    await api.application.close();
     provider.stop(true);
     await context.close();
   }

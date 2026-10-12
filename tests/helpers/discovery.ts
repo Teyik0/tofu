@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import { createTestApi } from "./application";
+import { openTestServices } from "./services";
 import { fixture } from "./torrent";
 export async function discoveryFixture(
   upstreamFetch: (request: Request) => Response | Promise<Response>
@@ -9,7 +9,7 @@ export async function discoveryFixture(
   const context = await fixture(1024, []);
   const upstream = Bun.serve({ fetch: upstreamFetch, hostname: "127.0.0.1", port: 0 });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}anilist`,

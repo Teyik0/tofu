@@ -4,8 +4,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { desktopApp } from "@teyik0/furin-electrobun/server";
-import { Elysia } from "elysia";
 import WebTorrent, { type Torrent } from "webtorrent";
 import { TorrentEngine } from "../../src/api/modules/torrents/service";
 import { createTestApi } from "./application";
@@ -57,9 +55,7 @@ export async function fixture(length: number, trackers: string[], filename?: str
     network: { ...network, tracker: trackers.length > 0 },
   });
   const sync = await openTestDatabase(join(directory, "state"));
-  const api = new Elysia()
-    .use(desktopApp({ restrictWebToLoopback: true }))
-    .use(await createTestApi(() => engine, sync.options));
+  const api = await createTestApi(() => engine, sync.options);
   return {
     api,
     bytes,

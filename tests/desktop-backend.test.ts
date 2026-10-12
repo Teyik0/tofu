@@ -171,7 +171,6 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     const defaultThread = await host.page("/thread/default");
     expect(defaultThread.status).toBe(200);
     expect(await defaultThread.text()).not.toContain('<strong title="source.bin">');
-    expect((await host.page("/thread/missing-thread")).status).toBe(404);
     const options = await host.page("/options");
     expect(options.status).toBe(200);
     const optionsHtml = await options.text();

@@ -9,7 +9,6 @@ import type {
   EngineMessage,
   EngineOpenOptions,
   EngineOperations,
-  EnginePort,
   EngineRequest,
   EngineSnapshot,
   FilePriority,
@@ -22,7 +21,7 @@ interface PendingOperation {
   resolve: (value: unknown) => void;
 }
 
-export class WorkerTorrentEngine implements EnginePort {
+export class WorkerTorrentEngine {
   private readonly worker: Worker;
   private readonly pending = new Map<number, PendingOperation>();
   private readonly ready = Promise.withResolvers<void>();

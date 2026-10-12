@@ -24,13 +24,13 @@ function launch(config: InstanceConfig, bundleRoot: string) {
   const launcher = desktopLauncher(bundleRoot, hostDesktopTarget(), config.profile);
   const environment = {
     ...process.env,
+    FURIN_NATIVE_TEST_SCRIPT: undefined,
     TOFU_DATA_DIR: config.dataDir,
     TOFU_DOWNLOAD_DIR: config.downloadPath,
     TOFU_MODE: "desktop",
     TOFU_PORT: "0",
     // A terminal variable must never change the identity of an installed bundle.
     TOFU_PROFILE: config.profile === "dev" ? "release" : "dev",
-    TOFU_SMOKE_SCRIPT: undefined,
   };
   const child = Bun.spawn([launcher], {
     cwd: root,

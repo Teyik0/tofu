@@ -1,12 +1,12 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
-import { contextPlugin } from "../../lib/context";
+import { torrentServicePlugin } from "../torrents/plugin";
 
 export const healthPlugin = new Elysia({ name: "tofu-health-api" })
-  .use(contextPlugin)
+  .use(torrentServicePlugin)
   .use(furinSync(sync))
-  .get("/health", { sync: false }, ({ application }) => ({ ready: Boolean(application) }))
-  .get("/diagnostics/connections", { sync: false }, ({ application }) =>
-    application.engine.connectionDiagnostics()
+  .get("/health", { sync: false }, () => ({ ready: true }))
+  .get("/diagnostics/connections", { sync: false }, ({ torrents }) =>
+    torrents.connectionDiagnostics()
   );

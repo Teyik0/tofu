@@ -3,12 +3,12 @@ import { afterAll, expect, test } from "bun:test";
 import { chmod, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../src/api/modules/automation/service";
 import { pluginEndpoints } from "../src/api/modules/plugins/service";
 import { TorrentEngine } from "../src/api/modules/torrents/service";
 import type { AutomationState } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectDefined, expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
 import { fixture, network, torrentBytes, waitFor } from "./helpers/torrent";
 
 const catalog = Bun.serve({
@@ -33,7 +33,7 @@ test("pattern rules exclude existing releases and still download newly published
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: catalog.url.href, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -97,7 +97,7 @@ test("plugin credentials stay private when automation reuses an existing data di
   const context = await fixture(1024, []);
   const dataDir = join(context.directory, "state");
   await chmod(dataDir, 0o755);
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir,
     endpoints: pluginEndpoints,
     engine: () => context.engine,
@@ -144,7 +144,7 @@ test("C411 downloads the enclosure server-side without exposing its API key", as
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: catalog.url.href, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -204,7 +204,7 @@ test("Nyaa search falls back to the HTML catalogue when RSS is unavailable", asy
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: catalog.url.href, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -258,7 +258,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     engine: () => context.engine,
     now: () => clock,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -284,7 +284,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     expect(expectSuccess(await client.automation.get()).decisions[0]?.status).toBe("waiting");
     await client.plugins({ id: "tsundere" }).put({ enabled: false });
     await service.close();
-    service = await AutomationService.open(options);
+    service = await openTestServices(options);
     api = await createTestApi(
       () => context.engine,
       context.sync.options,
@@ -292,7 +292,7 @@ test("a waiting candidate survives restart and disabling its plugin suspends the
     );
     client = treaty(api).api;
     clock += 120_000;
-    await service.start();
+    await service.releaseAutomation.start();
     expect(expectSuccess(await context.client.state.get()).torrents).toHaveLength(0);
     expect(expectSuccess(await client.automation.get()).automations[0]?.status).toBe(
       "source-disabled"
@@ -364,7 +364,7 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: catalog.url.href,
@@ -469,7 +469,7 @@ test("an automation chooses one preferred version, downloads into its thread and
     engine: () => engine,
     now: () => clock,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => engine,
     low.sync.options,
@@ -532,7 +532,7 @@ test("an automation chooses one preferred version, downloads into its thread and
       downloadPath: join(low.directory, "downloads"),
       network,
     });
-    service = await AutomationService.open(options);
+    service = await openTestServices(options);
     api = await createTestApi(
       () => engine,
       low.sync.options,
@@ -540,7 +540,7 @@ test("an automation chooses one preferred version, downloads into its thread and
     );
     client = treaty(api).api;
     clock += 60_000;
-    await service.start();
+    await service.releaseAutomation.start();
     await waitFor(
       async () => expectSuccess(await client.state.get({ query: { selected: low.seed.infoHash } })),
       (state) => state.detail?.status === "seeding"
@@ -591,7 +591,7 @@ test("search reads real RSS/JSON, preserves unknown values and isolates a failin
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: catalog.url.href,
@@ -637,7 +637,7 @@ test("search reads real RSS/JSON, preserves unknown values and isolates a failin
 });
 test("plugins are opt-in, preserve their settings and never return API keys", async () => {
   const context = await fixture(1024, []);
-  let service: AutomationService | null = null;
+  let service: Awaited<ReturnType<typeof openTestServices>> | null = null;
   try {
     const options = {
       dataDir: join(context.directory, "feeds"),
@@ -645,7 +645,7 @@ test("plugins are opt-in, preserve their settings and never return API keys", as
       engine: () => context.engine,
       now: Date.now,
     };
-    service = await AutomationService.open(options);
+    service = await openTestServices(options);
     const getService = () => {
       if (!service) {
         throw new Error("service closed");
@@ -668,7 +668,7 @@ test("plugins are opt-in, preserve their settings and never return API keys", as
     );
     await client.plugins({ id: "nyaa" }).put({ enabled: true });
     await service.close();
-    service = await AutomationService.open(options);
+    service = await openTestServices(options);
     api = await createTestApi(() => context.engine, context.sync.options, getService);
     client = treaty(api).api;
     const state = expectSuccess(await client.automation.get()) as AutomationState;
@@ -704,7 +704,7 @@ test("disabling a rule while its torrent file is loading cancels the automatic a
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: catalog.url.href, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -764,7 +764,7 @@ test("without Jev an explicit pattern matches release names and downloads from r
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: catalog.url.href, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -825,7 +825,7 @@ test("C411 paces searches and disabling the plugin cancels queued requests", asy
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: catalog.url.href, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,

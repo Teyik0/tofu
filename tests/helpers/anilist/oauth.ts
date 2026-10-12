@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../../src/api/modules/automation/service";
 import type { AniListClient } from "../../../src/types";
 import { createTestApi } from "../application";
+import { openTestServices } from "../services";
 import { fixture } from "../torrent";
 export async function oauthFixture(client?: AniListClient) {
   const context = await fixture(1024, []);
@@ -41,33 +41,34 @@ export async function oauthFixture(client?: AniListClient) {
   reserved.stop(true);
   const base = `http://127.0.0.1:${provider.port}`;
   const options = {
-    anilistClient: client,
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: base, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
-    () => service
+    () => service,
+    client
   );
   const testContext = {
     callback,
     client: treaty(api).api,
     async close() {
-      await service.close();
+      await api.application.close();
       provider.stop(true);
       await context.close();
     },
     async restart() {
-      await service.close();
-      service = await AutomationService.open(options);
+      await api.application.close();
+      service = await openTestServices(options);
       api = await createTestApi(
         () => context.engine,
         context.sync.options,
-        () => service
+        () => service,
+        client
       );
       testContext.client = treaty(api).api;
     },

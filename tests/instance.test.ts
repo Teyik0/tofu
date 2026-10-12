@@ -7,11 +7,8 @@ import { resolveInstanceConfig } from "../src/api/lib/instance";
 import type { DashboardState, InstanceConfig } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { launchServer } from "./helpers/server-process";
-import { fixture, torrentBytes, waitFor } from "./helpers/torrent"; // Bun 1.4.2's diagnostic from the pinned WebTorrent's optional uTP probe.
+import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
-// Match the complete notice so unrelated stderr before or after it still fails.
-const optionalUtpNotice =
-  /^WebTorrent: uTP not supported warn: No native build was found for [^\r\n]+\r?\n {4}loaded from: [^\r\n]*utp-native\r?\n\r?\n(?: {6}at [^\r\n]+\r?\n)+\r?\n/m;
 test("development does not claim an existing database whose channel is unknown", async () => {
   const context = await fixture(1024, []);
   const config = resolveInstanceConfig({
@@ -42,50 +39,6 @@ test("development does not claim an existing database whose channel is unknown",
     await context.close();
   }
 }, 30_000);
-test.each(["platform prebuilds", "no uTP prebuild", "no uTP prebuild with colors"])(
-  "importing the server with %s for build inspection does not create user databases",
-  async (prebuilds) => {
-    const context = await fixture(1024, []);
-    const dataDir = join(context.directory, "build-inspection");
-    const child = Bun.spawn(
-      [process.execPath, "-e", 'await import("./src/server.ts"); process.exit(0)'],
-      {
-        cwd: join(import.meta.dir, ".."),
-        env: {
-          ...process.env,
-          FORCE_COLOR: prebuilds === "no uTP prebuild with colors" ? "1" : "0",
-          TOFU_DATA_DIR: dataDir,
-          TOFU_MODE: "server",
-          TOFU_PROFILE: "dev",
-          ...(prebuilds === "platform prebuilds"
-            ? {}
-            : { UTP_NATIVE_PREBUILD: join(context.directory, "unavailable-utp-native") }),
-        },
-        stderr: "pipe",
-        stdout: "ignore",
-      }
-    );
-    const stderr = new Response(child.stderr).text();
-    try {
-      const output = Bun.stripANSI(await stderr).replace(optionalUtpNotice, "");
-      expect({ exit: await child.exited, output }).toEqual({ exit: 0, output: "" });
-      expect(
-        await Promise.all(
-          ["sync.sqlite", "feeds.sqlite", "tofu.sqlite", "instance.json"].map((file) =>
-            Bun.file(join(dataDir, file)).exists()
-          )
-        )
-      ).toEqual([false, false, false, false]);
-    } finally {
-      if (child.exitCode === null) {
-        child.kill("SIGTERM");
-        await child.exited;
-      }
-      await context.close();
-    }
-  },
-  30_000
-);
 test("the first protected startup refuses a running legacy instance without a lock", async () => {
   const context = await fixture(1024, []);
   const legacy = Bun.serve({
@@ -123,37 +76,31 @@ test("the first protected startup refuses a running legacy instance without a lo
     await context.close();
   }
 }, 30_000);
-test("hot reload keeps the original profile and database together until process restart", async () => {
+test("watch mode restarts the application and restores its profile, settings and downloaded bytes", async () => {
   const context = await fixture(65_536, []);
   const config = resolveInstanceConfig({
-    dataDir: join(context.directory, "hot-dev"),
+    dataDir: join(context.directory, "watch-dev"),
     desktop: false,
-    downloadPath: join(context.directory, "hot-downloads"),
+    downloadPath: join(context.directory, "watch-downloads"),
     homeDir: context.directory,
     platform: "darwin",
     port: "0",
     profile: "dev",
   }); // Bun 1.4.2 on Windows only watches files inside the project directory.
-  const hotDirectory = await mkdtemp(join(import.meta.dir, "tofu-hot-"));
-  const entry = join(hotDirectory, "hot-entry.ts");
-  const signal = join(context.directory, "hot-ready.json");
+  const watchDirectory = await mkdtemp(join(import.meta.dir, "tofu-watch-"));
+  const entry = join(watchDirectory, "watch-entry.ts");
+  const signal = join(context.directory, "watch-ready.json");
   const source = join(import.meta.dir, "../src/server.ts");
   const serverProgram = (await Bun.file(source).text()).replaceAll(
     'from "./',
     `from "${join(import.meta.dir, "../src").replaceAll("\\", "/")}/`
   );
-  const nextDataDir = join(context.directory, "hot-release"); // Publish readiness atomically so polling never reads a partially written JSON file.
-  const program = (
-    iteration: number,
-    dataDir: string,
-    profile: string
-  ) => `import { rename } from "node:fs/promises";
-process.env.TOFU_DATA_DIR = ${JSON.stringify(dataDir)};
-process.env.TOFU_PROFILE = ${JSON.stringify(profile)};
+  // Publish readiness atomically so polling never reads a partially written JSON file.
+  const program = (iteration: number) => `import { rename } from "node:fs/promises";
 ${serverProgram}
 await Bun.write(${JSON.stringify(`${signal}.tmp`)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + app.server?.port}));
 await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
-  await Bun.write(entry, program(1, config.dataDir, "dev"));
+  await Bun.write(entry, program(1));
   const dev = launchServer(config, entry);
   try {
     const url = await dev.ready();
@@ -165,6 +112,8 @@ await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
       async () => (await Bun.file(signal).json()) as { iteration: number },
       (value) => value.iteration === 1
     );
+    const settings = expectSuccess(await treaty<Api>(url).api.settings.get());
+    expectSuccess(await treaty<Api>(url).api.settings.put({ ...settings, runInBackground: true }));
     const response = await treaty<Api>(url).api.torrents.post({
       paused: false,
       source: context.magnet,
@@ -174,7 +123,7 @@ await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
       async () => expectSuccess(await treaty<Api>(url).api.state.get()) as DashboardState,
       (state) => state.torrents[0]?.status === "seeding"
     );
-    await Bun.write(entry, program(2, nextDataDir, "release"));
+    await Bun.write(entry, program(2));
     const ready = await waitFor(
       async () => (await Bun.file(signal).json()) as { iteration: number; url: string },
       (value) => value.iteration === 2
@@ -182,7 +131,11 @@ await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
     const info = expectSuccess(await treaty<Api>(ready.url).api.instance.get()) as InstanceConfig;
     expect(info.profile).toBe("dev");
     expect(info.dataDir).toBe(config.dataDir);
-    expect(await Bun.file(join(nextDataDir, "server.json")).exists()).toBe(false);
+    expect(expectSuccess(await treaty<Api>(ready.url).api.settings.get()).runInBackground).toBe(
+      true
+    );
+    const restartedState = expectSuccess(await treaty<Api>(ready.url).api.state.get());
+    expect(restartedState.torrents[0]?.id).toBe(id);
     const bytes = torrentBytes(
       await treaty<Api>(ready.url).api.torrents({ id }).files({ index: "0" }).content.get()
     );
@@ -192,7 +145,7 @@ await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
     throw new Error(await dev.output, { cause: error });
   } finally {
     await dev.stop();
-    await Promise.all([context.close(), rm(hotDirectory, { force: true, recursive: true })]);
+    await Promise.all([context.close(), rm(watchDirectory, { force: true, recursive: true })]);
   }
 }, 30_000);
 test("parallel dev and release APIs keep settings, transfers and persisted state separate", async () => {

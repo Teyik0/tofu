@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import { createTestApi } from "../helpers/application";
 import { expectSuccess } from "../helpers/problem";
+import { openTestServices } from "../helpers/services";
 import { fixture } from "../helpers/torrent";
 
 test("AniList catalog browses trending anime without an account and keeps personal lists intact", async () => {
@@ -57,7 +57,7 @@ test("AniList catalog browses trending anime without an account and keeps person
     port: 0,
   });
   const base = `http://127.0.0.1:${provider.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: base, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -167,7 +167,7 @@ test("AniList catalog browses trending anime without an account and keeps person
     const invalidFormats = await client.anilist.catalog.post({ formats: ["INVALID"] as never });
     expect(invalidFormats.status).toBe(422);
   } finally {
-    await service.close();
+    await api.application.close();
     provider.stop(true);
     await context.close();
   }

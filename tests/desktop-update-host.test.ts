@@ -3,121 +3,25 @@ import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../src/api";
 import type { DashboardState, ServerInfo } from "../src/types";
+import { launchNativeUpdateHost } from "./helpers/native-update-host";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
-test.each(["success", "reported", "throw", "cancelled"] as const)(
-  "the standard desktop host preserves real transfers during update handoff: %s",
+test
+  .skipIf(process.platform === "win32" && process.env.FURIN_NATIVE_RESTART_TEST !== "1")
+  .each(["success", "reported", "throw", "cancelled"] as const)(
+  "the standard desktop host preserves real transfers through native update handoff: %s",
   async (handoff) => {
     const context = await fixture(256 * 1024, []);
-    const root = join(import.meta.dir, "..");
     const dataDir = join(context.directory, "native-state");
     const downloadPath = join(context.directory, "native-downloads");
-    let result: { error: string | null; vetoed: boolean } | null = null;
-    let nativeError: { detail: string; message: string } | null = null;
-    const child = Bun.spawn(
-      [
-        process.execPath,
-        "--eval",
-        `
-        import { runStandardDesktopHost } from "@teyik0/furin-electrobun/host";
-        const events = new Map();
-        let vetoed = false;
-        let closed;
-        const info = { error: "", hash: "next", version: "0.3.0", updateReady: true, updateAvailable: true };
-        const sdk = {
-          default: { events: {
-            on(name, callback) { const list = events.get(name) ?? []; list.push(callback); events.set(name, list); },
-            off(name, callback) { events.set(name, (events.get(name) ?? []).filter(item => item !== callback)); },
-          } },
-          BrowserWindow: class {
-            webviewId = 1;
-            webview = { on() {}, executeJavascript() {}, setNavigationRules() {} };
-            on(name, callback) { if (name === "close") closed = callback; }
-            show() {} activate() {} close() { closed?.(); } requestClose() { this.close(); }
-          },
-          BrowserView: { getAll: () => [] },
-          Tray: class { visible = true; setMenu() {} on() {} remove() { this.visible = false; } },
-          ApplicationMenu: { setApplicationMenu() {}, on() {} },
-          Utils: {
-            paths: { appData: process.env.TOFU_DATA_DIR },
-            openExternal: () => true, openPath: () => true, showItemInFolder() {},
-            openFileDialog: async () => [],
-            showMessageBox: async (message) => {
-              process.send({ kind: "native-error", ...message });
-              return { response: 0 };
-            },
-            showNotification() {}, quit() {},
-          },
-          Updater: {
-            getLocalInfo: async () => {
-              for (const url of ["https://example.com/invalid", process.env.TEST_NATIVE_MAGNET]) {
-                for (const callback of events.get("open-url") ?? []) callback({ data: { url } });
-              }
-              return { name: "Tofu Dev", identifier: "app.tofu.torrents.dev", channel: "dev", version: "0.2.4" };
-            },
-            checkForUpdate: async () => info, downloadUpdate: async () => {}, updateInfo: () => info,
-            onStatusChange() {},
-            getStatusHistory: () => process.env.TEST_HANDOFF === "cancelled" ? [] : [{ status: "launching-new-version" }],
-            async applyUpdate() {
-              const event = {};
-              for (const callback of events.get("before-quit") ?? []) callback(event);
-              vetoed = event.response?.allow === false;
-              if (process.env.TEST_HANDOFF === "reported") info.error = "Update helper failed";
-              if (process.env.TEST_HANDOFF === "throw") throw new Error("Update helper failed");
-            },
-          },
-        };
-        const desktop = await runStandardDesktopHost(sdk, {
-          config: {
-            app: { name: "Tofu Dev", identifier: "app.tofu.torrents.dev" },
-            window: { width: 1400, height: 940 },
-            tray: { mac: { image: "public/tray-template.png" }, win: { image: "public/icon.png" }, linux: { image: "public/icon.png" } },
-          },
-          root: process.cwd(), dataDir: process.env.TOFU_DATA_DIR, mode: "dev",
-          load: () => import("./src/server.ts"),
-        });
-        process.on("message", async (message) => {
-          if (message === "install") {
-            let error = null;
-            try { await desktop.updates.install(); } catch (failure) { error = failure.message; }
-            process.send({ error, vetoed });
-          } else if (message === "stop") {
-            await desktop.quit(); process.exit(0);
-          }
-        });
-      `,
-      ],
-      {
-        cwd: root,
-        env: {
-          ...process.env,
-          TEST_HANDOFF: handoff,
-          TEST_NATIVE_MAGNET: context.magnet,
-          TOFU_DATA_DIR: dataDir,
-          TOFU_DOWNLOAD_DIR: downloadPath,
-          TOFU_MODE: "desktop",
-          TOFU_PROFILE: "dev",
-        },
-        ipc(
-          message:
-            | { error: string | null; vetoed: boolean }
-            | { kind: "native-error"; detail: string; message: string }
-        ) {
-          if ("kind" in message) {
-            nativeError = message;
-          } else {
-            result = message;
-          }
-        },
-        stderr: "pipe",
-        stdout: "pipe",
-      }
-    );
-    const output = Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
+    const { child, output, events, stop } = await launchNativeUpdateHost({
+      dataDir,
+      directory: context.directory,
+      downloadPath,
+      handoff,
+      magnet: context.magnet,
+    });
     const deadline = setTimeout(() => child.kill(), 25_000);
     try {
       const server = await waitFor(
@@ -133,7 +37,7 @@ test.each(["success", "reported", "throw", "cancelled"] as const)(
       if (!server) {
         throw new Error("The native host did not start");
       }
-      const client = treaty<Api>(server.url, { headers: { cookie: server.cookie ?? "" } }).api;
+      let client = treaty<Api>(server.url, { headers: { cookie: server.cookie ?? "" } }).api;
       expect((await treaty<Api>(server.url).api.state.get()).status).toBe(403);
       expect(expectSuccess(await client.instance.get())).toMatchObject({
         dataDir,
@@ -141,7 +45,10 @@ test.each(["success", "reported", "throw", "cancelled"] as const)(
         profile: "dev",
       });
       const shown = await waitFor(
-        () => Promise.resolve(nativeError),
+        async () => {
+          const file = Bun.file(join(context.directory, "native-error.json"));
+          return (await file.exists()) ? await file.json() : null;
+        },
         (value) => value !== null,
         2000
       );
@@ -163,18 +70,56 @@ test.each(["success", "reported", "throw", "cancelled"] as const)(
       expect((await client.desktop.open.post({})).status).toBe(200);
       await client.torrents({ id }).pause.post({});
       child.send("install");
-      const installed = await waitFor(
-        () => Promise.resolve(result),
+      const approval = await waitFor(
+        async () => {
+          const file = Bun.file(join(context.directory, "quit-approval.json"));
+          return (await file.exists()) ? await file.json() : null;
+        },
         (value) => value !== null
       );
-      expect(installed?.vetoed).toBe(false);
+      expect(approval.vetoed).toBe(false);
       if (handoff === "success") {
-        expect(installed?.error).toBeNull();
+        const installed = await waitFor(
+          async () => {
+            const file = Bun.file(join(context.directory, "install-result.json"));
+            return (await file.exists()) ? await file.json() : null;
+          },
+          (value) => value !== null
+        );
+        expect(installed.error).toBeNull();
         expect((await client.state.get()).status).toBe(503);
       } else {
-        expect(installed?.error).toContain(
-          handoff === "cancelled" ? "cancelled" : "Update helper failed"
+        const replacement = await waitFor(
+          async () => {
+            const file = Bun.file(join(dataDir, "server.json"));
+            return (await file.exists()) ? ((await file.json()) as ServerInfo) : null;
+          },
+          (value) => value !== null && value.pid !== server.pid
         );
+        if (!replacement) {
+          throw new Error("The replacement native host did not start");
+        }
+        expect(await child.exited, (await output).join("\n")).toBe(0);
+        expect(replacement.pid).not.toBe(server.pid);
+        expect(() => process.kill(server.pid, 0)).toThrow();
+        expect(replacement.cookie).not.toBe(server.cookie);
+        expect(
+          (
+            await treaty<Api>(replacement.url, {
+              headers: { cookie: server.cookie ?? "" },
+            }).api.state.get()
+          ).status
+        ).toBe(403);
+        client = treaty<Api>(replacement.url, {
+          headers: { cookie: replacement.cookie ?? "" },
+        }).api;
+        const launches = (await Bun.file(events).text())
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as { type: string; pid: number });
+        expect(launches.slice(0, 3).map((event) => event.type)).toEqual(["start", "exit", "start"]);
+        expect(launches[0]?.pid).toBe(child.pid);
+        expect(launches[2]?.pid).not.toBe(child.pid);
         expect((await client.health.get()).status).toBe(200);
         expect((await state()).torrents.find((torrent) => torrent.id === id)?.status).toBe(
           "paused"
@@ -188,12 +133,7 @@ test.each(["success", "reported", "throw", "cancelled"] as const)(
       expect(await Bun.file(join(downloadPath, context.seed.name)).bytes()).toEqual(context.bytes);
     } finally {
       clearTimeout(deadline);
-      if (child.exitCode === null) {
-        child.send("stop");
-      }
-      const timer = setTimeout(() => child.kill(), 5000);
-      await child.exited;
-      clearTimeout(timer);
+      await stop();
       await context.close();
     }
   },

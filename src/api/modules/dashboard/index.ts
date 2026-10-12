@@ -1,11 +1,11 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
-import { contextPlugin } from "../../lib/context";
+import { torrentServicePlugin } from "../torrents/plugin";
 import { dashboardQuerySchema } from "./model";
 
 export const dashboardPlugin = new Elysia({ name: "tofu-dashboard-api" })
-  .use(contextPlugin)
+  .use(torrentServicePlugin)
   .use(furinSync(sync))
   .guard({ sync: false })
   .get(
@@ -14,14 +14,14 @@ export const dashboardPlugin = new Elysia({ name: "tofu-dashboard-api" })
       query: dashboardQuerySchema,
       sync: { id: "tofu.dashboard", scope: {} },
     },
-    async ({ application, query }) => {
-      const state = await application.engine.refreshSnapshot(1000);
+    async ({ torrents, query }) => {
+      const state = await torrents.refreshSnapshot(1000);
       const selected = query.selected ?? state.torrents[0]?.id;
       const detail =
         query.detail !== "false" &&
         selected &&
         state.torrents.some((torrent) => torrent.id === selected)
-          ? await application.engine.detail(selected)
+          ? await torrents.detail(selected)
           : null;
       return { ...state, detail };
     }

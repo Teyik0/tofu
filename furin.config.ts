@@ -7,6 +7,7 @@ import { databaseMigrationsPlugin } from "./scripts/database-migrations";
 const release = process.env.TOFU_RELEASE === "1";
 process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
 if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPER_ID) {
+  // The "-" identity enables free ad hoc signing without an Apple Developer account.
   process.env.ELECTROBUN_DEVELOPER_ID = "-";
 }
 
@@ -19,8 +20,8 @@ export default defineConfig({
       name: "Tofu",
       version,
     },
+    dataDir: { developmentName: "Tofu-dev", env: "TOFU_DATA_DIR", name: "Tofu" },
     external: ["webtorrent", "parse-torrent"],
-    hostEntry: "src/desktop-host.ts",
     protocols: [release ? "tofu" : "tofu-dev"],
     sdk: {
       app: {
@@ -61,6 +62,16 @@ export default defineConfig({
   }),
   plugins: [
     databaseMigrationsPlugin,
+    {
+      buildOnly: true,
+      name: "tofu-build-scan-cleanup",
+      async setup(builder) {
+        if (builder.config.target === "bun") {
+          const { resources } = await import("./src/api/lib/runtime");
+          await resources.disposeAsync();
+        }
+      },
+    },
     {
       name: tailwind.name,
       setup(builder) {

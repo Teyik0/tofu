@@ -1,11 +1,11 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
-import { contextPlugin } from "../../lib/context";
+import { automationPlugin } from "../automation";
 import { interpretationSchema } from "./model";
 
-export const jevPlugin = new Elysia({ name: "tofu-jev-api" })
-  .use(contextPlugin)
+export const jevManagementPlugin = new Elysia({ name: "tofu-jev-api" })
+  .use(automationPlugin)
   .use(furinSync(sync))
   .guard({ sync: false })
   .post(
@@ -13,5 +13,5 @@ export const jevPlugin = new Elysia({ name: "tofu-jev-api" })
     {
       body: interpretationSchema,
     },
-    ({ application, body }) => application.automation.interpret(body.query, body.destinationId)
+    ({ automation, body }) => automation.interpret(body.query, body.destinationId)
   );

@@ -4,8 +4,8 @@ import type { Api } from "../../src/api";
 import type { InstanceConfig } from "../../src/types";
 import { waitFor } from "./torrent"; // Bun 1.4.2's diagnostic from the pinned WebTorrent's optional uTP probe.
 // Match the complete notice so unrelated stderr before or after it still fails.
-export function launchServer(config: InstanceConfig, hotEntry?: string) {
-  const command = hotEntry ? ["--hot", hotEntry] : ["src/server.ts"];
+export function launchServer(config: InstanceConfig, watchEntry?: string) {
+  const command = watchEntry ? ["--watch", "--no-clear-screen", watchEntry] : ["src/server.ts"];
   const child = Bun.spawn(
     [process.execPath, "--preload", join(import.meta.dir, "process-control.ts"), ...command],
     {

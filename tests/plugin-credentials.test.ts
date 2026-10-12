@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../src/api/modules/automation/service";
 import { pluginEndpoints } from "../src/api/modules/plugins/service";
 import type { AutomationState } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { credentialsFixture } from "./helpers/credentials";
 import { expectProblem, expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
 import { fixture } from "./helpers/torrent";
 
 function connectedJev() {
@@ -27,7 +27,7 @@ test("C411 validates a pasted Torznab link and saves only its key without enabli
     hostname: "127.0.0.1",
     port: 0,
   });
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { ...pluginEndpoints, c411: upstream.url.href },
     engine: () => context.engine,
@@ -61,7 +61,7 @@ test("C411 validates a pasted Torznab link and saves only its key without enabli
     expect(checked.status).toBe(200);
     expect(received[1]?.searchParams.get("apikey")).toBe("personal+key");
     await service.close();
-    const restored = await AutomationService.open({
+    const restored = await openTestServices({
       dataDir: join(context.directory, "feeds"),
       endpoints: { ...pluginEndpoints, c411: upstream.url.href },
       engine: () => context.engine,

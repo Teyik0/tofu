@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import { createTestApi } from "../helpers/application";
 import { expectProblem, expectSuccess } from "../helpers/problem";
+import { openTestServices } from "../helpers/services";
 import { fixture } from "../helpers/torrent";
 
 test.each(["invalid JSON", "network failure"])(
@@ -19,7 +19,7 @@ test.each(["invalid JSON", "network failure"])(
     if (failure === "network failure") {
       provider.stop(true);
     }
-    const service = await AutomationService.open({
+    const service = await openTestServices({
       dataDir: join(context.directory, "feeds"),
       endpoints: {
         anilist: endpoint,
@@ -42,7 +42,7 @@ test.each(["invalid JSON", "network failure"])(
       expect(response.status).toBe(502);
       await expectProblem(response, 502, "AniList unavailable");
     } finally {
-      await service.close();
+      await api.application.close();
       provider.stop(true);
       await context.close();
     }
@@ -77,7 +77,7 @@ test("AniList catalog handles nullable schema fields without inventing metadata"
     port: 0,
   });
   const endpoint = provider.url.origin;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: endpoint,
@@ -113,7 +113,7 @@ test("AniList catalog handles nullable schema fields without inventing metadata"
       ],
     });
   } finally {
-    await service.close();
+    await api.application.close();
     provider.stop(true);
     await context.close();
   }
@@ -138,7 +138,7 @@ test.each([200, 429])(
       port: 0,
     });
     const endpoint = provider.url.origin;
-    const service = await AutomationService.open({
+    const service = await openTestServices({
       dataDir: join(context.directory, "feeds"),
       endpoints: {
         anilist: endpoint,
@@ -168,14 +168,14 @@ test.each([200, 429])(
       expect(result).toContain(status === 200 ? "account or list inaccessible" : "HTTP 429");
       expect(authorizations).toEqual([null]);
     } finally {
-      await service.close();
+      await api.application.close();
       provider.stop(true);
       await context.close();
     }
   }
 );
 test.skipIf(process.platform === "win32")(
-  "closing the service aborts an in-flight generated SDK request",
+  "closing the application aborts an in-flight generated SDK request",
   async () => {
     const context = await fixture(1024, []);
     const arrived = Promise.withResolvers<void>();
@@ -189,7 +189,7 @@ test.skipIf(process.platform === "win32")(
       port: 0,
     });
     const endpoint = provider.url.origin;
-    const service = await AutomationService.open({
+    const service = await openTestServices({
       dataDir: join(context.directory, "feeds"),
       endpoints: {
         anilist: endpoint,
@@ -210,12 +210,12 @@ test.skipIf(process.platform === "win32")(
     try {
       const pending = client.anilist.catalog.post({});
       await arrived.promise;
-      await service.close();
+      await api.application.close();
       const response = await Promise.race([pending, Bun.sleep(1000).then(() => null)]);
       expect(response?.response.ok).toBe(false);
     } finally {
       blocked.resolve(Response.json({ data: null }));
-      await service.close();
+      await api.application.close();
       provider.stop(true);
       await context.close();
     }
@@ -269,7 +269,7 @@ test("AniList skips unknown episode progress while refreshing and persisting usa
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -291,8 +291,8 @@ test("AniList skips unknown episode progress while refreshing and persisting usa
     const refreshed = await client.anilist.list.post({});
     expect(refreshed.status).toBe(200);
     expect(expectSuccess(refreshed).entries).toMatchObject([{ mediaId: 8, progress: 3 }]);
-    await service.close();
-    service = await AutomationService.open(options);
+    await api.application.close();
+    service = await openTestServices(options);
     api = await createTestApi(
       () => context.engine,
       context.sync.options,
@@ -302,7 +302,7 @@ test("AniList skips unknown episode progress while refreshing and persisting usa
     const cached = await client.anilist.get();
     expect(expectSuccess(cached).entries).toMatchObject([{ mediaId: 8, progress: 3 }]);
   } finally {
-    await service.close();
+    await api.application.close();
     provider.stop(true);
     await context.close();
   }

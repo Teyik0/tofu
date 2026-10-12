@@ -7,9 +7,14 @@ import { basename, dirname, join, relative } from "node:path";
 import { Server as Tracker } from "bittorrent-tracker";
 import { fromCrossJSON, toCrossJSONAsync } from "seroval";
 import WebTorrent, { type Torrent } from "webtorrent";
+import { openDatabase } from "../src/api/lib/db";
 import { acquireInstance, resolveInstanceConfig } from "../src/api/lib/instance";
+import { AniListService } from "../src/api/modules/anilist/service";
+import { ReleaseAutomationService } from "../src/api/modules/automation/integration";
 import { AutomationService } from "../src/api/modules/automation/service";
-import { pluginEndpoints } from "../src/api/modules/plugins/service";
+import { DiscoveryService } from "../src/api/modules/discovery/service";
+import { JevService } from "../src/api/modules/jev/service";
+import { PluginsService, pluginEndpoints } from "../src/api/modules/plugins/service";
 import { TorrentEngine } from "../src/api/modules/torrents/service";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { InstanceProfile } from "../src/types";
@@ -203,11 +208,11 @@ const native = Bun.spawn([join(isolatedBundle, relative(bundle, launcher))], {
   cwd: folder,
   env: {
     ...process.env,
+    FURIN_NATIVE_TEST_SCRIPT: scriptPath,
     TOFU_DATA_DIR: join(folder, "state"),
     TOFU_DOWNLOAD_DIR: join(folder, "downloads"),
     TOFU_MODE: "desktop",
     TOFU_PROFILE: nativeProfile,
-    TOFU_SMOKE_SCRIPT: scriptPath,
   },
   stderr: "pipe",
   stdout: "pipe",
@@ -284,13 +289,31 @@ async function seedAniListCatalog(directory: string) {
       },
     });
     resources.defer(() => engine.close());
-    const service = await AutomationService.open({
-      dataDir: join(directory, "state"),
-      endpoints: pluginEndpoints,
-      engine: () => engine,
-      now: Date.now,
+    const db = await openDatabase(join(directory, "state"));
+    resources.defer(() => db.$client.close(true));
+    const plugins = new PluginsService(db, { endpoints: pluginEndpoints, now: Date.now });
+    resources.defer(() => plugins.close());
+    const jev = new JevService(db, { endpoint: pluginEndpoints.jev, now: Date.now, plugins });
+    resources.defer(async () => {
+      plugins.close();
+      await jev.close();
     });
-    resources.defer(() => service.close());
+    const discovery = new DiscoveryService(db, {
+      endpoints: pluginEndpoints,
+      engine,
+      jev,
+      plugins,
+    });
+    resources.defer(() => discovery.close());
+    const automation = new AutomationService(db, { jev, now: Date.now });
+    const releaseAutomation = new ReleaseAutomationService({
+      automation,
+      discovery,
+      engine,
+      now: Date.now,
+      plugins,
+    });
+    resources.defer(() => releaseAutomation.close());
     // Retain the packaged provider's cache identity while seeding through its public service.
     globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = new Request(input, init);
@@ -335,8 +358,20 @@ async function seedAniListCatalog(directory: string) {
             },
       });
     }, nativeFetch);
-    service.configure("anilist", { apiKey: "native-catalog-token", enabled: true });
-    await service.anilist.list();
+    plugins.configure("anilist", { apiKey: "native-catalog-token", enabled: true });
+    const anilist = new AniListService(db, {
+      automation,
+      discovery,
+      endpoint: "https://graphql.anilist.co",
+      engine,
+      jev,
+      now: Date.now,
+      plugins,
+      releaseAutomation,
+      tokenEndpoint: "https://anilist.co/api/v2/oauth/token",
+    });
+    resources.defer(() => anilist.close());
+    await anilist.list();
   } finally {
     globalThis.fetch = nativeFetch;
     await resources.disposeAsync();
@@ -363,14 +398,19 @@ async function seedSearchReleases(directory: string, sourceUrl: string, profile:
     network: { dht: false, lsd: false, natPmp: false, natUpnp: false, tracker: false, utp: false },
   });
   resources.defer(() => engine.close());
-  const service = await AutomationService.open({
-    dataDir: join(directory, "state"),
-    endpoints: { ...pluginEndpoints, nyaa: sourceUrl },
-    engine: () => engine,
-    now: Date.now,
+  const db = await openDatabase(join(directory, "state"));
+  resources.defer(() => db.$client.close(true));
+  const endpoints = { ...pluginEndpoints, nyaa: sourceUrl };
+  const plugins = new PluginsService(db, { endpoints, now: Date.now });
+  resources.defer(() => plugins.close());
+  const jev = new JevService(db, { endpoint: endpoints.jev, now: Date.now, plugins });
+  resources.defer(async () => {
+    plugins.close();
+    await jev.close();
   });
-  resources.defer(() => service.close());
-  service.configure("nyaa", { enabled: true });
-  service.configure("tsundere", { enabled: true });
-  return (await service.discover("Second", ["nyaa"])).releases;
+  const discovery = new DiscoveryService(db, { endpoints, engine, jev, plugins });
+  resources.defer(() => discovery.close());
+  plugins.configure("nyaa", { enabled: true });
+  plugins.configure("tsundere", { enabled: true });
+  return (await discovery.discover("Second", ["nyaa"])).releases;
 }

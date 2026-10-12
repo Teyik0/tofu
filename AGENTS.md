@@ -46,6 +46,13 @@ export const plugin = new Elysia({ name: "tofu-plugin" })
 export type Plugin = typeof plugin;
 ```
 
+## Elysia application composition
+
+- `server.ts` owns the only listening Elysia application. Install `desktopApp()` first, then Furin, then the typed `apiPlugin` exported from `api/index.ts`.
+- Keep desktop host initialization and lifecycle hooks in `server.ts`; `api/index.ts` only composes API routes and services.
+- The server-side Eden client intentionally dispatches directly to `apiPlugin`, while network requests reach it through the listening root. Do not add another HTTP listener or custom client transport.
+- Preserve inferred API types from the route plugins. Initialize dependencies and mount routes before listening.
+
 ## No interfaces that mirror implementations
 
 - Never introduce an interface that merely copies a class's public methods or properties. Use the class's instance type directly.
@@ -88,15 +95,12 @@ interface TorrentEngineOptions {
 }
 ```
 
-## Isomorphic Eden client: required implementation
+## Isomorphic Eden client: mandatory and protected
 
-- Preserve the implementation below in `src/lib/client.ts`. This is an explicit project decision, not a workaround to refactor.
-- The server branch must use `createClient(apiPlugin).api` directly. Eden dispatches to the API plugin without a network request.
+- Never modify `src/lib/client.ts` unless the user explicitly requests a change to that file. Architecture, startup, AOT, and desktop fixes do not authorize changing it.
+- The server branch must remain `createClient(apiPlugin).api`, with direct in-process Eden dispatch and no network request. The API plugin is mounted on the listening root, and direct dispatch intentionally bypasses the root's network guard.
 - The browser branch must use `createClient<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).api`.
-- Never replace `apiPlugin` with the root application or import `app` or `server` into this client.
 - Never add a custom `fetcher`, manual `app.handle()` dispatch, an internal HTTP origin, request-scoped `AsyncLocalStorage`, or cookie/origin/header forwarding for this client.
-- Do not introduce transport middleware or application restructuring to route server-side Eden calls through desktop or HTTP guards. Direct dispatch to `apiPlugin` is intentional.
-- Do not change this architecture unless the user explicitly requests a change to the isomorphic client transport. Preserve it during unrelated fixes and refactors.
 
 Required implementation:
 

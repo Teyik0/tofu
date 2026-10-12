@@ -1,13 +1,12 @@
 import { pathToFileURL } from "node:url";
 import type { DesktopAppOptions } from "@teyik0/furin-electrobun/server";
-import { applicationHost } from "../../lib/host";
+import type { EnginePort } from "../../../types";
 import { setDefaultTorrentApp } from "./associations";
 import { openDesktopTorrent } from "./opening";
 
+export const desktopRuntime = { engine: undefined as EnginePort | undefined };
 export const desktopHooks = {
-  background: () =>
-    applicationHost.state.phase === "ready" &&
-    applicationHost.state.application.engine.settings.runInBackground,
+  background: () => desktopRuntime.engine?.settings.runInBackground === true,
   menus: ({ desktop, identity }) => [
     {
       label: identity.name,
@@ -19,10 +18,8 @@ export const desktopHooks = {
                 label: "Set as default torrent app",
                 onSelect: async () => {
                   try {
-                    await setDefaultTorrentApp(
-                      (await applicationHost.application).instance.profile,
-                      desktop
-                    );
+                    const { instance } = await import("../../lib/database-plugin");
+                    await setDefaultTorrentApp(instance.profile, desktop);
                     await desktop.dialogs.message({
                       detail: "Tofu will open .torrent files and magnet links.",
                       message: "Tofu is your default torrent app",
@@ -64,14 +61,15 @@ export const desktopHooks = {
   ],
   async onOpen({ event, desktop, identity }) {
     try {
-      const application = await applicationHost.application;
+      const { engine } = await import("../torrents/plugin");
       if (event.type === "url" && ["tofu:", "tofu-dev:"].includes(new URL(event.url).protocol)) {
         desktop.window.open();
-        await application.automation.anilist.receiveAuthorizationUrl(event.url);
+        const { anilist } = await import("../anilist/plugin");
+        await anilist.receiveAuthorizationUrl(event.url);
         return;
       }
       await openDesktopTorrent(event.type === "file" ? pathToFileURL(event.path).href : event.url, {
-        engine: application.engine,
+        engine,
         show: () => desktop.window.open(),
       });
     } catch (error) {
@@ -96,7 +94,8 @@ export const desktopHooks = {
     {
       label: "Check for updates",
       onSelect: async () => {
-        await (await applicationHost.application).updates.check();
+        const { updates } = await import("../updates/plugin");
+        await updates.check();
         desktop.window.open();
       },
     },

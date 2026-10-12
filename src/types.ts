@@ -1,43 +1,13 @@
 import type { FormStore } from "@formisch/react";
-import type { SyncRuntimeOptions } from "@teyik0/furin/sync";
-import type { DrizzleSqliteSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import type { ApplicationRuntime } from "@teyik0/furin-electrobun/host";
 import type { InferOutput } from "valibot";
 import type { Options as TorrentNetworkOptions } from "webtorrent";
-import type { TofuDatabase } from "./api/lib/db";
-import type { ObservedSyncNotifier } from "./api/lib/sync-notifier";
-import type { AutomationService } from "./api/modules/automation/service";
 import type { pluginConfigurationSchema, pluginFormSchema } from "./api/modules/plugins/model";
-import type { UpdatesService } from "./api/modules/updates/service";
+import type { TorrentEngine } from "./api/modules/torrents/service";
+import type { WorkerTorrentEngine } from "./api/modules/torrents/worker-client";
 
-export type ApplicationSync = SyncRuntimeOptions<DrizzleSqliteSyncAdapter<TofuDatabase>> & {
-  notifier: ObservedSyncNotifier;
-};
 export type ApplicationInstance = InstanceConfig & { desktop: boolean };
 export type ApplicationPlatform = ApplicationRuntime;
-
-export interface CoreApplication {
-  readonly automation: AutomationService;
-  close: () => Promise<void>;
-  readonly db: TofuDatabase;
-  readonly engine: EnginePort;
-  readonly instance: ApplicationInstance;
-  startBackground: () => void;
-  readonly sync: ApplicationSync;
-  readonly updates: UpdatesService;
-}
-
-export interface Application extends CoreApplication {
-  readonly platform: ApplicationPlatform;
-}
-
-export type ApplicationState =
-  | { phase: "starting" | "stopping" | "stopped" }
-  | { phase: "ready"; application: Application };
-
-export interface ApplicationProvider {
-  readonly state: ApplicationState;
-}
 
 export type InstanceProfile = "dev" | "release";
 
@@ -283,7 +253,7 @@ export interface DashboardState {
   torrents: TorrentSummary[];
 }
 
-export type SourcePluginId = "nyaa" | "tsundere" | "c411";
+export type SourcePluginId = string;
 export type PluginId = SourcePluginId | "jev" | "anilist";
 export type CredentialPluginId = "c411" | "jev";
 export interface PluginCredentialPage {
@@ -337,6 +307,7 @@ export interface FeedRelease {
   language: "VF" | "VOSTFR" | "MULTI" | null;
   pack: boolean;
   pageUrl: string | null;
+  privateDownload?: boolean;
   publishedAt: number | null;
   resolution: string | null;
   season: number | null;
@@ -591,12 +562,17 @@ export interface AniListState {
 export interface AutomationRule extends AutomationDraft {
   createdAt: number;
   error: string | null;
+  executorId?: string;
   id: string;
+  key?: string;
   lastRunAt: number | null;
   nextRunAt: number | null;
+  ownerId?: string;
+  revision: number;
   status: "active" | "paused" | "source-disabled" | "running" | "error";
 }
 export interface AutomationDecision {
+  approved?: boolean;
   automationId: string;
   contentKey: string;
   createdAt: number;
@@ -680,42 +656,32 @@ export interface TorrentAddOptions {
   trackers?: string[];
 }
 
-export interface EngineOperations {
-  add: (input: string | Uint8Array, options: TorrentAddOptions) => Promise<{ id: string }>;
-  addPeer: (id: string, peer: string) => Promise<{ ok: boolean }>;
-  assertReady: () => void | Promise<void>;
-  close: () => Promise<void>;
-  connectionDiagnostics: () => ConnectionDiagnostics | Promise<ConnectionDiagnostics>;
-  detail: (id: string) => TorrentDetail | Promise<TorrentDetail>;
-  file: (id: string, index: number) => Promise<{ name: string; path: string }>;
-  locate: (id: string, downloadPath: string) => Promise<{ ok: boolean }>;
-  pause: (id: string) => Promise<{ ok: boolean }>;
-  priority: (id: string, index: number, priority: FilePriority) => Promise<{ ok: boolean }>;
-  reannounce: (id: string) => { ok: boolean } | Promise<{ ok: boolean }>;
-  refreshSnapshot: (maxAgeMs: number) => Promise<DashboardState>;
-  remove: (id: string, deleteFiles: boolean) => Promise<{ ok: boolean }>;
-  removeDestination: (id: string) => Promise<{ ok: boolean; removed: string }>;
-  repair: (id: string) => Promise<{ ok: boolean }>;
-  replaceTrackers: (id: string, urls: string[]) => Promise<{ ok: boolean }>;
-  resume: (id: string) => Promise<{ ok: boolean }>;
-  saveDestination: (id: string | null, input: DestinationInput) => Promise<Destination>;
-  setObserved: (observed: boolean) => void | Promise<void>;
-  updateDestinationPresentation: (
-    id: string,
-    input: DestinationPresentation
-  ) => Destination | Promise<Destination>;
-  updateSettings: (settings: SettingsInput) => Promise<Settings>;
-  verify: (id: string) => Promise<{ ok: boolean }>;
-}
-
-export interface EnginePort extends EngineOperations {
-  mode: "desktop" | "server";
-  readonly settings: Settings;
-  snapshot: (selected: string | null, includeDetail?: boolean) => DashboardState;
-  readonly stateRevision: number;
-  subscribeChanges: (listener: (change: EngineChange) => void) => () => void;
-  readonly telemetryRevision: number;
-}
+export type EngineOperations = Pick<
+  TorrentEngine,
+  | "add"
+  | "addPeer"
+  | "assertReady"
+  | "close"
+  | "connectionDiagnostics"
+  | "detail"
+  | "file"
+  | "locate"
+  | "pause"
+  | "priority"
+  | "reannounce"
+  | "refreshSnapshot"
+  | "remove"
+  | "removeDestination"
+  | "repair"
+  | "replaceTrackers"
+  | "resume"
+  | "saveDestination"
+  | "setObserved"
+  | "updateDestinationPresentation"
+  | "updateSettings"
+  | "verify"
+>;
+export type EnginePort = TorrentEngine | WorkerTorrentEngine;
 
 export type EngineRequest =
   | {

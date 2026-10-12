@@ -22,9 +22,12 @@ export function PluginGroup({
       <FieldGroup className="settings-group plugins-group">
         {plugins
           .filter((plugin) => selectedIds.has(plugin.id))
-          .map((plugin) => (
-            <PluginCard desktop={desktop} form={forms[plugin.id]} key={plugin.id} plugin={plugin} />
-          ))}
+          .map((plugin) => {
+            const form = forms[plugin.id];
+            return form ? (
+              <PluginCard desktop={desktop} form={form} key={plugin.id} plugin={plugin} />
+            ) : null;
+          })}
       </FieldGroup>
     </FieldSet>
   );

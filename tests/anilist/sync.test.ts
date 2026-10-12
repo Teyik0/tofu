@@ -2,10 +2,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import type { AutomationState } from "../../src/types";
 import { createTestApi } from "../helpers/application";
 import { expectSuccess } from "../helpers/problem";
+import { openTestServices } from "../helpers/services";
 import { fixture, torrentBytes, waitFor } from "../helpers/torrent";
 
 test("AniList sync follows Watching and Planning in the chosen thread, skips watched episodes and pauses removed entries", async () => {
@@ -92,7 +92,7 @@ test("AniList sync follows Watching and Planning in the chosen thread, skips wat
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -169,8 +169,8 @@ test("AniList sync follows Watching and Planning in the chosen thread, skips wat
     expect(JSON.stringify((await client.automation.get()).data)).not.toContain(
       "anilist-private-token"
     );
-    await service.close();
-    service = await AutomationService.open(options);
+    await api.application.close();
+    service = await openTestServices(options);
     api = await createTestApi(
       () => context.engine,
       context.sync.options,
@@ -179,7 +179,7 @@ test("AniList sync follows Watching and Planning in the chosen thread, skips wat
     client = treaty(api).api;
     expect(expectSuccess(await client.anilist.get()).subscriptions).toHaveLength(1);
   } finally {
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }
@@ -211,7 +211,7 @@ test("AniList OAuth validates state and stores the exchanged token without retur
   const callback = `http://127.0.0.1:${reserved.port}/callback`;
   reserved.stop(true);
   const base = `http://127.0.0.1:${provider.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: base,
@@ -265,7 +265,7 @@ test("AniList OAuth validates state and stores the exchanged token without retur
     expect(replay.status).toBe(400);
     expect(exchanges).toBe(1);
   } finally {
-    await service.close();
+    await api.application.close();
     provider.stop(true);
     await context.close();
   }
@@ -326,7 +326,7 @@ test("AniList titles require validation and unsetting a title persists across sy
     engine: () => context.engine,
     now: Date.now,
   };
-  let service = await AutomationService.open(options);
+  let service = await openTestServices(options);
   let api = await createTestApi(
     () => context.engine,
     context.sync.options,
@@ -368,15 +368,16 @@ test("AniList titles require validation and unsetting a title persists across sy
     expect(
       (expectSuccess(await client.automation.get()) as AutomationState).automations[0]?.enabled
     ).toBe(false);
-    await service.close();
-    service = await AutomationService.open(options);
+    await api.application.close();
+    service = await openTestServices(options);
     api = await createTestApi(
       () => context.engine,
       context.sync.options,
       () => service
     );
     client = treaty(api).api;
-    await service.start();
+    await api.application.anilist.start();
+    await service.releaseAutomation.start();
     const restarted = expectSuccess(await client.automation.get()) as AutomationState;
     expect(restarted.automations).toHaveLength(1);
     expect(restarted.automations[0]?.enabled).toBe(false);
@@ -389,7 +390,7 @@ test("AniList titles require validation and unsetting a title persists across sy
       .content.get();
     expect(new Uint8Array(torrentBytes(content))).toEqual(context.bytes);
   } finally {
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }

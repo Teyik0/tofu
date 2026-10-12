@@ -1,8 +1,8 @@
 import { expect } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../../src/api/modules/automation/service";
 import { createTestApi } from "../application";
+import { openTestServices } from "../services";
 import { fixture } from "../torrent";
 export async function editorFixture() {
   const context = await fixture(1024, []);
@@ -89,7 +89,7 @@ export async function editorFixture() {
     port: 0,
   });
   const base = `http://127.0.0.1:${provider.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: base, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -107,7 +107,7 @@ export async function editorFixture() {
     bytes: context.bytes,
     client: treaty(api).api,
     close: async () => {
-      await service.close();
+      await api.application.close();
       provider.stop(true);
       await context.close();
     },

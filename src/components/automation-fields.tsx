@@ -202,13 +202,13 @@ function SourceOrder({
                 }
               />
               <span className="order-rank">{used ? index + 1 : "–"}</span>
-              <FieldLabel htmlFor={`${id}-${source}`}>{sourceNames[source]}</FieldLabel>
+              <FieldLabel htmlFor={`${id}-${source}`}>{sourceNames[source] ?? source}</FieldLabel>
               {used ? (
                 <MoveButtons
                   first={index === 0}
                   last={index === values.length - 1}
                   move={(direction) => onChange(swap(values, index, direction))}
-                  name={sourceNames[source]}
+                  name={sourceNames[source] ?? source}
                 />
               ) : null}
             </div>

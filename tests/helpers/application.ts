@@ -2,21 +2,32 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { furinSync } from "@teyik0/furin/sync";
-import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
-import { Elysia } from "elysia";
 import { version } from "../../package.json";
-import { apiPlugin } from "../../src/api";
-import { ApplicationHost } from "../../src/api/lib/application-host";
-import { applicationScope, requestScope } from "../../src/api/lib/host";
 import { resolveInstanceConfig } from "../../src/api/lib/instance";
-import { ObservedSyncNotifier } from "../../src/api/lib/sync-notifier";
-import { AutomationService } from "../../src/api/modules/automation/service";
+import { AniListService } from "../../src/api/modules/anilist/service";
 import { pluginEndpoints } from "../../src/api/modules/plugins/service";
 import { TorrentEngine } from "../../src/api/modules/torrents/service";
 import { UpdatesService } from "../../src/api/modules/updates/service";
-import { sync } from "../../src/sync";
-import type { ApplicationPlatform, CoreApplication, EnginePort } from "../../src/types";
+import type { AniListClient, ApplicationPlatform, EnginePort } from "../../src/types";
 import { openTestDatabase, type TestSyncOptions } from "./database";
+import { serviceApplications } from "./service-registry";
+import { openTestServices } from "./services";
+
+const serviceReplacements = [
+  [/\/api\/lib\/runtime\.ts$/, "resources, runtime"],
+  [/\/api\/lib\/database-plugin\.ts$/, "db, instance, databasePlugin"],
+  [/\/api\/modules\/torrents\/plugin\.ts$/, "engine, torrentServicePlugin"],
+  [/\/api\/modules\/plugins\/plugin\.ts$/, "plugins, pluginRegistryPlugin"],
+  [/\/api\/modules\/jev\/plugin\.ts$/, "jev, jevServicePlugin"],
+  [/\/api\/modules\/automation\/index\.ts$/, "automation, automationPlugin"],
+  [/\/api\/modules\/discovery\/plugin\.ts$/, "discovery, discoveryServicePlugin"],
+  [/\/api\/modules\/automation\/plugin\.ts$/, "releaseAutomation, releaseAutomationPlugin"],
+  [/\/api\/modules\/anilist\/plugin\.ts$/, "anilist, anilistServicePlugin"],
+  [/\/api\/modules\/updates\/plugin\.ts$/, "updates, updatesServicePlugin"],
+] as const;
+const serviceRegistryPattern = /(?:^|\/)service-registry(?:\.ts)?$/;
+const packagePattern = /^(?:@[^/]+\/[^/]+|[a-zA-Z][^:]*)(?:\/.*)?$/;
+const serviceModulePattern = /(?:^|\/)(?:worker-client|service)(?:\.ts)?$/;
 
 interface OpeningServices {
   isDesktop: () => boolean;
@@ -25,9 +36,10 @@ interface OpeningServices {
 export async function createTestApplication(
   engine: EnginePort,
   options: TestSyncOptions,
-  automation?: AutomationService,
-  updates?: UpdatesService
-): Promise<CoreApplication> {
+  services?: Awaited<ReturnType<typeof openTestServices>>,
+  updates?: UpdatesService,
+  anilistClient?: AniListClient
+) {
   const resources = new AsyncDisposableStack();
   const instance = {
     ...resolveInstanceConfig({
@@ -42,8 +54,8 @@ export async function createTestApplication(
     desktop: engine.mode === "desktop",
   };
   const feeds =
-    automation ??
-    (await AutomationService.open(
+    services ??
+    (await openTestServices(
       {
         dataDir: options.directory,
         endpoints: pluginEndpoints,
@@ -52,9 +64,23 @@ export async function createTestApplication(
       },
       options.db
     ));
-  if (!automation) {
-    resources.defer(() => feeds.close());
-  }
+  resources.defer(() => feeds.close());
+  const anilist = new AniListService(feeds.db, {
+    automation: feeds.automation,
+    client: anilistClient,
+    discovery: feeds.discovery,
+    endpoint: feeds.options.endpoints.anilist ?? "https://graphql.anilist.co",
+    engine,
+    jev: feeds.jev,
+    now: feeds.options.now,
+    plugins: feeds.plugins,
+    releaseAutomation: feeds.releaseAutomation,
+    tokenEndpoint: feeds.options.endpoints.anilistToken ?? "https://anilist.co/api/v2/oauth/token",
+  });
+  resources.defer(async () => {
+    feeds.plugins.close();
+    await anilist.close();
+  });
   const updater =
     updates ??
     (await UpdatesService.open({
@@ -68,36 +94,74 @@ export async function createTestApplication(
   if (!updates) {
     resources.defer(() => updater.close());
   }
-  const notifier = new ObservedSyncNotifier(engine.setObserved.bind(engine));
-  const unsubscribe: () => void = engine.subscribeChanges(({ cursor }) => {
-    if (cursor !== undefined) {
-      void notifier.publish(cursor).catch(console.error);
-    }
-  });
-  resources.defer(unsubscribe);
-  const application: CoreApplication = {
-    automation: feeds,
+  const application = {
+    anilist,
+    automation: feeds.automation,
     close: () => resources.disposeAsync(),
     db: feeds.db,
+    discovery: feeds.discovery,
     engine,
     instance,
-    startBackground: () => undefined,
-    sync: {
-      adapter: drizzleSyncAdapter({ db: feeds.db, namespace: "tofu" }),
-      notifier,
-      principal: () => "local",
-    },
+    jev: feeds.jev,
+    plugins: feeds.plugins,
+    releaseAutomation: feeds.releaseAutomation,
+    resources,
     updates: updater,
   };
   options.resources.defer(() => application.close());
   return application;
 }
-export async function mountTestApplication(core: CoreApplication, platform: ApplicationPlatform) {
-  const host = new ApplicationHost();
-  await host.prepare(() => Promise.resolve(core), new AbortController().signal);
-  host.activate(core, platform);
-  const application = await host.application; // This is transport configuration. Shared plugins read the parent's host and adapter.
-  return new Elysia()
+export async function mountTestApplication(
+  application: Awaited<ReturnType<typeof createTestApplication>>,
+  platform: ApplicationPlatform
+) {
+  const id = crypto.randomUUID();
+  const serviceModule = join(import.meta.dir, "application-services.ts");
+  const graph = await Bun.build({
+    define: { TOFU_TEST_APPLICATION_ID: JSON.stringify(id) },
+    entrypoints: [join(import.meta.dir, "application-routes.ts")],
+
+    plugins: [
+      {
+        name: "provided-integration-services",
+        setup(builder) {
+          for (const [filter, names] of serviceReplacements) {
+            builder.onLoad({ filter }, () => ({
+              contents: `export { ${names} } from ${JSON.stringify(serviceModule)};`,
+              loader: "ts",
+            }));
+          }
+          builder.onResolve({ filter: serviceRegistryPattern }, () => ({
+            external: true,
+            path: join(import.meta.dir, "service-registry.ts"),
+          }));
+          builder.onResolve({ filter: packagePattern }, ({ path, importer }) => ({
+            external: true,
+            path: Bun.resolveSync(path, importer.slice(0, importer.lastIndexOf("/"))),
+          }));
+          builder.onResolve({ filter: serviceModulePattern }, ({ path, importer }) => ({
+            external: true,
+            path: Bun.resolveSync(path, importer.slice(0, importer.lastIndexOf("/"))),
+          }));
+        },
+      },
+    ],
+    target: "bun",
+  });
+  if (!(graph.success && graph.outputs[0])) {
+    throw new AggregateError(graph.logs, "Unable to prepare an isolated application module");
+  }
+  const bundlePath = join(application.instance.dataDir, `api-${crypto.randomUUID()}.mjs`);
+  await Bun.write(bundlePath, graph.outputs[0]);
+  serviceApplications.set(id, { application, platform });
+  let loaded: typeof import("./application-routes");
+  try {
+    loaded = await import(bundlePath);
+  } finally {
+    serviceApplications.delete(id);
+  }
+  const { fixtureRoutes, fixtureSync: sync } = loaded;
+  const api = fixtureRoutes
     .wrap((next) => (request, ...rest: unknown[]) => {
       if (
         !(
@@ -107,20 +171,24 @@ export async function mountTestApplication(core: CoreApplication, platform: Appl
       ) {
         request.headers.set("idempotency-key", crypto.randomUUID());
       }
-      return requestScope.run(request, () =>
-        applicationScope.run(application, () => next(request, ...rest))
-      );
+      return next(request, ...rest);
     })
-    .use(furinSync(sync))
-    .use(apiPlugin)
-    .state((store) => ({ ...store, applicationHost: host }));
+    .use(furinSync(sync));
+  return Object.assign(api, { application: { ...application, platform, sync } });
 }
 export async function createTestApi(
   engine: () => EnginePort,
   options: TestSyncOptions,
-  automation?: () => AutomationService
+  services?: () => Awaited<ReturnType<typeof openTestServices>>,
+  anilistClient?: AniListClient
 ) {
-  const core = await createTestApplication(engine(), options, automation?.());
+  const core = await createTestApplication(
+    engine(),
+    options,
+    services?.(),
+    undefined,
+    anilistClient
+  );
   return mountTestApplication(core, { kind: "server" });
 }
 export async function createTestUpdatesApi(
@@ -181,6 +249,7 @@ export async function createTestAniListOpeningApi(opening: OpeningServices) {
           dialogs: { message: async () => ({ response: 0 }), selectDirectory: async () => null },
           notifications: { show: () => undefined },
           quit: async () => undefined,
+          restart: async () => undefined,
           shell: {
             openExternal: opening.openExternal,
             openPath: () => false,

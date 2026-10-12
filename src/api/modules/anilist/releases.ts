@@ -5,8 +5,9 @@ import type {
   AutomationPreferences,
   FeedRelease,
 } from "../../../types";
-import { interpretLocally, localMatch, normalizeTitle } from "../automation/rules";
-import { parseDiscovery } from "./service";
+import { normalizeTitle } from "../../lib/title";
+import { interpretLocally, localMatch } from "../automation/rules";
+import { parseDiscovery } from "../discovery/service";
 
 const partNumber = /\bpart\s*(\d+)\b/i;
 const partSuffix = /\s+part\s*\d+$/i;

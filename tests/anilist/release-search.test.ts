@@ -2,11 +2,11 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import type { JevQuestions } from "../../src/api/modules/jev/service";
 import type { AniListReleases, AutomationState } from "../../src/types";
 import { createTestApi } from "../helpers/application";
 import { expectSuccess } from "../helpers/problem";
+import { openTestServices } from "../helpers/services";
 import { fixture } from "../helpers/torrent";
 
 test("anime release search uses language preferences and matches seasonal filenames without mixing cours", async () => {
@@ -135,7 +135,7 @@ test("anime release search uses language preferences and matches seasonal filena
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}anilist`,
@@ -196,7 +196,7 @@ test("anime release search uses language preferences and matches seasonal filena
     ) as AniListReleases;
     expect(fallback.releases[0]).toMatchObject({ episode: 1, sourceEpisode: 13 });
   } finally {
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }
@@ -299,7 +299,7 @@ test("anime searches use short series names and keep the correct season and cour
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}anilist`,
@@ -365,7 +365,7 @@ test("anime searches use short series names and keep the correct season and cour
       library.entries.find((entry: { mediaId: number }) => entry.mediaId === 130_590)?.title
     ).toBe(`${title} Part 2`);
   } finally {
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }
@@ -399,7 +399,7 @@ test("local anime searches preserve title numbers and meaningful short subtitles
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: `${base}anilist`, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -427,7 +427,7 @@ test("local anime searches preserve title numbers and meaningful short subtitles
       );
     }
   } finally {
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }

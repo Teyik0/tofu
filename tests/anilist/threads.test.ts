@@ -111,6 +111,19 @@ test("AniList creates linked Nyaa rules in per-anime threads with overrides and 
     expect(
       expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).get()).savePath
     ).toBe(customPath);
+    const tested = expectSuccess(await context.client.plugins({ id: "anilist" }).test.post({}));
+    expect(tested.automations).toHaveLength(2);
+    expectSuccess(await context.client.plugins({ id: "anilist" }).put({ enabled: false }));
+    const suspended = expectSuccess(await context.client.automation.get());
+    expect(suspended.automations.every((rule) => !rule.enabled)).toBe(true);
+    const paused = expectSuccess(await context.client.anilist.get());
+    expect(paused.subscriptions[0]?.bindings.every((binding) => !binding.active)).toBe(true);
+    expectSuccess(await context.client.plugins({ id: "anilist" }).put({ enabled: true }));
+    expectSuccess(
+      await context.client.anilist.subscriptions({ id: subscription.id }).sync.post({})
+    );
+    const resumed = expectSuccess(await context.client.automation.get());
+    expect(resumed.automations.every((rule) => rule.enabled)).toBe(true);
     await context.client.anilist.subscriptions({ id: subscription.id }).put({ enabled: false });
     await context.restart();
     await context.client.anilist.subscriptions({ id: subscription.id }).put({ enabled: true });

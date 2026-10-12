@@ -2,10 +2,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../src/api/modules/automation/service";
 import type { AutomationDraft, AutomationState, FeedRelease } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
 test("Jev excludes scores below 75 percent from previews and automation decisions", async () => {
@@ -36,7 +36,7 @@ test("Jev excludes scores below 75 percent from previews and automation decision
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}anilist`,
@@ -144,7 +144,7 @@ test("Jev resolves romaji before English and searches English only when romaji h
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}anilist`,
@@ -239,7 +239,7 @@ test("automation falls back to English after rejected romaji matches in previews
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: base, c411: base, jev: `${base}jev`, nyaa: base, tsundere: base },
     engine: () => context.engine,

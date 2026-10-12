@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../../src/api/modules/automation/service";
 import type { AniListReleases, DashboardState } from "../../src/types";
 import { createTestApi } from "../helpers/application";
 import { expectSuccess } from "../helpers/problem";
+import { openTestServices } from "../helpers/services";
 import { fixture, torrentBytes, waitFor } from "../helpers/torrent";
 
 test("catalog anime can find and download episodes without joining a personal list", async () => {
@@ -26,7 +26,7 @@ test("catalog anime can find and download episodes without joining a personal li
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: `${base}anilist`, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -39,6 +39,7 @@ test("catalog anime can find and download episodes without joining a personal li
   );
   const client = treaty(api).api;
   try {
+    await service.releaseAutomation.close();
     await client.plugins({ id: "nyaa" }).put({ enabled: true });
     const response = await client.anilist.entries({ mediaId: "99" }).releases.post({});
     expect(response.status).toBe(200);
@@ -69,7 +70,7 @@ test("catalog anime can find and download episodes without joining a personal li
     expect(state.entries).toEqual([]);
     expect(state.subscriptions).toEqual([]);
   } finally {
-    await service.close();
+    await api.application.close();
     upstream.stop(true);
     await context.close();
   }

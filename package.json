@@ -45,7 +45,7 @@
     "@elysia/eden": "2.0.0-beta.5",
     "@formisch/react": "1.1.0",
     "@teyik0/furin": "file:vendor/furin-pr163-118d85f.tgz",
-    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-118d85f.tgz",
+    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-a1c9c5d.tgz",
     "bun-plugin-tailwind": "0.1.2",
     "class-variance-authority": "0.7.1",
     "cn": "^0.4.0",

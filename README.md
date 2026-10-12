@@ -4,6 +4,10 @@
 
 A desktop torrent client with a clean interface, real transfer stats, and built-in anime tracking.
 
+[![Watch the Tofu demo — plugins, AniList, and dark theme](.github/assets/tofu-demo.jpg)](.github/assets/tofu-demo.mp4)
+
+[Watch the 53-second demo](.github/assets/tofu-demo.mp4)
+
 Built with **Bun · React · Furin · Electrobun · WebTorrent**, using **shadcn + Base UI**.
 
 ## ✨ What you can do
@@ -24,6 +28,8 @@ If downloaded files disappear or change, Tofu stops the transfer and reports a s
 Download an installer matching your system from [Releases](https://github.com/Teyik0/Tofu/releases). The release pipeline targets macOS Apple Silicon, Windows x64, and Linux x64/ARM64.
 
 On macOS, open the DMG and move Tofu to Applications. On Windows, extract the entire ZIP before running `Tofu-Setup.exe`; keep its `.installer` folder alongside it. On Linux, extract the `.tar.gz` and run `./installer`.
+
+macOS releases use free ad hoc signing unless an Apple Developer ID is configured. These releases are not notarized, so macOS may block the first launch. After downloading from the official releases page, try opening Tofu, dismiss the alert, then go to **System Settings → Privacy & Security → Open Anyway** and confirm **Open**. See [Apple's instructions](https://support.apple.com/en-us/102445) for details.
 
 On macOS, choose **Tofu → Set as default torrent app** to open `.torrent` files and magnet links with Tofu. Opening a torrent starts it in your saved download folder; reopening an existing torrent preserves its destination and paused state. You can also select Tofu in Finder's **Get Info → Open with → Change All…** for `.torrent` files. The development app does not advertise file or magnet associations.
 
@@ -65,9 +71,57 @@ Plugins are optional and start disabled. Enable them from **Plugins** in the sid
 
 [Plugin guide →](docs/plugins.md)
 
+### Service composition
+
+Each module exports its service class, Elysia plugin, and input types directly. Consumers declare their dependencies with `.use()`.
+
+Services and HTTP management are separate. `automationPlugin` has no endpoints; `automation/management.ts` retains the existing interface API. `AutomationService` depends on SQLite and Jev, not Discovery, torrent execution, or source providers. The built-in `ReleaseAutomationService` collects releases, submits candidates, and executes committed decisions. AniList owns its account/media bindings and uses that release integration.
+
+Each application initializes its services before serving requests. Elysia service plugins construct their shared instances once at module initialization and expose them with `decorate`. The database has its own plugin. The torrent service plugin owns the worker and exposes the ready engine through `.use(torrentServicePlugin)`. The global `src/sync.ts` builds Furin's SQLite adapter and notifier, then routes opt in with `furinSync(sync)`. AniList, Jev, Discovery, automation, source registration, and updates live in their own service plugins.
+
+The native startup hook supplies the runtime context before the database opens. Startup acquires the instance lock, opens and validates SQLite, initializes the torrent engine, and imports the API routes before mounting them with Furin on the single application. An `AsyncDisposableStack` releases initialized resources on failure and shutdown. The API entry exports that shared application as `apiPlugin`; importing it for build inspection never opens the user's database. The server-side Eden client dispatches directly to this same application.
+
+An integration can consume the automation service without mounting its management API:
+
+```ts
+import { Elysia } from "elysia";
+import { furinSync } from "@teyik0/furin/sync";
+import { automationPlugin } from "./src/api/modules/automation";
+import { draft } from "./src/api/modules/automation/model";
+import { sync } from "./src/sync";
+
+export const filmsPlugin = new Elysia({ name: "acme-films" })
+  .use(automationPlugin)
+  .use(furinSync(sync))
+  .put(
+    "/films/:id/rule",
+    {
+      body: draft,
+      sync: { invalidate: { path: "/", type: "layout" } },
+    },
+    async ({ automation, body, params, mutation }) => {
+      const prepared = await automation.prepareRule(null, body, [], {
+        ownerId: "acme.films",
+        key: params.id,
+      });
+      const rule = await mutation((tx) => automation.writeRule(tx, prepared));
+      automation.refreshState();
+      return rule;
+    }
+  );
+```
+
+Rules are reconciled by `(ownerId, key)`. Each configuration change increments `revision`; `prepareIngestion` and `writeIngestion` reject obsolete work. Integrations supply `{ contentKey, release }` candidates, active sources, existing torrent IDs, and collection errors. Network reads and Jev evaluations happen before the write transaction. Refresh in-memory state only after commit. For `includeExisting: false`, supply existing candidates when preparing a new rule; the core does not discover its own baseline.
+
+The executor defaults to the rule's integration owner. Only `tofu.releases` rules are polled by Tofu's built-in scheduler; legacy rules remain compatible. An external integration is responsible for its own scheduling, execution, retries, and shutdown. Persisted `adding` decisions serve as pending actions. Report results with `writeDecisionResult`, supplying the collected rule revision. Execution is retryable, not exactly-once: use torrent hashes to recover an already added transfer. Manual approval persists across retries, and replacement removal waits until the new transfer completes.
+
+Register a source with `plugins.registerSource` during application initialization, using a unique namespaced ID such as `acme.releases`. Its `search` callback receives the query, configured API key, and cancellation signal; an optional `download` callback receives the release and the same credentials/cancellation context. Source configuration persists, and new sources start disabled. Set `privateDownloads: true` when download or page URLs contain credentials. The registry keeps those URLs server-side in public snapshots. Register sources again on each startup before starting integrations.
+
+The current candidate and policy contract remains release-oriented (`FeedRelease`, torrent destinations, quality preferences); this does not yet promise a universal workflow API. Third-party routes must be included statically in the application to participate in its inferred Eden type. Plugins execute trusted code in the host process.
+
 ## 🛠️ Development
 
-The desktop commands use the Furin Electrobun CLI and standard native host. Furin owns windows, tray, native events, session bootstrap and update handoff; Tofu owns torrent/AniList behavior and application resources. The small host entry resolves the existing `Tofu`/`Tofu-dev` directories and `TOFU_DATA_DIR` at launch. Using the generated entry directly would change those locations, while a build-time absolute override would embed the build machine's paths. Bundle outputs and release artifacts stay under `.furin/electrobun/`. Build once before typechecking to prepare the Hutch SDK types.
+The desktop commands use the Furin Electrobun CLI and generated standard native host. Furin owns windows, tray, native events, session bootstrap and update handoff; Tofu owns torrent/AniList behavior and application resources. The runtime data-directory policy in `furin.config.ts` preserves the existing `Tofu`/`Tofu-dev` directories and resolves `TOFU_DATA_DIR` at launch. Each process owns one set of application services; failed native update handoff restarts the whole application after releasing both instance leases. Bundle outputs and release artifacts stay under `.furin/electrobun/`. Build once before typechecking to prepare the Hutch SDK types.
 
 The torrent worker commits engine invalidations to the shared SQLite journal and sends the committed cursor with its snapshot. The server updates its cache before notifying Furin; cursor notifications do not poll SQLite. Transfer events schedule grouped telemetry publications while a browser is subscribed. With no subscribers, telemetry publications and chart sampling stop, while persistence and storage checks run every five seconds. State changes such as completion and storage errors still publish in the background. Peer connections and encryption continue independently of interface subscriptions.
 

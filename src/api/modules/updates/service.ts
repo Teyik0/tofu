@@ -142,6 +142,14 @@ export class UpdatesService {
   snapshot(): UpdateState {
     return { ...this.snapshotState };
   }
+  attachNative(native: DesktopCapabilities["updates"], notify: (version: string) => void) {
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+    this.options.native = native;
+    this.options.notify = notify;
+    this.snapshotState.automatic = true;
+    this.observeNative();
+  }
   start() {
     if (this.timer) {
       return;

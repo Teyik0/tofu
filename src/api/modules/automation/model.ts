@@ -14,12 +14,13 @@ import {
   optional,
   partialCheck,
   pipe,
+  regex,
   string,
   union,
 } from "valibot";
 import { integerInput } from "../../lib/validation";
 
-export const source = union([literal("nyaa"), literal("tsundere"), literal("c411")]);
+export const source = pipe(string(), minLength(1), maxLength(128), regex(/^[a-z0-9][a-z0-9._-]*$/));
 export const listStatus = union([
   literal("CURRENT"),
   literal("PLANNING"),
@@ -78,7 +79,7 @@ export const preferences = object({
   sources: pipe(
     array(source),
     minLength(1),
-    maxLength(3),
+    maxLength(32),
     check((items) => new Set(items).size === items.length, "Items must be unique")
   ),
   waitMinutes: pipe(integerInput, integer(), minValue(0), maxValue(1440)),
@@ -105,7 +106,7 @@ export const draft = pipe(
     sources: pipe(
       array(source),
       minLength(1),
-      maxLength(3),
+      maxLength(32),
       check((items) => new Set(items).size === items.length, "Items must be unique")
     ),
     title: pipe(string(), minLength(1), maxLength(500)),

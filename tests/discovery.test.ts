@@ -2,13 +2,13 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import { AutomationService } from "../src/api/modules/automation/service";
 import type { DiscoveryResult } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
 import { fixture } from "./helpers/torrent";
 
-test("discovery keeps the literal query and makes no catalogue request until Jev is configured and enabled", async () => {
+test("manual discovery remains available after automation stops and stays literal without Jev", async () => {
   const context = await fixture(1024, []);
   const queries: string[] = [];
   const upstream = Bun.serve({
@@ -23,7 +23,7 @@ test("discovery keeps the literal query and makes no catalogue request until Jev
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: `${base}/anilist`, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -36,6 +36,7 @@ test("discovery keeps the literal query and makes no catalogue request until Jev
   );
   const client = treaty(api).api;
   try {
+    await service.releaseAutomation.close();
     await client.plugins({ id: "nyaa" }).put({ enabled: true });
     const query = "re zero ep9 season4";
     const response = await client.discover.post({ query, sources: ["nyaa"] });
@@ -94,7 +95,7 @@ test("discovery defaults to active sources and filters the unsearchable Tsundere
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}/anilist`,
@@ -163,7 +164,7 @@ test("natural discovery falls back during a catalogue outage and reads episode n
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}/anilist`,
@@ -265,7 +266,7 @@ test("natural discovery searches English and Japanese aliases and keeps only the
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: `${base}/anilist`, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
