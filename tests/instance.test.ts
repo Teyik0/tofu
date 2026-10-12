@@ -98,7 +98,7 @@ test("watch mode restarts the application and restores its profile, settings and
   // Publish readiness atomically so polling never reads a partially written JSON file.
   const program = (iteration: number) => `import { rename } from "node:fs/promises";
 ${serverProgram}
-await Bun.write(${JSON.stringify(`${signal}.tmp`)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + app.server?.port}));
+await Bun.write(${JSON.stringify(`${signal}.tmp`)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + apiPlugin.server?.port}));
 await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
   await Bun.write(entry, program(1));
   const dev = launchServer(config, entry);
