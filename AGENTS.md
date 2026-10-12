@@ -48,9 +48,10 @@ export type Plugin = typeof plugin;
 
 ## Elysia application composition
 
-- `server.ts` owns the only listening Elysia application. Install `desktopApp()` first, then Furin, then the typed `apiPlugin` exported from `api/index.ts`.
-- Keep desktop host initialization and lifecycle hooks in `server.ts`; `api/index.ts` only composes API routes and services.
-- The server-side Eden client intentionally dispatches directly to `apiPlugin`, while network requests reach it through the listening root. Do not add another HTTP listener or custom client transport.
+- `api/index.ts` declares the shared Elysia application as `apiPlugin`. Install `desktopApp()` first and compose API routes inside `.group("/api", ...)`; do not prefix the whole application.
+- `server.ts` attaches Furin to that same instance, exports it as the default application, and owns listening and process shutdown. Do not create a second root application or an `app.ts` entry.
+- Keep desktop host initialization and lifecycle hooks on the shared application in `api/index.ts`, before route plugins install wrappers.
+- The server-side Eden client and network requests use the same `apiPlugin` instance. Desktop network guards distinguish listener dispatch from direct in-process Eden calls. Do not add another HTTP listener or custom client transport.
 - Preserve inferred API types from the route plugins. Initialize dependencies and mount routes before listening.
 
 ## No interfaces that mirror implementations
@@ -98,7 +99,7 @@ interface TorrentEngineOptions {
 ## Isomorphic Eden client: mandatory and protected
 
 - Never modify `src/lib/client.ts` unless the user explicitly requests a change to that file. Architecture, startup, AOT, and desktop fixes do not authorize changing it.
-- The server branch must remain `createClient(apiPlugin).api`, with direct in-process Eden dispatch and no network request. The API plugin is mounted on the listening root, and direct dispatch intentionally bypasses the root's network guard.
+- The server branch must remain `createClient(apiPlugin).api`, with direct in-process Eden dispatch and no network request. `apiPlugin` is also the listening root; desktop network guards intentionally allow direct in-process dispatch.
 - The browser branch must use `createClient<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).api`.
 - Never add a custom `fetcher`, manual `app.handle()` dispatch, an internal HTTP origin, request-scoped `AsyncLocalStorage`, or cookie/origin/header forwarding for this client.
 
