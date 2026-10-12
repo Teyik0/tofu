@@ -1,0 +1,21 @@
+tests/instance.test.ts
+  s_e766a880040bcc::t_e4f75db749cc10 101
+tests/helpers/application-routes.ts
+  s_e766a880040bcc::t_e4f75db749cc10 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8aa874be18a030729194ffa06957f416c6674ec2",
+  "prompts": {},
+  "sessions": {
+    "s_e766a880040bcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12cc3-4f79-7310-8f04-78b637c894b7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
