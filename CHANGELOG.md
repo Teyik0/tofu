@@ -1,6 +1,20 @@
 # Changelog
 
-Notable changes to Tofu are tracked here. Release tags follow the version in package.json.
+Notable changes to Tofu are tracked here. Release tags follow the version in apps/tofu/package.json.
+
+## [Unreleased]
+
+### Changed
+
+- Integrate the pushed 0.2.4 desktop refactors into the experimental Bun workspace, retaining the Worker engine, Drizzle migrations, native updater, global search and expanded AniList catalog.
+- Keep AniList in its own package with typed, injected database and core automation contracts. AniList and core writes share the host transaction without importing the desktop application.
+- Share the core API contracts, server transport, validation models and UI primitives through the plugin SDK, preserving native Furin loaders and synchronized mutations.
+- Update the scaffolder to package the SDK dependency graph for a clean installation.
+
+### Fixed
+
+- Reuse lifecycle hooks from the loaded desktop backend so the native host does not bundle Furin's compiler and require its development-only parser binding.
+- Dispose a reopened plugin runtime when reusing the same application, preserving cleanup ownership across enable cycles.
 
 ## [0.2.3]
 

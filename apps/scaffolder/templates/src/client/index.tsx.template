@@ -1,0 +1,65 @@
+import type { PluginUI, ThreadActionContext } from "@tofu/plugins";
+import { useMutation, useQuery } from "@tofu/plugins/client";
+import { defineRoute } from "@teyik0/furin";
+import type { PluginRouteContext } from "@tofu/plugins/routes";
+import { useState } from "react";
+import { client } from "./api";
+
+function GreetingSettings({ threadId }: { threadId?: string }) {
+  const [greeting, setGreeting] = useState("");
+  const query = useQuery(client.settings.get, { query: { threadId } });
+  const save = useMutation(client.settings.patch);
+  return (
+    <form onSubmit={(event) => {
+      event.preventDefault();
+      save.mutate({ greeting }, { query: { threadId } });
+    }}>
+      <label>
+        Greeting
+        <input value={greeting} placeholder={query.data?.greeting ?? "Greeting"}
+          onChange={(event) => setGreeting(event.currentTarget.value)} />
+      </label>
+      <button disabled={save.isPending} type="submit">Save greeting</button>
+      {save.error ? <p role="alert">{save.error.value.detail}</p> : null}
+      {query.error ? <p role="alert">Could not load settings</p> : null}
+      <p>Saved greeting: {query.data?.greeting ?? "—"}</p>
+    </form>
+  );
+}
+
+function ThreadGreeting({ thread, close }: ThreadActionContext & { close(): void }) {
+  return <section role="dialog" aria-label="Thread greeting">
+    <h2>Greeting for {thread?.name ?? "All threads"}</h2>
+    <GreetingSettings threadId={thread?.id} />
+    <button type="button" onClick={close}>Close</button>
+  </section>;
+}
+
+function createPage({ threadLayout }: PluginRouteContext) {
+  return defineRoute()
+    .config({ layout: threadLayout, mode: "ssr" })
+    .loader(async ({ thread, dashboard, settings }) => {
+      const [currentThread, currentDashboard, hostSettings] = await Promise.all([thread, dashboard, settings]);
+      return {
+        threadName: currentThread?.name ?? "All threads",
+        threadId: currentThread?.id,
+        threadCount: currentDashboard.destinations.length,
+        downloadPath: hostSettings.downloadPath,
+      };
+    })
+    .head(({ threadName }) => ({ meta: [{ title: `{{id}} · ${threadName}` }] }))
+    .page(({ threadName, threadId, threadCount, downloadPath }) => (
+      <section>
+        <h1>{{id}}</h1>
+        <p>Thread: {threadName}. Available threads: {threadCount}.</p>
+        <p>Host download directory: {downloadPath}</p>
+        <GreetingSettings threadId={threadId} />
+      </section>
+    ));
+}
+
+export const ui = {
+  pages: [{ id: "greeting", title: "Greeting", path: "greeting", pinnable: true, route: createPage }],
+  threadActions: [{ id: "greeting", label: "Edit greeting", dialog: ThreadGreeting }],
+  settings: GreetingSettings,
+} as const satisfies PluginUI;

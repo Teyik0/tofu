@@ -1,0 +1,7 @@
+import { defineRoute } from "@teyik0/furin";
+import { ui } from "../../../src/client";
+import { threadLayout } from "../../thread-layout";
+
+const Settings = ui.settings;
+export const route = defineRoute().config({ layout: threadLayout, mode: "ssr" })
+  .page(() => <section><h2>Plugin settings</h2><Settings /></section>);

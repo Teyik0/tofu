@@ -1,0 +1,6 @@
+import { createClient } from "@tofu/plugins/client";
+import type { PluginAPI } from "@tofu/plugins";
+import type { createPlugin } from "../server";
+
+const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
+export const client = createClient<PluginAPI<ReturnType<typeof createPlugin>>>(`${origin}/api/plugins/{{id}}`);

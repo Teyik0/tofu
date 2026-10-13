@@ -1,0 +1,19 @@
+{
+  "name": "@tofu/scaffolder",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "create-tofu-plugin": "./src/cli.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/cli.ts --target=bun --outdir=dist",
+    "dev": "bun run src/cli.ts",
+    "test": "bun test tests",
+    "tscheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

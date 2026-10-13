@@ -1,0 +1,6 @@
+<svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+  <title>Tofu</title>
+  <rect fill="#f5f3e9" height="36" rx="8" width="36" />
+  <path d="m18 4 12 7v14l-12 7-12-7V11Z" fill="#526440" />
+  <path d="m8 12 10 6 10-6M18 18v11" fill="none" stroke="#f5f3e9" stroke-width="1.5" />
+</svg>

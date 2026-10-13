@@ -1,0 +1,1 @@
+export { route as threadLayout } from "./pages/(thread)/_route";

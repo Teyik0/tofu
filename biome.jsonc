@@ -24,7 +24,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/api/modules/anilist/graphql/schema.graphql"],
+      "includes": ["package/anilist/src/server/graphql/schema.graphql"],
       "formatter": {
         "enabled": false
       },
@@ -33,7 +33,10 @@
       }
     },
     {
-      "includes": ["src/components/**"],
+      "includes": [
+        "apps/tofu/src/components/**",
+        "package/anilist/src/components/**"
+      ],
       "linter": {
         "rules": {
           "complexity": {
@@ -46,7 +49,7 @@
       }
     },
     {
-      "includes": ["src/styles.css"],
+      "includes": ["apps/tofu/src/styles.css"],
       "assist": {
         "actions": {
           "source": {

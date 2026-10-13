@@ -1,0 +1,5 @@
+import { ui } from "../../../src/client";
+import { threadLayout } from "../../thread-layout";
+
+// The Tofu host generates this adapter at build time for installed contributions.
+export const route = ui.pages[0].route({ threadLayout });

@@ -1,0 +1,57 @@
+{
+  "name": "@tofu/anilist",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Official AniList plugin for Tofu",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./service": "./src/server/service.ts",
+    "./oauth": "./src/server/oauth.ts",
+    "./api": "./src/server/api.ts",
+    "./opening-api": "./src/server/opening.ts",
+    "./client": "./src/client.tsx",
+    "./components/*": "./src/components/*.tsx",
+    "./client-config": "./src/server/client.ts",
+    "./storage": "./src/server/storage.ts",
+    "./server/*": "./src/server/*.ts",
+    "./lib/*": "./src/lib/*.ts",
+    "./components/status": "./src/components/status.ts",
+    "./components/media-colors": "./src/components/media-colors.ts",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./server-clients": "./src/server-clients.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --target=bun --packages=external --outdir=dist",
+    "codegen": "bun scripts/codegen.ts",
+    "codegen:check": "bun scripts/codegen.ts --check",
+    "codegen:schema": "bun scripts/schema.ts",
+    "test": "bun run codegen && bun test tests",
+    "tscheck": "bun run codegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@base-ui/react": "catalog:",
+    "@elysia/eden": "catalog:",
+    "@formisch/react": "catalog:",
+    "@teyik0/furin": "catalog:",
+    "@tofu/plugins": "workspace:*",
+    "@tofu/ui": "workspace:*",
+    "cn": "catalog:",
+    "drizzle-orm": "catalog:",
+    "elysia": "catalog:",
+    "graphql": "catalog:",
+    "graphql-request": "catalog:",
+    "lucide-react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "valibot": "catalog:"
+  },
+  "devDependencies": {
+    "@graphql-codegen/cli": "catalog:",
+    "@graphql-codegen/typescript-generic-sdk": "catalog:",
+    "@graphql-codegen/typescript-operations": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

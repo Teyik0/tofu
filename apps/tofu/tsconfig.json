@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "electrobun": [
+        "./.furin/electrobun/.hutch/devkit/api/sdks/main/index.ts"
+      ],
+      "electrobun/main": [
+        "./.furin/electrobun/.hutch/devkit/api/sdks/main/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "furin-env.d.ts",
+    "tests/**/*.tsx"
+  ],
+  "extends": "../../tsconfig.base.json"
+}

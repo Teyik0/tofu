@@ -108,7 +108,7 @@ Required implementation:
 ```ts
 import { createIsomorphicFn } from "@teyik0/furin";
 import { createClient } from "@teyik0/furin/client";
-import { type Api, apiPlugin } from "@/api";
+import { type Api, apiPlugin } from "./apps/tofu/src/api/index";
 
 export const api = createIsomorphicFn()
   .server(() => createClient(apiPlugin).api)
@@ -177,3 +177,10 @@ return { torrent: data };
 - Test torrent transfers and lifecycle behavior with real peers in temporary directories. Simulate external providers only at their HTTP or native SDK boundaries.
 - Put shared fixtures, resource cleanup, and assertion helpers in `tests/helpers/`. Keep endpoint calls visible in the tests rather than wrapping them in request helpers.
 - Keep AniList tests in `tests/anilist/` and omit redundant `anilist-` filename prefixes.
+
+## Experimental workspace
+
+- The desktop lives in `apps/tofu`, the plugin SDK in `package/plugins`, and the autonomous AniList package in `package/anilist`. Documentation and scaffolding are separate applications.
+- The shared desktop Elysia application follows the constant composition rules above. Plugin SDK factories are allowed when they instantiate independent runtimes with injected typed capabilities and disposal scopes; do not make an autonomous package import a host application.
+- Run `bun run tscheck`, `bun run fix`, `bun run test`, and `bun run build:desktop` after changes. UI and native integration changes also require `bun run test:native`. Run Git hooks before committing and pushing.
+- Do not use default function parameter values. Keep WebTorrent on Bun and preserve downloaded files unless the explicit deletion option is supplied.

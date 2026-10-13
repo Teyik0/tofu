@@ -40,8 +40,8 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            .cache/hutch
-          key: tofu-${{ runner.os }}-${{ runner.arch }}-bun-1.4.3-${{ hashFiles('bun.lock', 'furin.config.ts') }}
+            apps/tofu/.cache/hutch
+          key: tofu-${{ runner.os }}-${{ runner.arch }}-bun-1.4.3-${{ hashFiles('bun.lock', 'apps/tofu/furin.config.ts') }}
 
       - name: Install Linux native dependencies
         if: runner.os == 'Linux'
@@ -56,3 +56,4 @@ jobs:
       - run: bun run tscheck
 
       - run: bun run test
+        timeout-minutes: 8

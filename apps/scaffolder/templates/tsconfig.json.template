@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ESNext", "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "Preserve", "moduleResolution": "bundler", "jsx": "react-jsx",
+    "types": ["bun", "react"], "strict": true, "skipLibCheck": true,
+    "noEmit": true, "allowImportingTsExtensions": true, "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": true, "noUnusedLocals": true, "noUnusedParameters": true
+  },
+  "include": ["src", "dev", "tests"]
+}

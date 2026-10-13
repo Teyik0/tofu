@@ -1,0 +1,91 @@
+import { defineConfig } from "@teyik0/furin/config";
+import { defineDesktopConfig } from "@teyik0/furin-electrobun";
+import tailwind from "bun-plugin-tailwind";
+import { version } from "./package.json";
+import { databaseMigrationsPlugin } from "./scripts/database-migrations";
+
+const release = process.env.TOFU_RELEASE === "1";
+process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
+if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPER_ID) {
+  // The "-" identity enables free ad hoc signing without an Apple Developer account.
+  process.env.ELECTROBUN_DEVELOPER_ID = "-";
+}
+
+const nativeDependencies = /^(webtorrent|parse-torrent|electrobun\/main)$/;
+
+export default defineConfig({
+  desktop: defineDesktopConfig({
+    app: {
+      identifier: release ? "app.tofu.torrents" : "app.tofu.torrents.dev",
+      name: "Tofu",
+      version,
+    },
+    dataDir: { developmentName: "Tofu-dev", env: "TOFU_DATA_DIR", name: "Tofu" },
+    external: ["webtorrent", "parse-torrent"],
+    protocols: [release ? "tofu" : "tofu-dev"],
+    sdk: {
+      app: {
+        fileAssociations: release
+          ? [{ ext: ["torrent"], name: "BitTorrent document", role: "Viewer" }]
+          : [],
+        urlSchemes: release ? ["magnet", "tofu"] : ["tofu-dev"],
+      },
+      build: {
+        // The host has no dependency tree; only the backend packages WebTorrent addons.
+        bun: { external: ["webtorrent"] },
+        copy: {
+          "LICENSE.md": "bun/LICENSE.md",
+          "runtime/anilist-client.json": "bun/anilist-client.json",
+          "runtime/plugins": "bun/plugins",
+          "src/db/drizzle": "bun/drizzle",
+        },
+        linux: { icon: "public/tofu-icon.png" },
+        mac: {
+          codesign: release || Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
+          createDmg: release,
+          icons: "public/tofu.iconset",
+          notarize: Boolean(
+            process.env.ELECTROBUN_DEVELOPER_ID &&
+              process.env.ELECTROBUN_DEVELOPER_ID !== "-" &&
+              process.env.ELECTROBUN_APPLEAPIKEYPATH
+          ),
+        },
+        win: { icon: "public/tofu.iconset/icon_256x256.png" },
+      },
+      release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },
+    },
+    tray: {
+      linux: { image: "public/icon.png" },
+      mac: { image: "public/tray-template.png", template: true },
+      win: { image: "public/icon.png" },
+    },
+    window: { height: 940, width: 1400 },
+  }),
+  plugins: [
+    databaseMigrationsPlugin,
+    {
+      buildOnly: true,
+      name: "tofu-build-scan-cleanup",
+      async setup(builder) {
+        if (builder.config.target === "bun") {
+          const { resources } = await import("./src/api/lib/runtime");
+          await resources.disposeAsync();
+        }
+      },
+    },
+    {
+      name: tailwind.name,
+      setup(builder) {
+        if ("onBeforeParse" in builder) {
+          return tailwind.setup(builder);
+        }
+      },
+    },
+    {
+      name: "tofu-native-dependencies",
+      setup(builder) {
+        builder.onResolve({ filter: nativeDependencies }, ({ path }) => ({ external: true, path }));
+      },
+    },
+  ],
+});
