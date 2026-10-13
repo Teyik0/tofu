@@ -1,0 +1,25 @@
+tests/helpers/native-update-host.ts
+  s_e766a880040bcc::t_14ef0e15b58edb 178,181-191
+  s_e766a880040bcc::t_dd98a9c043e659 180
+tests/helpers/application.ts
+  s_e766a880040bcc::t_14ef0e15b58edb 3,17-23,28-29,31,33,143,147
+  s_e766a880040bcc::t_dd98a9c043e659 24-27
+tests/helpers/torrent.ts
+  s_e766a880040bcc::t_dd98a9c043e659 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "351952077de5c076fa16db587de86151ea48f2a9",
+  "prompts": {},
+  "sessions": {
+    "s_e766a880040bcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12cc3-4f79-7310-8f04-78b637c894b7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
