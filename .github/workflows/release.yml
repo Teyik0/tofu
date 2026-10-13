@@ -94,7 +94,8 @@ jobs:
 
       - run: bun run tscheck
 
-      - run: bun run test
+      # Native host tests spawn their own Bun processes; limit contention on Windows runners.
+      - run: bun run test ${{ runner.os == 'Windows' && '--parallel=2' || '' }}
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -131,6 +132,8 @@ jobs:
           pattern: tofu-*
           merge-multiple: true
           path: .furin/electrobun/artifacts
+
+      - run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Publish GitHub release
         run: bun scripts/release.ts publish
