@@ -1,6 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { furinSync } from "@teyik0/furin/sync";
 import { version } from "../../package.json";
 import { resolveInstanceConfig } from "../../src/api/lib/instance";
@@ -14,20 +14,23 @@ import { serviceApplications } from "./service-registry";
 import { openTestServices } from "./services";
 
 const serviceReplacements = [
-  [/\/api\/lib\/runtime\.ts$/, "resources, runtime"],
-  [/\/api\/lib\/database-plugin\.ts$/, "db, instance, databasePlugin"],
-  [/\/api\/modules\/torrents\/plugin\.ts$/, "engine, torrentServicePlugin"],
-  [/\/api\/modules\/plugins\/plugin\.ts$/, "plugins, pluginRegistryPlugin"],
-  [/\/api\/modules\/jev\/plugin\.ts$/, "jev, jevServicePlugin"],
-  [/\/api\/modules\/automation\/index\.ts$/, "automation, automationPlugin"],
-  [/\/api\/modules\/discovery\/plugin\.ts$/, "discovery, discoveryServicePlugin"],
-  [/\/api\/modules\/automation\/plugin\.ts$/, "releaseAutomation, releaseAutomationPlugin"],
-  [/\/api\/modules\/anilist\/plugin\.ts$/, "anilist, anilistServicePlugin"],
-  [/\/api\/modules\/updates\/plugin\.ts$/, "updates, updatesServicePlugin"],
+  [/[\\/]api[\\/]lib[\\/]runtime\.ts$/, "resources, runtime"],
+  [/[\\/]api[\\/]lib[\\/]database-plugin\.ts$/, "db, instance, databasePlugin"],
+  [/[\\/]api[\\/]modules[\\/]torrents[\\/]plugin\.ts$/, "engine, torrentServicePlugin"],
+  [/[\\/]api[\\/]modules[\\/]plugins[\\/]plugin\.ts$/, "plugins, pluginRegistryPlugin"],
+  [/[\\/]api[\\/]modules[\\/]jev[\\/]plugin\.ts$/, "jev, jevServicePlugin"],
+  [/[\\/]api[\\/]modules[\\/]automation[\\/]index\.ts$/, "automation, automationPlugin"],
+  [/[\\/]api[\\/]modules[\\/]discovery[\\/]plugin\.ts$/, "discovery, discoveryServicePlugin"],
+  [
+    /[\\/]api[\\/]modules[\\/]automation[\\/]plugin\.ts$/,
+    "releaseAutomation, releaseAutomationPlugin",
+  ],
+  [/[\\/]api[\\/]modules[\\/]anilist[\\/]plugin\.ts$/, "anilist, anilistServicePlugin"],
+  [/[\\/]api[\\/]modules[\\/]updates[\\/]plugin\.ts$/, "updates, updatesServicePlugin"],
 ] as const;
-const serviceRegistryPattern = /(?:^|\/)service-registry(?:\.ts)?$/;
+const serviceRegistryPattern = /(?:^|[\\/])service-registry(?:\.ts)?$/;
 const packagePattern = /^(?:@[^/]+\/[^/]+|[a-zA-Z][^:]*)(?:\/.*)?$/;
-const serviceModulePattern = /(?:^|\/)(?:worker-client|service)(?:\.ts)?$/;
+const serviceModulePattern = /(?:^|[\\/])(?:worker-client|service)(?:\.ts)?$/;
 
 interface OpeningServices {
   isDesktop: () => boolean;
@@ -137,11 +140,11 @@ export async function mountTestApplication(
           }));
           builder.onResolve({ filter: packagePattern }, ({ path, importer }) => ({
             external: true,
-            path: Bun.resolveSync(path, importer.slice(0, importer.lastIndexOf("/"))),
+            path: Bun.resolveSync(path, dirname(importer)),
           }));
           builder.onResolve({ filter: serviceModulePattern }, ({ path, importer }) => ({
             external: true,
-            path: Bun.resolveSync(path, importer.slice(0, importer.lastIndexOf("/"))),
+            path: Bun.resolveSync(path, dirname(importer)),
           }));
         },
       },

@@ -25,7 +25,7 @@ export function json(body: object): RequestInit {
   };
 }
 export async function waitFor<T>(
-  read: () => Promise<T>,
+  read: () => T | Promise<T>,
   ready: (value: T) => boolean,
   timeoutMs?: number
 ) {

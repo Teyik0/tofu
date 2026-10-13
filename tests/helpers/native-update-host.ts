@@ -175,9 +175,20 @@ export async function launchNativeUpdateHost(options: {
               throw error;
             }
           }
+          // The native shutdown deadline can leave a descriptor after the process exits.
           await waitFor(
-            () => Bun.file(join(options.dataDir, "server.json")).exists(),
-            (exists) => !exists
+            () => {
+              try {
+                process.kill(pid, 0);
+                return true;
+              } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+                  throw error;
+                }
+                return false;
+              }
+            },
+            (alive) => !alive
           );
         }
       }
