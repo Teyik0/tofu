@@ -698,6 +698,7 @@ export type EngineFailure =
   | { kind: "internal"; message: string };
 
 export type EngineMessage =
+  | { type: "log"; line: string }
   | { type: "ready" }
   | { type: "snapshot"; snapshot: EngineSnapshot; cursor: string }
   | { type: "result"; id: number; value: unknown; snapshot: EngineSnapshot | null }

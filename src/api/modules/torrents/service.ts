@@ -32,6 +32,7 @@ import type {
   TrackerStats,
 } from "../../../types";
 import { type DatabaseConnection, openDatabase, type TofuDatabase } from "../../lib/db";
+import { recordLog } from "../../lib/diagnostics";
 import { ConnectionScheduler, defaultConnectionPolicy } from "./connections";
 import { installCryptoDiagnostics } from "./crypto-diagnostics";
 import { announce, peers, watchTrackers } from "./stats";
@@ -170,6 +171,7 @@ export class TorrentEngine {
   private destinationOperation: Promise<void> | null = null;
   private readonly startedAt = Date.now();
   private readonly db: TofuDatabase;
+  private readonly dataDir: string;
   private readonly history: SpeedSample[] = [];
   private timer: ReturnType<typeof setInterval>;
   private telemetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -201,9 +203,11 @@ export class TorrentEngine {
     network: Options,
     database: TofuDatabase,
     policy: ConnectionPolicy,
-    cryptoDiagnostics: ReturnType<typeof installCryptoDiagnostics> | null
+    cryptoDiagnostics: ReturnType<typeof installCryptoDiagnostics> | null,
+    dataDir: string
   ) {
     this.db = database;
+    this.dataDir = dataDir;
     this.syncAdapter = drizzleSyncAdapter({ db: database, namespace: "tofu" });
     this.cryptoDiagnostics = cryptoDiagnostics;
     const stored = this.db
@@ -247,7 +251,15 @@ export class TorrentEngine {
     );
     this.client.throttleDownload(this.settings.downloadLimit);
     this.client.throttleUpload(this.settings.uploadLimit);
-    this.client.on("error", console.error);
+    this.client.on("error", (error) => {
+      recordLog({
+        component: "torrent-engine",
+        dataDir: this.dataDir,
+        error,
+        level: "error",
+        operation: "client",
+      });
+    });
     for (const row of this.db.select().from(torrentRecords).orderBy(sql`rowid`).all()) {
       const storedEntry: StoredEntry = JSON.parse(row.value);
       storedEntry.detail.destinationId ??= this.destinationForPath(
@@ -330,7 +342,8 @@ export class TorrentEngine {
         options.network,
         database,
         options.connectionPolicy ?? defaultConnectionPolicy,
-        cryptoDiagnostics
+        cryptoDiagnostics,
+        options.dataDir
       );
     } catch (error) {
       cryptoDiagnostics?.close();
@@ -535,7 +548,13 @@ export class TorrentEngine {
         entry,
         storageFailure(
           cause,
-          detail.files.map((file) => file.path)
+          detail.files.map((file) => file.path),
+          {
+            dataDir: this.dataDir,
+            expected: entry.storageRoot,
+            savePath: detail.savePath,
+            torrentId: detail.id,
+          }
         )
       );
     }
@@ -597,6 +616,18 @@ export class TorrentEngine {
   }
 
   private markStorageIssue(entry: Entry, issue: TorrentStorageIssue) {
+    recordLog({
+      component: "storage",
+      context: {
+        expected: entry.storageRoot,
+        issue,
+        savePath: entry.detail.savePath,
+        torrentId: entry.detail.id,
+      },
+      dataDir: this.dataDir,
+      level: "warn",
+      operation: "blocked",
+    });
     entry.detail.storageIssue = issue;
     entry.detail.error = issue.message;
     entry.detail.downloaded = null;
@@ -725,7 +756,14 @@ export class TorrentEngine {
       try {
         await storageRoot(path, bound.storageRoot);
       } catch (cause) {
-        throw new (HTTPError.id("CONFLICT", 409))(storageFailure(cause, []).message, { cause });
+        throw new (HTTPError.id("CONFLICT", 409))(
+          storageFailure(cause, [], {
+            dataDir: this.dataDir,
+            expected: bound.storageRoot,
+            savePath: path,
+          }).message,
+          { cause }
+        );
       }
     } else {
       await mkdir(path, { recursive: true });
@@ -1361,13 +1399,27 @@ export class TorrentEngine {
         return;
       }
       detail.error = String(error);
+      recordLog({
+        component: "torrent-engine",
+        context: { savePath: detail.savePath, torrentId: detail.id },
+        dataDir: this.dataDir,
+        error,
+        level: "error",
+        operation: "torrent",
+      });
       if (entry.torrent === torrent) {
         entry.torrent = null;
       }
       entry.unwatch?.();
       const issue = storageFailure(
         error,
-        detail.files.map((file) => file.path)
+        detail.files.map((file) => file.path),
+        {
+          dataDir: this.dataDir,
+          expected: entry.storageRoot,
+          savePath: detail.savePath,
+          torrentId: detail.id,
+        }
       );
       if (issue.kind !== "io-error" || (error instanceof Error && "code" in error)) {
         this.markStorageIssue(entry, issue);
@@ -1425,7 +1477,16 @@ export class TorrentEngine {
           }
         }
         entry.storageFiles = [...identities.values()];
-      }).catch(console.error);
+      }).catch((error: unknown) => {
+        recordLog({
+          component: "storage",
+          context: { savePath: detail.savePath, torrentId: detail.id },
+          dataDir: this.dataDir,
+          error,
+          level: "error",
+          operation: "completed-file-identity",
+        });
+      });
     });
     entry.unwatch = watchTrackers(torrent, detail.trackers);
   }
@@ -1616,7 +1677,13 @@ export class TorrentEngine {
     } catch (cause) {
       const issue = storageFailure(
         cause,
-        entry.detail.files.map((file) => file.path)
+        entry.detail.files.map((file) => file.path),
+        {
+          dataDir: this.dataDir,
+          expected: entry.storageRoot,
+          savePath: entry.detail.savePath,
+          torrentId: entry.detail.id,
+        }
       );
       await this.blockStorage(entry, issue);
       throw new (HTTPError.id("CONFLICT", 409))(issue.message, { cause });
@@ -1786,7 +1853,11 @@ export class TorrentEngine {
       } catch (cause) {
         throw cause instanceof HTTPError
           ? cause
-          : new (HTTPError.id("CONFLICT", 409))(storageFailure(cause, []).message, { cause });
+          : new (HTTPError.id("CONFLICT", 409))(
+              storageFailure(cause, [], { dataDir: this.dataDir, savePath: path, torrentId: id })
+                .message,
+              { cause }
+            );
       }
       await this.stop(entry);
       try {

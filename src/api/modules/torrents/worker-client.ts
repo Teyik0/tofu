@@ -15,6 +15,8 @@ import type {
   SettingsInput,
   TorrentAddOptions,
 } from "../../../types";
+import { recordLog } from "../../lib/diagnostics";
+import type { ApplicationLogs } from "../../lib/logs";
 
 interface PendingOperation {
   reject: (error: Error) => void;
@@ -23,6 +25,8 @@ interface PendingOperation {
 
 export class WorkerTorrentEngine {
   private readonly worker: Worker;
+  private readonly options: EngineOpenOptions;
+  private readonly logs?: ApplicationLogs;
   private readonly pending = new Map<number, PendingOperation>();
   private readonly ready = Promise.withResolvers<void>();
   private state!: DashboardState;
@@ -36,9 +40,15 @@ export class WorkerTorrentEngine {
   private shutdown: Promise<void> | null = null;
   mode: "desktop" | "server" = "server";
 
-  private constructor(entry: string | URL) {
+  private constructor(entry: string | URL, options: EngineOpenOptions, logs?: ApplicationLogs) {
+    this.options = options;
+    this.logs = logs;
     this.worker = new Worker(entry);
     this.worker.addEventListener("message", ({ data }: MessageEvent<EngineMessage>) => {
+      if (data.type === "log") {
+        this.logs?.write(data.line);
+        return;
+      }
       if (data.type === "ready") {
         this.ready.resolve();
         return;
@@ -87,7 +97,13 @@ export class WorkerTorrentEngine {
         try {
           listener(change);
         } catch (error) {
-          console.error(error);
+          recordLog({
+            component: "torrent-worker",
+            dataDir: this.options.dataDir,
+            error,
+            level: "error",
+            operation: "notify",
+          });
         }
       }
     }
@@ -125,7 +141,7 @@ export class WorkerTorrentEngine {
     return this.call("setObserved", [observed]);
   }
 
-  static async open(options: EngineOpenOptions) {
+  static async open(options: EngineOpenOptions, logs?: ApplicationLogs) {
     const source = new URL("./worker.ts", import.meta.url);
     const compiled = new URL(workerBundle, import.meta.url);
     // The native host shares the backend's worker and external package tree.
@@ -134,7 +150,7 @@ export class WorkerTorrentEngine {
     if (!entry) {
       throw new Error("The torrent worker entrypoint is missing");
     }
-    const engine = new WorkerTorrentEngine(entry);
+    const engine = new WorkerTorrentEngine(entry, options, logs);
     try {
       await engine.ready.promise;
       await engine.send({
@@ -156,6 +172,15 @@ export class WorkerTorrentEngine {
   }
 
   private fail(error: Error) {
+    if (!this.shutdown) {
+      recordLog({
+        component: "torrent-worker",
+        dataDir: this.options.dataDir,
+        error,
+        level: "error",
+        operation: "stopped",
+      });
+    }
     this.failure = error;
     this.ready.reject(error);
     for (const operation of this.pending.values()) {

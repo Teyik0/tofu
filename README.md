@@ -23,6 +23,8 @@ Files stay on disk unless you explicitly choose to delete them. Unavailable stat
 
 If downloaded files disappear or change, Tofu stops the transfer and reports a storage problem. **Repair download** verifies the remaining pieces before downloading missing data; a paused torrent stays paused. **Locate files** verifies an existing folder without moving or deleting anything. Disconnected or replaced destinations are never recreated automatically: reconnect the original storage or select its new location. Storage problems survive restarts, and inaccessible data is shown as unknown until verified.
 
+Tofu keeps local diagnostics in `logs/app.jsonl` inside its data directory. On macOS, release logs are in `~/Library/Application Support/Tofu/logs/`; development uses `Tofu-dev`. **Settings → General → Open logs folder** opens them in the desktop app. Logs record startup, shutdown, API mutations and errors, and torrent storage failures with their original system codes, stacks, and directory identities. Routine speed and progress updates are omitted. Files rotate at 5 MiB with three backups (about 20 MiB total), and credentials, request bodies, and headers are excluded or redacted. Logs stay on the machine hosting Tofu and are not uploaded.
+
 ## 📦 Install
 
 Download an installer matching your system from [Releases](https://github.com/Teyik0/Tofu/releases). The release pipeline targets macOS Apple Silicon, Windows x64, and Linux x64/ARM64.

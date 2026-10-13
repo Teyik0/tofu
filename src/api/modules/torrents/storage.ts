@@ -3,6 +3,7 @@ import { access, realpath, stat } from "node:fs/promises";
 import { HTTPError } from "elysia";
 import type { Torrent } from "webtorrent";
 import type { FileStats, TorrentStorageIssue } from "../../../types";
+import { recordLog } from "../../lib/diagnostics";
 
 export interface StorageIdentity {
   canonicalPath?: string;
@@ -53,7 +54,27 @@ export function verifiedFileBytes(torrent: Torrent, file: Torrent["files"][numbe
 
 const storageErrorCode = /\b(EACCES|EPERM|ENOSPC|EDQUOT|ENOENT|ENODEV|EIO|EROFS)\b/;
 
-export function storageFailure(cause: unknown, paths: string[]): TorrentStorageIssue {
+export function storageFailure(
+  cause: unknown,
+  paths: string[],
+  context?: {
+    dataDir: string;
+    torrentId?: string;
+    savePath: string;
+    expected?: StorageIdentity | null;
+  }
+): TorrentStorageIssue {
+  if (context) {
+    const { dataDir, ...fields } = context;
+    recordLog({
+      component: "storage",
+      context: { ...fields, paths },
+      dataDir,
+      error: cause,
+      level: "error",
+      operation: "access",
+    });
+  }
   const message = cause instanceof Error ? cause.message : String(cause);
   const code =
     cause instanceof Error && !(cause instanceof HTTPError) && "code" in cause
@@ -86,6 +107,9 @@ export async function storageRoot(path: string, expected: StorageIdentity | null
   ) {
     throw Object.assign(new Error("The original torrent destination is unavailable"), {
       code: "ENODEV",
+      expected,
+      observed: { dev: root.dev, directory: root.isDirectory(), ino: root.ino },
+      path,
     });
   }
   // biome-ignore lint/suspicious/noBitwiseOperators: filesystem access modes are bit flags.

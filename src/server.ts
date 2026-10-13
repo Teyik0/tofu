@@ -1,6 +1,7 @@
 import { furin } from "@teyik0/furin";
 import { apiPlugin } from "./api";
 import { instance } from "./api/lib/database-plugin";
+import { recordLog } from "./api/lib/diagnostics";
 import { onShutdown } from "./api/lib/lifecycle";
 import { sync } from "./sync";
 
@@ -18,6 +19,13 @@ try {
     process.once("SIGTERM", shutdown);
   }
 } catch (error) {
+  recordLog({
+    component: "application",
+    dataDir: instance.dataDir,
+    error,
+    level: "error",
+    operation: "startup",
+  });
   await onShutdown();
   throw error;
 }

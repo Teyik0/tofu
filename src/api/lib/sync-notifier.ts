@@ -1,4 +1,5 @@
 import type { SyncNotifier, SyncSubscription } from "@teyik0/furin/sync";
+import { recordLog } from "./diagnostics";
 
 // Furin shares a cursor subscription across browsers; presence is sufficient.
 export class ObservedSyncNotifier implements SyncNotifier {
@@ -23,7 +24,7 @@ export class ObservedSyncNotifier implements SyncNotifier {
       try {
         listener(cursor);
       } catch (error) {
-        console.error(error);
+        recordLog({ component: "sync", error, level: "error", operation: "notify" });
       }
     }
   }

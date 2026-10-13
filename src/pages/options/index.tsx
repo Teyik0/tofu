@@ -134,6 +134,34 @@ export const route = defineRoute()
             )}
           </FieldGroup>
         </FieldSet>
+        <FieldSet>
+          <FieldLegend>Diagnostics</FieldLegend>
+          <FieldGroup className="settings-group">
+            <Field className="settings-row" orientation="horizontal">
+              <FieldContent>
+                <FieldLabel htmlFor={data.session.mode === "desktop" ? "open-logs" : undefined}>
+                  Application logs
+                </FieldLabel>
+                <FieldDescription id="open-logs-description">
+                  Local logs help diagnose errors and are kept across restarts.
+                  {data.session.mode !== "desktop" &&
+                    " Logs are stored on the machine hosting Tofu."}
+                </FieldDescription>
+              </FieldContent>
+              {data.session.mode === "desktop" && (
+                <Button
+                  aria-describedby="open-logs-description"
+                  disabled={busy}
+                  id="open-logs"
+                  onClick={() => startTransition(() => dispatchAction({ type: "open-logs" }))}
+                  variant="outline"
+                >
+                  Open logs folder
+                </Button>
+              )}
+            </Field>
+          </FieldGroup>
+        </FieldSet>
         {error !== null && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

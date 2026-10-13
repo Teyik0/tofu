@@ -8,6 +8,7 @@ import type {
   EnginePort,
   FeedRelease,
 } from "../../../types";
+import { recordLog } from "../../lib/diagnostics";
 import { normalizeTitle } from "../../lib/title";
 import type { DiscoveryService } from "../discovery/service";
 import { collectSourceQueries, uniqueReleases } from "../discovery/sources";
@@ -413,7 +414,9 @@ export class ReleaseAutomationService {
     } finally {
       if (!this.lifecycle.closed) {
         this.timer = setInterval(() => {
-          void this.tick().catch(console.error);
+          void this.tick().catch((error: unknown) => {
+            recordLog({ component: "automation", error, level: "error", operation: "poll" });
+          });
         }, 15_000);
         this.timer.unref();
       }

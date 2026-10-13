@@ -16,6 +16,7 @@ export const {
   discovery,
   engine,
   instance,
+  logs,
   jev,
   plugins,
   releaseAutomation,

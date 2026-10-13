@@ -1,8 +1,16 @@
 import { HTTPError } from "elysia";
 import type { EngineFailure, EngineMessage, EngineRequest, EngineSnapshot } from "../../../types";
+import { logEvents, recordLog } from "../../lib/diagnostics";
 import { TorrentEngine } from "./service";
 
 declare let self: Worker;
+
+logEvents.addEventListener("log", (event) => {
+  const { line } = (event as CustomEvent<{ line: string }>).detail;
+  postMessage({ line, type: "log" } satisfies EngineMessage);
+});
+let dataDir = "";
+const torrentIdPattern = /^[a-f0-9]{40}$/;
 
 let engine: TorrentEngine | null = null;
 let unsubscribe: (() => void) | undefined;
@@ -69,7 +77,13 @@ function requestPublish() {
   requested = false;
   publishing = publishChanges()
     .catch((error: unknown) => {
-      console.error(error);
+      recordLog({
+        component: "torrent-worker",
+        dataDir,
+        error,
+        level: "error",
+        operation: "publish",
+      });
       if (!closing) {
         requested = true;
         retry = setTimeout(() => {
@@ -89,6 +103,7 @@ function requestPublish() {
 
 async function execute(request: EngineRequest) {
   if (request.method === "open") {
+    ({ dataDir } = request.args[0]);
     engine = await TorrentEngine.open(request.args[0]);
     unsubscribe = engine.subscribeChanges(requestPublish);
     return;
@@ -179,6 +194,19 @@ self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
       }
     },
     (error: unknown) => {
+      recordLog({
+        component: "torrent-worker",
+        context: {
+          torrentId:
+            typeof data.args[0] === "string" && torrentIdPattern.test(data.args[0])
+              ? data.args[0]
+              : undefined,
+        },
+        dataDir,
+        error,
+        level: "error",
+        operation: data.method,
+      });
       const failure: EngineFailure =
         error instanceof HTTPError && typeof error.status === "number"
           ? {

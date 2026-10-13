@@ -18,3 +18,22 @@ test.each([false, true])(
     );
   }
 );
+
+test.each([false, true])(
+  "opening application logs is guarded for desktop=%s",
+  async (isDesktop) => {
+    const opened: string[] = [];
+    const app = await createTestAniListOpeningApi({
+      isDesktop: () => isDesktop,
+      openExternal: () => false,
+      openPath(path) {
+        opened.push(path);
+        return true;
+      },
+    });
+    const client = treaty(app).api;
+    const result = await client.desktop.logs.open.post({});
+    expect(result.status).toBe(isDesktop ? 200 : 409);
+    expect(opened).toEqual(isDesktop ? [app.application.logs.directory] : []);
+  }
+);
