@@ -50,7 +50,7 @@
     "class-variance-authority": "0.7.1",
     "cn": "^0.4.0",
     "drizzle-orm": "0.45.4",
-    "elysia": "2.0.0-beta.21",
+    "elysia": "2.0.0-exp.64",
     "graphql": "17.0.2",
     "graphql-request": "7.4.0",
     "jotai": "3.0.1",
