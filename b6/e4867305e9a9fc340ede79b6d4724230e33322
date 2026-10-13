@@ -1,0 +1,757 @@
+apps/tofu/src/api/modules/desktop/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2,4-9,12-13,16-28,30,32-34,37,40-42,44,46-48,50,52-60,62-63,65-66,69-70,72
+apps/tofu/src/api/modules/anilist/index.ts
+  s_a0a481a34b8480::t_118898b94f1233 1,4-6,9-18,20,23-25
+  s_a0a481a34b8480::t_196a1412e46f55 2-3,8
+  s_a0a481a34b8480::t_3abca56e7ad0c2 7,26-27
+  s_a0a481a34b8480::t_9a6705ed934618 19,21-22,28
+apps/tofu/furin.config.ts
+  s_a0a481a34b8480::t_75e6815b22c309 10,23,25,57-61,66-75
+apps/tofu/src/api/modules/dashboard/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,8,17-18,24
+apps/tofu/src/api/modules/desktop/service.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-5,7-68,71-79,82-86,89-105
+apps/tofu/src/components/automation-center.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1,13,22,24-33,50-51,53,108,110-113,115-126
+apps/tofu/tests/helpers/discovery.ts
+  s_a0a481a34b8480::t_e011513276f037 1-40
+apps/tofu/tests/plugin-credential-opening.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2-4,16,19-20,22,31,34-35,37,49,52-53,64,67-68,70
+apps/tofu/tests/removal.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4-5,11-13,16-18,23,29
+apps/tofu/tests/anilist/cache.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-333
+apps/tofu/tests/seeding-connections.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-136
+package/anilist/src/components/list-editor.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1,14-15,32-34,46-47
+  s_a0a481a34b8480::t_1d5d83c746bf0a 13
+apps/tofu/src/api/modules/discovery/model.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1,6
+apps/tofu/tests/engine.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2-3,6-7,9-10,13,17,19-21,24
+package/anilist/src/server/opening.ts
+  s_a0a481a34b8480::t_4dea122ab104af 35-39
+  s_a0a481a34b8480::t_1d5d83c746bf0a 1-5,15-16,18-33,40-41,43,45
+  s_a0a481a34b8480::t_75e6815b22c309 7-8,44
+  s_a0a481a34b8480::t_548c579211c68f 14
+  s_a0a481a34b8480::t_429227e74c3143 34
+  s_a0a481a34b8480::t_3751486fde6472 11-13,17
+README.md
+  s_a0a481a34b8480::t_4938ab53206ea1 44,84-85,88
+package/anilist/src/components/episode-panels.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 12-13,15-17,19-20
+  s_a0a481a34b8480::t_9f4959dd043076 1,234
+  s_a0a481a34b8480::t_1d5d83c746bf0a 2,14,18,21-28
+  s_a0a481a34b8480::t_e011513276f037 3-11,29-229,231-233,235-373
+  s_a0a481a34b8480::t_f7019b25b0f3c3 230
+apps/tofu/src/components/general-preferences.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 12,42
+package/anilist/src/components/episode-row.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 2,5,10-11,14-16
+  s_a0a481a34b8480::t_9f4959dd043076 1,42
+  s_a0a481a34b8480::t_e011513276f037 3,17-40,43-103,105-194
+  s_a0a481a34b8480::t_75e6815b22c309 6-9,12-13
+  s_a0a481a34b8480::t_234bc458008047 4,41,104
+apps/tofu/src/components/settings-layout.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1,3-97
+  s_a0a481a34b8480::t_1d5d83c746bf0a 2
+apps/tofu/src/api/modules/discovery/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4-5,8,16-24
+apps/tofu/src/db/schema.ts
+  s_a0a481a34b8480::t_75e6815b22c309 53
+  s_a0a481a34b8480::t_ab27060b2cdcc1 54-57
+.github/workflows/release.yml
+  s_a0a481a34b8480::t_75e6815b22c309 97,136-137
+  s_a0a481a34b8480::t_429227e74c3143 139
+package/anilist/src/server/storage.ts
+  s_a0a481a34b8480::t_1d5d83c746bf0a 12-14
+  s_a0a481a34b8480::t_91d2129d78b86f 11
+apps/tofu/scripts/native-background.ts
+  s_a0a481a34b8480::t_75e6815b22c309 6,32,84-89
+package/anilist/src/ui.tsx
+  s_a0a481a34b8480::t_5d4986d00b5c46 19-22,26-27
+  s_a0a481a34b8480::t_1d5d83c746bf0a 23-25,28
+apps/scaffolder/templates/src/server/index.ts.template
+  s_a0a481a34b8480::t_cba76b5a6ded19 19-33
+  s_a0a481a34b8480::t_bc7c475b6dc5b0 15-18,34-35
+apps/tofu/tests/lifecycle.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3-4,9-12,14-16,18,25,27,29
+AGENTS.md
+  s_a0a481a34b8480::t_75e6815b22c309 1-179
+  s_a0a481a34b8480::t_ba53fabbb275b5 180-186
+package/anilist/src/components/library-results.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1-5
+  s_a0a481a34b8480::t_e011513276f037 8-136
+  s_a0a481a34b8480::t_1d5d83c746bf0a 6-7
+apps/tofu/src/components/automation-section.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 1-10
+  s_a0a481a34b8480::t_75e6815b22c309 11-292
+apps/tofu/src/components/use-global-search.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-2,4-184
+  s_a0a481a34b8480::t_1d5d83c746bf0a 3
+apps/tofu/src/api/modules/updates/service.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3-4,15,96,117,145-152,174-175,253,278,284,288,290,311,317-318,335-337,346,357,363-365
+apps/tofu/src/components/api.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-2,17-20
+apps/tofu/tests/anilist/library.test.ts
+  s_a0a481a34b8480::t_e011513276f037 3-8,65,71,73-74,94,96-97,103-104,106,167,173,175-178,180,183-188,190-193,196-197,199-213,215,217-231,238-239,245-250,252,308,314,316-325,327-328,334-336,338-344,348-355,357-364,366-382,384
+package/anilist/src/server/service.ts
+  s_a0a481a34b8480::t_75e6815b22c309 12,19,33-42,65-72,143-147,152,155,158,182-259,261-283,315,340,411-413,427,433-434,442,492-495,520,522,546,564,591,608-609,611,613-615,625-632,647,679,685,697-700,723,729-731,737,755,760,822,824,847,849,864,883-884,886-889,907,922,928,930-931,934,959-960,964,981,987,1002,1008-1018,1040,1042-1044,1047,1068-1074,1082,1085-1092,1108,1122,1124-1125,1127,1146,1151-1153,1162-1163,1173,1178-1180,1188-1189,1234-1236,1247,1249-1251,1271,1299,1315,1318-1323,1328-1330,1338,1349-1350,1358-1373,1381,1385,1388-1391,1400,1403,1405,1409,1423,1449,1458,1465,1485-1500,1502-1504,1519-1521
+  s_a0a481a34b8480::t_1d5d83c746bf0a 2-3,23,25,27,43
+  s_a0a481a34b8480::t_91d2129d78b86f 21-22
+  s_a0a481a34b8480::t_9efc7cf3e40331 260
+apps/tofu/tests/helpers/credentials.ts
+  s_a0a481a34b8480::t_e011513276f037 1-32
+package/plugins/src/releases.ts
+  s_a0a481a34b8480::t_78dd237975524c 1-12
+apps/tofu/src/api/lib/extensions.ts
+  s_a0a481a34b8480::t_8c4be2d027b381 1,3-9,11-12,14,26-30,32-35,37-38
+  s_a0a481a34b8480::t_998c6061f03a8a 10,15-25
+  s_a0a481a34b8480::t_3526a40905029d 31
+apps/tofu/scripts/native-browser-entry.ts
+  s_a0a481a34b8480::t_e011513276f037 1-43
+apps/tofu/tests/helpers/sync-browser.ts
+  s_a0a481a34b8480::t_e011513276f037 1-40
+package/anilist/src/lib/anilist-autosave.ts
+  s_a0a481a34b8480::t_75e6815b22c309 33
+  s_a0a481a34b8480::t_1f0065594c1038 2
+apps/tofu/src/api/modules/automation/integration.ts
+  s_a0a481a34b8480::t_e011513276f037 1-471
+apps/tofu/tests/anilist/catalog-download.test.ts
+  s_a0a481a34b8480::t_e011513276f037 3-8,18,29,40,42-44,46,50-55,58-59,63-66,68-69,73
+apps/tofu/tests/instance.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4-6,9-11,25,63,72,80-81,84,86,91-94,98,101,103,105-106,117-123,125,128,133,136-143,150,152,165-166,171-175,181-184,187,192-196,203,215-216,218,221-222,225,238,243-245,263-264,271,297-298,302,311,314-315
+apps/tofu/src/components/detail.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 9-10,12-17,21,36-37,47,134-173,177-181
+  s_a0a481a34b8480::t_e2cac98cfc3896 2,7-8
+apps/tofu/src/api/modules/jev/plugin.ts
+  s_a0a481a34b8480::t_e011513276f037 1-12
+apps/tofu/src/api/lib/database-plugin.ts
+  s_a0a481a34b8480::t_e011513276f037 3-5,7-13
+apps/tofu/src/pages/options/index.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 22-28,30,32,38-87,142-145
+  s_a0a481a34b8480::t_54c03983d354c6 17,146
+bunfig.toml
+  s_a0a481a34b8480::t_75e6815b22c309 3-6
+package/anilist/src/server/graphql/transport.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1,46,49
+apps/tofu/src/api/modules/destinations/model.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-22
+package/anilist/src/server/api.ts
+  s_a0a481a34b8480::t_1d5d83c746bf0a 31,35-37,39,41-42,44-46,55,64,72,77,86-91,93-94,97-98,109-110,118-119,130,139,141,143-144,154,156,158-159,169,171,175,177-178,180-181,188-190,197,206-209,219-222,228-229,231,233,235-236,238
+  s_a0a481a34b8480::t_80a55a330df6d5 216
+  s_a0a481a34b8480::t_91d2129d78b86f 29,240-241
+  s_a0a481a34b8480::t_429227e74c3143 30,227
+  s_a0a481a34b8480::t_c9342a6256186e 26-28
+  s_a0a481a34b8480::t_a32419001c9358 196
+  s_a0a481a34b8480::t_754d98ff0ea0f6 242-243
+  s_a0a481a34b8480::t_786c6f67b90e95 6,203
+apps/tofu/tests/anilist/sync.test.ts
+  s_a0a481a34b8480::t_e011513276f037 4-9,95,101,103-105,107-109,111-120,123-129,131-132,134,140-143,146-150,152-156,159-160,162-164,166-167,169,172-173,179-180,182,214,232,234-238,241-244,246,259,268,329,335,337-350,352,354,356-357,361-364,367,369,371-372,378-381,384-391,393
+package/ui/src/action-tooltip.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1
+apps/tofu/src/components/plugins/plugin-card-fields.tsx
+  s_a0a481a34b8480::t_e011513276f037 1,7-199
+  s_a0a481a34b8480::t_75e6815b22c309 2-4
+  s_a0a481a34b8480::t_1d5d83c746bf0a 5-6
+apps/tofu/scripts/native-browser.ts
+  s_a0a481a34b8480::t_e011513276f037 1-114
+apps/tofu/tests/plugin-install.test.ts
+  s_a0a481a34b8480::t_998c6061f03a8a 186
+  s_a0a481a34b8480::t_96dcb6d72c37c2 238,278
+  s_a0a481a34b8480::t_4d8b35bc1c1892 182
+  s_a0a481a34b8480::t_b61462653e354c 221-226,228
+  s_a0a481a34b8480::t_06e95295a351ae 9,227
+package/ui/src/automation-fields.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 7-12,20-22,180,182,189,205,211
+apps/docs/src/pages/docs/plugins.tsx
+  s_a0a481a34b8480::t_00f0204daed082 64-74
+apps/tofu/src/api/modules/plugins/plugin.ts
+  s_a0a481a34b8480::t_e011513276f037 1-10
+apps/tofu/src/api/modules/torrents/worker-client.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2,8,13,24,29-33,47,53-58,60-62,68,72-127,140-150,191-193,215-218,231-233,243-245
+package/plugins/src/automation-rules.ts
+  s_a0a481a34b8480::t_78dd237975524c 2-161
+  s_a0a481a34b8480::t_255a9be99ccb19 1
+apps/tofu/src/pages/options/_route.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 2,11,34-46
+package/anilist/src/components/list-editor-fields.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 12,16
+  s_a0a481a34b8480::t_e011513276f037 2-8,17-313
+  s_a0a481a34b8480::t_75e6815b22c309 1,9-11,13-15
+package/ui/src/errors.ts
+  s_a0a481a34b8480::t_ba53fabbb275b5 1-21
+apps/tofu/tests/helpers/application.ts
+  s_a0a481a34b8480::t_e011513276f037 1-4,6-281
+  s_a0a481a34b8480::t_1d5d83c746bf0a 5
+apps/tofu/scripts/anilist-schema.ts
+  s_a0a481a34b8480::t_196a1412e46f55 1-36
+apps/tofu/src/components/updates.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 14
+  s_a0a481a34b8480::t_75e6815b22c309 23-25,34,68-70,72-83,88-92,99,102,108,127-129,131-134,152-154,159,172-257
+apps/tofu/tests/crypto-worker.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-81
+apps/tofu/tests/helpers/anilist/editor.ts
+  s_a0a481a34b8480::t_e011513276f037 1-117
+package/anilist/src/components/episode-header.tsx
+  s_a0a481a34b8480::t_e011513276f037 1,13-139
+  s_a0a481a34b8480::t_75e6815b22c309 2-6
+  s_a0a481a34b8480::t_1d5d83c746bf0a 7-12
+apps/scaffolder/tests/helpers/process.ts
+  s_a0a481a34b8480::t_bc7c475b6dc5b0 1-18
+apps/tofu/src/api/modules/plugins/credentials.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1,24-26,64-66,69-71,74-76
+apps/tofu/src/api/modules/destinations/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4-5,13-14,22,29,36,38-45
+apps/tofu/tests/automation.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 5,9-12,29,36,47,49-51,53-60,62-65,67,69-71,79,82-85,87,100,111,113-115,117-119,147,158,160-162,164-171,173-176,178,182,207,218,220-222,261,267,269-285,287,293,295-301,303-306,309,367,384,386-394,397-406,408-409,411,413,415-418,472,478,481-483,485,487-490,492,496-504,506-507,510-511,514-519,523-526,535,541,543,545,548-551,594,611,614,616-619,621,629-631,640,648,656-657,660,662-664,666-669,671,673-674,707,718,720-727,729-731,734-737,767,778,780-795,798-801,804-807,809,828,839,841-843,846-847
+apps/tofu/src/types.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2,6-7,10-592,594-595,601-651,659-684,696-699,702-704,720,730-731
+apps/scaffolder/README.md
+  s_a0a481a34b8480::t_cba76b5a6ded19 15
+apps/tofu/tests/trackers.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4-5,40-42,44-46,50,57,68,77-78
+package/anilist/src/components/episode-modal.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 8-9
+  s_a0a481a34b8480::t_75e6815b22c309 10,12-15,38-40,51-56,74-95
+package/anilist/src/components/library-header.tsx
+  s_a0a481a34b8480::t_e011513276f037 1,6-11,18-40,42-169
+  s_a0a481a34b8480::t_75e6815b22c309 3-5,12
+  s_a0a481a34b8480::t_1d5d83c746bf0a 13-17
+  s_a0a481a34b8480::t_0895a9a0482adc 2,41
+package/anilist/src/components/library-settings.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 2-3,11
+  s_a0a481a34b8480::t_1d5d83c746bf0a 4-10,12-14
+  s_a0a481a34b8480::t_e011513276f037 15-26,28-82
+  s_a0a481a34b8480::t_dfdbfe64db8af6 1,27
+package/anilist/package.json
+  s_a0a481a34b8480::t_118898b94f1233 21-22
+  s_a0a481a34b8480::t_ba53fabbb275b5 20
+  s_a0a481a34b8480::t_c12db3fef9aa5a 34,36
+package/anilist/src/client-api.ts
+  s_a0a481a34b8480::t_dbd3c52604285b 21-23,25-26
+  s_a0a481a34b8480::t_1d5d83c746bf0a 9,19,31
+  s_a0a481a34b8480::t_4938ab53206ea1 18,20,30
+  s_a0a481a34b8480::t_e9ef136f72a3b7 4,6-8,10-13,15-17,27-29
+apps/scaffolder/templates/src/client/api.ts.template
+  s_a0a481a34b8480::t_bc7c475b6dc5b0 2-3,6
+apps/tofu/tests/anilist/release-search.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-434
+apps/tofu/scripts/native-global-search.ts
+  s_a0a481a34b8480::t_e011513276f037 1-10,19-20,22-24,26,33,54,142
+apps/tofu/tests/anilist/editor.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-132
+apps/tofu/src/lib/errors.ts
+  s_a0a481a34b8480::t_e011513276f037 1-21
+apps/tofu/src/pages/options/preferences.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 8-13
+  s_a0a481a34b8480::t_73115b58156021 14
+apps/tofu/tests/connections.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-188
+package/ui/src/use-async-action.ts
+  s_a0a481a34b8480::t_91d2129d78b86f 2
+  s_a0a481a34b8480::t_75e6815b22c309 1,3-27
+apps/scaffolder/src/scaffold.ts
+  s_a0a481a34b8480::t_b68669b3895f9d 41
+apps/tofu/src/api/modules/discovery/plugin.ts
+  s_a0a481a34b8480::t_e011513276f037 1-20
+package/anilist/src/hooks/use-authorization-polling.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-35
+apps/docs/src/pages/docs/plugin-api.tsx
+  s_a0a481a34b8480::t_00f0204daed082 147,149-151,155,174-175,178-179,181-183,185-188
+  s_a0a481a34b8480::t_6877da6766d8af 128,176-177,180,184
+apps/tofu/tests/helpers/settings.ts
+  s_a0a481a34b8480::t_e011513276f037 1-23
+apps/tofu/src/api/modules/updates/plugin.ts
+  s_a0a481a34b8480::t_e011513276f037 1-21
+apps/tofu/tests/helpers/torrent.ts
+  s_a0a481a34b8480::t_e011513276f037 6,8-9,11,58,62-67,84-90
+apps/tofu/src/api/modules/jev/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,7-8,16
+apps/tofu/src/api/lib/lifecycle.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-4,6-11,13,15-17
+apps/tofu/src/api/modules/torrents/storage.ts
+  s_a0a481a34b8480::t_e011513276f037 1-98
+apps/tofu/src/server.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2-4,7-8,10-12,14,17-18,20-22,25-26
+apps/tofu/scripts/release.ts
+  s_a0a481a34b8480::t_75e6815b22c309 127-129
+apps/tofu/src/sync.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2-7,9-14,16-22
+apps/tofu/tests/automation-preferences.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 7-9,52,54,62,67-70,72-74,85,87,101-103,105,107,109-111,137-138,147-151,153-156,159
+apps/tofu/tests/anilist/native/library.ts
+  s_a0a481a34b8480::t_e011513276f037 1-338,340-877
+  s_a0a481a34b8480::t_abba016c395175 339
+apps/tofu/tests/anilist/oauth.test.ts
+  s_a0a481a34b8480::t_e011513276f037 3-6,11-13,16,18,34,37-38,44,52,55,57,65,73-75,79,89,91,93,100-102,111,114-116,119,121,135,138,151,154,162-164,182,189,205,207,209-211,214,225-233
+apps/tofu/tests/helpers/service-registry.ts
+  s_a0a481a34b8480::t_e011513276f037 1-10
+apps/tofu/tests/persistence.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,6-8,10-40,45-47,49,59-60,62-64,68,70,80-82,85,93-99,109-111,113-115,117,126-129,134-136,139
+package/plugins/src/automation-model.ts
+  s_a0a481a34b8480::t_2eeac144488ac3 82,109
+  s_a0a481a34b8480::t_d945e2acca0a58 17,23
+apps/tofu/scripts/resources.ts
+  s_a0a481a34b8480::t_7c808236f33d1a 21
+apps/tofu/src/components/modal.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1,40,42-51,53,143,147-148,151,183-192,195,197-239,241-248,250-285,287-333,335-416,418-426,429-430,434,436,440,443,445-557,559-657,659-662,665-724,728,731,736-971,974,976,979,983-992,994-1011,1013,1015-1025,1028-1063
+package/anilist/src/server/oauth.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1,9-20,46,98,100,131-133,145-146,153,159,165,181-184,189,197,208
+apps/tofu/src/api/index.ts
+  s_a0a481a34b8480::t_429227e74c3143 114
+  s_a0a481a34b8480::t_3801a3e756480b 3-4,113,116
+  s_a0a481a34b8480::t_75e6815b22c309 6,8-11,13,15-29,31-97,103-105,108,120
+  s_a0a481a34b8480::t_118898b94f1233 14,121-122
+  s_a0a481a34b8480::t_358886d4703faa 1-2,111-112,115,117
+apps/tofu/tests/plugin-credentials.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,6-10,30,41,43-46,48,59-60,64,76-77,82,103-105,107,111,132-134,136-138,140-145,153,166-168,170,178-181,183,208-210,212-214,216,233-235,237-240
+apps/tofu/src/api/modules/torrents/connections.ts
+  s_a0a481a34b8480::t_e011513276f037 1-456
+apps/tofu/src/components/global-search.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 10-13,15-19,107-122,195,211,219
+package/ui/src/format.ts
+  s_a0a481a34b8480::t_1f0065594c1038 1
+  s_a0a481a34b8480::t_75e6815b22c309 21-24,63-80
+package/anilist/src/hooks/use-anilist-releases.ts
+  s_a0a481a34b8480::t_1f0065594c1038 9
+  s_a0a481a34b8480::t_75e6815b22c309 8,10-86
+  s_a0a481a34b8480::t_1d5d83c746bf0a 1-7
+apps/tofu/src/pages/(app)/_route.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 9-11
+  s_a0a481a34b8480::t_6655ef9ee2d6f5 12
+apps/tofu/scripts/route-types.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,13,15-19
+  s_a0a481a34b8480::t_548c579211c68f 14
+apps/tofu/tests/helpers/database.ts
+  s_a0a481a34b8480::t_e011513276f037 2,14
+package/ui/src/sidebar-toggle.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1-2
+apps/tofu/src/hooks/use-settings-action.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,6,13-14,18-19,35,37-44,62,71
+apps/tofu/tests/helpers/native-update-host.ts
+  s_a0a481a34b8480::t_e011513276f037 1-212
+apps/tofu/src/components/torrent-library-views.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1-10,18-26,30-341
+  s_a0a481a34b8480::t_1d5d83c746bf0a 11-17,27-29
+apps/tofu/src/components/plugins/plugin-card.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 5
+  s_a0a481a34b8480::t_75e6815b22c309 3,6-7,18-19,41,58
+apps/tofu/src/api/modules/updates/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,7,10-14
+apps/tofu/src/components/plugins/use-plugin-card.ts
+  s_a0a481a34b8480::t_e011513276f037 1-173
+apps/tofu/tests/desktop-associations.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-3,5-18
+apps/tofu/src/lib/client.ts
+  s_a0a481a34b8480::t_75e6815b22c309 6
+  s_a0a481a34b8480::t_118898b94f1233 3
+apps/tofu/tests/discovery-smart.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4-5,14,43-45,53,69-71,78-80,90,146,155
+apps/tofu/src/api/lib/sync-notifier.ts
+  s_a0a481a34b8480::t_e011513276f037 1-68
+apps/tofu/tests/theme.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,6-8,13-14,16-17,19-20,33-34,37,48,50-51,53,61-69,78-79,81,83-85,88-89
+apps/tofu/tests/api-problems.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-37
+apps/tofu/tests/discovery.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,6-9,11,26,37,39-40,42-43,55-57,98,115,117-118,120,124-125,127,131-133,135-136,167,184,186,188,190-193,195,269,280,282-286,289,301-302,308,310
+apps/tofu/tests/updates.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 5,8-11,39,46,51-55,62,69,71-72,75-77,79-80,84,87-88,104-108,134-135,143,148-150,152-154,162,164-165,167,170-171,173,175,178-179,182-183,185,188,209,212,214-216,259,261-262,265,269-272,307,309-310,312-313,342,344-345,402-404,409,411-412,415-416,454,456-457,461-462
+package/anilist/src/components/panel.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 17-18,21,23
+  s_a0a481a34b8480::t_75e6815b22c309 1,25-31,62,182,211-219,250,256-279
+apps/tofu/scripts/native-coexist.ts
+  s_a0a481a34b8480::t_75e6815b22c309 6,27
+apps/tofu/scripts/native-opening.ts
+  s_a0a481a34b8480::t_75e6815b22c309 6,151-170
+apps/tofu/src/api/lib/native-opening.ts
+  s_a0a481a34b8480::t_e011513276f037 1-18
+apps/tofu/src/hooks/use-source-search.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,67
+package/ui/src/ui/toggle-group.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 8,37-40,55
+  s_a0a481a34b8480::t_ccf58e85a38249 5
+package/plugins/src/title.ts
+  s_a0a481a34b8480::t_78dd237975524c 1-11
+apps/tofu/tests/storage-recovery.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-663
+apps/tofu/src/api/modules/automation/model.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-123
+apps/tofu/tests/helpers/application-routes.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1
+  s_a0a481a34b8480::t_e011513276f037 2-6
+apps/tofu/tests/helpers/application-services.ts
+  s_a0a481a34b8480::t_e011513276f037 1-64
+package/anilist/src/server/catalog.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,52,112
+apps/tofu/src/hooks/use-autosave-field.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,32
+apps/docs/src/pages/docs/anilist.tsx
+  s_a0a481a34b8480::t_00f0204daed082 51,53-54,57-58,62-63
+  s_a0a481a34b8480::t_6877da6766d8af 52,55-56,59-61
+apps/tofu/src/pages/root.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 20,28-30,35
+  s_a0a481a34b8480::t_5d4986d00b5c46 2,21-27,32
+  s_a0a481a34b8480::t_cfa8aebb5da221 44
+apps/tofu/src/api/modules/settings/model.ts
+  s_a0a481a34b8480::t_75e6815b22c309 24,29
+package/anilist/src/hooks/use-anilist-catalog.ts
+  s_a0a481a34b8480::t_75e6815b22c309 7,9-160
+  s_a0a481a34b8480::t_1f0065594c1038 8
+  s_a0a481a34b8480::t_1d5d83c746bf0a 1-6
+apps/tofu/bunfig.toml
+  s_a0a481a34b8480::t_429227e74c3143 2
+  s_a0a481a34b8480::t_3c0cf7837db9a7 1
+package/plugins/src/jev-questions.ts
+  s_a0a481a34b8480::t_255a9be99ccb19 1-7,292-296
+  s_a0a481a34b8480::t_223e8404551f96 291
+  s_a0a481a34b8480::t_78dd237975524c 8-255,264-290,297-300
+  s_a0a481a34b8480::t_a8234da3fb1ac2 256-263
+apps/tofu/tests/verify.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4-5,10-12,14,16-18,21-25,27,31,33,35,41,44-46,48-50,52,54,58-60,62-63
+apps/tofu/src/components/torrent-drop.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 8,42
+apps/tofu/src/components/destination-menu.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 31-33,38
+  s_a0a481a34b8480::t_2985eb73216061 10,12
+apps/tofu/tests/desktop-update-host.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3-8,10-25,27-46,48-116,118-147,149-157
+package/plugins/src/discovery-query.ts
+  s_a0a481a34b8480::t_78dd237975524c 1-58
+apps/tofu/tests/connections-pending.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-82
+apps/tofu/tests/anilist/opening.test.ts
+  s_a0a481a34b8480::t_e011513276f037 2-4,13,16,18,20,26,28-29,31,40-41,43,53,56-57,68,71,74,76,85,88,90,92,110,113-114,116
+apps/tofu/tests/anilist/catalog.test.ts
+  s_a0a481a34b8480::t_e011513276f037 3-7,60,71,73-74,76,94,97-119,144,153,159,161,164,167,170
+apps/tofu/src/api/lib/validation.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-9
+apps/tofu/src/api/modules/automation/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2-4,6-10
+apps/tofu/src/components/status-glyph.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 22,37
+apps/tofu/tests/anilist/transport.test.ts
+  s_a0a481a34b8480::t_e011513276f037 3-7,22,39,41,43,45,50,80,97,99,101,116,141,158,160-162,164,166,171,178,192,209,211,213,215,218,272,278,280-282,284,286,291,293-295,301-303,305
+apps/tofu/tests/sync-writes.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,5-8,12,23-29,31-33,35-38,40-48,50-54,57-58,60
+apps/tofu/src/api/lib/title.ts
+  s_a0a481a34b8480::t_a23673c4dfd48a 1-2
+package/anilist/src/components/library-controls.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 1-17
+  s_a0a481a34b8480::t_e011513276f037 18-28,30-281
+  s_a0a481a34b8480::t_75e6815b22c309 29
+package/plugins/src/domain.ts
+  s_a0a481a34b8480::t_59313d12125fa8 37,40,44,137,143-157,177,185,190,212,245,294,499-506,549,551,554-555,559
+apps/tofu/src/components/automation-discovery.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1-243
+apps/tofu/tests/helpers/anilist/threads.ts
+  s_a0a481a34b8480::t_e011513276f037 1-89
+apps/tofu/src/api/modules/plugins/service.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-14,28,48-446
+package/plugins/src/source-queries.ts
+  s_a0a481a34b8480::t_78dd237975524c 1-47
+package/anilist/src/components/tracking-steps.tsx
+  s_a0a481a34b8480::t_e011513276f037 1,12-373
+  s_a0a481a34b8480::t_75e6815b22c309 2-7
+  s_a0a481a34b8480::t_1d5d83c746bf0a 8-11
+package/ui/src/ui/input-group.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 5-7
+  s_a0a481a34b8480::t_456855806ed52c 4
+package/anilist/src/components/media-info.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 78,109-124
+  s_a0a481a34b8480::t_e2868a0ff5371c 125-126
+apps/scaffolder/templates/dev/fixtures.ts.template
+  s_a0a481a34b8480::t_bc7c475b6dc5b0 11-13
+package.json
+  s_a0a481a34b8480::t_3abca56e7ad0c2 102
+  s_a0a481a34b8480::t_2d6eef929c0b36 27,103-105
+apps/tofu/tests/anilist/threads.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-297
+apps/tofu/tests/helpers/plugin-integration.ts
+  s_a0a481a34b8480::t_e011513276f037 1-103
+package/plugins/package.json
+  s_a0a481a34b8480::t_429ffe22a3f24c 23-29
+  s_a0a481a34b8480::t_ee3aa1663a509a 37
+apps/tofu/src/api/modules/automation/service.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2-3,12,16,20,31,34-43,46-52,55,61-62,77,85-89,94,96,101,103-104,111-117,139-140,142,147,167-168,176,180-183,194-195,206-218,220,222,236,240-243,245-254,256-259,261,268-269,271,274-275,278-280,282-299,301-316,319,321,323-354,371-385,387-398,400-408,410-416,418-422,424,426-432,438-439,441-444,454-456,475,477,492-493,499-502,504,506,510,529-541,545-554,556-561,563-572,574-581,592
+  s_a0a481a34b8480::t_118898b94f1233 322
+  s_a0a481a34b8480::t_e011513276f037 102
+  s_a0a481a34b8480::t_7270178723733d 244,281
+package/anilist/src/server/dependencies.ts
+  s_a0a481a34b8480::t_1d5d83c746bf0a 3,7-15,23,26-30,34-36,40-78,81-84
+  s_a0a481a34b8480::t_91d2129d78b86f 17,31-32,79
+  s_a0a481a34b8480::t_d244043fdc0079 80
+apps/tofu/tests/plugin-integration.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-138
+apps/tofu/src/components/workspace-dialogs.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 5,9-21,52,75
+apps/tofu/src/components/automation-rules.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1-2,10-301
+  s_a0a481a34b8480::t_1d5d83c746bf0a 3-9
+package/anilist/tests/opening.test.ts
+  s_a0a481a34b8480::t_4dea122ab104af 45-48,52-58,63-66,73-79,81-82,91-97,99-100,113-119,121-122,143-149,151-152,157
+  s_a0a481a34b8480::t_d135774774acc2 14-20,22-23,34-40
+apps/tofu/src/api/plugin-host.ts
+  s_a0a481a34b8480::t_886391ac61807a 196,453-459,464-494
+  s_a0a481a34b8480::t_998c6061f03a8a 173-174,326-327,433-434,460-463
+  s_a0a481a34b8480::t_d88f79d9912f5a 23-24,27,58,140-154,175,198,253,362
+  s_a0a481a34b8480::t_19051446c27e9d 179
+  s_a0a481a34b8480::t_7d2f0938946305 155
+apps/tofu/src/api/modules/torrents/model.ts
+  s_a0a481a34b8480::t_75e6815b22c309 53-56,70-82,84-101,103-128
+apps/tofu/src/components/app.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1,8-10,13-14,20-21,34-35,99-100
+  s_a0a481a34b8480::t_429227e74c3143 52
+  s_a0a481a34b8480::t_1d5d83c746bf0a 5
+apps/tofu/tests/storage.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 6-7,10,16-22,24,27,30-31,33-37,39,42-54,56,69-71,73,76,83-89,91,97,99-102,104,126-129,131,133,151-156,158,161,166,168-170,172,174,178,187-189,191,194,196-197,212-217,219,222,231-233,237,240-241,244-247,249,270-274,276-279,282-284,288,302
+apps/tofu/src/api/modules/discovery/service.ts
+  s_a0a481a34b8480::t_75e6815b22c309 14-33,127-372,376,389,391-394,447-451,456
+  s_a0a481a34b8480::t_a23673c4dfd48a 1-3,5-10,12
+  s_a0a481a34b8480::t_fb744fec11d486 4,11,13
+package/anilist/src/hooks/use-anilist-editor.ts
+  s_a0a481a34b8480::t_1f0065594c1038 3
+  s_a0a481a34b8480::t_1d5d83c746bf0a 2,4-5
+  s_a0a481a34b8480::t_75e6815b22c309 6-7,9-65
+  s_a0a481a34b8480::t_b6007794b776c6 8
+apps/tofu/tests/plugin-contributions.test.tsx
+  s_a0a481a34b8480::t_998c6061f03a8a 156
+  s_a0a481a34b8480::t_4d8b35bc1c1892 152
+  s_a0a481a34b8480::t_a2af42176e00bf 1,10-16,22
+apps/tofu/package.json
+  s_a0a481a34b8480::t_ba53fabbb275b5 3,18,20,22,32-34
+  s_a0a481a34b8480::t_7ea3ac3b65cfdf 35,54-55,68,86,94
+apps/tofu/src/components/detail-panels.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1-438
+apps/tofu/tests/destinations.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,9-11,17-22,24,26-32,35-37,48,51,55,57,68-70,72,74-76,78,80-86,90-92,94,105-110,112-118,121-123,134,136,139,141,154-163,165,168,170-172,181,184,191-199,215-224,226-227,238-250,252-254,259,265-266,268,282-292,294,297,299-302,314,317-318,325-331,348-350,352,354-355,357-359,361-363,365,373,375,384-393,395,406-408,410,413,415-417,419-422,433-435,437,443-445,447-450,456,466-470,472,477-481,488-489,501,503-507,509,511-515,517,520-522,532-533,544-550,552,565-574,576,580-582,584-591,593,596-598,605-608,630,632-634,636,641-643,664,674-675,678
+apps/tofu/src/api/modules/torrents/crypto-diagnostics.ts
+  s_a0a481a34b8480::t_e011513276f037 1-75
+apps/tofu/src/components/destination-sidebar.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 24,69-70,75,77,141
+  s_a0a481a34b8480::t_9dba557a0df89d 20
+apps/tofu/src/pages/options/downloads.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 13,23,205-237
+  s_a0a481a34b8480::t_a7b845af1cd0eb 238-240
+apps/tofu/tests/worker-sync.test.ts
+  s_a0a481a34b8480::t_e011513276f037 1-3,5-119
+  s_a0a481a34b8480::t_75e6815b22c309 4
+apps/tofu/src/api/lib/db.ts
+  s_a0a481a34b8480::t_1f0065594c1038 43
+apps/tofu/src/api/modules/health/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,7,9-12
+apps/tofu/src/api/modules/automation/plugin.ts
+  s_a0a481a34b8480::t_e011513276f037 1-23
+apps/tofu/tests/helpers/anilist/oauth.ts
+  s_a0a481a34b8480::t_e011513276f037 1-77
+apps/tofu/src/api/lib/server-info.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3-4,7-8
+apps/tofu/src/api/lib/instance.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1,5,14,18,20,43-73,75
+apps/tofu/tests/anilist/native/catalog.ts
+  s_a0a481a34b8480::t_e011513276f037 1-517
+package/plugins/src/domain-schemas.ts
+  s_a0a481a34b8480::t_d945e2acca0a58 3
+  s_a0a481a34b8480::t_2eeac144488ac3 48,69
+apps/tofu/tests/helpers/server-process.ts
+  s_a0a481a34b8480::t_e011513276f037 1-2,4-94
+  s_a0a481a34b8480::t_75e6815b22c309 3
+apps/tofu/src/api/modules/anilist/plugin.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3-38
+  s_a0a481a34b8480::t_67890907560c3a 2
+apps/tofu/tests/helpers/problem.ts
+  s_a0a481a34b8480::t_e011513276f037 1-27
+package/anilist/src/components/library-cards.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 2-3
+  s_a0a481a34b8480::t_e011513276f037 1,4-146
+apps/tofu/src/api/modules/plugins/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,6-8,13,16-18,20-27,36-50,54-70
+apps/tofu/src/api/modules/torrents/plugin.ts
+  s_a0a481a34b8480::t_e011513276f037 1-18
+package/anilist/src/components/browse-filters.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 187-188,233,252,254,259,344,389,433,465
+package/anilist/src/components/library.tsx
+  s_a0a481a34b8480::t_1d5d83c746bf0a 6-8,10-11,13-14,18,28-30,33,46-47,56-67,69-71,75-77,80-87,89-101,105-107,109-112,114,124-128
+  s_a0a481a34b8480::t_91d2129d78b86f 12,15,17,19-21,102-104,108,129-130
+  s_a0a481a34b8480::t_197d03ee5c05dc 1,32
+apps/docs/README.md
+  s_a0a481a34b8480::t_6877da6766d8af 17-18
+apps/tofu/src/api/modules/discovery/sources.ts
+  s_a0a481a34b8480::t_a23673c4dfd48a 1-2
+apps/tofu/tests/validation.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2-4,9,11,13,21-32,34-50,53,55-57,64-74,76,78,80-81,83,85-87,89-91,93-95,103-104,107
+apps/tofu/src/api/modules/jev/service.ts
+  s_a0a481a34b8480::t_75e6815b22c309 6-10,12-23,25-48,50-62,66-106,108-113
+  s_a0a481a34b8480::t_a23673c4dfd48a 3-4
+  s_a0a481a34b8480::t_e810d9f7a96b91 1
+apps/tofu/tests/extensions.test.ts
+  s_a0a481a34b8480::t_4d8b35bc1c1892 9-10,15,19
+  s_a0a481a34b8480::t_998c6061f03a8a 7,12-13,16,24-28,106,207,253,316
+apps/tofu/tests/automation-title-fallback.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,6-9,39,56,58-65,72,78-81,91,94-98,147,164,166-173,180,189,194-196,203,242,253,255-262,270,276,278,285-287,294,297-301
+apps/tofu/src/pages/plugins/_route.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 2,5,9,12-13,27-33,47,56-112,114-115
+  s_a0a481a34b8480::t_abba016c395175 113
+  s_a0a481a34b8480::t_1d5d83c746bf0a 4
+  s_a0a481a34b8480::t_3801a3e756480b 35
+package/anilist/src/index.ts
+  s_a0a481a34b8480::t_91d2129d78b86f 13
+  s_a0a481a34b8480::t_9b33b9ce42985f 7
+apps/tofu/tests/self-peer.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2-3,8-9,11,16,35
+package/ui/src/ui/sidebar.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 5-7,9-10
+  s_a0a481a34b8480::t_df8c273670e34b 8
+apps/tofu/src/pages/index.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 12-20
+  s_a0a481a34b8480::t_76ae551fa4befb 21
+apps/tofu/src/api/modules/automation/rules.ts
+  s_a0a481a34b8480::t_a23673c4dfd48a 1-2
+apps/tofu/tests/upgrades.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 5,7-10,52,63,65-80,82-85,89-91,93-97,99,101-102,104-106,146,157,159-175,195,197-202,206,209,211-214,265,271,273,275-289,292-295,298-303,306,312,316-318,321,327-330,332-335,338-343,345-350
+apps/tofu/tests/helpers/automation.ts
+  s_a0a481a34b8480::t_e011513276f037 1-24
+apps/tofu/tests/desktop-backend.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4-5,7-8,78-80,93-95,114,118-122,142-143,147-150,152-157,159,164-166,169-171,193-194,237,242,247
+apps/tofu/src/api/modules/plugins/model.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-28
+apps/tofu/tests/helpers/services.ts
+  s_a0a481a34b8480::t_e011513276f037 1-64
+apps/tofu/src/api/lib/runtime.ts
+  s_a0a481a34b8480::t_e011513276f037 1-4
+apps/tofu/scripts/native-workflow-main.ts
+  s_a0a481a34b8480::t_e011513276f037 1-580,583-1133
+  s_a0a481a34b8480::t_abba016c395175 581-582
+apps/tofu/src/api/modules/plugins/releases.ts
+  s_a0a481a34b8480::t_a23673c4dfd48a 1-2
+apps/tofu/src/lib/automation-mutations.ts
+  s_a0a481a34b8480::t_75e6815b22c309 39,74-75,81
+apps/tofu/scripts/native-workflow-plugins.ts
+  s_a0a481a34b8480::t_e011513276f037 1-294
+package/anilist/src/components/library-filters.ts
+  s_a0a481a34b8480::t_75e6815b22c309 9
+  s_a0a481a34b8480::t_e011513276f037 1-8,10-252
+apps/tofu/src/components/use-detail-actions.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-70
+apps/tofu/src/components/global-search-results.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1-2,4-6,11-222
+  s_a0a481a34b8480::t_1d5d83c746bf0a 3,7-10
+apps/tofu/src/api/modules/torrents/worker.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-2,5-6,8-11,15-89,93,97,99,101-105,108-109,118-119,126-127,146-149,151,157,161,165-173,175,178,181-195,198-199,204
+apps/tofu/tests/helpers/plugin-integration-routes.ts
+  s_a0a481a34b8480::t_e011513276f037 1-2,4-84
+  s_a0a481a34b8480::t_75e6815b22c309 3
+package/anilist/src/server-clients.ts
+  s_a0a481a34b8480::t_118898b94f1233 1
+  s_a0a481a34b8480::t_77d79338b71afd 3-4
+apps/scaffolder/tests/cli.test.ts
+  s_a0a481a34b8480::t_b68669b3895f9d 48-52,56
+  s_a0a481a34b8480::t_bc7c475b6dc5b0 5,10,21,25-28,43,45-47,53-55
+apps/docs/src/pages/docs/development.tsx
+  s_a0a481a34b8480::t_e328ac355c9843 98-107,110-112,116,124-125,142-143
+  s_a0a481a34b8480::t_5d4986d00b5c46 82,84-85,108-109,113-115,126-127
+apps/tofu/tests/helpers/tracker.d.ts
+  s_a0a481a34b8480::t_e011513276f037 1-16
+apps/tofu/tests/files.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 6-7,19-23,25,27-30,32,36,38,46-48,50,53,57-60,62-64,74-77,79,81-83,85-88,90-93,97-100,105
+apps/tofu/src/api/modules/torrents/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 9,14,17,20-21,28,35-36,43-49,51-52,54-55,62-63,65-66,73-74,76,81-82,85-86
+apps/tofu/src/api/modules/desktop/opening.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1,4,8-21,23-32,34-39,41-50,52
+apps/tofu/src/components/plugins/plugin-group.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 18,24-30
+package/anilist/src/server/editor.ts
+  s_a0a481a34b8480::t_75e6815b22c309 2,13,32,66-68,72,74-76,83-85
+package/anilist/src/components/use-tracking.ts
+  s_a0a481a34b8480::t_e011513276f037 1-7,13-127
+  s_a0a481a34b8480::t_1d5d83c746bf0a 9-12
+  s_a0a481a34b8480::t_75e6815b22c309 8
+package/anilist/src/server/releases.ts
+  s_a0a481a34b8480::t_91d2129d78b86f 10
+  s_a0a481a34b8480::t_1d5d83c746bf0a 1-2
+  s_a0a481a34b8480::t_e011513276f037 6,14-114,119-121,127,240-245
+  s_a0a481a34b8480::t_75e6815b22c309 9
+apps/tofu/src/components/automation-sections.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1,6-172
+  s_a0a481a34b8480::t_62dd7abc4b7e08 2-5
+apps/tofu/src/api/modules/automation/management.ts
+  s_a0a481a34b8480::t_e011513276f037 1-85
+apps/tofu/tests/engine-worker.test.ts
+  s_a0a481a34b8480::t_75e6815b22c309 5,7,10-12,54-55,57,60,63,65,68,81,85,87-90,92-95,97-98,103,105,108,110,112,114,158-160,163,167-168,176-190
+apps/tofu/tests/helpers/process-control.ts
+  s_a0a481a34b8480::t_e011513276f037 1-16
+apps/scaffolder/templates/tests/plugin.test.ts.template
+  s_a0a481a34b8480::t_bc7c475b6dc5b0 6,51
+package/ui/package.json
+  s_a0a481a34b8480::t_ba53fabbb275b5 42-44
+apps/tofu/src/components/traffic-chart.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 1,4-74
+  s_a0a481a34b8480::t_1d5d83c746bf0a 2-3
+apps/tofu/scripts/native-smoke.ts
+  s_a0a481a34b8480::t_75e6815b22c309 11,13,15-17,20-25,46-53,82,129-137,142,147,149-156,173-177,193-204,211,292-301,303-312,314,316,361-374,381-392,394-398,400-409,411-415
+  s_a0a481a34b8480::t_ee45d2cbac2ac9 7
+apps/tofu/src/api/modules/torrents/service.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-2,12,14,19,24-25,31,35-36,38-45,57-58,64-67,71,85,98-99,128-129,140,143-145,166,174-175,177,184-196,199-205,207-208,242-247,256,261-262,266-279,282-289,298-309,311,314-317,322,326,331-333,336,340-358,363,368-529,531-540,544-617,629-631,636-644,651-652,654-656,661-684,699-701,720-734,738,741,744,765,767,770,791,794,805,808-810,818,841,862-864,877,888,892-893,903,906-907,914-915,948,956-957,961-963,966-968,974,977,1000-1001,1010-1011,1015-1017,1023,1025-1027,1051-1061,1064-1067,1069-1087,1097,1104,1119,1124,1128-1130,1143-1145,1149,1156-1161,1169,1172-1177,1179-1180,1182-1187,1228,1243-1244,1268-1274,1280-1281,1285,1288,1329-1330,1340-1341,1345,1348-1349,1353-1357,1360-1362,1368-1376,1381-1400,1407-1428,1440,1451,1453-1455,1461,1465-1469,1488-1493,1524-1531,1552-1554,1556,1586,1595,1597-1599,1602,1604-1614,1616-1630,1632,1634-1647,1649-1664,1667-1672,1674-1700,1710-1827,1831-1840,1846,1849,1851-1852,1865,1876-1877,1884,1890-1891,1900-1902,1905,1916,1947,1954-1957,1989-2000,2060-2062,2065-2067,2070,2074-2084,2087,2091-2093,2099,2104-2140
+apps/tofu/src/components/use-torrent-library.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-155
+apps/tofu/src/pages/thread/[id].tsx
+  s_a0a481a34b8480::t_75e6815b22c309 17-25
+  s_a0a481a34b8480::t_1d4b7dd57a8812 26
+package/anilist/src/components/use-list-editor.ts
+  s_a0a481a34b8480::t_1d5d83c746bf0a 2,5
+  s_a0a481a34b8480::t_e011513276f037 1,3-4,8-131
+  s_a0a481a34b8480::t_75e6815b22c309 6-7
+package/ui/src/option-select.tsx
+  s_a0a481a34b8480::t_75e6815b22c309 8
+  s_a0a481a34b8480::t_2e4fe251354748 9
+apps/tofu/src/api/extensions-api.ts
+  s_a0a481a34b8480::t_4d8b35bc1c1892 2
+  s_a0a481a34b8480::t_998c6061f03a8a 4-5,7,9,11-12,14-17,19-22,24-25,27,29-31,33,35,37-38,40
+  s_a0a481a34b8480::t_8db4d7cc23a72a 6,8,10,13,18,23,26,28,32,34,36
+apps/tofu/src/api/modules/settings/index.ts
+  s_a0a481a34b8480::t_75e6815b22c309 4,8,11,17,19-20
+package/ui/src/use-now.ts
+  s_a0a481a34b8480::t_75e6815b22c309 3,5
+apps/tofu/src/api/modules/desktop/associations.ts
+  s_a0a481a34b8480::t_75e6815b22c309 1-2,5,7,9-18,20-41,44-48,50-52,54-63,66
+apps/docs/package.json
+  s_a0a481a34b8480::t_44a15d96b9daf0 14
+apps/tofu/src/components/automation-inbox.tsx
+  s_a0a481a34b8480::t_3715b8e056446c 6
+apps/tofu/src/pages/anilist.tsx
+  s_a0a481a34b8480::t_954043857ed6da 1
+apps/tofu/src/plugin-client.ts
+  s_a0a481a34b8480::t_58cafb784dbd40 4,11
+bun.lock
+  s_a0a481a34b8480::t_dfda88d6a32d15 23,51,56-57,70,88,96,107,109,135,178-179,204,594,596,1232,1644,1972-1973,2006-2007
+package/anilist/src/request.ts
+  s_a0a481a34b8480::t_65316769a5eb07 1-2,17-20
+package/ui/src/ui/alert-dialog.tsx
+  s_a0a481a34b8480::t_1f402cb40ff53d 4
+package/ui/src/ui/dialog.tsx
+  s_a0a481a34b8480::t_989c7b13b79d92 4-5
+package/ui/src/ui/field.tsx
+  s_a0a481a34b8480::t_54558afa0540e3 4-5
+package/ui/src/ui/sheet.tsx
+  s_a0a481a34b8480::t_3336d4450edff7 4-5
+vendor/README.md
+  s_a0a481a34b8480::t_0a328828a2e4ef 3,5-8,10-13,15-19,21-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6e4867305e9a9fc340ede79b6d4724230e33322",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
