@@ -22,16 +22,32 @@ export async function openSyncBrowser(origin: string) {
     ready.reject(new Error("The browser sync connection closed before becoming ready"));
     closed.resolve();
   });
+  const readyDeadline = setTimeout(
+    () =>
+      ready.reject(new Error("The browser sync connection did not become ready within 10 seconds")),
+    10_000
+  );
   try {
     await ready.promise;
   } catch (error) {
     socket.close();
     throw error;
+  } finally {
+    clearTimeout(readyDeadline);
   }
   return {
     async close() {
+      const closeDeadline = setTimeout(
+        () =>
+          closed.reject(new Error("The browser sync connection did not close within 10 seconds")),
+        10_000
+      );
       socket.close();
-      await closed.promise;
+      try {
+        await closed.promise;
+      } finally {
+        clearTimeout(closeDeadline);
+      }
     },
     get cursor() {
       return cursor;

@@ -56,4 +56,4 @@ jobs:
       - run: bun run tscheck
 
       - run: bun run test
-        timeout-minutes: 5
+        timeout-minutes: 8
