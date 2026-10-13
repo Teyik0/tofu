@@ -11,8 +11,8 @@ import type { TestSyncOptions } from "./helpers/database";
 
 async function createApi(engine: EnginePort, options: TestSyncOptions, plugins: PluginHostOptions) {
   const core = await createTestApplication(engine, options);
+  createApplicationPluginHost({ ...core, platform: { kind: "server" }, sync: options }, plugins);
   const app = await mountTestApplication(core, { kind: "server" });
-  createApplicationPluginHost(app.application, plugins);
   return Object.assign(app, { closePlugins: () => closePluginHost(engine) });
 }
 
