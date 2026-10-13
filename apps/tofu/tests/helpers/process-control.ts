@@ -1,4 +1,15 @@
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+
+const identityPath = process.env.TOFU_TEST_PID;
+if (identityPath) {
+  try {
+    writeFileSync(identityPath, String(process.pid), { flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw error;
+    }
+  }
+}
 
 process.send?.(process.pid);
 

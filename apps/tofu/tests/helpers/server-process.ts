@@ -1,12 +1,14 @@
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../../src/api/index";
-import type { InstanceConfig } from "../../src/types";
+import type { InstanceConfig, ServerInfo } from "../../src/types";
 import { waitFor } from "./torrent";
 export function launchServer(config: InstanceConfig, watchEntry?: string) {
   const command = watchEntry ? ["--watch", "--no-clear-screen", watchEntry] : ["src/server.ts"];
   const shutdownPath = join(config.dataDir, `test-shutdown-${crypto.randomUUID()}`);
-  let applicationPid: number | undefined;
+  const identityPath = join(tmpdir(), `tofu-test-process-${crypto.randomUUID()}`);
   const child = Bun.spawn(
     [process.execPath, "--preload", join(import.meta.dir, "process-control.ts"), ...command],
     {
@@ -18,12 +20,11 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
         TOFU_MODE: "server",
         TOFU_PORT: String(config.port),
         TOFU_PROFILE: config.profile,
+        TOFU_TEST_PID: identityPath,
         TOFU_TEST_SHUTDOWN: process.platform === "win32" ? shutdownPath : undefined,
       },
-      ipc(message) {
-        if (typeof message === "number") {
-          applicationPid = message;
-        }
+      ipc() {
+        // Watch-mode subprocesses use the channel without depending on readiness messages.
       },
       stderr: "pipe",
       stdout: "pipe",
@@ -37,27 +38,42 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
     child,
     output,
     async ready() {
-      const address = await waitFor(
-        async () => {
-          if (child.exitCode !== null) {
-            throw new Error(await output);
-          }
-          const info = Bun.file(join(config.dataDir, "server.json"));
-          if (!(await info.exists())) {
-            return null;
-          }
-          const { pid, url } = (await info.json()) as { pid: number; url: string };
-          if (!watchEntry && pid !== applicationPid) {
-            return null;
-          }
-          return (await treaty<Api>(url).api.health.get()).response?.ok ? url : null;
-        },
-        (url) => url !== null
-      );
-      if (!address) {
-        throw new Error("The Tofu server did not start");
+      let descriptorPid: number | undefined;
+      let expectedPid: number | undefined;
+      let healthStatus: number | undefined;
+      try {
+        const address = await waitFor(
+          async () => {
+            if (child.exitCode !== null) {
+              throw new Error(await output);
+            }
+            const info = Bun.file(join(config.dataDir, "server.json"));
+            if (!(await info.exists())) {
+              return null;
+            }
+            const { pid, url } = (await info.json()) as ServerInfo;
+            descriptorPid = pid;
+            const identity = Bun.file(identityPath);
+            expectedPid = (await identity.exists()) ? Number(await identity.text()) : undefined;
+            if (!watchEntry && pid !== expectedPid) {
+              return null;
+            }
+            const health = await treaty<Api>(url).api.health.get();
+            healthStatus = health.status;
+            return health.response?.ok ? url : null;
+          },
+          (url) => url !== null
+        );
+        if (!address) {
+          throw new Error("The Tofu server did not start");
+        }
+        return address;
+      } catch (cause) {
+        throw new Error(
+          `The test server did not become ready: child=${child.pid}, expected=${expectedPid}, descriptor=${descriptorPid}, health=${healthStatus}`,
+          { cause }
+        );
       }
-      return address;
     },
     async stop() {
       let forced = false;
@@ -88,6 +104,7 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
         }
       } finally {
         clearTimeout(deadline);
+        await rm(identityPath, { force: true });
       }
     },
   };
