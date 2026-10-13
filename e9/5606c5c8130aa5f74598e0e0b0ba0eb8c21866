@@ -1,0 +1,19 @@
+.github/workflows/release.yml
+  s_da1befa6eff361::t_44741882bd4253 136-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e95606c5c8130aa5f74598e0e0b0ba0eb8c21866",
+  "prompts": {},
+  "sessions": {
+    "s_da1befa6eff361": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13403-ff8a-7200-a93b-f6af441e8862",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
