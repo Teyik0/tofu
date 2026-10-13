@@ -1,27 +1,23 @@
 import "@teyik0/furin/server-only";
-import type { TransactionalSyncAdapter } from "@teyik0/furin/sync";
-import type { DatabaseTransaction } from "./api/lib/db";
-import { applicationHost, applicationScope } from "./api/lib/host";
-import type { CoreApplication } from "./types";
+import type { SyncRuntimeOptions } from "@teyik0/furin/sync";
+import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
+import { db } from "./api/lib/database-plugin";
+import { resources } from "./api/lib/runtime";
+import { ObservedSyncNotifier } from "./api/lib/sync-notifier";
+import { engine } from "./api/modules/torrents/plugin";
 
-// Furin registers routes before startup. Only its transport waits for the real adapter.
-export function createDeferredSync(ready: () => Promise<CoreApplication>) {
-  const adapter = {
-    abortMutation: async (lease) => (await ready()).sync.adapter.abortMutation(lease),
-    beginMutation: async (input) => (await ready()).sync.adapter.beginMutation(input),
-    completeMutation: async (input) => (await ready()).sync.adapter.completeMutation(input),
-    currentCursor: async () => (await ready()).sync.adapter.currentCursor(),
-    executeMutation: async (lease, callback) =>
-      (await ready()).sync.adapter.executeMutation(lease, callback),
-    readChanges: async (input) => (await ready()).sync.adapter.readChanges(input),
-    renewMutation: async (lease) => (await ready()).sync.adapter.renewMutation(lease),
-    scope: "host-local",
-    transactionMode: "sync",
-  } satisfies TransactionalSyncAdapter<DatabaseTransaction, "sync">;
-  return { adapter, principal: () => "local" };
-}
+const notifier = new ObservedSyncNotifier(engine.setObserved.bind(engine));
+export const sync = {
+  adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),
+  notifier,
+  principal: () => "local",
+} satisfies SyncRuntimeOptions;
 
-export const sync = createDeferredSync(() => {
-  const application = applicationScope.getStore();
-  return application ? Promise.resolve(application) : applicationHost.core;
+const unsubscribe = engine.subscribeChanges(({ cursor }) => {
+  if (cursor !== undefined) {
+    void notifier.publish(cursor).catch(console.error);
+  }
+});
+resources.defer(() => {
+  unsubscribe();
 });

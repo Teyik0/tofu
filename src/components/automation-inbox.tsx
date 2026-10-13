@@ -6,7 +6,7 @@ import {
   InboxIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useNow } from "../hooks/use-now";
 import type {
   AutomationDecision,
   AutomationRule,
@@ -26,16 +26,6 @@ export const isPending = (
   decision: AutomationDecision
 ): decision is AutomationDecision & { status: PendingStatus } =>
   (pendingStatuses as string[]).includes(decision.status);
-
-/** Re-renders periodically so countdowns stay accurate while the dialog is open. */
-export function useNow(interval: number) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), interval);
-    return () => clearInterval(timer);
-  }, [interval]);
-  return now;
-}
 
 export function ReleaseLine({ release }: { release: FeedRelease }) {
   return (

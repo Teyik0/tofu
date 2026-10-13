@@ -14,6 +14,7 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
+  FieldTitle,
 } from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
 import {
@@ -23,6 +24,7 @@ import {
   InputGroupInput,
 } from "../../components/ui/input-group";
 import { Switch } from "../../components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { useAutosaveField } from "../../hooks/use-autosave-field";
 import { useSettingsAction } from "../../hooks/use-settings-action";
 import { route as options } from "./_route";
@@ -197,6 +199,42 @@ export const route = defineRoute()
                 type="number"
                 value={upload.field.input ?? ""}
               />
+            </Field>
+          </FieldGroup>
+        </FieldSet>
+        <FieldSet>
+          <FieldLegend>Seeding</FieldLegend>
+          <FieldGroup className="settings-group">
+            <Field className="settings-row" data-disabled={busy} orientation="horizontal">
+              <FieldContent>
+                <FieldTitle id="seeding-connections-label">Seeding connections</FieldTitle>
+                <FieldDescription id="seeding-connections-description">
+                  Balanced connects to new peers at a reduced rate once a torrent is complete.
+                  Incoming only waits for peers to connect and may reduce sharing if your port is
+                  unreachable. Existing connections stay open. Downloads are unaffected.
+                </FieldDescription>
+              </FieldContent>
+              <ToggleGroup
+                aria-describedby="seeding-connections-description"
+                aria-labelledby="seeding-connections-label"
+                disabled={busy}
+                id="seeding-connections"
+                onValueChange={([seedingConnectionMode]) => {
+                  if (
+                    seedingConnectionMode === "balanced" ||
+                    seedingConnectionMode === "incoming-only"
+                  ) {
+                    startTransition(() =>
+                      dispatchAction({ settings: { seedingConnectionMode }, type: "update" })
+                    );
+                  }
+                }}
+                value={[data.settings.seedingConnectionMode]}
+                variant="outline"
+              >
+                <ToggleGroupItem value="balanced">Balanced</ToggleGroupItem>
+                <ToggleGroupItem value="incoming-only">Incoming only</ToggleGroupItem>
+              </ToggleGroup>
             </Field>
           </FieldGroup>
         </FieldSet>

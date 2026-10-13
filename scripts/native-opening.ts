@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { Server as Tracker } from "bittorrent-tracker";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { AniListState, DashboardState, ServerInfo } from "../src/types";
-import { fixture, json, waitFor } from "../tests/helpers";
+import { fixture, json, waitFor } from "../tests/helpers/torrent";
 import { nativeRequest } from "./native-request";
 
 if (process.platform !== "darwin") {
@@ -148,6 +148,26 @@ try {
     throw new Error("Reopening the torrent changed downloaded data");
   }
   checks.push("Opening an existing file restores the background window and preserves paused data");
+  const preference = await request(`${base}/api/settings`, {
+    ...json({ deleteTorrentFileAfterAdd: true }),
+    method: "PATCH",
+  });
+  if (!preference.ok) {
+    throw new Error("Unable to enable torrent source deletion");
+  }
+  await request(`${base}/api/torrents/${file.seed.infoHash}`, {
+    ...json({ deleteFiles: false }),
+    method: "DELETE",
+  });
+  await open(["-a", bundle, torrentPath]);
+  await downloaded(file.seed.infoHash, file.bytes);
+  await waitFor(
+    () => Bun.file(torrentPath).exists(),
+    (exists) => !exists
+  );
+  checks.push(
+    "A successful native import deletes the source only when enabled and preserves downloaded bytes"
+  );
   checks.push("The test leaves system default application preferences unchanged");
   const report = JSON.stringify({ checks, passed: true }, null, 2);
   await Bun.write(join(root, ".cache/native-opening.json"), report);

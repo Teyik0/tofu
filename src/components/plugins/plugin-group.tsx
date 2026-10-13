@@ -15,15 +15,19 @@ export function PluginGroup({
   title: string;
   plugins: PluginState[];
 }) {
+  const selectedIds = new Set(ids);
   return (
     <FieldSet>
       <FieldLegend>{title}</FieldLegend>
       <FieldGroup className="settings-group plugins-group">
         {plugins
-          .filter((plugin) => ids.includes(plugin.id))
-          .map((plugin) => (
-            <PluginCard desktop={desktop} form={forms[plugin.id]} key={plugin.id} plugin={plugin} />
-          ))}
+          .filter((plugin) => selectedIds.has(plugin.id))
+          .map((plugin) => {
+            const form = forms[plugin.id];
+            return form ? (
+              <PluginCard desktop={desktop} form={form} key={plugin.id} plugin={plugin} />
+            ) : null;
+          })}
       </FieldGroup>
     </FieldSet>
   );

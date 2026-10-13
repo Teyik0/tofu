@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { request } from "../components/api";
+import { errorMessage } from "../lib/errors";
 import type { DiscoveryResult, SourcePluginId, SourceSearchState } from "../types";
 
 interface SearchSnapshot {
@@ -63,7 +64,7 @@ export function useSourceSearch(query: string, sourceIds: SourcePluginId[]) {
             }),
           (cause: unknown) =>
             finish({
-              error: cause instanceof Error ? cause.message : "Unable to search the source",
+              error: errorMessage(cause, "Unable to search the source"),
               loading: false,
               releases: [],
               sourceId,

@@ -1,6 +1,7 @@
 import { getDeepError, handleSubmit, reset, useField, useForm } from "@formisch/react";
 import { useEffect, useState } from "react";
 import { type GenericSchema, object } from "valibot";
+import { errorMessage } from "../lib/errors";
 
 export function useAutosaveField<Output>(
   schema: GenericSchema<string, Output>,
@@ -28,7 +29,7 @@ export function useAutosaveField<Output>(
         keepInput: field.input !== submitted,
       });
     } catch (cause) {
-      setSaveError(cause instanceof Error ? cause.message : "Unable to save this setting");
+      setSaveError(errorMessage(cause, "Unable to save this setting"));
     }
   });
   const onBlur = () => {

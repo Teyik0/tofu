@@ -2,6 +2,8 @@ import { Link, useRouter } from "@teyik0/furin/link";
 import { useSetAtom } from "jotai";
 import { FolderIcon, PencilIcon, PlugIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { type MouseEvent, memo, startTransition, useActionState, useEffect, useState } from "react";
+import { useAsyncAction } from "../hooks/use-async-action";
+import { errorMessage } from "../lib/errors";
 import { isSupersededNavigation, showDestination } from "../lib/navigation";
 import { modalAtom } from "../state/workspace";
 import type { DashboardState, Destination } from "../types";
@@ -64,22 +66,15 @@ function DestinationThreadActions({
 }) {
   const router = useRouter();
   const deleteDestination = useDeleteDestination(activeDestination);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const remove = async (event: MouseEvent<HTMLButtonElement>) => {
+  const { busy, error, action } = useAsyncAction("Unable to delete the tab");
+  const remove = (event: MouseEvent<HTMLButtonElement>) => {
     if (!event.shiftKey) {
       open({ destination, type: "deleteDestination" });
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
+    action(async () => {
       await showDestination(router, await deleteDestination(destination.id), activeDestination);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to delete the tab");
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   return (
     <>
@@ -143,7 +138,7 @@ export const DestinationSidebar = memo(
         if (isSupersededNavigation(cause)) {
           return null;
         }
-        return cause instanceof Error ? cause.message : "Unable to open plugins";
+        return errorMessage(cause, "Unable to open plugins");
       }
     }, null);
     const shiftHeld = useShiftHeld();

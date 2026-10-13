@@ -3,10 +3,10 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { createDatabase } from "../src/api/lib/db";
-import { AutomationService } from "../src/api/modules/automation/service";
 import type { AutomationDraft, AutomationPreferences, AutomationState } from "../src/types";
-import { createTestApi } from "./api-fixture";
-import { fixture, json } from "./helpers";
+import { automationFixture } from "./helpers/automation";
+import { expectSuccess } from "./helpers/problem";
+import { fixture } from "./helpers/torrent";
 
 const upstream = Bun.serve({
   fetch: () => new Response("<rss><channel></channel></rss>"),
@@ -14,25 +14,6 @@ const upstream = Bun.serve({
   port: 0,
 });
 afterAll(() => upstream.stop(true));
-
-async function open(directory: string, context: Awaited<ReturnType<typeof fixture>>) {
-  const base = upstream.url.href;
-  const service = await AutomationService.open({
-    dataDir: join(directory, "feeds"),
-    endpoints: { anilist: base, c411: base, jev: base, nyaa: base, tsundere: base },
-    engine: () => context.engine,
-    now: Date.now,
-  });
-  const api = await createTestApi(
-    () => context.engine,
-    context.sync.options,
-    () => service
-  );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
-  return { request, service };
-}
-
 const preferences: AutomationPreferences = {
   automatic: false,
   codecs: ["H.265"],
@@ -46,7 +27,6 @@ const preferences: AutomationPreferences = {
   sources: ["nyaa", "tsundere"],
   waitMinutes: 45,
 };
-
 test("legacy automation and AniList settings survive opening and updating the existing database", async () => {
   const context = await fixture(1024, []);
   const dataDir = join(context.directory, "feeds");
@@ -69,9 +49,9 @@ test("legacy automation and AniList settings survive opening and updating the ex
   } finally {
     legacy.$client.close(true);
   }
-  let { request, service } = await open(context.directory, context);
+  let { client, service } = await automationFixture(context.directory, context, upstream.url.href);
   try {
-    const initial = (await (await request("/automation", undefined)).json()) as AutomationState;
+    const initial = expectSuccess(await client.automation.get()) as AutomationState;
     expect(initial.preferences).toEqual(preferences);
     expect(initial.plugins.find((plugin) => plugin.id === "jev")).toMatchObject({
       dailyLimit: 73,
@@ -79,28 +59,19 @@ test("legacy automation and AniList settings survive opening and updating the ex
       hasApiKey: true,
     });
     expect(JSON.stringify(initial)).not.toContain("legacy-key");
-    expect(await (await request("/anilist", undefined)).json()).toMatchObject({
+    expect(expectSuccess(await client.anilist.get())).toMatchObject({
       userName: "Archive's preferred name",
       visibleStatuses: ["CURRENT", "COMPLETED"],
     });
     const updated = { ...preferences, paused: false, waitMinutes: 60 };
-    expect(
-      (await request("/automation/preferences", { ...json(updated), method: "PUT" })).status
-    ).toBe(200);
-    expect(
-      (
-        await request("/anilist/preferences", {
-          ...json({ visibleStatuses: ["PLANNING"] }),
-          method: "PUT",
-        })
-      ).status
-    ).toBe(200);
+    expect((await client.automation.preferences.put(updated)).status).toBe(200);
+    expect((await client.anilist.preferences.put({ visibleStatuses: ["PLANNING"] })).status).toBe(
+      200
+    );
     await service.close();
-    ({ request, service } = await open(context.directory, context));
-    expect(await (await request("/automation", undefined)).json()).toMatchObject({
-      preferences: updated,
-    });
-    expect(await (await request("/anilist", undefined)).json()).toMatchObject({
+    ({ client, service } = await automationFixture(context.directory, context, upstream.url.href));
+    expect(expectSuccess(await client.automation.get())).toMatchObject({ preferences: updated });
+    expect(expectSuccess(await client.anilist.get())).toMatchObject({
       userName: "Archive's preferred name",
       visibleStatuses: ["PLANNING"],
     });
@@ -109,12 +80,11 @@ test("legacy automation and AniList settings survive opening and updating the ex
     await context.close();
   }
 });
-
 test("general preferences shape new rules, explicit requests override them, and they persist", async () => {
   const context = await fixture(1024, []);
-  let { request, service } = await open(context.directory, context);
+  let { client, service } = await automationFixture(context.directory, context, upstream.url.href);
   try {
-    const initial = (await (await request("/automation", undefined)).json()) as AutomationState;
+    const initial = expectSuccess(await client.automation.get()) as AutomationState;
     expect(initial.preferences).toEqual({
       automatic: true,
       codecs: ["H.265", "H.264"],
@@ -128,35 +98,27 @@ test("general preferences shape new rules, explicit requests override them, and 
       sources: ["tsundere", "nyaa", "c411"],
       waitMinutes: 0,
     });
-    const firstDraft = (await (
-      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
-    ).json()) as AutomationDraft;
+    const firstDraft = expectSuccess(
+      await client.automations.interpret.post({ destinationId: "default", query: "Example" })
+    ) as AutomationDraft;
     expect(firstDraft).toMatchObject({ ...initial.preferences, title: "Example" });
-
-    const saved = await request("/automation/preferences", {
-      ...json(preferences),
-      method: "PUT",
-    });
+    const saved = await client.automation.preferences.put(preferences);
     expect(saved.status).toBe(200);
-    expect(await saved.json()).toEqual(preferences);
-
+    expect(expectSuccess(saved)).toEqual(preferences);
     const interpret = async (query: string) =>
-      (await (
-        await request("/automations/interpret", json({ destinationId: "default", query }))
-      ).json()) as AutomationDraft;
+      expectSuccess(
+        await client.automations.interpret.post({ destinationId: "default", query })
+      ) as AutomationDraft;
     const plain = await interpret("Example");
     expect(plain).toMatchObject({ ...preferences, title: "Example" });
-
     const explicit = await interpret("Example in VF 2160p with H.264 on Tsundere-Raws");
     expect(explicit.codecs).toEqual(["H.264"]);
     expect(explicit.languages).toEqual(["VF"]);
     expect(explicit.resolutions).toEqual(["2160p"]);
     expect(explicit.sources).toEqual(["tsundere"]);
     expect(explicit.waitMinutes).toBe(45);
-
     const bareCodec = await interpret("download Frieren x265");
     expect(bareCodec).toMatchObject({ codecs: ["H.265"], title: "Frieren" });
-
     const codecRequests = await Promise.all(
       ["x264", "h 264", "AVC", "AV1", "HEVC", "x265", "h265"].map((codec) =>
         interpret(`Example in ${codec}`)
@@ -171,27 +133,30 @@ test("general preferences shape new rules, explicit requests override them, and 
       { codecs: ["H.265"], title: "Example" },
       { codecs: ["H.265"], title: "Example" },
     ]);
-
     await service.close();
-    ({ request, service } = await open(context.directory, context));
-    const reopened = (await (await request("/automation", undefined)).json()) as AutomationState;
+    ({ client, service } = await automationFixture(context.directory, context, upstream.url.href));
+    const reopened = expectSuccess(await client.automation.get()) as AutomationState;
     expect(reopened.preferences).toEqual(preferences);
   } finally {
     await service.close();
     await context.close();
   }
 });
-
 test("preferences reject sources and languages outside the supported set", async () => {
   const context = await fixture(1024, []);
-  const { request, service } = await open(context.directory, context);
+  const { client, service } = await automationFixture(
+    context.directory,
+    context,
+    upstream.url.href
+  );
   try {
-    const invalid = await request("/automation/preferences", {
-      ...json({ ...preferences, languages: ["DE"], sources: [] }),
-      method: "PUT",
+    const invalid = await client.automation.preferences.put({
+      ...preferences,
+      languages: ["DE"] as never,
+      sources: [],
     });
     expect(invalid.status).toBe(422);
-    const state = (await (await request("/automation", undefined)).json()) as AutomationState;
+    const state = expectSuccess(await client.automation.get()) as AutomationState;
     expect(state.preferences.sources).toEqual(["tsundere", "nyaa", "c411"]);
   } finally {
     await service.close();

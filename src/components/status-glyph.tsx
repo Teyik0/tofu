@@ -19,7 +19,7 @@ export function StatusGlyph({
   size,
 }: {
   status: TorrentStatus;
-  progress: number;
+  progress: number | null;
   size: number;
 }) {
   const radius = size / 2 - 2;
@@ -34,7 +34,7 @@ export function StatusGlyph({
           cy={size / 2}
           r={radius}
           strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - Math.min(1, Math.max(0, progress)))}
+          strokeDashoffset={circumference * (1 - Math.min(1, Math.max(0, progress ?? 0)))}
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </svg>

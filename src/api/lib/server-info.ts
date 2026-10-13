@@ -1,13 +1,14 @@
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
-import type { CoreApplication } from "../../types";
+import type { engine as torrentEngine } from "../modules/torrents/plugin";
+import type { instance as databaseInstance } from "./database-plugin";
 
 export async function writeServerInfo(
-  application: CoreApplication,
+  instance: typeof databaseInstance,
+  engine: typeof torrentEngine,
   url: string,
   cookie: string | undefined
 ) {
-  const { instance, engine } = application;
   const { dataDir } = instance;
   await Bun.write(
     join(dataDir, "server.json.tmp"),

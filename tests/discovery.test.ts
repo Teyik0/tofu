@@ -1,12 +1,14 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: exercise sequential public API requests.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { AutomationService } from "../src/api/modules/automation/service";
+import { treaty } from "@elysia/eden";
 import type { DiscoveryResult } from "../src/types";
-import { createTestApi } from "./api-fixture";
-import { fixture, json } from "./helpers";
+import { createTestApi } from "./helpers/application";
+import { expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
+import { fixture } from "./helpers/torrent";
 
-test("discovery keeps the literal query and makes no catalogue request until Jev is configured and enabled", async () => {
+test("manual discovery remains available after automation stops and stays literal without Jev", async () => {
   const context = await fixture(1024, []);
   const queries: string[] = [];
   const upstream = Bun.serve({
@@ -21,7 +23,7 @@ test("discovery keeps the literal query and makes no catalogue request until Jev
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: `${base}/anilist`, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -32,13 +34,13 @@ test("discovery keeps the literal query and makes no catalogue request until Jev
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
+    await service.releaseAutomation.close();
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
     const query = "re zero ep9 season4";
-    const response = await request("/discover", json({ query, sources: ["nyaa"] }));
-    const result = (await response.json()) as DiscoveryResult;
+    const response = await client.discover.post({ query, sources: ["nyaa"] });
+    const result = expectSuccess(response) as DiscoveryResult;
     expect(response.status).toBe(200);
     expect(queries).toEqual([query]);
     expect(result.releases.map((release) => release.id)).toEqual(["classic"]);
@@ -50,12 +52,9 @@ test("discovery keeps the literal query and makes no catalogue request until Jev
       title: query,
     });
     queries.length = 0;
-    await request("/plugins/jev", {
-      ...json({ apiKey: "configured-but-disabled", enabled: false }),
-      method: "PUT",
-    });
-    const disabled = await request("/discover", json({ query, sources: ["nyaa"] }));
-    expect(((await disabled.json()) as DiscoveryResult).search?.resolved).toBe(false);
+    await client.plugins({ id: "jev" }).put({ apiKey: "configured-but-disabled", enabled: false });
+    const disabled = await client.discover.post({ query, sources: ["nyaa"] });
+    expect((expectSuccess(disabled) as DiscoveryResult).search?.resolved).toBe(false);
     expect(queries).toEqual([query]);
   } finally {
     await service.close();
@@ -63,7 +62,6 @@ test("discovery keeps the literal query and makes no catalogue request until Jev
     await context.close();
   }
 });
-
 test("discovery defaults to active sources and filters the unsearchable Tsundere feed", async () => {
   const context = await fixture(1024, []);
   const calls: string[] = [];
@@ -97,7 +95,7 @@ test("discovery defaults to active sources and filters the unsearchable Tsundere
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}/anilist`,
@@ -114,35 +112,28 @@ test("discovery defaults to active sources and filters the unsearchable Tsundere
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/tsundere", { ...json({ enabled: true }), method: "PUT" });
-    const response = await request("/discover", json({ query: "Example" }));
+    await client.plugins({ id: "tsundere" }).put({ enabled: true });
+    const response = await client.discover.post({ query: "Example" });
     expect(response.status).toBe(200);
-    const result = (await response.json()) as DiscoveryResult;
+    const result = expectSuccess(response) as DiscoveryResult;
     expect(result.releases.map((release) => release.id)).toEqual(["wanted"]);
     expect(calls).toEqual(["/tsundere"]);
     calls.length = 0;
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
-    const selected = await request(
-      "/discover",
-      json({ query: "Example S01E09", sources: ["tsundere"] })
-    );
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
+    const selected = await client.discover.post({ query: "Example S01E09", sources: ["tsundere"] });
     expect(
-      ((await selected.json()) as DiscoveryResult).releases.map((release) => release.id)
+      (expectSuccess(selected) as DiscoveryResult).releases.map((release) => release.id)
     ).toEqual(["wanted"]);
     expect(calls).toEqual(["/tsundere"]);
     calls.length = 0;
-    await request("/plugins/tsundere", { ...json({ enabled: false }), method: "PUT" });
-    const disabled = await request(
-      "/discover",
-      json({ query: "Example s1 ep9", sources: ["tsundere"] })
-    );
-    expect(((await disabled.json()) as DiscoveryResult).releases).toEqual([]);
+    await client.plugins({ id: "tsundere" }).put({ enabled: false });
+    const disabled = await client.discover.post({ query: "Example s1 ep9", sources: ["tsundere"] });
+    expect((expectSuccess(disabled) as DiscoveryResult).releases).toEqual([]);
     expect(calls).toEqual([]);
-    const empty = await request("/discover", json({ query: "Example", sources: [] }));
-    expect(((await empty.json()) as DiscoveryResult).releases).toEqual([]);
+    const empty = await client.discover.post({ query: "Example", sources: [] });
+    expect((expectSuccess(empty) as DiscoveryResult).releases).toEqual([]);
     expect(calls).toEqual([]);
   } finally {
     await service.close();
@@ -150,7 +141,6 @@ test("discovery defaults to active sources and filters the unsearchable Tsundere
     await context.close();
   }
 });
-
 test("natural discovery falls back during a catalogue outage and reads episode numbers from release titles", async () => {
   const context = await fixture(1024, []);
   const calls: string[] = [];
@@ -174,7 +164,7 @@ test("natural discovery falls back during a catalogue outage and reads episode n
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}/anilist`,
@@ -191,22 +181,18 @@ test("natural discovery falls back during a catalogue outage and reads episode n
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/jev", {
-      ...json({ apiKey: "test-jev", enabled: true }),
-      method: "PUT",
-    });
+    await client.plugins({ id: "jev" }).put({ apiKey: "test-jev", enabled: true });
     for (const id of ["nyaa", "tsundere"]) {
-      await request(`/plugins/${id}`, { ...json({ enabled: true }), method: "PUT" });
+      await client.plugins({ id }).put({ enabled: true });
     }
-    const response = await request(
-      "/discover",
-      json({ query: "Example s04e09", sources: ["nyaa", "tsundere"] })
-    );
+    const response = await client.discover.post({
+      query: "Example s04e09",
+      sources: ["nyaa", "tsundere"],
+    });
     expect(response.status).toBe(200);
-    const result = (await response.json()) as DiscoveryResult;
+    const result = expectSuccess(response) as DiscoveryResult;
     expect(result.releases.map((release) => release.id)).toEqual(["wanted"]);
     expect(result.releases[0]?.episode).toBe(9);
     expect(result.releases[0]?.season).toBe(4);
@@ -220,7 +206,6 @@ test("natural discovery falls back during a catalogue outage and reads episode n
     await context.close();
   }
 });
-
 test("natural discovery searches English and Japanese aliases and keeps only the requested episode", async () => {
   const context = await fixture(1024, []);
   const queries: string[] = [];
@@ -281,7 +266,7 @@ test("natural discovery searches English and Japanese aliases and keeps only the
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: `${base}/anilist`, c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -292,20 +277,16 @@ test("natural discovery searches English and Japanese aliases and keeps only the
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/jev", {
-      ...json({ apiKey: "test-jev", enabled: true }),
-      method: "PUT",
+    await client.plugins({ id: "jev" }).put({ apiKey: "test-jev", enabled: true });
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
+    const response = await client.discover.post({
+      query: "re zero ep9 season4",
+      sources: ["nyaa"],
     });
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
-    const response = await request(
-      "/discover",
-      json({ query: "re zero ep9 season4", sources: ["nyaa"] })
-    );
     expect(response.status).toBe(200);
-    const result = (await response.json()) as DiscoveryResult;
+    const result = expectSuccess(response) as DiscoveryResult;
     expect(result.releases.map((release) => release.id).sort()).toEqual([
       "english",
       "japanese",
@@ -317,19 +298,16 @@ test("natural discovery searches English and Japanese aliases and keeps only the
     expect(queries.some((query) => query.includes("S04E09"))).toBe(true);
     expect(catalogCalls).toBe(1);
     queries.length = 0;
-    const titleOnly = await request("/discover", json({ query: "re zero", sources: ["nyaa"] }));
-    const allEpisodes = (await titleOnly.json()) as DiscoveryResult;
+    const titleOnly = await client.discover.post({ query: "re zero", sources: ["nyaa"] });
+    const allEpisodes = expectSuccess(titleOnly) as DiscoveryResult;
     expect(allEpisodes.search?.resolved).toBe(true);
     expect(queries.some((query) => query.includes("Starting Life in Another World"))).toBe(true);
     expect(queries.some((query) => query.includes("kara Hajimeru Isekai Seikatsu"))).toBe(true);
     expect(allEpisodes.releases.some((release) => release.id === "unrelated")).toBe(false);
     queries.length = 0;
-    const shorthand = await request(
-      "/discover",
-      json({ query: "re zero s4 ep9", sources: ["nyaa"] })
-    );
+    const shorthand = await client.discover.post({ query: "re zero s4 ep9", sources: ["nyaa"] });
     expect(
-      ((await shorthand.json()) as DiscoveryResult).releases.map((release) => release.id).sort()
+      (expectSuccess(shorthand) as DiscoveryResult).releases.map((release) => release.id).sort()
     ).toEqual(["english", "japanese", "season-title", "short-title"]);
   } finally {
     await service.close();

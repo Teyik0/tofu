@@ -177,15 +177,16 @@ function SourceOrder({
   values: SourcePluginId[];
   onChange: (values: SourcePluginId[]) => void;
 }) {
+  const selectedSources = new Set(values);
   const unused = (Object.keys(sourceNames) as SourcePluginId[]).filter(
-    (source) => !values.includes(source)
+    (source) => !selectedSources.has(source)
   );
   return (
     <FieldSet>
       <FieldLegend variant="label">Sources, in priority order</FieldLegend>
       <div className="order-list">
         {[...values, ...unused].map((source, index) => {
-          const used = values.includes(source);
+          const used = selectedSources.has(source);
           return (
             <div className="order-row" data-disabled={!used} key={source}>
               <Checkbox
@@ -201,13 +202,13 @@ function SourceOrder({
                 }
               />
               <span className="order-rank">{used ? index + 1 : "–"}</span>
-              <FieldLabel htmlFor={`${id}-${source}`}>{sourceNames[source]}</FieldLabel>
+              <FieldLabel htmlFor={`${id}-${source}`}>{sourceNames[source] ?? source}</FieldLabel>
               {used ? (
                 <MoveButtons
                   first={index === 0}
                   last={index === values.length - 1}
                   move={(direction) => onChange(swap(values, index, direction))}
-                  name={sourceNames[source]}
+                  name={sourceNames[source] ?? source}
                 />
               ) : null}
             </div>

@@ -1,6 +1,7 @@
 import { useMutation } from "@teyik0/furin/client";
 import { PencilIcon, PinIcon, PinOffIcon, ShapesIcon, Trash2Icon } from "lucide-react";
-import { type ReactElement, useState } from "react";
+import type { ReactElement } from "react";
+import { useAsyncAction } from "../hooks/use-async-action";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
 import type { Destination } from "../types";
@@ -27,22 +28,14 @@ export function DestinationMenu({
 }) {
   const refresh = useRefresh();
   const updateDestination = useMutation(api.destinations({ id: destination.id }).patch);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const toggle = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const { busy, error, run } = useAsyncAction("Unable to update the thread");
+  const toggle = () =>
+    run(async () => {
       await updateDestination.mutateAsync({
         pinned: !destination.pinned,
       });
       await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to update the thread");
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   const edit = () => open({ destination, type: "destination" });
   return (
     <>

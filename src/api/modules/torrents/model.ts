@@ -18,7 +18,6 @@ import {
   string,
   union,
 } from "valibot";
-import type { FormModalKind } from "../../../types";
 import { updateDestinationSchema } from "../destinations/model";
 
 export const trackersSchema = object({
@@ -51,6 +50,10 @@ export const uploadTorrentSchema = object({
 
 export const removeTorrentSchema = object({ deleteFiles: boolean() });
 
+export const locateTorrentSchema = object({
+  downloadPath: pipe(string(), minLength(1), maxLength(4096)),
+});
+
 export const filePrioritySchema = object({
   priority: union([literal("skip"), literal("normal"), literal("high")]),
 });
@@ -64,57 +67,62 @@ export const bulkActionSchema = object({
   ids: optional(pipe(array(string()), maxLength(1000))),
 });
 
-export function modalFormSchema(kind: FormModalKind["type"]) {
-  return pipe(
-    object({
-      destinationIcon: updateDestinationSchema.entries.icon.wrapped,
-      destinationId: string(),
-      file: nullable(uploadTorrentSchema.entries.file),
-      moveFiles: boolean(),
-      name: string(),
-      path: string(),
-      paused: boolean(),
-      pinned: boolean(),
-      removeFiles: boolean(),
-      source: string(),
-      trackers: string(),
-    }),
-    forward(
-      partialCheck(
-        [["source"], ["file"]],
-        (input) => {
-          if (kind === "add") {
-            return (
-              input.file !== null || is(createTorrentSchema.entries.source, input.source.trim())
-            );
-          }
-          return kind !== "peer" || is(addPeerSchema.entries.peer, input.source.trim());
-        },
-        kind === "peer"
-          ? "Enter a peer address"
-          : "Choose a torrent file or enter a magnet link or URL"
-      ),
-      ["source"]
+export const addTorrentFormSchema = pipe(
+  object({
+    destinationId: string(),
+    file: nullable(uploadTorrentSchema.entries.file),
+    paused: boolean(),
+    source: string(),
+    trackers: string(),
+  }),
+  forward(
+    partialCheck(
+      [["source"], ["file"]],
+      (input) => input.file !== null || is(createTorrentSchema.entries.source, input.source.trim()),
+      "Choose a torrent file or enter a magnet link or URL"
     ),
-    forward(
-      partialCheck(
-        [["destinationId"], ["name"]],
-        (input) =>
-          !(kind === "destination" || (kind === "drop" && input.destinationId === "new")) ||
-          is(updateDestinationSchema.entries.name, input.name),
-        "Enter a tab name of at most 80 characters"
-      ),
-      ["name"]
+    ["source"]
+  )
+);
+export const destinationFormSchema = object({
+  destinationIcon: updateDestinationSchema.entries.icon.wrapped,
+  moveFiles: boolean(),
+  name: updateDestinationSchema.entries.name,
+  path: updateDestinationSchema.entries.downloadPath,
+  pinned: boolean(),
+});
+export const dropTorrentFormSchema = pipe(
+  object({ destinationId: string(), name: string(), path: string() }),
+  forward(
+    partialCheck(
+      [["destinationId"], ["name"]],
+      (input) =>
+        input.destinationId !== "new" || is(updateDestinationSchema.entries.name, input.name),
+      "Enter a tab name of at most 80 characters"
     ),
-    forward(
-      partialCheck(
-        [["destinationId"], ["path"]],
-        (input) =>
-          !(kind === "destination" || (kind === "drop" && input.destinationId === "new")) ||
-          is(updateDestinationSchema.entries.downloadPath, input.path),
-        "Enter a download folder of at most 4096 characters"
-      ),
-      ["path"]
-    )
-  );
-}
+    ["name"]
+  ),
+  forward(
+    partialCheck(
+      [["destinationId"], ["path"]],
+      (input) =>
+        input.destinationId !== "new" ||
+        is(updateDestinationSchema.entries.downloadPath, input.path),
+      "Enter a download folder of at most 4096 characters"
+    ),
+    ["path"]
+  )
+);
+export const trackersFormSchema = object({ trackers: string() });
+export const peerFormSchema = pipe(
+  object({ source: string() }),
+  forward(
+    partialCheck(
+      [["source"]],
+      (input) => is(addPeerSchema.entries.peer, input.source.trim()),
+      "Enter a peer address"
+    ),
+    ["source"]
+  )
+);
+export const removeTorrentFormSchema = object({ removeFiles: boolean() });

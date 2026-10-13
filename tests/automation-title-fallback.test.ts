@@ -1,10 +1,12 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: exercise ordered public API mutations and real transfers.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { AutomationService } from "../src/api/modules/automation/service";
+import { treaty } from "@elysia/eden";
 import type { AutomationDraft, AutomationState, FeedRelease } from "../src/types";
-import { createTestApi } from "./api-fixture";
-import { fixture, json, waitFor } from "./helpers";
+import { createTestApi } from "./helpers/application";
+import { expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
+import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
 test("Jev excludes scores below 75 percent from previews and automation decisions", async () => {
   const context = await fixture(4096, []);
@@ -34,7 +36,7 @@ test("Jev excludes scores below 75 percent from previews and automation decision
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}anilist`,
@@ -51,36 +53,32 @@ test("Jev excludes scores below 75 percent from previews and automation decision
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    const draft = (await (
-      await request(
-        "/automations/interpret",
-        json({ destinationId: "default", query: "Example VF 1080p" })
-      )
-    ).json()) as AutomationDraft;
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
-    await request("/plugins/jev", {
-      ...json({ apiKey: "test-jev", enabled: true }),
-      method: "PUT",
-    });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({
+        destinationId: "default",
+        query: "Example VF 1080p",
+      })
+    ) as AutomationDraft;
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
+    await client.plugins({ id: "jev" }).put({ apiKey: "test-jev", enabled: true });
     const input: AutomationDraft = {
       ...draft,
       includeExisting: true,
       matchMode: "jev",
       sources: ["nyaa"],
     };
-    const preview = (await (await request("/automations/preview", json(input))).json()) as {
+    const preview = expectSuccess(await client.automations.preview.post(input)) as {
       candidates: { probability: number; release: FeedRelease }[];
       releases: FeedRelease[];
     };
     expect(preview.candidates.map((candidate) => candidate.release.episode).sort()).toEqual([3, 4]);
     expect(preview.releases.map((release) => release.episode).sort()).toEqual([3, 4]);
-    const rule = (await (await request("/automations", json(input))).json()) as { id: string };
-    const state = (await (
-      await request(`/automations/${rule.id}/run`, json({}))
-    ).json()) as AutomationState;
+    const rule = expectSuccess(await client.automations.post(input)) as { id: string };
+    const state = expectSuccess(
+      await client.automations({ id: rule.id }).run.post({})
+    ) as AutomationState;
     expect(state.decisions.map((decision) => decision.release.episode).sort()).toEqual([3, 4]);
     expect(state.decisions.find((decision) => decision.release.episode === 3)).toMatchObject({
       probability: 0.75,
@@ -90,18 +88,20 @@ test("Jev excludes scores below 75 percent from previews and automation decision
       "added"
     );
     await waitFor(
-      async () => context.engine.detail(context.seed.infoHash),
+      async () => expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).get()),
       (detail) => detail.status === "seeding"
     );
-    const content = await request(`/torrents/${context.seed.infoHash}/files/0/content`, undefined);
-    expect(new Uint8Array(await content.arrayBuffer())).toEqual(context.bytes);
+    const content = await client
+      .torrents({ id: context.seed.infoHash })
+      .files({ index: "0" })
+      .content.get();
+    expect(new Uint8Array(torrentBytes(content))).toEqual(context.bytes);
   } finally {
     await service.close();
     upstream.stop(true);
     await context.close();
   }
 });
-
 test("Jev resolves romaji before English and searches English only when romaji has no acceptable release", async () => {
   const context = await fixture(4096, []);
   const queries: string[] = [];
@@ -144,7 +144,7 @@ test("Jev resolves romaji before English and searches English only when romaji h
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: {
       anilist: `${base}anilist`,
@@ -161,27 +161,23 @@ test("Jev resolves romaji before English and searches English only when romaji h
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    const draft = (await (
-      await request(
-        "/automations/interpret",
-        json({ destinationId: "default", query: "English with VOSTFR 1080p" })
-      )
-    ).json()) as AutomationDraft;
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
-    await request("/plugins/jev", {
-      ...json({ apiKey: "test-jev", enabled: true }),
-      method: "PUT",
-    });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({
+        destinationId: "default",
+        query: "English with VOSTFR 1080p",
+      })
+    ) as AutomationDraft;
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
+    await client.plugins({ id: "jev" }).put({ apiKey: "test-jev", enabled: true });
     const input: AutomationDraft = {
       ...draft,
       includeExisting: true,
       matchMode: "jev",
       sources: ["nyaa"],
     };
-    const preview = (await (await request("/automations/preview", json(input))).json()) as {
+    const preview = expectSuccess(await client.automations.preview.post(input)) as {
       candidates: { reason: string | null; release: FeedRelease }[];
     };
     expect(queries).toEqual(["Romaji"]);
@@ -190,21 +186,21 @@ test("Jev resolves romaji before English and searches English only when romaji h
     ).toBe("Romaji");
     queries.length = 0;
     romajiAccepted = false;
-    const rule = (await (await request("/automations", json(input))).json()) as {
+    const rule = expectSuccess(await client.automations.post(input)) as {
       id: string;
       title: string;
     };
     expect(rule.title).toBe("English");
-    const state = (await (
-      await request(`/automations/${rule.id}/run`, json({}))
-    ).json()) as AutomationState;
+    const state = expectSuccess(
+      await client.automations({ id: rule.id }).run.post({})
+    ) as AutomationState;
     expect(queries).toEqual(["Romaji", "English"]);
     expect(state.decisions[0]).toMatchObject({
       release: { workTitle: "English" },
       status: "added",
     });
     await waitFor(
-      async () => context.engine.detail(context.seed.infoHash),
+      async () => expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).get()),
       (detail) => detail.status === "seeding"
     );
   } finally {
@@ -213,7 +209,6 @@ test("Jev resolves romaji before English and searches English only when romaji h
     await context.close();
   }
 });
-
 test("automation falls back to English after rejected romaji matches in previews, baselines and downloads", async () => {
   const context = await fixture(4096, []);
   const queries: string[] = [];
@@ -244,7 +239,7 @@ test("automation falls back to English after rejected romaji matches in previews
     port: 0,
   });
   const base = upstream.url.href;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { anilist: base, c411: base, jev: `${base}jev`, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -255,20 +250,16 @@ test("automation falls back to English after rejected romaji matches in previews
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    const draft = (await (
-      await request(
-        "/automations/interpret",
-        json({ destinationId: "default", query: "Romaji VF 1080p" })
-      )
-    ).json()) as AutomationDraft;
-    await request("/plugins/nyaa", { ...json({ enabled: true }), method: "PUT" });
-    await request("/plugins/jev", {
-      ...json({ apiKey: "test-jev", enabled: true }),
-      method: "PUT",
-    });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({
+        destinationId: "default",
+        query: "Romaji VF 1080p",
+      })
+    ) as AutomationDraft;
+    await client.plugins({ id: "nyaa" }).put({ enabled: true });
+    await client.plugins({ id: "jev" }).put({ apiKey: "test-jev", enabled: true });
     const input: AutomationDraft = {
       ...draft,
       aliases: ["Romaji", "English"],
@@ -276,35 +267,38 @@ test("automation falls back to English after rejected romaji matches in previews
       sources: ["nyaa"],
       title: "Romaji",
     };
-    const preview = (await (await request("/automations/preview", json(input))).json()) as {
+    const preview = expectSuccess(await client.automations.preview.post(input)) as {
       candidates: { release: FeedRelease }[];
     };
     expect(preview.candidates.map((candidate) => candidate.release.workTitle)).toEqual(["English"]);
     expect(queries).toEqual(["Romaji", "English"]);
     queries.length = 0;
-    const rule = (await (await request("/automations", json(input))).json()) as { id: string };
+    const rule = expectSuccess(await client.automations.post(input)) as { id: string };
     expect(queries).toEqual(["Romaji", "English"]);
-    const baseline = (await (await request("/automation", undefined)).json()) as AutomationState;
+    const baseline = expectSuccess(await client.automation.get()) as AutomationState;
     expect(baseline.decisions[0]).toMatchObject({
       release: { episode: 1, workTitle: "English" },
       status: "ignored",
     });
     episode = 2;
     queries.length = 0;
-    const state = (await (
-      await request(`/automations/${rule.id}/run`, json({}))
-    ).json()) as AutomationState;
+    const state = expectSuccess(
+      await client.automations({ id: rule.id }).run.post({})
+    ) as AutomationState;
     expect(queries).toEqual(["Romaji", "English"]);
     expect(state.decisions.find((decision) => decision.release.episode === 2)).toMatchObject({
       release: { workTitle: "English" },
       status: "added",
     });
     await waitFor(
-      async () => context.engine.detail(context.seed.infoHash),
+      async () => expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).get()),
       (detail) => detail.status === "seeding"
     );
-    const content = await request(`/torrents/${context.seed.infoHash}/files/0/content`, undefined);
-    expect(new Uint8Array(await content.arrayBuffer())).toEqual(context.bytes);
+    const content = await client
+      .torrents({ id: context.seed.infoHash })
+      .files({ index: "0" })
+      .content.get();
+    expect(new Uint8Array(torrentBytes(content))).toEqual(context.bytes);
   } finally {
     await service.close();
     upstream.stop(true);
