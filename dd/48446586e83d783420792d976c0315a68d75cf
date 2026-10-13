@@ -1,0 +1,24 @@
+.github/workflows/ci.yml
+  s_a0a481a34b8480::t_bc2fae66ece453 59
+apps/tofu/package.json
+  s_a0a481a34b8480::t_60342ef8d6cffd 44
+apps/tofu/tests/helpers/sync-browser.ts
+  s_a0a481a34b8480::t_2666f7ed556e9f 25,28-29,35-36,40,43-44,46-50
+  s_a0a481a34b8480::t_67d50e79c761b4 26-27,41-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd48446586e83d783420792d976c0315a68d75cf",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
