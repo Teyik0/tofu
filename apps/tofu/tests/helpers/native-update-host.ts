@@ -21,6 +21,7 @@ export async function launchNativeUpdateHost(options: {
   await Bun.write(
     entry,
     `
+        import { rename } from "node:fs/promises";
         import { runStandardDesktopHost } from ${JSON.stringify(Bun.resolveSync("@teyik0/furin-electrobun/host", import.meta.dir))};
         const events = new Map();
         let vetoed = false;
@@ -45,7 +46,8 @@ export async function launchNativeUpdateHost(options: {
             openExternal: () => true, openPath: () => true, showItemInFolder() {},
             openFileDialog: async () => [],
             showMessageBox: async (message) => {
-              await Bun.write(process.env.TEST_NATIVE_ERROR, JSON.stringify(message));
+              await Bun.write(process.env.TEST_NATIVE_ERROR + ".tmp", JSON.stringify(message));
+              await rename(process.env.TEST_NATIVE_ERROR + ".tmp", process.env.TEST_NATIVE_ERROR);
               return { response: 0 };
             },
             showNotification() {}, quit(code) { process.exit(code); },
@@ -64,7 +66,8 @@ export async function launchNativeUpdateHost(options: {
               const event = {};
               for (const callback of events.get("before-quit") ?? []) callback(event);
               vetoed = event.response?.allow === false;
-              await Bun.write(process.env.TEST_QUIT_APPROVAL, JSON.stringify({ vetoed }));
+              await Bun.write(process.env.TEST_QUIT_APPROVAL + ".tmp", JSON.stringify({ vetoed }));
+              await rename(process.env.TEST_QUIT_APPROVAL + ".tmp", process.env.TEST_QUIT_APPROVAL);
               if (process.env.TEST_HANDOFF === "reported") info.error = "Update helper failed";
               if (process.env.TEST_HANDOFF === "throw") throw new Error("Update helper failed");
             },
@@ -83,7 +86,8 @@ export async function launchNativeUpdateHost(options: {
           if (message === "install") {
             let error = null;
             try { await desktop.updates.install(); } catch (failure) { error = failure.message; }
-            await Bun.write(process.env.TEST_INSTALL_RESULT, JSON.stringify({ error, vetoed }));
+            await Bun.write(process.env.TEST_INSTALL_RESULT + ".tmp", JSON.stringify({ error, vetoed }));
+            await rename(process.env.TEST_INSTALL_RESULT + ".tmp", process.env.TEST_INSTALL_RESULT);
           } else if (message === "stop") {
             await desktop.quit(); process.exit(0);
           }
