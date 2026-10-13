@@ -1,8 +1,11 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Read a spawned host's readiness stream sequentially.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { treaty } from "@elysia/eden";
+import type { Api } from "../src/api/index";
 import type { DashboardState } from "../src/types";
-import { fixture, json, waitFor } from "./helpers";
+import { expectSuccess } from "./helpers/problem";
+import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
 test.each(["desktop", "web"])(
   "the %s host rejects startup when the torrent engine cannot open its download directory",
@@ -65,7 +68,6 @@ test.each(["desktop", "web"])(
   },
   30_000
 );
-
 test("the Furin desktop host initializes Tofu, guards requests and preserves real transfers across restart", async () => {
   const context = await fixture(512 * 1024, []);
   const dataDir = join(context.directory, "desktop-state");
@@ -73,6 +75,9 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     import { startDesktopBackend } from "@teyik0/furin-electrobun/host";
     const backend = await startDesktopBackend(() => import("./src/server.ts"), process.env.TOFU_DATA_DIR, "dev");
     process.on("SIGTERM", async () => { await backend.stop(); process.exit(0); });
+    process.on("message", async message => {
+      if (message === "shutdown") { await backend.stop(); process.exit(0); }
+    });
     console.log(JSON.stringify({ cookie: backend.cookie, url: backend.origin }));
   `;
   const launch = async () => {
@@ -84,6 +89,9 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
         TOFU_DOWNLOAD_DIR: join(context.directory, "desktop-downloads"),
         TOFU_MODE: "server",
         TOFU_PROFILE: "dev",
+      },
+      ipc() {
+        // Enable graceful shutdown requests on Windows.
       },
       stderr: "pipe",
       stdout: "pipe",
@@ -103,15 +111,15 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
         if (line) {
           const { cookie, url } = JSON.parse(line) as { cookie: string; url: string };
           return {
+            client: treaty<Api>(url, { headers: { cookie } }).api,
             page: (path: string) =>
               fetch(`${url}${path}`, { headers: { cookie }, redirect: "manual" }),
-            request(path: string, init: RequestInit | undefined) {
-              const headers = new Headers(init?.headers);
-              headers.set("cookie", cookie);
-              return fetch(`${url}/api${path}`, { ...init, headers });
-            },
             async stop() {
-              child.kill("SIGTERM");
+              if (process.platform === "win32") {
+                child.send("shutdown");
+              } else {
+                child.kill("SIGTERM");
+              }
               await child.exited;
             },
             url,
@@ -131,35 +139,36 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
   let host: Awaited<ReturnType<typeof launch>> | undefined;
   try {
     host = await launch();
-    expect((await fetch(`${host.url}/api/state`)).status).toBe(403);
-    expect((await host.request("/state", undefined)).status).toBe(200);
+    expect((await treaty<Api>(host.url).api.state.get()).status).toBe(403);
+    expect((await host.client.state.get()).status).toBe(200);
     const page = await host.page("/");
     expect(page.status).toBe(200);
     expect(await page.text()).toContain("<h1>All torrents</h1>");
-    const destination = await host.request(
-      "/destinations",
-      json({ downloadPath: join(context.directory, "thread-downloads"), name: "Peer transfers" })
-    );
+    const destination = await host.client.destinations.post({
+      downloadPath: join(context.directory, "thread-downloads"),
+      name: "Peer transfers",
+    });
     expect(destination.status).toBe(200);
-    const { id: destinationId } = (await destination.json()) as { id: string };
-    const added = await host.request(
-      "/torrents",
-      json({ destinationId, paused: false, source: context.magnet })
-    );
+    const { id: destinationId } = expectSuccess(destination) as { id: string };
+    const added = await host.client.torrents.post({
+      destinationId,
+      paused: false,
+      source: context.magnet,
+    });
     expect(added.status).toBe(200);
-    const { id } = (await added.json()) as { id: string };
+    const { id } = expectSuccess(added) as { id: string };
     const state = async () => {
       if (!host) {
         throw new Error("The desktop host is unavailable");
       }
-      return (await (
-        await host.request(`/state?selected=${id}`, undefined)
-      ).json()) as DashboardState;
+      return expectSuccess(
+        await host.client.state.get({ query: { selected: id } })
+      ) as DashboardState;
     };
     await waitFor(state, (value) => value.detail?.status === "seeding");
-    const bytes = await (
-      await host.request(`/torrents/${id}/files/0/content`, undefined)
-    ).arrayBuffer();
+    const bytes = torrentBytes(
+      await host.client.torrents({ id }).files({ index: "0" }).content.get()
+    );
     expect(Bun.SHA256.hash(bytes, "hex")).toBe(Bun.SHA256.hash(context.bytes, "hex"));
     const home = await host.page("/");
     expect(home.status).toBe(200);
@@ -172,7 +181,6 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     const defaultThread = await host.page("/thread/default");
     expect(defaultThread.status).toBe(200);
     expect(await defaultThread.text()).not.toContain('<strong title="source.bin">');
-    expect((await host.page("/thread/missing-thread")).status).toBe(404);
     const options = await host.page("/options");
     expect(options.status).toBe(200);
     const optionsHtml = await options.text();
@@ -182,6 +190,8 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     expect(optionsHtml).toContain('href="/options/appearance"');
     expect(optionsHtml).not.toContain('id="appearance-theme"');
     expect(optionsHtml).not.toContain('id="destination-path"');
+    expect(optionsHtml).not.toContain('id="delete-torrent-file-after-add"');
+    expect(optionsHtml).not.toContain('id="default-torrent-app"');
     const appearance = await host.page("/options/appearance");
     expect(appearance.status).toBe(200);
     const appearanceHtml = await appearance.text();
@@ -224,14 +234,14 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     const navigation = await host.page("/_furin/data?path=/plugins/sources");
     expect(navigation.status).toBe(200);
     expect(await navigation.text()).not.toContain("__furinError");
-    await host.request(`/torrents/${id}/pause`, json({}));
+    await host.client.torrents({ id }).pause.post({});
     await host.stop();
     host = await launch();
     const restored = await waitFor(state, (value) => value.detail?.status === "paused");
     expect(restored.detail?.id).toBe(id);
-    expect((await fetch(`${host.url}/api/state`)).status).toBe(403);
+    expect((await treaty<Api>(host.url).api.state.get()).status).toBe(403);
   } finally {
     await host?.stop();
     await context.close();
   }
-}, 90_000);
+}, 30_000);

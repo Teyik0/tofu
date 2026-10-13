@@ -2,7 +2,6 @@ const catalogReleasePath = /^\/api\/anilist\/entries\/\d+\/releases$/;
 
 import { mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { createAniListPlugin } from "@tofu/anilist";
 import { type AniListApiDependencies, createAniListApi } from "@tofu/anilist/api";
 import type { PluginAuthDefinition } from "@tofu/plugins";
 import {
@@ -21,13 +20,12 @@ import {
 import { Type } from "typebox";
 import { Check } from "typebox/value";
 import { externalPlugins } from "../plugin-generated/server";
-import type { Application, EnginePort } from "../types";
+import type { EnginePort } from "../types";
+import type { CoreApplication } from "./lib/extensions";
 
 interface CoreDependencies {
-  application: () => Application;
-  automation: () => Application["automation"];
+  application: () => CoreApplication;
   directory: string;
-  engine: () => EnginePort;
   sync: AniListApiDependencies["sync"];
 }
 
@@ -57,7 +55,7 @@ function publicAuth(
   const connected =
     auth?.status().authenticated ??
     (definition.id === "anilist"
-      ? (dependencies.automation().anilist.snapshot().authenticated ?? false)
+      ? dependencies.application().anilist.snapshot().authenticated
       : false);
   return {
     connected,
@@ -139,7 +137,22 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
   let runtime = createPluginRuntime({ sync: dependencies.sync });
   let definitions: ErasedPluginDefinition[] = [];
   const startupErrors = new Map<string, string>();
-  const administration = createAniListApi(dependencies);
+  const anilistDependencies: AniListApiDependencies = {
+    application() {
+      const application = dependencies.application();
+      return {
+        anilist: application.anilist,
+        automation: application.automation,
+        platform:
+          application.platform.kind === "desktop"
+            ? { kind: "desktop", openExternal: application.platform.desktop.shell.openExternal }
+            : { kind: "server" },
+        releaseAutomation: application.releaseAutomation,
+      };
+    },
+    sync: dependencies.sync,
+  };
+  const administration = createAniListApi(anilistDependencies, "/api");
   let preferences: Preferences = {
     disabled: [],
     pages: [{ pageId: "library", pinned: true, pluginId: "anilist" }],
@@ -157,13 +170,13 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
   const officialEnabled = (id: string) =>
     id === "anilist"
       ? (dependencies
-          .automation()
-          .snapshot()
-          .plugins.find((entry) => entry.id === "anilist")?.enabled ?? false)
+          .application()
+          .plugins.snapshot()
+          .find((entry) => entry.id === "anilist")?.enabled ?? false)
       : null;
   const initialize = () => {
     ready ??= (async () => {
-      const engine = dependencies.engine();
+      const { engine } = dependencies.application();
       directory = join(dependencies.directory, "plugins");
       const file = Bun.file(join(directory, "host.json"));
       if (await file.exists()) {
@@ -180,8 +193,9 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
             engine.snapshot(null, false).destinations.find((thread) => thread.id === id) ?? null
           ),
       });
+      const { createAniListPlugin } = await import("@tofu/anilist");
       definitions = [
-        createAniListPlugin(dependencies),
+        createAniListPlugin(anilistDependencies),
         ...(await (options?.load ?? externalPlugins)(core)),
       ];
       await Promise.all(
@@ -236,7 +250,7 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
     async authorize(id: string, apiKey?: string) {
       const definition = definitionFor(id);
       if (definition.id === "anilist") {
-        const service = dependencies.automation().anilist;
+        const service = dependencies.application().anilist;
 
         return service.connect();
       }
@@ -309,8 +323,8 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
       if (
         threadId &&
         !dependencies
-          .engine()
-          .snapshot(null, false)
+          .application()
+          .engine.snapshot(null, false)
           .destinations.some((thread) => thread.id === threadId)
       ) {
         throw new UserError("Thread not found", { status: 404 });
@@ -345,7 +359,7 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
           await runtime.disable(id);
         }
         if (id === "anilist") {
-          dependencies.automation().configure(id, { enabled });
+          dependencies.application().plugins.configure(id, { enabled });
         }
         await persist({
           ...preferences,
@@ -416,8 +430,8 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
       if (
         threadId &&
         !dependencies
-          .engine()
-          .snapshot(null, false)
+          .application()
+          .engine.snapshot(null, false)
           .destinations.some((thread) => thread.id === threadId)
       ) {
         throw new UserError("Thread not found", { status: 404 });
@@ -436,3 +450,45 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
 }
 
 export type PluginHost = ReturnType<typeof createPluginHost>;
+
+const processHosts = globalThis as typeof globalThis & {
+  tofuPluginHostLifetimes?: WeakMap<EnginePort, Map<CoreApplication["automation"], PluginHost>>;
+};
+processHosts.tofuPluginHostLifetimes ??= new WeakMap();
+const lifetimes = processHosts.tofuPluginHostLifetimes;
+
+export function createApplicationPluginHost(
+  application: CoreApplication,
+  options?: PluginHostOptions
+) {
+  let owned = lifetimes.get(application.engine);
+  if (!owned) {
+    owned = new Map();
+    lifetimes.set(application.engine, owned);
+  }
+  let host = owned.get(application.automation);
+  if (!host) {
+    host = createPluginHost(
+      {
+        application: () => application,
+        directory: application.instance.dataDir,
+        sync: application.sync,
+      },
+      options
+    );
+    owned.set(application.automation, host);
+  }
+  return host;
+}
+
+export async function closePluginHost(engine: EnginePort) {
+  const owned = lifetimes.get(engine);
+  lifetimes.delete(engine);
+  if (owned) {
+    const resources = new AsyncDisposableStack();
+    for (const host of owned.values()) {
+      resources.defer(() => host.close());
+    }
+    await resources.disposeAsync();
+  }
+}

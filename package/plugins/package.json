@@ -20,8 +20,13 @@
     "./validation": "./src/validation.ts",
     "./core-actions-api": "./src/core-actions-api.ts",
     "./plugin-model": "./src/plugin-model.ts",
-    "./transport": "./src/transport.ts",
-    "./api-errors": "./src/api-errors.ts"
+    "./api-errors": "./src/api-errors.ts",
+    "./automation-rules": "./src/automation-rules.ts",
+    "./title": "./src/title.ts",
+    "./source-queries": "./src/source-queries.ts",
+    "./releases": "./src/releases.ts",
+    "./discovery-query": "./src/discovery-query.ts",
+    "./jev-questions": "./src/jev-questions.ts"
   },
   "scripts": {
     "build": "bun build ./src/index.ts ./src/server.ts --target=bun --packages=external --outdir=dist && bun build ./src/client.ts --target=browser --packages=external --outdir=dist/client",
@@ -29,7 +34,7 @@
     "tscheck": "bun x tsc --noEmit"
   },
   "dependencies": {
-    "@teyik0/furin": "file:../../vendor/furin-pr163-53e7c56.tgz",
+    "@teyik0/furin": "catalog:",
     "elysia": "catalog:",
     "evlog": "catalog:",
     "react": "catalog:",

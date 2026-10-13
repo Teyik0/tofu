@@ -1,6 +1,6 @@
+import { ActionTooltip } from "@tofu/ui/action-tooltip";
+import { SidebarTrigger, useSidebar } from "@tofu/ui/sidebar";
 import { cn } from "cn";
-import { ActionTooltip } from "./action-tooltip";
-import { SidebarTrigger, useSidebar } from "./ui/sidebar";
 
 export function SidebarToggle({ className }: { className?: string }) {
   const { isMobile, open, openMobile } = useSidebar();

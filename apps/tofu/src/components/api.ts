@@ -1,3 +1,5 @@
+import { EdenFetchError } from "@elysia/eden";
+
 export async function request<T>(
   path: string,
   method: string,
@@ -12,10 +14,10 @@ export async function request<T>(
     signal,
   });
   if (!response.ok) {
-    const result = (await response.json().catch(() => ({ error: `Error ${response.status}` }))) as {
-      error?: string;
-    };
-    throw new Error(result.error ?? `Error ${response.status}`);
+    const value: unknown = await response.json().catch(() => ({
+      detail: `API request failed (${response.status})`,
+    }));
+    throw new EdenFetchError(response.status, value);
   }
   return (await response.json()) as T;
 }

@@ -38,7 +38,7 @@ export async function scaffold(
   }
   const root = resolve(import.meta.dir, "../../..");
   const sdk = resolve(options.sdk ?? join(root, "package/plugins"));
-  const furin = resolve(options.furin ?? join(root, "vendor/furin-pr163-53e7c56.tgz"));
+  const furin = resolve(options.furin ?? join(root, "vendor/furin-pr163-118d85f.tgz"));
   const sdkManifest: unknown = await Bun.file(join(sdk, "package.json")).json();
   if (
     !sdkManifest ||

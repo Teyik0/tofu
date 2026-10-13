@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { Server } from "bittorrent-tracker";
 import type { DashboardState } from "../src/types";
-import { fixture, json, waitFor } from "./helpers";
+import { expectSuccess } from "./helpers/problem";
+import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
 async function tracker() {
   const server = new Server({
@@ -31,33 +32,29 @@ async function tracker() {
     url: `http://127.0.0.1:${address.port}/announce`,
   };
 }
-
 test("trackers return real swarm statistics and can be reannounced, added and removed without losing data", async () => {
   const first = await tracker();
   const second = await tracker();
   const context = await fixture(65_536, [first.url]);
   try {
-    const { id }: { id: string } = await (
-      await context.request("/torrents", json({ paused: false, source: context.magnet }))
-    ).json();
+    const { id }: { id: string } = expectSuccess(
+      await context.client.torrents.post({ paused: false, source: context.magnet })
+    );
     const read = () =>
-      context
-        .request(`/state?selected=${id}`, undefined)
-        .then((response) => response.json() as Promise<DashboardState>);
+      context.client.state
+        .get({ query: { selected: id } })
+        .then((response) => expectSuccess(response) as DashboardState);
     await waitFor(read, (value) => value.detail?.status === "seeding");
     const working = await waitFor(read, (value) => value.detail?.trackers[0]?.status === "working");
     expect(working.detail?.trackers[0]?.seeds).toBeGreaterThanOrEqual(1);
-    expect((await context.request(`/torrents/${id}/announce`, json({}))).status).toBe(200);
+    expect((await context.client.torrents({ id }).announce.post({})).status).toBe(200);
     await waitFor(
       read,
       (value) =>
         (value.detail?.trackers[0]?.lastAnnounce ?? 0) >
         (working.detail?.trackers[0]?.lastAnnounce ?? 0)
     );
-    const replace = await context.request(`/torrents/${id}/trackers`, {
-      ...json({ urls: [second.url] }),
-      method: "PUT",
-    });
+    const replace = await context.client.torrents({ id }).trackers.put({ urls: [second.url] });
     expect(replace.status).toBe(200);
     await waitFor(
       read,
@@ -68,7 +65,7 @@ test("trackers return real swarm statistics and can be reannounced, added and re
     );
     const previousCalls = first.count();
     const secondCalls = second.count();
-    await context.request(`/torrents/${id}/announce`, json({}));
+    await context.client.torrents({ id }).announce.post({});
     await waitFor(
       async () => second.count(),
       (count) => count > secondCalls
@@ -77,10 +74,8 @@ test("trackers return real swarm statistics and can be reannounced, added and re
     const result = await read();
     expect(result.detail?.trackers).toHaveLength(1);
     expect(result.detail?.progress).toBe(1);
-    const file = await context.request(`/torrents/${id}/files/0/content`, undefined);
-    expect(Bun.SHA256.hash(await file.arrayBuffer(), "hex")).toBe(
-      Bun.SHA256.hash(context.bytes, "hex")
-    );
+    const file = await context.client.torrents({ id }).files({ index: "0" }).content.get();
+    expect(Bun.SHA256.hash(torrentBytes(file), "hex")).toBe(Bun.SHA256.hash(context.bytes, "hex"));
   } finally {
     await context.close();
     await Promise.all([first.close(), second.close()]);

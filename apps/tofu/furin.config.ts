@@ -7,6 +7,7 @@ import { databaseMigrationsPlugin } from "./scripts/database-migrations";
 const release = process.env.TOFU_RELEASE === "1";
 process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
 if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPER_ID) {
+  // The "-" identity enables free ad hoc signing without an Apple Developer account.
   process.env.ELECTROBUN_DEVELOPER_ID = "-";
 }
 
@@ -19,8 +20,9 @@ export default defineConfig({
       name: "Tofu",
       version,
     },
+    dataDir: { developmentName: "Tofu-dev", env: "TOFU_DATA_DIR", name: "Tofu" },
     external: ["webtorrent", "parse-torrent"],
-    hostEntry: "src/desktop-host.ts",
+    protocols: [release ? "tofu" : "tofu-dev"],
     sdk: {
       app: {
         fileAssociations: release
@@ -34,7 +36,6 @@ export default defineConfig({
         copy: {
           "LICENSE.md": "bun/LICENSE.md",
           "runtime/anilist-client.json": "bun/anilist-client.json",
-          "runtime/desktop-protocol.js": "bun/desktop-protocol.js",
           "runtime/plugins": "bun/plugins",
           "src/db/drizzle": "bun/drizzle",
         },
@@ -53,14 +54,28 @@ export default defineConfig({
       },
       release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },
     },
+    tray: {
+      linux: { image: "public/icon.png" },
+      mac: { image: "public/tray-template.png", template: true },
+      win: { image: "public/icon.png" },
+    },
     window: { height: 940, width: 1400 },
   }),
   plugins: [
     databaseMigrationsPlugin,
     {
+      buildOnly: true,
+      name: "tofu-build-scan-cleanup",
+      async setup(builder) {
+        if (builder.config.target === "bun") {
+          const { resources } = await import("./src/api/lib/runtime");
+          await resources.disposeAsync();
+        }
+      },
+    },
+    {
       name: tailwind.name,
       setup(builder) {
-        // Furin also probes plugins with a resolver-only runtime builder.
         if ("onBeforeParse" in builder) {
           return tailwind.setup(builder);
         }

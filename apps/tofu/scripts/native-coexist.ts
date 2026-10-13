@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { resolveInstanceConfig } from "../src/api/lib/instance";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { DashboardState, DesktopState, InstanceConfig, ServerInfo } from "../src/types";
-import { fixture, json, waitFor } from "../tests/helpers";
+import { fixture, json, waitFor } from "../tests/helpers/torrent";
 import { nativeRequest } from "./native-request";
 
 const root = join(import.meta.dir, "..");
@@ -24,13 +24,13 @@ function launch(config: InstanceConfig, bundleRoot: string) {
   const launcher = desktopLauncher(bundleRoot, hostDesktopTarget(), config.profile);
   const environment = {
     ...process.env,
+    FURIN_NATIVE_TEST_SCRIPT: undefined,
     TOFU_DATA_DIR: config.dataDir,
     TOFU_DOWNLOAD_DIR: config.downloadPath,
     TOFU_MODE: "desktop",
     TOFU_PORT: "0",
     // A terminal variable must never change the identity of an installed bundle.
     TOFU_PROFILE: config.profile === "dev" ? "release" : "dev",
-    TOFU_SMOKE_SCRIPT: undefined,
   };
   const child = Bun.spawn([launcher], {
     cwd: root,

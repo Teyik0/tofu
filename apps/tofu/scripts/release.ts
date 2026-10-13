@@ -124,6 +124,9 @@ if (Bun.argv[2] === "validate") {
       `Expected exactly one ${target.platform}/${target.arch} installer in ${artifacts}`
     );
   }
+  if (target.platform === "macos") {
+    await command(["codesign", "--verify", "--strict", join(artifacts, installers[0])]);
+  }
   await rename(join(artifacts, installers[0]), join(artifacts, installerName(version, target)));
 } else if (Bun.argv[2] === "publish") {
   const tag = process.env.RELEASE_TAG ?? process.env.GITHUB_REF_NAME;

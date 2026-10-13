@@ -14,3 +14,5 @@ bun run --filter @tofu/docs build
 The development server listens on `http://127.0.0.1:3040`. Set `PORT` to select another port. Run `bun run start` inside `apps/docs` after building to serve the production bundle.
 
 Pages are native Furin routes under `src/pages`, with a shared root document and a documentation layout. Plugin examples follow `package/plugins` and the scaffolder templates. This keeps the site on the same route and SSR model as the desktop UI instead of adding a second frontend toolchain.
+
+The workspace requires Bun 1.4.3 or newer and uses the checked-in Furin preview archive from `vendor`. SDK examples use shared domain DTOs, host-injected capabilities, and native Furin clients. Trusted plugin installation targets a local source checkout; page contributions still require generated route adapters and a restart or rebuild.

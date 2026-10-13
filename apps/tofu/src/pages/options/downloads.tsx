@@ -10,6 +10,7 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
+  FieldTitle,
 } from "@tofu/ui/field";
 import { Input } from "@tofu/ui/input";
 import {
@@ -19,6 +20,7 @@ import {
   InputGroupInput,
 } from "@tofu/ui/input-group";
 import { Switch } from "@tofu/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@tofu/ui/toggle-group";
 import { FolderIcon } from "lucide-react";
 import { startTransition } from "react";
 import { pick } from "valibot";
@@ -197,6 +199,42 @@ export const route = defineRoute()
                 type="number"
                 value={upload.field.input ?? ""}
               />
+            </Field>
+          </FieldGroup>
+        </FieldSet>
+        <FieldSet>
+          <FieldLegend>Seeding</FieldLegend>
+          <FieldGroup className="settings-group">
+            <Field className="settings-row" data-disabled={busy} orientation="horizontal">
+              <FieldContent>
+                <FieldTitle id="seeding-connections-label">Seeding connections</FieldTitle>
+                <FieldDescription id="seeding-connections-description">
+                  Balanced connects to new peers at a reduced rate once a torrent is complete.
+                  Incoming only waits for peers to connect and may reduce sharing if your port is
+                  unreachable. Existing connections stay open. Downloads are unaffected.
+                </FieldDescription>
+              </FieldContent>
+              <ToggleGroup
+                aria-describedby="seeding-connections-description"
+                aria-labelledby="seeding-connections-label"
+                disabled={busy}
+                id="seeding-connections"
+                onValueChange={([seedingConnectionMode]) => {
+                  if (
+                    seedingConnectionMode === "balanced" ||
+                    seedingConnectionMode === "incoming-only"
+                  ) {
+                    startTransition(() =>
+                      dispatchAction({ settings: { seedingConnectionMode }, type: "update" })
+                    );
+                  }
+                }}
+                value={[data.settings.seedingConnectionMode]}
+                variant="outline"
+              >
+                <ToggleGroupItem value="balanced">Balanced</ToggleGroupItem>
+                <ToggleGroupItem value="incoming-only">Incoming only</ToggleGroupItem>
+              </ToggleGroup>
             </Field>
           </FieldGroup>
         </FieldSet>

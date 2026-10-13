@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { migrateSqliteSync, sqliteSyncAdapter } from "@teyik0/furin/sync/sqlite";
 import type { DashboardState, Destination } from "@tofu/plugins/domain";
 import { createCore, createPluginRuntime } from "@tofu/plugins/server";
+import { catalog } from "../../../package.json";
 import {
   generatePlugins,
   installPlugin,
@@ -178,9 +179,11 @@ const dashboard: DashboardState = {
     uploadSpeed: 0,
   },
   settings: {
+    deleteTorrentFileAfterAdd: false,
     downloadLimit: 0,
     downloadPath: thread.downloadPath,
     runInBackground: false,
+    seedingConnectionMode: "balanced",
     theme: "system",
     uploadLimit: 0,
   },
@@ -215,7 +218,14 @@ test("a scaffolded plugin compiles in a native host and runs from a relocated de
   const workspace = join(import.meta.dir, "../../..");
   try {
     await runCommand(
-      [join(workspace, "apps/scaffolder/src/cli.ts"), project, "--name", "installed-example"],
+      [
+        join(workspace, "apps/scaffolder/src/cli.ts"),
+        project,
+        "--name",
+        "installed-example",
+        "--furin",
+        join(workspace, catalog["@teyik0/furin"].slice("file:".length)),
+      ],
       workspace
     );
     await runCommand(["install", "--ignore-scripts"], project);
@@ -225,7 +235,7 @@ test("a scaffolded plugin compiles in a native host and runs from a relocated de
       JSON.stringify({ name: "tofu-plugin-host-fixture", private: true, type: "module" })
     );
     await symlink(
-      join(workspace, "node_modules"),
+      join(workspace, "apps/tofu/node_modules"),
       join(host, "node_modules"),
       process.platform === "win32" ? "junction" : "dir"
     );
@@ -265,7 +275,7 @@ test("a scaffolded plugin compiles in a native host and runs from a relocated de
       trust: true,
     });
     await runCommand(
-      [join(workspace, "node_modules/@teyik0/furin/src/cli/index.ts"), "build"],
+      [join(workspace, "apps/tofu/node_modules/@teyik0/furin/src/cli/index.ts"), "build"],
       host
     );
     const packaged = join(directory, "packaged");

@@ -1,46 +1,22 @@
 import { Autocomplete } from "@base-ui/react/autocomplete";
-import { useMutation, useQuery } from "@teyik0/furin/client";
-import { useRouter } from "@teyik0/furin/link";
 import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { sourceNames } from "@tofu/ui/automation-fields";
-import { Badge } from "@tofu/ui/badge";
 import { Button } from "@tofu/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@tofu/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@tofu/ui/empty";
 import { Field, FieldLabel } from "@tofu/ui/field";
-import { bytes, percent, statusLabels } from "@tofu/ui/format";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@tofu/ui/input-group";
-import { OptionSelect } from "@tofu/ui/option-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@tofu/ui/tabs";
 import { useAtom, useSetAtom } from "jotai";
+import { HistoryIcon, SearchIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { globalSearchOpenAtom } from "../state/workspace";
+import type { DashboardState } from "../types";
 import {
-  ArrowUpRightIcon,
-  DownloadIcon,
-  HistoryIcon,
-  LoaderCircleIcon,
-  SearchIcon,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSourceSearch } from "../hooks/use-source-search";
-import { api } from "../lib/client";
-import { groupSearchReleases, searchTorrents } from "../lib/global-search";
-import { isSupersededNavigation, useRefresh } from "../lib/navigation";
-import { playSoundCue } from "../lib/sound-cues";
-import {
-  globalSearchOpenAtom,
-  recentSearchesAtom,
-  revealTorrentAtom,
-  searchDestinationAtom,
-  selectedTorrentAtom,
-} from "../state/workspace";
-import type {
-  DashboardState,
-  GlobalSearchScope,
-  SearchReleaseGroup,
-  SourcePluginId,
-  TorrentSummary,
-} from "../types";
-import { StatusGlyph } from "./status-glyph";
+  GlobalSearchResults,
+  GlobalSearchReview,
+  GlobalSearchSourceStatus,
+} from "./global-search-results";
+import { type SearchItem, useGlobalSearch } from "./use-global-search";
 
 export function GlobalSearchTrigger() {
   const setOpen = useSetAtom(globalSearchOpenAtom);
@@ -113,10 +89,6 @@ export function GlobalSearch({
   );
 }
 
-type SearchItem =
-  | { kind: "torrent"; torrent: TorrentSummary }
-  | { kind: "release"; group: SearchReleaseGroup };
-
 function itemLabel(item: SearchItem) {
   return item.kind === "torrent" ? item.torrent.name : (item.group.releases[0]?.title ?? "Release");
 }
@@ -132,123 +104,22 @@ function SearchContent({
   close: () => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
-  const router = useRouter();
-  const refresh = useRefresh();
-  const setSelectedTorrent = useSetAtom(selectedTorrentAtom);
-  const setRevealTorrent = useSetAtom(revealTorrentAtom);
-  const [recent, setRecent] = useAtom(recentSearchesAtom);
-  const [lastDestination, setLastDestination] = useAtom(searchDestinationAtom);
-  const [destinationId, setDestinationId] = useState(
-    () =>
-      dashboard.destinations.find((thread) => thread.id === activeDestination)?.id ??
-      dashboard.destinations.find((thread) => thread.id === lastDestination)?.id ??
-      dashboard.destinations[0]?.id ??
-      ""
-  );
-  const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<GlobalSearchScope>("all");
-  const [review, setReview] = useState<SearchReleaseGroup | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
-  const { data: live } = useQuery(api.state.get, { query: { detail: "false" } });
-  const data = live && "torrents" in live ? live : dashboard;
-  const { data: automation, error: pluginError } = useQuery(api.automation.get);
-  const add = useMutation(api.discover.add.post);
-  const sourceIds =
-    automation && "plugins" in automation
-      ? automation.plugins
-          .filter((plugin) => plugin.enabled && ["nyaa", "tsundere", "c411"].includes(plugin.id))
-          .map((plugin) => plugin.id as SourcePluginId)
-      : [];
-  const { sources, retry } = useSourceSearch(scope === "torrents" ? "" : query.trim(), sourceIds);
-  const grouped = useMemo(
-    () => groupSearchReleases(sources.flatMap((source) => source.releases)),
-    [sources]
-  );
-  const found = useMemo(() => searchTorrents(data.torrents, query), [data.torrents, query]);
-  const local = query.trim()
-    ? found
-    : found.filter((torrent) => !["paused", "error"].includes(torrent.status)).slice(0, 6);
-  const localItems: SearchItem[] =
-    scope === "sources" ? [] : local.map((torrent) => ({ kind: "torrent", torrent }));
-  const releaseItems: SearchItem[] =
-    scope === "torrents" ? [] : grouped.map((group) => ({ group, kind: "release" }));
-  const items = [...localItems, ...releaseItems];
-  const destination = data.destinations.find((item) => item.id === destinationId);
-  const currentReview = review ? (grouped.find((group) => group.key === review.key) ?? null) : null;
-  const release = currentReview?.releases.find((item) => sourceIds.includes(item.sourceId));
-  const existing = currentReview
-    ? data.torrents.find((torrent) => torrent.id.toLowerCase() === currentReview.key)
-    : null;
-  const loading = sources.some((source) => source.loading);
-  const remember = () => {
-    const text = query.trim();
-    if (text) {
-      setRecent((previous) => [text, ...previous.filter((item) => item !== text)].slice(0, 6));
-    }
-  };
-  const updateQuery = (value: string) => {
-    setQuery(value);
-    setReview(null);
-    setNotice(null);
-    setError(null);
-  };
-  const openTorrent = async (torrent: TorrentSummary) => {
-    setError(null);
-    setSelectedTorrent(torrent.id);
-    remember();
-    try {
-      await router.navigate({
-        params: { id: torrent.destinationId },
-        resetScroll: false,
-        to: "/thread/:id",
-      });
-      setRevealTorrent({ destinationId: torrent.destinationId, id: torrent.id });
-      close();
-    } catch (cause) {
-      if (!isSupersededNavigation(cause)) {
-        setError(cause instanceof Error ? cause.message : "Unable to open the torrent");
-      }
-    }
-  };
-  const choose = (item: SearchItem) => {
-    if (item.kind === "torrent") {
-      void openTorrent(item.torrent);
-    } else {
-      remember();
-      setReview(item.group);
-      setNotice(null);
-      setError(null);
-    }
-  };
-  const download = async () => {
-    if (!(release && destination) || existing || busyRef.current) {
-      return;
-    }
-    busyRef.current = true;
-    setBusy(true);
-    setError(null);
-    try {
-      await add.mutateAsync({
-        destinationId: destination.id,
-        id: release.id,
-        paused: false,
-        sourceId: release.sourceId,
-      });
-      playSoundCue("added");
-      setLastDestination(destination.id);
-      setNotice(`Added to ${destination.name}.`);
-      setReview(null);
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to download the release");
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  };
+  const model = useGlobalSearch({ activeDestination, close, dashboard });
+  const {
+    recent,
+    query,
+    scope,
+    setScope,
+    setReview,
+    notice,
+    busy,
+    error,
+    items,
+    currentReview,
+    release,
+    loading,
+    updateQuery,
+  } = model;
   return (
     <Autocomplete.Root<SearchItem>
       autoHighlight="always"
@@ -321,96 +192,7 @@ function SearchContent({
               </div>
             </div>
           )}
-          <Autocomplete.List aria-label="Search results" className="global-search-results">
-            {localItems.length > 0 && (
-              <Autocomplete.Group items={localItems}>
-                <Autocomplete.GroupLabel className="global-search-group-heading">
-                  {query ? "My torrents" : "Active torrents"}
-                  <span>All threads · {localItems.length}</span>
-                </Autocomplete.GroupLabel>
-                {localItems.map(
-                  (item) =>
-                    item.kind === "torrent" && (
-                      <Autocomplete.Item
-                        className="global-search-result"
-                        disabled={busy}
-                        key={item.torrent.id}
-                        onClick={() => choose(item)}
-                        value={item}
-                      >
-                        <StatusGlyph
-                          progress={item.torrent.progress}
-                          size={32}
-                          status={item.torrent.status}
-                        />
-                        <div className="global-search-result-copy">
-                          <strong>{item.torrent.name}</strong>
-                          <span>
-                            {data.destinations.find(
-                              (thread) => thread.id === item.torrent.destinationId
-                            )?.name ?? "Unknown thread"}{" "}
-                            · {statusLabels[item.torrent.status]} · {percent(item.torrent.progress)}
-                          </span>
-                        </div>
-                        <span className="global-search-result-action">
-                          Open <ArrowUpRightIcon />
-                        </span>
-                      </Autocomplete.Item>
-                    )
-                )}
-              </Autocomplete.Group>
-            )}
-            {releaseItems.length > 0 && (
-              <Autocomplete.Group items={releaseItems}>
-                <Autocomplete.GroupLabel className="global-search-group-heading">
-                  Sources<span>{releaseItems.length} releases</span>
-                </Autocomplete.GroupLabel>
-                {releaseItems.map((item) => {
-                  if (item.kind !== "release") {
-                    return null;
-                  }
-                  const [first] = item.group.releases;
-                  if (!first) {
-                    return null;
-                  }
-                  const duplicate = data.torrents.find(
-                    (torrent) => torrent.id.toLowerCase() === item.group.key
-                  );
-                  return (
-                    <Autocomplete.Item
-                      className="global-search-result"
-                      data-reviewed={currentReview?.key === item.group.key || undefined}
-                      disabled={busy}
-                      key={item.group.key}
-                      onClick={() => choose(item)}
-                      value={item}
-                    >
-                      <span className="global-search-release-icon">
-                        <DownloadIcon />
-                      </span>
-                      <div className="global-search-result-copy">
-                        <strong>{first.title}</strong>
-                        <span>
-                          {[
-                            ...new Set(
-                              item.group.releases.map((entry) => sourceNames[entry.sourceId])
-                            ),
-                          ].join(" / ")}{" "}
-                          · {first.language ?? "—"} · {bytes(first.size)} · {first.seeders ?? "—"}{" "}
-                          seeds
-                        </span>
-                      </div>
-                      <span className="global-search-result-action">
-                        {duplicate
-                          ? `Already in ${data.destinations.find((thread) => thread.id === duplicate.destinationId)?.name ?? "a thread"}`
-                          : "Review"}
-                      </span>
-                    </Autocomplete.Item>
-                  );
-                })}
-              </Autocomplete.Group>
-            )}
-          </Autocomplete.List>
+          <GlobalSearchResults model={model} />
           {items.length === 0 && !loading && (
             <Empty className="global-search-empty">
               <EmptyHeader>
@@ -426,67 +208,7 @@ function SearchContent({
               </EmptyHeader>
             </Empty>
           )}
-          {scope !== "torrents" && (
-            <div aria-live="polite" className="global-search-source-status">
-              {automation || pluginError ? (
-                pluginError ? (
-                  <Alert>
-                    <AlertDescription>
-                      Unable to load sources. Reopen search to retry.
-                    </AlertDescription>
-                  </Alert>
-                ) : sourceIds.length ? null : (
-                  <span>
-                    Enable a source in{" "}
-                    <Button
-                      onClick={() => {
-                        close();
-                        void router.navigate({ to: "/plugins/sources" });
-                      }}
-                      size="sm"
-                      variant="link"
-                    >
-                      Plugins
-                    </Button>{" "}
-                    to search for releases.
-                  </span>
-                )
-              ) : (
-                <span>Loading sources…</span>
-              )}
-              {sourceIds.length > 0 && query.trim().length < 2 && (
-                <span>
-                  Type at least two characters to search{" "}
-                  {sourceIds.map((id) => sourceNames[id]).join(" and ")}.
-                </span>
-              )}
-              {sources.map((source) => (
-                <div key={source.sourceId}>
-                  <Badge variant="outline">
-                    {!!source.loading && <LoaderCircleIcon className="animate-spin" />}
-                    {sourceNames[source.sourceId]}
-                    {source.sourceId === "tsundere" ? " · Recent releases" : ""} ·{" "}
-                    {source.loading
-                      ? "Searching…"
-                      : source.error
-                        ? "Unavailable"
-                        : `${source.releases.length} results`}
-                  </Badge>
-                  {!!source.error && (
-                    <Alert>
-                      <AlertDescription>
-                        {source.error}{" "}
-                        <Button disabled={loading || busy} onClick={retry} size="sm" variant="link">
-                          Retry
-                        </Button>
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  {!!source.warning && <p>{source.warning}</p>}
-                </div>
-              ))}
-            </div>
-          )}
+          {scope !== "torrents" && <GlobalSearchSourceStatus close={close} model={model} />}
         </TabsContent>
       </Tabs>
       {!!(notice || error) && (
@@ -494,50 +216,7 @@ function SearchContent({
           <AlertDescription role="status">{error ?? notice}</AlertDescription>
         </Alert>
       )}
-      {!!currentReview && !!release && (
-        <div className="global-search-review">
-          <div className="global-search-review-title">
-            <strong>{release.title}</strong>
-            <span>
-              {release.resolution ?? "—"} · {release.language ?? "—"} · {bytes(release.size)} ·{" "}
-              {release.seeders ?? "—"} seeds
-            </span>
-          </div>
-          {existing ? (
-            <Button disabled={busy} onClick={() => void openTorrent(existing)}>
-              <ArrowUpRightIcon data-icon="inline-start" />
-              Open existing torrent
-            </Button>
-          ) : (
-            <div className="global-search-download">
-              <Field orientation="horizontal">
-                <FieldLabel htmlFor="global-search-destination">Download to</FieldLabel>
-                <OptionSelect
-                  disabled={busy}
-                  id="global-search-destination"
-                  onValueChange={setDestinationId}
-                  options={data.destinations.map((thread) => ({
-                    label: thread.name,
-                    value: thread.id,
-                  }))}
-                  value={destination?.id ?? ""}
-                />
-              </Field>
-              <Button disabled={busy || !destination} onClick={() => void download()}>
-                {busy ? (
-                  <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
-                ) : (
-                  <DownloadIcon data-icon="inline-start" />
-                )}
-                {busy ? "Adding…" : "Download"}
-              </Button>
-            </div>
-          )}
-          {destination && !existing && (
-            <span className="global-search-destination-path">{destination.downloadPath}</span>
-          )}
-        </div>
-      )}
+      {!!currentReview && !!release && <GlobalSearchReview model={model} />}
       <footer className="global-search-footer">
         <span>
           <kbd>↑</kbd>

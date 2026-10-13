@@ -1,13 +1,13 @@
 // biome-ignore-all lint/a11y/useSemanticElements: registry addons are groups inside an existing form field.
 // biome-ignore-all lint/a11y/useKeyWithClickEvents: addon click only focuses the input, which is independently keyboard-accessible.
 // biome-ignore-all lint/a11y/noNoninteractiveElementInteractions: keep the registry focus helper on the addon without adding a duplicate tab stop.
+
+import { Button } from "@tofu/ui/button";
+import { Input } from "@tofu/ui/input";
+import { Textarea } from "@tofu/ui/textarea";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 import type * as React from "react";
-
-import { Button } from "./button";
-import { Input } from "./input";
-import { Textarea } from "./textarea";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (

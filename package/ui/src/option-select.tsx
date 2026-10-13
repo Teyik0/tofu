@@ -1,4 +1,3 @@
-import { cn } from "cn";
 import {
   Select,
   SelectContent,
@@ -6,7 +5,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./ui/select";
+} from "@tofu/ui/select";
+import { cn } from "cn";
 
 export interface SelectOption<Value extends string> {
   label: string;

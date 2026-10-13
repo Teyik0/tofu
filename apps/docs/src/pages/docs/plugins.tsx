@@ -55,28 +55,23 @@ import { ui } from "../client";
 const schema = Type.Object({ greeting: Type.String() });
 const settingsQuery = { id: "my-plugin.settings", scope: {} };
 
-export function createAPI(core: PluginCore, context: PluginContext<typeof schema>) {
-  const { settings } = context;
-  return createPluginApi(context)
-    .use(core)
-    .get("/settings", {
-      query: Type.Object({ threadId: Type.Optional(Type.String()) }),
-      sync: settingsQuery,
-    }, ({ query }) => settings.get(query.threadId))
-    .patch("/settings", {
-      body: Type.Partial(schema),
-      query: Type.Object({ threadId: Type.Optional(Type.String()) }),
-      sync: { invalidate: settingsQuery },
-    }, ({ body, query }) => settings.update(body, query.threadId));
-}
-
 export function createPlugin(core: PluginCore) {
   return definePlugin({
     id: "my-plugin",
     name: "My plugin",
     version: "0.0.0",
     settings: { schema, defaults: { greeting: "Hello" } },
-    api: (context: PluginContext<typeof schema>) => createAPI(core, context),
+    api: (context: PluginContext<typeof schema>) => createPluginApi(context)
+      .use(core)
+      .get("/settings", {
+        query: Type.Object({ threadId: Type.Optional(Type.String()) }),
+        sync: settingsQuery,
+      }, ({ query }) => context.settings.get(query.threadId))
+      .patch("/settings", {
+        body: Type.Partial(schema),
+        query: Type.Object({ threadId: Type.Optional(Type.String()) }),
+        sync: { invalidate: settingsQuery },
+      }, ({ body, query }) => context.settings.update(body, query.threadId)),
     ui,
   });
 }`}</Code>

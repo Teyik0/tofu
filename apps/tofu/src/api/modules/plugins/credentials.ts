@@ -1,5 +1,5 @@
+import { HTTPError } from "elysia";
 import type { CredentialPluginId } from "../../../types";
-import { UserError } from "../../lib/errors";
 import { parseJevResponse } from "../jev/service";
 import { parseRss } from "./feeds";
 
@@ -21,9 +21,9 @@ export function normalizePluginCredential(id: CredentialPluginId, input: string)
     keys?.length !== 1 ||
     !keys[0]?.trim()
   ) {
-    throw new UserError("Paste your C411 API key or a Torznab link from C411 API integrations", {
-      status: 400,
-    });
+    throw new (HTTPError.id("BAD_REQUEST", 400))(
+      "Paste your C411 API key or a Torznab link from C411 API integrations"
+    );
   }
   return keys[0].trim();
 }
@@ -61,17 +61,19 @@ export async function validatePluginCredential(options: {
   });
   const name = id === "c411" ? "C411" : "TypeSafe";
   if ([401, 403].includes(response.status)) {
-    throw new UserError(`${name} rejected this API key. Generate a new key and try again.`, {
-      status: 400,
-    });
+    throw new (HTTPError.id("BAD_REQUEST", 400))(
+      `${name} rejected this API key. Generate a new key and try again.`
+    );
   }
   if (response.status === 429) {
-    throw new UserError(`${name} rate limit reached. Try again later.`, { status: 429 });
+    throw new (HTTPError.id("TOO_MANY_REQUESTS", 429))(
+      `${name} rate limit reached. Try again later.`
+    );
   }
   if (!response.ok) {
-    throw new UserError(`Unable to validate your ${name} API key (HTTP ${response.status})`, {
-      status: 502,
-    });
+    throw new (HTTPError.id("BAD_GATEWAY", 502))(
+      `Unable to validate your ${name} API key (HTTP ${response.status})`
+    );
   }
   if (id === "c411") {
     parseRss(await response.text(), "c411");

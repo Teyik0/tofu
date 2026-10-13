@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,14 +7,19 @@ import { createSettingsStore } from "@tofu/plugins/server";
 import { SidebarProvider } from "@tofu/ui/sidebar";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Type } from "typebox";
-import {
+import type { ExtensionState } from "../src/plugin-client";
+import { fixture } from "./helpers/torrent";
+
+// Register the real isolated API before loading UI modules that bind their server clients.
+const application = await fixture(1024, []);
+afterAll(() => application.close());
+const {
   PluginContributionsProvider,
   PluginSidebarPages,
   PluginThreadActions,
   RegisteredPluginSettings,
   settingsFormPatch,
-} from "../src/components/plugin-contributions";
-import type { ExtensionState } from "../src/plugin-client";
+} = await import("../src/components/plugin-contributions");
 
 test("the host sidebar shows only created pages belonging to enabled plugins", () => {
   const plugins: NonNullable<ExtensionState>["plugins"] = [
@@ -144,9 +149,11 @@ test("the thread action slot exposes enabled contributions without disabled plug
 });
 
 const settings = {
+  deleteTorrentFileAfterAdd: false,
   downloadLimit: 0,
   downloadPath: "/tmp/tofu",
   runInBackground: true,
+  seedingConnectionMode: "balanced",
   theme: "system",
   uploadLimit: 0,
 } as const;

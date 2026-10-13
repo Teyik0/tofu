@@ -9,6 +9,7 @@ import { useState } from "react";
 import { usePreferencesForm } from "../hooks/use-preferences-form";
 import { createAutomationMutations } from "../lib/automation-mutations";
 import { api } from "../lib/client";
+import { errorMessage } from "../lib/errors";
 import type { AutomationPreferences } from "../types";
 
 const mutations = createAutomationMutations(api);
@@ -38,7 +39,7 @@ export function GeneralPreferences({
       reset(form, { initialInput: confirmed && "sources" in confirmed ? confirmed : next });
       setSaved(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to save preferences");
+      setError(errorMessage(cause, "Unable to save preferences"));
     }
   };
 

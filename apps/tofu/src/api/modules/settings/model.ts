@@ -21,10 +21,12 @@ import { integerInput } from "../../lib/validation";
 const bandwidthLimit = pipe(number(), integer(), minValue(-1));
 
 export const settingsSchema = object({
+  deleteTorrentFileAfterAdd: optional(boolean()),
   downloadLimit: pipe(integerInput, bandwidthLimit),
   downloadPath: pipe(string(), minLength(1), maxLength(4096)),
   moveFiles: optional(boolean()),
   runInBackground: optional(boolean()),
+  seedingConnectionMode: optional(union([literal("balanced"), literal("incoming-only")])),
   theme: optional(union([literal("system"), literal("light"), literal("dark")])),
   uploadLimit: pipe(integerInput, bandwidthLimit),
 });

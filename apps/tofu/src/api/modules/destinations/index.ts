@@ -1,7 +1,8 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
-import { contextPlugin } from "../../lib/context";
+import { anilistServicePlugin } from "../anilist/plugin";
+import { torrentServicePlugin } from "../torrents/plugin";
 import {
   createDestinationSchema,
   destinationPresentationSchema,
@@ -9,7 +10,8 @@ import {
 } from "./model";
 
 export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
-  .use(contextPlugin)
+  .use(torrentServicePlugin)
+  .use(anilistServicePlugin)
   .use(furinSync(sync))
   .guard({ sync: false })
   .post(
@@ -17,25 +19,29 @@ export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
     {
       body: createDestinationSchema,
     },
-    ({ application, body }) => application.engine.saveDestination(null, body)
+    ({ torrents, body }) => torrents.saveDestination(null, body)
   )
   .put(
     "/destinations/:id",
     {
       body: updateDestinationSchema,
     },
-    ({ application, params, body }) => application.engine.saveDestination(params.id, body)
+    ({ torrents, params, body }) => torrents.saveDestination(params.id, body)
   )
   .patch(
     "/destinations/:id",
     {
       body: destinationPresentationSchema,
     },
-    ({ application, params, body }) =>
-      application.engine.updateDestinationPresentation(params.id, body)
+    ({ torrents, params, body }) => torrents.updateDestinationPresentation(params.id, body)
   )
-  .delete("/destinations/:id", async ({ application, params }) => {
-    const result = await application.engine.removeDestination(params.id);
-    application.automation.reassignDestination(result.removed);
+  .delete("/destinations/:id", async ({ torrents, db, automation, anilist, params }) => {
+    const result = await torrents.removeDestination(params.id);
+    db.transaction((tx) => {
+      automation.reassignDestination(tx, result.removed);
+      anilist.reassignDestination(result.removed, tx);
+    });
+    automation.refreshState();
+    anilist.refreshState();
     return result;
   });

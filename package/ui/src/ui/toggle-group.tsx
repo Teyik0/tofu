@@ -2,11 +2,10 @@
 
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group";
+import { toggleVariants } from "@tofu/ui/toggle";
 import type { VariantProps } from "class-variance-authority";
 import { cn } from "cn";
-import { type CSSProperties, createContext, useContext } from "react";
-
-import { toggleVariants } from "./toggle";
+import { type CSSProperties, createContext, useContext, useMemo } from "react";
 
 const ToggleGroupContext = createContext<
   VariantProps<typeof toggleVariants> & {
@@ -35,6 +34,10 @@ function ToggleGroup({
   }) {
   spacing ??= 2;
   orientation ??= "horizontal";
+  const context = useMemo(
+    () => ({ orientation, size, spacing, variant }),
+    [orientation, size, spacing, variant]
+  );
   return (
     <ToggleGroupPrimitive
       className={cn(
@@ -49,9 +52,7 @@ function ToggleGroup({
       style={{ "--gap": spacing } as CSSProperties}
       {...props}
     >
-      <ToggleGroupContext.Provider value={{ orientation, size, spacing, variant }}>
-        {children}
-      </ToggleGroupContext.Provider>
+      <ToggleGroupContext.Provider value={context}>{children}</ToggleGroupContext.Provider>
     </ToggleGroupPrimitive>
   );
 }

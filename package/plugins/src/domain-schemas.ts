@@ -1,6 +1,6 @@
 import { t } from "elysia";
 
-export const source = t.Union([t.Literal("nyaa"), t.Literal("tsundere"), t.Literal("c411")]);
+export const source = t.String({ maxLength: 128, minLength: 1, pattern: "^[a-z0-9][a-z0-9._-]*$" });
 export const listStatus = t.Union([
   t.Literal("CURRENT"),
   t.Literal("PLANNING"),
@@ -45,7 +45,7 @@ export const preferences = t.Object({
   paused: t.Boolean(),
   priority: criteria,
   resolutions: t.Array(t.String({ maxLength: 10 }), { maxItems: 6, uniqueItems: true }),
-  sources: t.Array(source, { maxItems: 3, minItems: 1, uniqueItems: true }),
+  sources: t.Array(source, { maxItems: 32, minItems: 1, uniqueItems: true }),
   waitMinutes: t.Integer({ maximum: 1440, minimum: 0 }),
 });
 export const draft = t.Object({
@@ -66,7 +66,7 @@ export const draft = t.Object({
   query: t.String({ maxLength: 2000, minLength: 1 }),
   resolutions: t.Array(t.String({ maxLength: 10 }), { maxItems: 6 }),
   season: t.Union([t.Integer({ maximum: 1000, minimum: 1 }), t.Null()]),
-  sources: t.Array(source, { maxItems: 3, minItems: 1, uniqueItems: true }),
+  sources: t.Array(source, { maxItems: 32, minItems: 1, uniqueItems: true }),
   title: t.String({ maxLength: 500, minLength: 1 }),
   waitMinutes: t.Integer({ maximum: 1440, minimum: 0 }),
 });

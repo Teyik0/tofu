@@ -41,7 +41,7 @@ bun run build:desktop
 bun run desktop
 ```
 
-For web development, run `bun run dev` and open **http://127.0.0.1:3030**.
+Run `bun run dev` for desktop development with HMR. For web development, run `bun run dev:web` and open **http://127.0.0.1:3030**.
 
 Want to try a real local transfer? Keep `bun run demo` running while Tofu is open.
 
@@ -81,8 +81,10 @@ bun run test:native
 
 The desktop uses the Furin Electrobun CLI directly, with bundles and artifacts under `apps/tofu/.furin/electrobun`. Build once before typechecking to prepare the Hutch SDK types.
 
+The desktop follows Tofu v0.2.5's shared Elysia service composition. Core automation persists rules and decisions; release automation owns discovery and execution. AniList keeps its service, API, and UI in its own package with injected capabilities. Both local Furin archives are pinned in the root Bun catalog so every workspace resolves the same framework instance.
+
 `bun run test` runs the workspace test scripts. Desktop integration tests use real peers, local trackers, and temporary folders. The native test also checks the actual desktop interface and requires a graphical session.
 
-[Architecture & configuration](apps/docs/src/pages/docs/development.tsx) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Benchmarks](BENCHMARK.md)
+[Architecture & configuration](apps/docs/src/pages/docs/development.tsx) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 Licensed under [MIT](LICENSE.md).

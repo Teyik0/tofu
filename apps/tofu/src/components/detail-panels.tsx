@@ -1,0 +1,438 @@
+// biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
+
+import { ActionTooltip } from "@tofu/ui/action-tooltip";
+import { Badge } from "@tofu/ui/badge";
+import { Button } from "@tofu/ui/button";
+import { bytes, date, duration, percent, ratio, speed } from "@tofu/ui/format";
+import { Progress } from "@tofu/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@tofu/ui/select";
+import { TabsContent } from "@tofu/ui/tabs";
+import type { FilePriority } from "../types";
+import { Icon } from "./icon";
+import { TrafficChart } from "./traffic-chart";
+import type { DetailActionsProps, useDetailActions } from "./use-detail-actions";
+
+export function DetailActivity({
+  model,
+  torrent,
+  data,
+}: Pick<DetailActionsProps, "torrent" | "data"> & { model: ReturnType<typeof useDetailActions> }) {
+  const { latest } = model;
+  return (
+    <TabsContent value="Activity">
+      <div className="activity-layout">
+        <div className="activity-traffic">
+          <div className="section-heading">
+            <h3>Session traffic</h3>
+            <div className="chart-legend">
+              <span data-direction="down">
+                <i />
+                Download <b className="num">{speed(latest?.download ?? 0)}</b>
+              </span>
+              <span data-direction="up">
+                <i />
+                Upload <b className="num">{speed(latest?.upload ?? 0)}</b>
+              </span>
+            </div>
+          </div>
+          <TrafficChart samples={data.history} small={false} />
+          <p className="chart-caption">Last 2 minutes · all torrents</p>
+          <div className="pieces-heading">
+            <span>Local availability</span>
+            <span className="num">
+              {torrent.verifiedPieces?.toLocaleString("en-US") ?? "—"} /{" "}
+              {torrent.pieces.toLocaleString("en-US")} pieces
+            </span>
+          </div>
+          <div
+            aria-label={`${torrent.verifiedPieces ?? "—"} verified pieces out of ${torrent.pieces}`}
+            className="pieces"
+            role="img"
+          >
+            {torrent.pieceMap.map((value, index) => (
+              <i
+                key={`piece-${torrent.id}-${index}`}
+                style={{
+                  background:
+                    value === 0
+                      ? "var(--progress-track)"
+                      : `color-mix(in srgb, var(--chart-download) ${(0.25 + value * 0.75) * 100}%, transparent)`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="stats-groups">
+          <section aria-label="Transfer">
+            <h4>Transfer</h4>
+            <dl className="stats-grid">
+              <Stat label="Downloaded" value={bytes(torrent.downloaded)} />
+              <Stat label="Uploaded" value={bytes(torrent.uploaded)} />
+              <Stat label="Ratio" value={ratio(torrent.ratio)} />
+            </dl>
+          </section>
+          <section aria-label="Swarm">
+            <h4>Swarm</h4>
+            <dl className="stats-grid">
+              <Stat
+                label="Connected peers"
+                value={`${torrent.peers} · ${torrent.seeds} seed${torrent.seeds === 1 ? "" : "s"}`}
+              />
+              <Stat
+                label="Swarm · seeds / peers"
+                value={`${torrent.swarmSeeds ?? "—"} / ${torrent.swarmPeers ?? "—"}`}
+              />
+            </dl>
+          </section>
+          <section aria-label="Time">
+            <h4>Time</h4>
+            <dl className="stats-grid">
+              <Stat
+                label="Time remaining"
+                value={torrent.progress === 1 ? "Completed" : duration(torrent.eta)}
+              />
+              <Stat label="Active time" value={duration(torrent.activeSeconds)} />
+              <Stat label="Seeding time" value={duration(torrent.seedSeconds)} />
+            </dl>
+          </section>
+        </div>
+      </div>
+    </TabsContent>
+  );
+}
+
+export function DetailFiles({
+  model,
+  torrent,
+  busy,
+  act,
+}: Pick<DetailActionsProps, "torrent" | "busy" | "act"> & {
+  model: ReturnType<typeof useDetailActions>;
+}) {
+  const { setPriority, savingFile, downloadFile } = model;
+  return (
+    <TabsContent value="Files">
+      <div className="section-heading">
+        <h3>
+          {torrent.files.length} file{torrent.files.length > 1 ? "s" : ""}
+        </h3>
+        <span className="muted">Choose what to download.</span>
+      </div>
+      {torrent.files.length === 0 ? (
+        <p className="panel-empty">Waiting for torrent metadata.</p>
+      ) : (
+        <div className="table-scroll">
+          <table className="inner-table">
+            <thead>
+              <tr>
+                <th>File name</th>
+                <th>Size</th>
+                <th>Progress</th>
+                <th>Priority</th>
+                <th>
+                  <span className="sr-only">Download</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {torrent.files.map((file) => (
+                <tr key={file.index}>
+                  <td>
+                    <span className="file-name">
+                      <Icon name="file" />
+                      {file.path}
+                    </span>
+                  </td>
+                  <td className="mono">{bytes(file.length)}</td>
+                  <td>
+                    <div className="file-progress">
+                      <Progress
+                        aria-label={`Progress for ${file.name}`}
+                        value={file.progress === null ? null : file.progress * 100}
+                      />
+                      <span className="mono">{percent(file.progress)}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <Select
+                      disabled={busy}
+                      items={[
+                        { label: "Skip", value: "skip" },
+                        { label: "Normal", value: "normal" },
+                        { label: "High", value: "high" },
+                      ]}
+                      onValueChange={(value) =>
+                        void act(torrent.id, () =>
+                          setPriority.mutateAsync(file.index, value as FilePriority)
+                        )
+                      }
+                      value={file.priority}
+                    >
+                      <SelectTrigger aria-label={`Priority for ${file.name}`} size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          <SelectItem value="skip">Skip</SelectItem>
+                          <SelectItem value="normal">Normal</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td>
+                    {file.progress === 1 && (
+                      <ActionTooltip>
+                        <Button
+                          aria-label={`Save ${file.name}`}
+                          disabled={busy || savingFile !== null}
+                          onClick={() => void downloadFile(file.index, file.name)}
+                          size="icon-sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Icon name="download" />
+                        </Button>
+                      </ActionTooltip>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </TabsContent>
+  );
+}
+
+export function DetailTrackers({
+  model,
+  torrent,
+  busy,
+  act,
+  open,
+}: Pick<DetailActionsProps, "torrent" | "busy" | "act" | "open"> & {
+  model: ReturnType<typeof useDetailActions>;
+}) {
+  const { announce, setTrackers, trackerLabels } = model;
+  return (
+    <TabsContent value="Trackers">
+      <div className="section-heading">
+        <h3>
+          Trackers <span className="muted">{torrent.trackers.length}</span>
+        </h3>
+        <div className="inline-actions">
+          <Button
+            disabled={busy || torrent.status === "paused" || !torrent.trackers.length}
+            onClick={() => void act(torrent.id, () => announce.mutateAsync())}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <Icon name="refresh" size={15} />
+            Reannounce
+          </Button>
+          <Button
+            onClick={() => open({ torrent, type: "trackers" })}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <Icon name="edit" size={15} />
+            Manage trackers
+          </Button>
+        </div>
+      </div>
+      {torrent.trackers.length ? (
+        <div className="table-scroll">
+          <table className="inner-table">
+            <thead>
+              <tr>
+                <th>Tracker URL</th>
+                <th>Status</th>
+                <th>Sources</th>
+                <th>Peers</th>
+                <th>Last announce</th>
+                <th>
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {torrent.trackers.map((row) => (
+                <tr key={row.url}>
+                  <td className="tracker-url" title={row.message ?? row.url}>
+                    <Icon name="globe" size={15} />
+                    <span>{row.url}</span>
+                    {row.message !== null && <small className="danger-text">{row.message}</small>}
+                  </td>
+                  <td>
+                    <Badge
+                      className={`tracker-status ${row.status}`}
+                      variant={row.status === "error" ? "destructive" : "secondary"}
+                    >
+                      {trackerLabels[row.status]}
+                    </Badge>
+                  </td>
+                  <td className="mono">{row.seeds ?? "—"}</td>
+                  <td className="mono">{row.leeches ?? "—"}</td>
+                  <td className="mono">
+                    {row.lastAnnounce ? duration((Date.now() - row.lastAnnounce) / 1000) : "—"}
+                    {row.interval !== null && <small>Interval: {duration(row.interval)}</small>}
+                  </td>
+                  <td>
+                    <div className="inline-actions">
+                      <ActionTooltip>
+                        <Button
+                          aria-label={`Edit ${row.url}`}
+                          onClick={() => open({ torrent, type: "trackers" })}
+                          size="icon-sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Icon name="edit" size={15} />
+                        </Button>
+                      </ActionTooltip>
+                      <ActionTooltip>
+                        <Button
+                          aria-label={`Remove ${row.url}`}
+                          className="danger-text"
+                          disabled={busy}
+                          onClick={() =>
+                            void act(torrent.id, () =>
+                              setTrackers.mutateAsync({
+                                urls: torrent.trackers
+                                  .filter((tracker) => tracker.url !== row.url)
+                                  .map((tracker) => tracker.url),
+                              })
+                            )
+                          }
+                          size="icon-sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Icon name="trash" size={15} />
+                        </Button>
+                      </ActionTooltip>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="panel-empty">
+          No trackers. Discovery can use DHT or direct peers.
+          <Button
+            onClick={() => open({ torrent, type: "trackers" })}
+            size="sm"
+            type="button"
+            variant="link"
+          >
+            Add a tracker
+          </Button>
+        </div>
+      )}
+    </TabsContent>
+  );
+}
+
+export function DetailPeers({ torrent, open }: Pick<DetailActionsProps, "torrent" | "open">) {
+  return (
+    <TabsContent value="Peers">
+      <div className="section-heading">
+        <h3>
+          Connected peers <span className="muted">{torrent.peers}</span>
+        </h3>
+        <Button
+          disabled={torrent.status === "paused"}
+          onClick={() => open({ torrent, type: "peer" })}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Icon name="plus" size={15} />
+          Add a peer
+        </Button>
+      </div>
+      {torrent.peerList.length ? (
+        <div className="table-scroll">
+          <table className="inner-table">
+            <thead>
+              <tr>
+                <th>Address</th>
+                <th>Client</th>
+                <th>Transport</th>
+                <th>Download</th>
+                <th>Upload</th>
+                <th>Progress</th>
+                <th>Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {torrent.peerList.map((peer) => (
+                <tr key={peer.id}>
+                  <td className="mono">{peer.address}</td>
+                  <td>{peer.client}</td>
+                  <td className="mono">{peer.transport}</td>
+                  <td className="mono">{speed(peer.downloadSpeed)}</td>
+                  <td className="mono">{speed(peer.uploadSpeed)}</td>
+                  <td className="mono">{peer.progress === null ? "—" : percent(peer.progress)}</td>
+                  <td
+                    className="mono"
+                    title="I: interested; i: peer interested; C: upload choked; c: download choked"
+                  >
+                    {peer.flags}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="panel-empty">
+          {torrent.status === "paused"
+            ? "Connections are closed while paused."
+            : "No peers connected yet."}
+        </p>
+      )}
+    </TabsContent>
+  );
+}
+
+export function DetailInformation({ torrent }: Pick<DetailActionsProps, "torrent">) {
+  return (
+    <TabsContent value="Information">
+      <dl className="info-grid">
+        <Stat label="Torrent hash" value={torrent.id} />
+        <Stat label="Folder" value={torrent.savePath} />
+        <Stat label="Added on" value={date(torrent.addedAt)} />
+        <Stat label="Completed on" value={date(torrent.completedAt)} />
+        <Stat label="Last transfer" value={date(torrent.lastTransferAt)} />
+        <Stat label="Data received over the network" value={bytes(torrent.received)} />
+        <Stat label="Piece size" value={bytes(torrent.pieceLength)} />
+        <Stat label="Visibility" value={torrent.private ? "Private torrent" : "Public torrent"} />
+        <Stat label="Created with" value={torrent.createdBy || "—"} />
+        <Stat label="Comment" value={torrent.comment || "—"} />
+      </dl>
+    </TabsContent>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="detail-stat">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}

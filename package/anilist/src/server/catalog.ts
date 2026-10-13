@@ -1,6 +1,6 @@
 import type { AniListCatalogFilters, AniListMedia } from "@tofu/plugins/domain";
-import { UserError } from "@tofu/plugins/server";
 import { integerInput } from "@tofu/plugins/validation";
+import { HTTPError } from "elysia";
 import {
   array,
   check,
@@ -49,7 +49,7 @@ function enumValue<Value extends string>(input: string | undefined, values: read
   }
   const value = values.find((candidate) => candidate === input);
   if (value === undefined) {
-    throw new UserError("Invalid AniList catalog filter", { status: 400 });
+    throw new (HTTPError.id("BAD_REQUEST", 400))("Invalid AniList catalog filter");
   }
   return value;
 }
@@ -109,7 +109,7 @@ export function catalogVariables(filters: AniListCatalogFilters): CatalogQueryVa
     [filters.durationMin, filters.durationMax],
   ]) {
     if (min !== undefined && max !== undefined && min > max) {
-      throw new UserError("The minimum must not exceed the maximum", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("The minimum must not exceed the maximum");
     }
   }
   return {

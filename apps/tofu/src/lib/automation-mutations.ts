@@ -4,7 +4,6 @@ import type {
   AutomationRule,
   AutomationState,
 } from "../types";
-import { readData } from "./api-data";
 import type { api } from "./client";
 
 function ruleStatus(draft: AutomationDraft, state: AutomationState): AutomationRule["status"] {
@@ -37,6 +36,7 @@ export function createAutomationMutations(client: typeof api) {
               id,
               lastRunAt: null,
               nextRunAt: null,
+              revision: 1,
               status: ruleStatus(draft, state),
             };
             return { ...state, automations: [...state.automations, rule] };
@@ -71,19 +71,14 @@ export function createAutomationMutations(client: typeof api) {
           );
         },
       }),
-    savePreferences: async (preferences: AutomationPreferences) => {
-      const result = await client.automation.preferences.put(preferences, {
+    savePreferences: async (preferences: AutomationPreferences) =>
+      await client.automation.preferences.put(preferences, {
         optimistic(cache) {
           cache.update(client.automation.get, (state) =>
             "preferences" in state ? { ...state, preferences } : state
           );
         },
-      });
-      if (result.error === null) {
-        readData(await client.automation.get());
-      }
-      return result;
-    },
+      }),
     updateRule: (id: string, draft: AutomationDraft) =>
       client.automations({ id }).put(draft, {
         optimistic(cache) {

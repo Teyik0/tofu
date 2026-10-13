@@ -1,12 +1,11 @@
 // biome-ignore-all lint/a11y/useSemanticElements: registry fields compose inside FieldSet and retain the documented group roles.
 "use client";
 
+import { Label } from "@tofu/ui/label";
+import { Separator } from "@tofu/ui/separator";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 import { useMemo } from "react";
-
-import { Label } from "./label";
-import { Separator } from "./separator";
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (

@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@tofu/plugins/client";
-import type { createAPI } from "../src/server";
+import type { PluginAPI } from "@tofu/plugins";
 import { createCore, createPluginRuntime } from "@tofu/plugins/server";
 import { createPlugin } from "../src/server";
 import { dashboard, thread } from "../dev/fixtures";
@@ -48,7 +48,7 @@ test("the native Furin preview renders the plugin inside its injected thread she
   try {
     app.listen({ port: 0, hostname: "127.0.0.1" });
     const origin = `http://127.0.0.1:${app.server?.port}`;
-    const client = createClient<ReturnType<typeof createAPI>>(`${origin}/api/plugins/{{id}}`);
+    const client = createClient<PluginAPI<ReturnType<typeof createPlugin>>>(`${origin}/api/plugins/{{id}}`);
     const status = await client.status.get();
     expect(status.error).toBeNull();
     expect(status.data?.threadCount).toBe(1);

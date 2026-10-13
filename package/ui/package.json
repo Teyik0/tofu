@@ -39,7 +39,9 @@
     "./hover-card": "./src/ui/hover-card.tsx",
     "./popover": "./src/ui/popover.tsx",
     "./toggle": "./src/ui/toggle.tsx",
-    "./toggle-group": "./src/ui/toggle-group.tsx"
+    "./toggle-group": "./src/ui/toggle-group.tsx",
+    "./use-async-action": "./src/use-async-action.ts",
+    "./errors": "./src/errors.ts"
   },
   "scripts": {
     "build": "bun build ./src/ui/button.tsx --target=browser --packages=external --outdir=dist",

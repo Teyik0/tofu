@@ -1,6 +1,8 @@
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, realpath, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import type { ApplicationRuntime, DesktopIdentity } from "@teyik0/furin-electrobun/host";
 import type { InstanceConfig, InstanceProfile } from "../../types";
 import { lockDataDirectory } from "./instance-lock";
 
@@ -9,14 +11,13 @@ function within(directory: string, root: string) {
   return path === "" || (!isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`));
 }
 
-export async function readBundleIdentity(executable: string) {
+export function readBundleIdentity(executable: string) {
   const directory = dirname(executable);
   const resources = join(directory, "../Resources");
   const macBundle = executable.includes(`${sep}Contents${sep}MacOS${sep}`);
-  const nativeBundle =
-    basename(directory) === "bin" && (await Bun.file(join(resources, "build.json")).exists());
+  const nativeBundle = basename(directory) === "bin" && existsSync(join(resources, "build.json"));
   if (macBundle || nativeBundle) {
-    const metadata: unknown = await Bun.file(join(resources, "version.json")).json();
+    const metadata: unknown = JSON.parse(readFileSync(join(resources, "version.json"), "utf8"));
     if (!metadata || typeof metadata !== "object" || !("channel" in metadata)) {
       throw new Error("The Tofu bundle profile is missing");
     }
@@ -39,9 +40,39 @@ export async function readBundleIdentity(executable: string) {
   return null;
 }
 
-export async function currentInstanceConfig() {
+export function desktopInstanceConfig(identity: DesktopIdentity) {
+  const profile = identity.channel === "stable" ? "release" : "dev";
+  if (!["stable", "dev"].includes(identity.channel)) {
+    throw new Error("The Tofu bundle profile is unknown");
+  }
+  const config = resolveInstanceConfig({
+    appDataDir: process.env.APPDATA,
+    dataDir: process.env.TOFU_DATA_DIR,
+    desktop: true,
+    downloadPath: process.env.TOFU_DOWNLOAD_DIR,
+    homeDir: homedir(),
+    platform: process.platform,
+    port: process.env.TOFU_PORT,
+    profile,
+  });
+  if (identity.identifier !== config.identifier) {
+    throw new Error(
+      "The native Tofu identifier does not match the bundle profile; rebuild the app"
+    );
+  }
+  return { ...config, desktop: true };
+}
+
+export function currentInstanceConfig(runtime?: ApplicationRuntime) {
+  if (runtime?.kind === "desktop") {
+    const config = desktopInstanceConfig(runtime.identity);
+    if (process.env.FURIN_APP_DATA_DIR !== config.dataDir) {
+      throw new Error("The native host and Tofu must use the same data directory");
+    }
+    return config;
+  }
   // Packaged metadata wins over the terminal environment, independently of NODE_ENV.
-  const bundle = await readBundleIdentity(process.execPath);
+  const bundle = readBundleIdentity(process.execPath);
   let profile: InstanceProfile = bundle?.profile ?? "dev";
   const desktop = process.env.TOFU_MODE === "desktop" || bundle !== null;
   if (!bundle && process.env.TOFU_PROFILE !== undefined) {

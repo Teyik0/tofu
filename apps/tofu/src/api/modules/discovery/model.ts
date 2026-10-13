@@ -1,11 +1,9 @@
-import { array, boolean, literal, maxLength, object, optional, pipe, string, union } from "valibot";
+import { array, boolean, maxLength, object, optional, pipe, string } from "valibot";
 import { source } from "../automation/model";
 
 export const discoverySchema = object({
   query: pipe(string(), maxLength(1000)),
-  sources: optional(
-    pipe(array(union([literal("nyaa"), literal("tsundere"), literal("c411")])), maxLength(3))
-  ),
+  sources: optional(pipe(array(source), maxLength(32))),
 });
 
 export const addReleaseSchema = object({

@@ -1,5 +1,4 @@
 import { createThreadLayout } from "@tofu/plugins/routes";
-import { readData } from "../../lib/api-data";
 import { api } from "../../lib/client";
 import { destinationFromPath } from "../../lib/navigation";
 import { route as root } from "../root";
@@ -7,7 +6,10 @@ import { route as root } from "../root";
 export const route = createThreadLayout(
   root,
   async ({ path }) => {
-    const dashboard = readData(await api.state.get({ query: { detail: "false" } }));
+    const { data: dashboard, error } = await api.state.get({ query: { detail: "false" } });
+    if (error) {
+      throw error;
+    }
     const id = destinationFromPath(path);
     return {
       dashboard,

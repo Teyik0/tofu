@@ -48,9 +48,19 @@ export const route = defineRoute()
       </p>
       <p>
         The package owns its service, GraphQL operations, persistent cache, and Drizzle table. The
-        host injects typed database access and core automation operations, including the transaction
-        shared by AniList state and automation rules. The package never imports the desktop app. Its
-        client calls typed AniList and core Elysia APIs inside Tofu’s native shell.
+        host injects typed <code>AniListOptions</code>: database-backed automation operations,
+        discovery, release scheduling and execution, engine access, and intelligence evaluation.
+        Core automation persists rules and decisions; <code>releaseAutomation</code> collects and
+        executes releases. AniList state and rules share a database transaction. The package never
+        imports the desktop app. Its client calls typed AniList and core Elysia APIs inside Tofu’s
+        native shell.
+      </p>
+      <p>
+        Shared DTOs come from <code>@tofu/plugins/domain</code>. The package also uses the SDK’s{" "}
+        <code>/automation-rules</code>, <code>/title</code>, <code>/source-queries</code>,{" "}
+        <code>/releases</code>, <code>/discovery-query</code>, and <code>/jev-questions</code> entry
+        points for release matching, query interpretation, and typed intelligence contracts. This
+        keeps common domain logic independent of desktop startup and routing.
       </p>
       <p>
         Its disposer suspends linked automations when the plugin’s scope ends. This makes the

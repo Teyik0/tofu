@@ -79,10 +79,10 @@ bun run desktop`}</Code>
         </tbody>
       </table>
       <Code>{`# Desktop web UI: http://127.0.0.1:3030
-bun run dev
+bun run dev:web
 
-# Native development app
-bun run dev:desktop
+# Native development app with HMR
+bun run dev
 
 # Documentation: http://127.0.0.1:3040
 bun run dev:docs
@@ -96,15 +96,35 @@ bun run --filter @tofu/docs build`}</Code>
         capabilities through a typed Elysia facade and share the host layout.
       </p>
       <p>
+        <code>apps/tofu/src/api/index.ts</code> exports the shared <code>apiPlugin</code> Elysia
+        application. It installs the desktop host first and composes route plugins under{" "}
+        <code>/api</code>. <code>src/server.ts</code> attaches Furin to that same instance and owns
+        listening and shutdown. Required services initialize before the app starts listening.
+      </p>
+      <p>
+        Loaders read typed endpoints through <code>apps/tofu/src/lib/client.ts</code>. On the
+        server, <code>createClient(apiPlugin).api</code> dispatches directly to the application. In
+        the browser, the client uses the current origin with credentials and no-store caching.
+        Handle each Eden response’s <code>error</code> directly in the loader before returning its{" "}
+        <code>data</code>.
+      </p>
+      <p>
+        The automation service persists rules and typed decisions. The separate{" "}
+        <code>releaseAutomation</code> integration collects releases, schedules checks, and executes
+        downloads. AniList owns its service in <code>package/anilist</code> and receives typed
+        options for these host capabilities and the shared database transaction.
+      </p>
+      <p>
         This keeps downloads and credentials on the Bun side and lets background mode remove the
         WebView while transfers continue. A second engine or an embedded external site would split
         download state and lifecycle ownership.
       </p>
       <Callout>
         <p>
-          The workspace pins a local Furin preview in <code>vendor</code>. Use its checked-in
-          archives and the root dependency catalog. WebTorrent addons stay external to the native
-          bundle; the tracker/wire bridge depends on WebTorrent 3.0.21.
+          The workspace pins Furin preview <code>118d85f</code> and Furin Electrobun preview{" "}
+          <code>a1c9c5d</code> in <code>vendor</code>. Use its checked-in archives and the root
+          dependency catalog. WebTorrent addons stay external to the native bundle; the tracker/wire
+          bridge depends on WebTorrent 3.0.21.
         </p>
       </Callout>
       <h2>Check your changes</h2>
@@ -119,7 +139,8 @@ bun run test:native`}</Code>
         <code>TOFU_SMOKE_SCRIPT</code>; regular launches never inject it.
       </p>
       <p>
-        Keep repository text in English and shared desktop domain types in{" "}
+        Keep repository text in English. Shared domain contracts live in{" "}
+        <code>package/plugins/src/domain.ts</code> and are reexported by{" "}
         <code>apps/tofu/src/types.ts</code>. Development and release profiles use separate data
         directories; restart the Bun process after changing profile or engine environment variables.
       </p>

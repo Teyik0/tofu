@@ -9,7 +9,6 @@
     ]
   },
   "scripts": {
-    "bench:ui": "bun run --filter @tofu/desktop bench:ui",
     "build": "bun run --filter '@tofu/*' build",
     "build:desktop": "bun run --filter @tofu/desktop build:desktop",
     "build:release": "bun run --filter @tofu/desktop build:release",
@@ -25,6 +24,7 @@
     "dev": "bun run --filter @tofu/desktop dev",
     "dev:desktop": "bun run --filter @tofu/desktop dev:desktop",
     "dev:docs": "bun run --filter @tofu/docs dev",
+    "dev:web": "bun run --filter @tofu/desktop dev:web",
     "fix": "ultracite fix",
     "plugin:generate": "bun apps/tofu/scripts/plugins.ts generate",
     "plugin:install": "bun apps/tofu/scripts/plugins.ts install",
@@ -99,6 +99,9 @@
     "@graphql-codegen/cli": "7.4.6",
     "@graphql-codegen/typescript-generic-sdk": "5.0.1",
     "@graphql-codegen/typescript-operations": "6.1.10",
-    "drizzle-kit": "0.31.11"
+    "drizzle-kit": "0.31.11",
+    "seroval": "1.5.3",
+    "@teyik0/furin": "file:vendor/furin-pr163-118d85f.tgz",
+    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-a1c9c5d.tgz"
   }
 }

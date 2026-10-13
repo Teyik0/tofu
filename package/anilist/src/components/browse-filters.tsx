@@ -184,6 +184,8 @@ export function GenreTagFilter({
   update: (patch: Partial<BrowseFilters & { genres: string[] }>) => void;
 }) {
   const names = [...filters.genres, ...filters.tags];
+  const selectedGenres = new Set(filters.genres);
+  const selectedTags = new Set(filters.tags);
   return (
     <div className="anilist-filter">
       <span id="anilist-genres-label">Genres &amp; Tags</span>
@@ -228,7 +230,7 @@ export function GenreTagFilter({
               <DropdownMenuLabel>Genres</DropdownMenuLabel>
               {genres.map((genre) => (
                 <DropdownMenuCheckboxItem
-                  checked={filters.genres.includes(genre)}
+                  checked={selectedGenres.has(genre)}
                   closeOnClick={false}
                   key={genre}
                   onCheckedChange={(checked) =>
@@ -247,14 +249,14 @@ export function GenreTagFilter({
               <DropdownMenuLabel>Tags</DropdownMenuLabel>
               {(options?.tags ?? []).map((tag) => (
                 <DropdownMenuCheckboxItem
-                  checked={filters.tags.includes(tag.name)}
+                  checked={selectedTags.has(tag.name)}
                   closeOnClick={false}
-                  disabled={filters.tags.length >= 30 && !filters.tags.includes(tag.name)}
+                  disabled={filters.tags.length >= 30 && !selectedTags.has(tag.name)}
                   key={tag.name}
                   onCheckedChange={(checked) =>
                     update({
                       tags: checked
-                        ? filters.tags.length < 30 && !filters.tags.includes(tag.name)
+                        ? filters.tags.length < 30 && !selectedTags.has(tag.name)
                           ? [...filters.tags, tag.name]
                           : filters.tags
                         : filters.tags.filter((item) => item !== tag.name),
@@ -339,6 +341,7 @@ export function CatalogMultiSelectFilter<Value extends string>({
   const summary = value.map(
     (item) => options.find((option) => option.value === item)?.label ?? item
   );
+  const selected = new Set(value);
   return (
     <Field className="anilist-filter">
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -383,7 +386,7 @@ export function CatalogMultiSelectFilter<Value extends string>({
               </DropdownMenuCheckboxItem>
               {options.map((option) => (
                 <DropdownMenuCheckboxItem
-                  checked={value.includes(option.value)}
+                  checked={selected.has(option.value)}
                   closeOnClick={false}
                   key={option.value}
                   onCheckedChange={(checked) =>
@@ -427,6 +430,7 @@ function ExclusionFilter({
   onChange: (value: string[]) => void;
 }) {
   const [search, setSearch] = useState("");
+  const selected = new Set(value);
   return (
     <Field className="anilist-filter">
       <FieldLabel>{label}</FieldLabel>
@@ -458,7 +462,7 @@ function ExclusionFilter({
               )
               .map((name) => (
                 <DropdownMenuCheckboxItem
-                  checked={value.includes(name)}
+                  checked={selected.has(name)}
                   key={name}
                   onCheckedChange={(checked) =>
                     onChange(checked ? [...value, name] : value.filter((item) => item !== name))

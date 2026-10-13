@@ -125,7 +125,7 @@ export const ui = {
       </p>
       <Code>{`const settingsQuery = { id: "my-plugin.settings", scope: {} };
 
-return createPluginApi(context)
+api: (context: PluginContext<typeof settingsSchema>) => createPluginApi(context)
   .use(core)
   .get("/settings", {
     query: Type.Object({ threadId: Type.Optional(Type.String()) }),
@@ -144,14 +144,15 @@ return createPluginApi(context)
       <p>
         <code>createClient</code>, <code>useQuery</code>, and <code>useMutation</code> from{" "}
         <code>@tofu/plugins/client</code> directly reexport Furin’s client implementation. Infer the
-        Elysia API type from your server factory with a type-only import.
+        Elysia API type from your plugin definition with type-only imports.
       </p>
-      <Code>{`import { createClient, useMutation, useQuery } from "@tofu/plugins/client";
-import type { createAPI } from "../server";
+      <Code>{`import type { PluginAPI } from "@tofu/plugins";
+import { createClient, useMutation, useQuery } from "@tofu/plugins/client";
+import type { createPlugin } from "../server";
 
 const origin = typeof window === "undefined"
   ? "http://localhost" : window.location.origin;
-const client = createClient<ReturnType<typeof createAPI>>(
+const client = createClient<PluginAPI<ReturnType<typeof createPlugin>>>(
   origin + "/api/plugins/my-plugin",
 );
 
@@ -169,6 +170,21 @@ function GreetingSettings({ threadId }: { threadId?: string }) {
         <code>useMutation</code> saves. The client import is browser-safe; do not import a server
         value into client code. <code>usePluginHost()</code> provides the live dashboard and host
         refresh callback when rendered within the host provider.
+      </p>
+      <h2>Shared domain contracts</h2>
+      <p>
+        Import host DTOs such as <code>DashboardState</code>, <code>Destination</code>,{" "}
+        <code>AutomationDraft</code>, and <code>FeedRelease</code> from{" "}
+        <code>@tofu/plugins/domain</code>. The desktop and autonomous packages share these
+        contracts; plugins do not need to import <code>apps/tofu</code> or duplicate its response
+        types. Runtime schemas are available from <code>@tofu/plugins/domain-schemas</code> and{" "}
+        <code>@tofu/plugins/automation-model</code>.
+      </p>
+      <p>
+        Source identifiers are strings, including registered namespaced sources such as{" "}
+        <code>my-plugin.feed</code>. Automation source lists accept up to 32 unique identifiers. A
+        source must also be registered with the host discovery service; a string in a rule does not
+        register a provider, and <code>PluginCore</code> does not expose source registration.
       </p>
       <h2>Authentication</h2>
       <p>

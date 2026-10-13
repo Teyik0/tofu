@@ -7,7 +7,6 @@ import { materializePluginRuntime } from "./plugin-packages";
 const root = join(import.meta.dir, "..");
 const runtime = join(root, "runtime");
 await mkdir(runtime, { recursive: true });
-await materializePluginRuntime(root, join(runtime, "plugins"));
 const worker = await Bun.build({
   entrypoints: [join(root, "src/api/modules/torrents/worker.ts")],
   external: ["webtorrent", "parse-torrent"],
@@ -19,14 +18,7 @@ const worker = await Bun.build({
 if (!worker.success) {
   throw new AggregateError(worker.logs, "Torrent worker build failed");
 }
-const protocol = await Bun.build({
-  entrypoints: [join(root, "scripts/desktop-protocol.ts")],
-  outdir: runtime,
-  target: "bun",
-});
-if (!protocol.success) {
-  throw new AggregateError(protocol.logs, "Protocol helper build failed");
-}
+await materializePluginRuntime(root, join(runtime, "plugins"));
 await Bun.write(
   join(runtime, "anilist-client.json"),
   JSON.stringify(

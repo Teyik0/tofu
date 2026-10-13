@@ -1,4 +1,4 @@
-import type { TorrentStatus } from "@tofu/plugins/domain";
+import type { TorrentStatus, TorrentStorageIssue, TorrentSummary } from "@tofu/plugins/domain";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
 export function bytes(value: number | null) {
@@ -18,7 +18,10 @@ export function bytes(value: number | null) {
 export function speed(value: number) {
   return `${bytes(Math.max(0, value))}/s`;
 }
-export function percent(value: number) {
+export function percent(value: number | null) {
+  if (value === null) {
+    return "—";
+  }
   return `${(value * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })} %`;
 }
 export function duration(seconds: number | null) {
@@ -57,6 +60,24 @@ export const statusLabels: { [Status in TorrentStatus]: string } = {
   paused: "Paused",
   seeding: "Seeding",
 };
+
+const storageLabels: { [Kind in TorrentStorageIssue["kind"]]: string } = {
+  "invalid-path": "Unsafe file path",
+  "io-error": "Storage error",
+  "missing-files": "Files missing",
+  "modified-files": "Files changed",
+  "no-space": "Disk full",
+  "permission-denied": "Storage access denied",
+  "storage-unavailable": "Storage unavailable",
+};
+
+export function torrentStatusLabel(torrent: Pick<TorrentSummary, "status" | "storageIssue">) {
+  if (!torrent.storageIssue || torrent.status === "checking" || torrent.status === "moving") {
+    return statusLabels[torrent.status];
+  }
+  const label = storageLabels[torrent.storageIssue.kind];
+  return torrent.status === "paused" ? `Paused · ${label}` : label;
+}
 const relativeFormatter = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
 /** "in 12 minutes", "3 hours ago"; null stays "—". */
 export function relative(value: number | null, now: number) {

@@ -1,5 +1,5 @@
-import { lstatSync, realpathSync } from "node:fs";
-import { copyFile, link, lstat, mkdir, mkdtemp, rm, statfs } from "node:fs/promises";
+import { constants, lstatSync, realpathSync, statSync } from "node:fs";
+import { access, copyFile, link, lstat, mkdir, mkdtemp, rm, statfs } from "node:fs/promises";
 import {
   basename,
   dirname,
@@ -9,25 +9,40 @@ import {
   resolve as resolvePath,
   sep,
 } from "node:path";
+import { type DrizzleSqliteSyncAdapter, drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import { eq, sql } from "drizzle-orm";
+import { HTTPError } from "elysia";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
 import WebTorrent, { type Options, type Torrent } from "webtorrent";
 import { torrentConfig, torrentDestinations, torrentRecords } from "../../../db/schema";
 import type {
+  ConnectionPolicy,
   DashboardState,
   Destination,
   DestinationInput,
   DestinationPresentation,
+  EngineChange,
+  EngineOpenOptions,
   FilePriority,
   Settings,
   SettingsInput,
   SpeedSample,
   TorrentDetail,
+  TorrentStorageIssue,
   TrackerStats,
 } from "../../../types";
 import { type DatabaseConnection, openDatabase, type TofuDatabase } from "../../lib/db";
-import { UserError } from "../../lib/errors";
+import { ConnectionScheduler, defaultConnectionPolicy } from "./connections";
+import { installCryptoDiagnostics } from "./crypto-diagnostics";
 import { announce, peers, watchTrackers } from "./stats";
+import {
+  type StorageIdentity,
+  type StoredFileIdentity,
+  storageFailure,
+  storageFileChanged,
+  storageRoot,
+  verifiedFileBytes,
+} from "./storage";
 
 interface RelocatedFile {
   source: string;
@@ -39,17 +54,21 @@ function canonicalPath(filePath: string) {
   return filePath.replaceAll("\\", "/");
 }
 
-function storedFile(path: string) {
-  return lstat(path).catch((cause: NodeJS.ErrnoException) => {
+async function storedFile(path: string) {
+  const stored = await lstat(path).catch((cause: NodeJS.ErrnoException) => {
     if (cause.code === "ENOENT") {
       return null;
     }
     throw cause;
   });
+  if (stored?.isFile()) {
+    await access(path, constants.R_OK);
+  }
+  return stored;
 }
 
 function moveError(cause: unknown) {
-  if (cause instanceof UserError) {
+  if (cause instanceof HTTPError) {
     return cause;
   }
   const code = cause instanceof Error && "code" in cause ? cause.code : null;
@@ -63,9 +82,8 @@ function moveError(cause: unknown) {
   if (code === "EEXIST") {
     message = "A file already exists in the destination folder";
   }
-  return new UserError(`${message}. The original files are preserved.`, {
+  return new (HTTPError.id("CONFLICT", 409))(`${message}. The original files are preserved.`, {
     cause,
-    status: 409,
   });
 }
 
@@ -77,6 +95,8 @@ interface Entry {
   paused: boolean;
   source: string;
   storageClaimed: boolean;
+  storageFiles: StoredFileIdentity[];
+  storageRoot: StorageIdentity | null;
   torrent: Torrent | null;
   unwatch?: () => void;
   verifying?: boolean;
@@ -105,6 +125,8 @@ function entryStatus(entry: Entry): TorrentDetail["status"] {
 
 type StoredEntry = Pick<Entry, "source" | "metadata" | "paused" | "detail"> & {
   storageClaimed?: boolean;
+  storageRoot?: StorageIdentity | null;
+  storageFiles?: StoredFileIdentity[];
 };
 
 const torrentUrl = /^https?:\/\//;
@@ -115,12 +137,12 @@ export function trackerUrls(urls: string[]) {
     try {
       url = new URL(value);
     } catch (cause) {
-      throw new UserError(`Invalid tracker : ${value}`, { cause, status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))(`Invalid tracker : ${value}`, { cause });
     }
     if (!trackerProtocols.has(url.protocol)) {
-      throw new UserError("Trackers must use HTTP, HTTPS, UDP, or WebSocket", {
-        status: 400,
-      });
+      throw new (HTTPError.id("BAD_REQUEST", 400))(
+        "Trackers must use HTTP, HTTPS, UDP, or WebSocket"
+      );
     }
     return value;
   });
@@ -141,6 +163,7 @@ function trackerStats(url: string): TrackerStats {
 export class TorrentEngine {
   readonly client: WebTorrent;
   readonly settings: Settings;
+  readonly syncAdapter: DrizzleSqliteSyncAdapter<TofuDatabase>;
   private readonly entries = new Map<string, Entry>();
   private readonly destinations = new Map<string, Destination>();
   private readonly movingDestinations = new Set<string>();
@@ -148,18 +171,41 @@ export class TorrentEngine {
   private readonly startedAt = Date.now();
   private readonly db: TofuDatabase;
   private readonly history: SpeedSample[] = [];
-  private readonly timer: ReturnType<typeof setInterval>;
+  private timer: ReturnType<typeof setInterval>;
+  private telemetryTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
+  private storageCheck: Promise<void> | null = null;
   private received = 0;
   private uploaded = 0;
   private freeSpace: number | null = null;
   private lastTick = Date.now();
   private lastDiskAt = 0;
   private lastPersistAt = 0;
+  private readonly connections: ConnectionScheduler;
+  private readonly cryptoDiagnostics: ReturnType<typeof installCryptoDiagnostics> | null;
+  private readonly dirtyEntries = new Set<Entry>();
+  private readonly persistedEntries = new Map<Entry, string>();
+  private readonly entryStructures = new Map<Entry, string>();
+  private trafficDirty = false;
+  private readonly listeners = new Set<(change: EngineChange) => void>();
+  private observed = false;
+  private diskCheck: Promise<void> | null = null;
+  private lastTelemetryAt = Date.now();
+  private telemetryValues: number[] = [];
+  stateRevision = 0;
+  telemetryRevision = 0;
   mode: "desktop" | "server" = "server";
 
-  private constructor(settings: Settings, network: Options, database: TofuDatabase) {
+  private constructor(
+    settings: Settings,
+    network: Options,
+    database: TofuDatabase,
+    policy: ConnectionPolicy,
+    cryptoDiagnostics: ReturnType<typeof installCryptoDiagnostics> | null
+  ) {
     this.db = database;
+    this.syncAdapter = drizzleSyncAdapter({ db: database, namespace: "tofu" });
+    this.cryptoDiagnostics = cryptoDiagnostics;
     const stored = this.db
       .select()
       .from(torrentConfig)
@@ -193,6 +239,12 @@ export class TorrentEngine {
       this.uploaded = parsed.uploaded;
     }
     this.client = new WebTorrent(network);
+    this.client.seedOutgoingConnections = this.settings.seedingConnectionMode === "balanced";
+    this.connections = new ConnectionScheduler(
+      this.client,
+      policy,
+      this.settings.seedingConnectionMode
+    );
     this.client.throttleDownload(this.settings.downloadLimit);
     this.client.throttleUpload(this.settings.uploadLimit);
     this.client.on("error", console.error);
@@ -201,35 +253,40 @@ export class TorrentEngine {
       storedEntry.detail.destinationId ??= this.destinationForPath(
         dirname(storedEntry.detail.savePath)
       ).id;
+      storedEntry.detail.storageIssue ??= null;
       this.entries.set(storedEntry.detail.id, {
         ...storedEntry,
         operation: Promise.resolve(),
         storageClaimed: storedEntry.storageClaimed ?? storedEntry.detail.error === null,
+        storageFiles: storedEntry.storageFiles ?? [],
+        storageRoot: storedEntry.storageRoot ?? null,
         torrent: null,
       });
     }
-    this.timer = setInterval(() => {
-      const now = Date.now();
-      const seconds = (now - this.lastTick) / 1000;
-      this.lastTick = now;
-      for (const entry of this.entries.values()) {
-        if (!entry.paused && entry.torrent) {
-          entry.detail.activeSeconds += seconds;
-          if (entry.torrent.done) {
-            entry.detail.seedSeconds += seconds;
-          }
+    this.timer = setInterval(this.tick, 5000);
+    this.timer.unref();
+  }
+
+  private readonly tick = () => {
+    const now = Date.now();
+    const seconds = (now - this.lastTick) / 1000;
+    this.lastTick = now;
+    for (const entry of this.entries.values()) {
+      if (!entry.paused && entry.torrent) {
+        this.dirtyEntries.add(entry);
+        entry.detail.activeSeconds += seconds;
+        if (entry.torrent.done) {
+          entry.detail.seedSeconds += seconds;
         }
-        this.summary(entry);
       }
-      if (now - this.lastPersistAt >= 5000) {
-        this.db.transaction((tx) => {
-          for (const entry of this.entries.values()) {
-            this.save(entry, tx);
-          }
-          this.config("traffic", { received: this.received, uploaded: this.uploaded }, tx);
-        });
-        this.lastPersistAt = now;
-      }
+      this.summary(entry);
+    }
+    if (now - this.lastPersistAt >= 5000) {
+      this.checkpoint();
+      this.lastPersistAt = now;
+    }
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: subscriptions change observation after startup.
+    if (this.observed) {
       this.history.push({
         download: this.client.downloadSpeed,
         time: now,
@@ -238,59 +295,324 @@ export class TorrentEngine {
       if (this.history.length > 120) {
         this.history.shift();
       }
-      if (now - this.lastDiskAt >= 15_000) {
-        this.diskSpace();
-      }
-    }, 1000);
-    this.timer.unref();
-  }
+      // Speeds decay with time even when no transfer event arrives.
+      this.publishTelemetry(now);
+    }
+    if (now - this.lastDiskAt >= this.diskInterval) {
+      this.diskSpace();
+    }
+    if (!this.storageCheck) {
+      this.storageCheck = this.checkStorage().finally(() => {
+        this.storageCheck = null;
+      });
+    }
+  };
 
-  static async open(options: { dataDir: string; downloadPath: string; network: Options }) {
+  static async open(options: EngineOpenOptions) {
     await mkdir(options.dataDir, { recursive: true });
-    await mkdir(options.downloadPath, { recursive: true });
     const database = await openDatabase(options.dataDir);
+    const cryptoDiagnostics =
+      (options.cryptoDiagnostics ?? process.env.TOFU_CRYPTO_DIAGNOSTICS === "1")
+        ? installCryptoDiagnostics()
+        : null;
     let engine: TorrentEngine;
     try {
       engine = new TorrentEngine(
         {
+          deleteTorrentFileAfterAdd: false,
           downloadLimit: -1,
           downloadPath: options.downloadPath,
           runInBackground: false,
+          seedingConnectionMode: "balanced",
           theme: "system",
           uploadLimit: -1,
         },
         options.network,
-        database
+        database,
+        options.connectionPolicy ?? defaultConnectionPolicy,
+        cryptoDiagnostics
       );
     } catch (error) {
+      cryptoDiagnostics?.close();
       database.$client.close(true);
       throw error;
     }
-    await mkdir(engine.settings.downloadPath, { recursive: true });
-    await engine.diskSpace();
-    await Promise.all(
-      [...engine.entries.values()]
-        .filter((entry) => !entry.paused)
-        .map((entry) => engine.start(entry))
-    );
-    return engine;
+    try {
+      if (engine.entries.size === 0) {
+        await mkdir(engine.settings.downloadPath, { recursive: true });
+      }
+      await engine.diskSpace();
+      await Promise.all(
+        [...engine.entries.values()].map(async (entry) => {
+          await engine.inspectStorage(entry);
+          if (!entry.paused) {
+            await engine.start(entry);
+          }
+        })
+      );
+      engine.telemetryValues = engine.measureTelemetry();
+      return engine;
+    } catch (error) {
+      await engine.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   assertReady() {
     if (this.client.destroyed) {
-      throw new UserError("The torrent engine has stopped", { status: 503 });
+      throw new (HTTPError.id("SERVICE_UNAVAILABLE", 503))("The torrent engine has stopped");
     }
     this.db.run(sql`SELECT 1 FROM config, torrents, destinations LIMIT 0`);
   }
 
-  private async diskSpace() {
-    this.lastDiskAt = Date.now();
-    try {
-      const disk = await statfs(this.settings.downloadPath);
-      this.freeSpace = disk.bavail * disk.bsize;
-    } catch {
-      this.freeSpace = null;
+  private checkpoint() {
+    const saved = new Map<Entry, string>();
+    this.db.transaction((tx) => {
+      for (const entry of this.dirtyEntries) {
+        saved.set(entry, this.save(entry, tx));
+      }
+      // biome-ignore lint/suspicious/noUnnecessaryConditions: transfer callbacks mark traffic dirty between checkpoints.
+      if (this.trafficDirty) {
+        this.config("traffic", { received: this.received, uploaded: this.uploaded }, tx);
+      }
+    });
+    for (const [entry, value] of saved) {
+      this.persistedEntries.set(entry, value);
     }
+    this.dirtyEntries.clear();
+    this.trafficDirty = false;
+  }
+
+  private get diskInterval() {
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: browser subscriptions update observation after startup.
+    return this.observed ? 15_000 : 60_000;
+  }
+
+  private measureTelemetry() {
+    const values = [
+      this.received,
+      this.uploaded,
+      this.client.downloadSpeed,
+      this.client.uploadSpeed,
+      this.freeSpace ?? -1,
+    ];
+    for (const entry of this.entries.values()) {
+      values.push(
+        entry.torrent?.numPeers ?? 0,
+        entry.torrent?.ready ? entry.torrent.progress : (entry.detail.progress ?? -1)
+      );
+    }
+    return values;
+  }
+
+  private publishTelemetry(now: number) {
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: subscriptions change observation after startup.
+    if (!this.observed || now - this.lastTelemetryAt < 1000) {
+      return;
+    }
+    this.lastTelemetryAt = now;
+    const values = this.measureTelemetry();
+    if (
+      values.length !== this.telemetryValues.length ||
+      values.some((value, index) => value !== this.telemetryValues[index])
+    ) {
+      this.telemetryValues = values;
+      this.changed("telemetry");
+    }
+  }
+
+  private queueTelemetry() {
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: subscriptions change observation after startup.
+    if (!this.observed || this.closed || this.telemetryTimer) {
+      return;
+    }
+    this.telemetryTimer = setTimeout(
+      () => {
+        this.telemetryTimer = null;
+        this.publishTelemetry(Date.now());
+      },
+      Math.max(0, 1000 - (Date.now() - this.lastTelemetryAt))
+    );
+    this.telemetryTimer.unref();
+  }
+
+  private diskSpace() {
+    if (!this.diskCheck) {
+      this.lastDiskAt = Date.now();
+      this.diskCheck = statfs(this.settings.downloadPath)
+        .then((disk) => {
+          this.freeSpace = disk.bavail * disk.bsize;
+        })
+        .catch(() => {
+          this.freeSpace = null;
+        })
+        .finally(() => {
+          this.diskCheck = null;
+        });
+    }
+    return this.diskCheck;
+  }
+
+  connectionDiagnostics() {
+    return { ...this.connections.diagnostics, crypto: this.cryptoDiagnostics?.snapshot() ?? null };
+  }
+
+  setObserved(observed: boolean) {
+    if (this.observed === observed || this.closed) {
+      return;
+    }
+    clearInterval(this.timer);
+    this.observed = observed;
+    this.timer = setInterval(this.tick, observed ? 1000 : 5000);
+    this.timer.unref();
+    if (observed) {
+      this.history.length = 0;
+      this.telemetryValues = [];
+      this.lastTelemetryAt = 0;
+      this.queueTelemetry();
+    } else if (this.telemetryTimer) {
+      clearTimeout(this.telemetryTimer);
+      this.telemetryTimer = null;
+    }
+  }
+
+  async refreshSnapshot(_maxAgeMs: number) {
+    if (Date.now() - this.lastDiskAt >= this.diskInterval) {
+      await this.diskSpace();
+    }
+    return this.snapshot(null, false);
+  }
+
+  subscribeChanges(listener: (change: EngineChange) => void) {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private changed(kind: EngineChange["kind"]) {
+    if (kind === "state") {
+      this.stateRevision += 1;
+    } else {
+      this.telemetryRevision += 1;
+    }
+    for (const listener of this.listeners) {
+      listener({
+        kind,
+        stateRevision: this.stateRevision,
+        telemetryRevision: this.telemetryRevision,
+      });
+    }
+  }
+
+  private async checkStorage() {
+    for (const entry of this.entries.values()) {
+      // biome-ignore lint/suspicious/noUnnecessaryConditions: close may run while storage checks await filesystem work.
+      if (this.closed) {
+        return;
+      }
+      if (!(entry.metadata && entry.storageClaimed) || entry.moving || entry.verifying) {
+        continue;
+      }
+      // Serialize filesystem checks with pause, removal, and other lifecycle operations.
+      // biome-ignore lint/performance/noAwaitInLoops: bound filesystem work across torrents.
+      await this.serial(entry, () => this.inspectStorage(entry), { checkpoint: true }).catch(
+        () => undefined
+      );
+    }
+  }
+
+  private async inspectStorage(entry: Entry) {
+    if (entry.detail.storageIssue) {
+      return;
+    }
+    const detail = this.details(entry);
+    try {
+      entry.storageRoot = await storageRoot(detail.savePath, entry.storageRoot);
+      await this.inspectFiles(entry);
+    } catch (cause) {
+      await this.blockStorage(
+        entry,
+        storageFailure(
+          cause,
+          detail.files.map((file) => file.path)
+        )
+      );
+    }
+  }
+
+  private async inspectFiles(entry: Entry) {
+    const { detail } = entry;
+    const missing: string[] = [];
+    const modified: string[] = [];
+    const previous = new Map(entry.storageFiles.map((file) => [file.path, file]));
+    const observed: StoredFileIdentity[] = [];
+    for (const file of detail.files) {
+      const before = previous.get(file.path);
+      if (file.priority === "skip" || !(file.downloaded || before)) {
+        continue;
+      }
+      // biome-ignore lint/performance/noAwaitInLoops: bound filesystem work within a torrent.
+      const stored = await storedFile(this.storagePath(detail.savePath, file.path));
+      if (!stored) {
+        missing.push(file.path);
+      } else if (storageFileChanged(file, stored, before)) {
+        modified.push(file.path);
+      }
+      if (stored) {
+        observed.push({
+          complete: file.progress === 1,
+          dev: stored.dev,
+          ino: stored.ino,
+          mtimeMs: stored.mtimeMs,
+          path: file.path,
+          size: stored.size,
+        });
+      }
+    }
+    if (missing.length) {
+      await this.blockStorage(entry, {
+        detectedAt: Date.now(),
+        kind: "missing-files",
+        message: modified.length
+          ? "Downloaded files are missing or modified. Restore them or repair the download."
+          : "Downloaded files are missing. Restore them or repair the download.",
+        paths: [...missing, ...modified],
+      });
+    } else if (modified.length) {
+      await this.blockStorage(entry, {
+        detectedAt: Date.now(),
+        kind: "modified-files",
+        message: "Downloaded files were modified or truncated. Verify them or repair the download.",
+        paths: modified,
+      });
+    } else {
+      entry.storageFiles = observed;
+    }
+  }
+
+  private async blockStorage(entry: Entry, issue: TorrentStorageIssue) {
+    await this.stop(entry);
+    this.markStorageIssue(entry, issue);
+  }
+
+  private markStorageIssue(entry: Entry, issue: TorrentStorageIssue) {
+    entry.detail.storageIssue = issue;
+    entry.detail.error = issue.message;
+    entry.detail.downloaded = null;
+    entry.detail.progress = null;
+    entry.detail.completedAt = null;
+    entry.detail.eta = null;
+    entry.detail.verifiedPieces = null;
+    entry.detail.pieceMap = [];
+    const affectedPaths = new Set(issue.paths);
+    for (const file of entry.detail.files) {
+      if (affectedPaths.has(file.path)) {
+        file.downloaded = null;
+        file.progress = null;
+      }
+    }
+    this.save(entry);
   }
 
   private config(
@@ -304,22 +626,62 @@ export class TorrentEngine {
       .values({ key, value: serialized })
       .onConflictDoUpdate({ set: { value: serialized }, target: torrentConfig.key })
       .run();
+    if (!connection && key === "settings") {
+      this.changed("state");
+    }
   }
 
   private save(entry: Entry, connection?: DatabaseConnection) {
     const db = connection ?? this.db;
-    const { source, metadata, paused, detail, storageClaimed } = entry;
+    const {
+      source,
+      metadata,
+      paused,
+      detail,
+      storageClaimed,
+      storageRoot: root,
+      storageFiles,
+    } = entry;
     const value = JSON.stringify({
       detail,
       metadata,
       paused,
       source,
       storageClaimed,
+      storageFiles,
+      storageRoot: root,
     } satisfies StoredEntry);
+    if (this.persistedEntries.get(entry) === value) {
+      return value;
+    }
     db.insert(torrentRecords)
       .values({ id: detail.id, value })
       .onConflictDoUpdate({ set: { value }, target: torrentRecords.id })
       .run();
+    if (!connection) {
+      this.persistedEntries.set(entry, value);
+      this.dirtyEntries.delete(entry);
+      const structure = JSON.stringify({
+        completedAt: detail.completedAt,
+        destinationId: detail.destinationId,
+        error: detail.error,
+        files: detail.files.map((file) => [file.path, file.priority]),
+        id: detail.id,
+        magnet: detail.magnet,
+        moving: entry.moving ?? false,
+        name: detail.name,
+        paused,
+        savePath: detail.savePath,
+        storageIssue: detail.storageIssue,
+        trackers: detail.trackers.map((tracker) => tracker.url),
+        verifying: entry.verifying ?? false,
+      });
+      if (this.entryStructures.get(entry) !== structure) {
+        this.entryStructures.set(entry, structure);
+        this.changed("state");
+      }
+    }
+    return value;
   }
 
   private writeDestination(destination: Destination, connection?: DatabaseConnection) {
@@ -334,6 +696,9 @@ export class TorrentEngine {
   private storeDestination(destination: Destination, connection?: DatabaseConnection) {
     this.writeDestination(destination, connection);
     this.destinations.set(destination.id, destination);
+    if (!connection) {
+      this.changed("state");
+    }
     return destination;
   }
 
@@ -352,16 +717,31 @@ export class TorrentEngine {
     );
   }
 
+  private async prepareDestination(path: string) {
+    const bound = [...this.entries.values()].find(
+      (entry) => entry.storageRoot && resolvePath(entry.detail.savePath) === resolvePath(path)
+    );
+    if (bound) {
+      try {
+        await storageRoot(path, bound.storageRoot);
+      } catch (cause) {
+        throw new (HTTPError.id("CONFLICT", 409))(storageFailure(cause, []).message, { cause });
+      }
+    } else {
+      await mkdir(path, { recursive: true });
+    }
+  }
+
   async saveDestination(id: string | null, input: DestinationInput) {
     const name = input.name.trim();
     if (!(name && isAbsolute(input.downloadPath))) {
-      throw new UserError("Enter a name and an absolute folder path", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Enter a name and an absolute folder path");
     }
     if (id && !this.destinations.has(id)) {
-      throw new UserError("Tab not found", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Tab not found");
     }
     if (this.movingDestinations.size > 0) {
-      throw new UserError("A move is already in progress for this tab", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("A move is already in progress for this tab");
     }
     const downloadPath = resolvePath(input.downloadPath);
     if (id && input.moveFiles) {
@@ -382,12 +762,12 @@ export class TorrentEngine {
       }
       return destination;
     }
-    await mkdir(input.downloadPath, { recursive: true });
+    await this.prepareDestination(downloadPath);
     if (id && !this.destinations.has(id)) {
-      throw new UserError("Tab not found", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Tab not found");
     }
     if (this.movingDestinations.size > 0) {
-      throw new UserError("A move is already in progress for this tab", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("A move is already in progress for this tab");
     }
     const previous = id ? this.destinations.get(id) : undefined;
     const destination = this.storeDestination({
@@ -408,10 +788,10 @@ export class TorrentEngine {
   updateDestinationPresentation(id: string, input: DestinationPresentation) {
     const destination = this.destinations.get(id);
     if (!destination) {
-      throw new UserError("Tab not found", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Tab not found");
     }
     if (this.movingDestinations.size > 0) {
-      throw new UserError("Wait for the move to finish before editing a tab", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("Wait for the move to finish before editing a tab");
     }
     return this.storeDestination({
       ...destination,
@@ -422,10 +802,12 @@ export class TorrentEngine {
 
   async removeDestination(id: string) {
     if (!this.destinations.has(id)) {
-      throw new UserError("Tab not found", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Tab not found");
     }
     if (this.movingDestinations.size > 0) {
-      throw new UserError("Wait for the move to finish before deleting a tab", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Wait for the move to finish before deleting a tab"
+      );
     }
     // Torrents, rules and preferences fall back to the "default" ID, so deleting that tab moves
     // the next tab into the default slot and removes the next tab's former ID instead.
@@ -433,7 +815,7 @@ export class TorrentEngine {
       id === "default" ? [...this.destinations.keys()].find((key) => key !== "default") : id;
     const successor = removed === undefined ? undefined : this.destinations.get(removed);
     if (!(removed && successor)) {
-      throw new UserError("At least one tab is required", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("At least one tab is required");
     }
     const reassigned = [...this.entries.values()].filter(
       (entry) => entry.detail.destinationId === removed
@@ -456,6 +838,7 @@ export class TorrentEngine {
       this.settings.downloadPath = successor.downloadPath;
     }
     this.destinations.delete(removed);
+    this.changed("state");
     if (id === "default") {
       await this.diskSpace();
     }
@@ -476,6 +859,9 @@ export class TorrentEngine {
     let running: Entry[] = [];
     let files: RelocatedFile[] = [];
     const originalPaths = new Map(entries.map((entry) => [entry, entry.detail.savePath]));
+    const originalStorage = new Map(
+      entries.map((entry) => [entry, { files: entry.storageFiles, root: entry.storageRoot }])
+    );
     const originalDestination = this.destinations.get(id);
     const originalDefaultPath = this.settings.downloadPath;
     const published: string[] = [];
@@ -488,7 +874,7 @@ export class TorrentEngine {
       );
       this.validateMove(entries);
       await Promise.all(entries.map((entry) => this.stop(entry)));
-      await mkdir(downloadPath, { recursive: true });
+      await this.prepareDestination(downloadPath);
       staging = await mkdtemp(join(downloadPath, ".tofu-move-"));
       files = await this.planMove(entries, downloadPath, staging);
       const copies = await Promise.allSettled(
@@ -499,9 +885,12 @@ export class TorrentEngine {
         throw failure.reason;
       }
       await this.publishMove(files, published);
+      const movedRoot = await storageRoot(downloadPath, null);
       this.db.transaction((tx) => {
         for (const entry of entries) {
           entry.detail.savePath = downloadPath;
+          entry.storageRoot = movedRoot;
+          entry.storageFiles = [];
           this.save(entry, tx);
         }
         this.storeDestination(destination, tx);
@@ -511,17 +900,19 @@ export class TorrentEngine {
         }
       });
       committed = true;
+      this.changed("state");
       const cleanup = await Promise.allSettled(files.map((file) => rm(file.source)));
       if (cleanup.some((result) => result.status === "rejected")) {
-        throw new UserError(
-          "Files were moved, but some copies in the old folder could not be removed. The new folder is active.",
-          { status: 500 }
+        throw new (HTTPError.id("INTERNAL_SERVER_ERROR", 500))(
+          "Files were moved, but some copies in the old folder could not be removed. The new folder is active."
         );
       }
     } catch (cause) {
       if (!committed) {
         for (const [entry, path] of originalPaths) {
           entry.detail.savePath = path;
+          entry.storageRoot = originalStorage.get(entry)?.root ?? null;
+          entry.storageFiles = originalStorage.get(entry)?.files ?? [];
         }
         if (originalDestination) {
           this.destinations.set(id, originalDestination);
@@ -554,7 +945,7 @@ export class TorrentEngine {
   private validateMove(entries: Entry[]) {
     for (const entry of entries) {
       if (this.entries.get(entry.detail.id) !== entry) {
-        throw new UserError("Torrent not found", { status: 404 });
+        throw new (HTTPError.id("NOT_FOUND", 404))("Torrent not found");
       }
       const status = entryStatus(entry);
       if (
@@ -562,28 +953,28 @@ export class TorrentEngine {
         entry.verifying ||
         (entry.torrent?.metadata && !entry.torrent.ready)
       ) {
-        throw new UserError(
-          `${entry.detail.name} is being verified. Try again after verification completes.`,
-          { status: 409 }
+        throw new (HTTPError.id("CONFLICT", 409))(
+          `${entry.detail.name} is being verified. Try again after verification completes.`
         );
       }
       if (!entry.metadata || status === "metadata") {
-        throw new UserError(`The metadata for ${entry.detail.name} is not available yet.`, {
-          status: 409,
-        });
+        throw new (HTTPError.id("CONFLICT", 409))(
+          `The metadata for ${entry.detail.name} is not available yet.`
+        );
       }
       if (entry.detail.error) {
-        throw new UserError(`Unable to move ${entry.detail.name} : ${entry.detail.error}`, {
-          status: 409,
-        });
+        throw new (HTTPError.id("CONFLICT", 409))(
+          `Unable to move ${entry.detail.name} : ${entry.detail.error}`
+        );
       }
     }
   }
 
   private async planMove(entries: Entry[], downloadPath: string, staging: string) {
+    const movingEntries = new Set(entries);
     const reserved = new Set(
       [...this.entries.values()]
-        .filter((entry) => !entries.includes(entry) && entry.storageClaimed)
+        .filter((entry) => !movingEntries.has(entry) && entry.storageClaimed)
         .flatMap((entry) =>
           entry.detail.files.map((file) => this.storageKey(entry.detail.savePath, file.path))
         )
@@ -606,9 +997,8 @@ export class TorrentEngine {
         targets.has(item.targetKey) ||
         sources.has(item.targetKey)
       ) {
-        throw new UserError(
-          `The file ${item.file.path} is already used by another torrent. Choose another folder.`,
-          { status: 409 }
+        throw new (HTTPError.id("CONFLICT", 409))(
+          `The file ${item.file.path} is already used by another torrent. Choose another folder.`
         );
       }
       targets.add(item.targetKey);
@@ -617,27 +1007,24 @@ export class TorrentEngine {
       planned.map(async ({ file, source, target }, index) => {
         const [existing, stored] = await Promise.all([storedFile(target), storedFile(source)]);
         if (existing) {
-          throw new UserError(
-            `A file already exists in the destination folder : ${target}. It will not be overwritten.`,
-            { status: 409 }
+          throw new (HTTPError.id("CONFLICT", 409))(
+            `A file already exists in the destination folder : ${target}. It will not be overwritten.`
           );
         }
         if (!stored) {
-          if (file.downloaded > 0 || (file.progress === 1 && file.length > 0)) {
-            throw new UserError(
-              `The downloaded file is no longer present : ${source}. Restore it or verify the torrent before retrying.`,
-              { status: 404 }
+          if ((file.downloaded ?? 0) > 0 || (file.progress === 1 && file.length > 0)) {
+            throw new (HTTPError.id("NOT_FOUND", 404))(
+              `The downloaded file is no longer present : ${source}. Restore it or verify the torrent before retrying.`
             );
           }
           return null;
         }
         if (!stored.isFile()) {
-          throw new UserError(`This path is not a file : ${source}`, { status: 409 });
+          throw new (HTTPError.id("CONFLICT", 409))(`This path is not a file : ${source}`);
         }
-        if (stored.size < file.downloaded) {
-          throw new UserError(
-            `The downloaded file was modified or truncated : ${source}. Verify the torrent before moving it.`,
-            { status: 409 }
+        if (stored.size < (file.downloaded ?? 0)) {
+          throw new (HTTPError.id("CONFLICT", 409))(
+            `The downloaded file was modified or truncated : ${source}. Verify the torrent before moving it.`
           );
         }
         return { source, staged: join(staging, String(index)), target };
@@ -661,12 +1048,43 @@ export class TorrentEngine {
     }
   }
 
+  private canonicalStorageRoot(root: StorageIdentity) {
+    return (
+      [...this.entries.values()].find(
+        (entry) =>
+          entry.storageRoot?.dev === root.dev &&
+          entry.storageRoot.ino === root.ino &&
+          entry.storageRoot.canonicalPath
+      )?.storageRoot?.canonicalPath ?? root.canonicalPath
+    );
+  }
+
   private storageKey(savePath: string, filePath: string) {
     try {
-      return resolvePath(realpathSync(savePath), filePath);
+      return resolvePath(
+        this.canonicalStorageRoot(statSync(savePath)) ?? realpathSync(savePath),
+        filePath
+      );
     } catch (cause) {
-      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
-        return resolvePath(savePath, filePath);
+      if (
+        cause instanceof Error &&
+        "code" in cause &&
+        ["ENOENT", "EACCES", "EPERM", "ENODEV", "EIO"].includes(String(cause.code))
+      ) {
+        const root = [...this.entries.values()].find(
+          (entry) => resolvePath(entry.detail.savePath) === resolvePath(savePath)
+        )?.storageRoot;
+        const canonical = root ? this.canonicalStorageRoot(root) : undefined;
+        if (canonical) {
+          return resolvePath(canonical, filePath);
+        }
+        if (cause.code === "ENOENT") {
+          return resolvePath(savePath, filePath);
+        }
+        throw new (HTTPError.id("CONFLICT", 409))(
+          "Restore access to the unavailable destination before checking file ownership.",
+          { cause }
+        );
       }
       throw cause;
     }
@@ -676,16 +1094,14 @@ export class TorrentEngine {
     const path = resolvePath(savePath, filePath);
     const within = relative(savePath, path);
     if (!within || within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within)) {
-      throw new UserError("File path outside the download folder", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("File path outside the download folder");
     }
     let component = savePath;
     for (const part of within.split(sep)) {
       component = join(component, part);
       try {
         if (lstatSync(component).isSymbolicLink()) {
-          throw new UserError("A symbolic link is present in the file path", {
-            status: 409,
-          });
+          throw new (HTTPError.id("CONFLICT", 409))("A symbolic link is present in the file path");
         }
       } catch (cause) {
         if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
@@ -700,20 +1116,18 @@ export class TorrentEngine {
   private resolveDestination(options: { destinationId?: string; downloadPath?: string }) {
     const chosen = this.destinations.get(options.destinationId ?? "");
     if (options.destinationId && !chosen) {
-      throw new UserError("Tab not found", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Tab not found");
     }
     const downloadPath =
       chosen?.downloadPath ?? (options.downloadPath || this.settings.downloadPath);
     if (!isAbsolute(downloadPath)) {
-      throw new UserError("The download folder must be an absolute path", {
-        status: 400,
-      });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("The download folder must be an absolute path");
     }
     const destination = chosen ?? this.destinationForPath(downloadPath);
     if (this.movingDestinations.size > 0) {
-      throw new UserError("Wait for the move to finish before adding a torrent", {
-        status: 409,
-      });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Wait for the move to finish before adding a torrent"
+      );
     }
     return destination;
   }
@@ -726,40 +1140,51 @@ export class TorrentEngine {
     if (typeof source === "string" && torrentUrl.test(source)) {
       const response = await fetch(source, { signal: AbortSignal.timeout(15_000) });
       if (!response.ok) {
-        throw new UserError(`The torrent file is inaccessible (HTTP ${response.status})`, {
-          status: 400,
-        });
+        throw new (HTTPError.id("BAD_REQUEST", 400))(
+          `The torrent file is inaccessible (HTTP ${response.status})`
+        );
       }
       source = new Uint8Array(await response.arrayBuffer());
       if (source.length > 8 * 1024 * 1024) {
-        throw new UserError("The torrent file is too large", { status: 400 });
+        throw new (HTTPError.id("BAD_REQUEST", 400))("The torrent file is too large");
       }
     }
     let parsed: Awaited<ReturnType<typeof parseTorrent>>;
     try {
       parsed = await parseTorrent(source);
     } catch (cause) {
-      throw new UserError("Invalid magnet link or .torrent file (BitTorrent v1 required)", {
-        cause,
-        status: 400,
-      });
+      throw new (HTTPError.id("BAD_REQUEST", 400))(
+        "Invalid magnet link or .torrent file (BitTorrent v1 required)",
+        {
+          cause,
+        }
+      );
     }
     const id = parsed.infoHash;
     parsed.announce = trackerUrls([...parsed.announce, ...(options.trackers ?? [])]);
     const destination = this.resolveDestination(options);
     const { downloadPath } = destination;
     const savePath = downloadPath;
-    await mkdir(savePath, { recursive: true });
     if (!this.destinations.has(destination.id)) {
-      throw new UserError("Tab not found", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Tab not found");
     }
     if (this.movingDestinations.size > 0) {
-      throw new UserError("Wait for the move to finish before adding a torrent", {
-        status: 409,
-      });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Wait for the move to finish before adding a torrent"
+      );
     }
     if (this.entries.has(id)) {
-      throw new UserError("This torrent is already in your library", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("This torrent is already in your library");
+    }
+    await this.prepareDestination(savePath);
+    const root = await storageRoot(savePath, null);
+    if (this.entries.has(id)) {
+      throw new (HTTPError.id("CONFLICT", 409))("This torrent is already in your library");
+    }
+    if (!this.destinations.has(destination.id) || this.movingDestinations.size > 0) {
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "The destination changed while adding the torrent. Try again."
+      );
     }
 
     const detail: TorrentDetail = {
@@ -800,6 +1225,7 @@ export class TorrentEngine {
       seedSeconds: 0,
       seeds: 0,
       status: "metadata",
+      storageIssue: null,
       swarmPeers: null,
       swarmSeeds: null,
       trackers: parsed.announce.map(trackerStats),
@@ -814,6 +1240,8 @@ export class TorrentEngine {
       paused: options.paused,
       source: detail.magnet,
       storageClaimed: false,
+      storageFiles: [],
+      storageRoot: root,
       torrent: null,
     };
     this.entries.set(id, entry);
@@ -837,19 +1265,27 @@ export class TorrentEngine {
     );
   }
 
-  private async start(entry: Entry) {
+  private async start(entry: Entry, options?: { checking: boolean }) {
+    if (!options?.checking) {
+      await this.inspectStorage(entry);
+      if (entry.detail.storageIssue) {
+        return;
+      }
+    }
     const parsed = await parseTorrent(
       entry.metadata ? Buffer.from(entry.metadata, "base64") : entry.source
     );
     parsed.peerAddresses = (await parseTorrent(entry.source)).peerAddresses;
     parsed.announce = entry.detail.trackers.map((tracker) => tracker.url);
-    entry.detail.error = null;
+    const expected = new Map(entry.detail.files.map((file) => [file.path, file.downloaded ?? 0]));
+    entry.detail.error = entry.detail.storageIssue?.message ?? null;
     entry.torrent = this.client.add(parsed, {
       deselect: true,
       path: entry.detail.savePath,
-      paused: entry.paused,
+      paused: options?.checking || entry.paused,
     });
     const { torrent } = entry;
+    this.connections.attach(torrent);
     const { detail } = entry;
     torrent.on("metadata", () => {
       entry.metadata = Buffer.from(torrent.torrentFile).toString("base64");
@@ -890,6 +1326,8 @@ export class TorrentEngine {
     });
     // WebTorrent 3.0.21 compares against torrent.peerId rather than client.peerId.
     torrent.on("wire", (wire: Torrent["wires"][number], address: string | undefined) => {
+      this.queueTelemetry();
+      wire.once("close", this.queueTelemetry.bind(this));
       if (wire.peerId !== this.client.peerId) {
         return;
       }
@@ -899,32 +1337,95 @@ export class TorrentEngine {
       wire.destroy();
     });
     torrent.on("download", (bytes) => {
+      this.dirtyEntries.add(entry);
+      this.trafficDirty = true;
       detail.received += bytes;
       this.received += bytes;
       detail.lastTransferAt = Date.now();
+      this.queueTelemetry();
     });
     torrent.on("upload", (bytes) => {
+      this.dirtyEntries.add(entry);
+      this.trafficDirty = true;
       detail.uploaded += bytes;
       this.uploaded += bytes;
       detail.lastTransferAt = Date.now();
+      this.queueTelemetry();
+    });
+    torrent.on("verified", () => {
+      this.dirtyEntries.add(entry);
+      this.queueTelemetry();
     });
     torrent.on("error", (error) => {
+      if (entry.torrent !== torrent) {
+        return;
+      }
       detail.error = String(error);
       if (entry.torrent === torrent) {
         entry.torrent = null;
       }
       entry.unwatch?.();
+      const issue = storageFailure(
+        error,
+        detail.files.map((file) => file.path)
+      );
+      if (issue.kind !== "io-error" || (error instanceof Error && "code" in error)) {
+        this.markStorageIssue(entry, issue);
+      } else {
+        this.save(entry);
+      }
     });
     torrent.on("ready", () => {
       entry.metadata = Buffer.from(torrent.torrentFile).toString("base64");
       this.details(entry);
-      this.selectFiles(entry);
+      if (!options?.checking) {
+        const invalid = detail.files.filter(
+          (file) =>
+            file.priority !== "skip" && (file.downloaded ?? 0) < (expected.get(file.path) ?? 0)
+        );
+        if (invalid.length) {
+          torrent.pause();
+          void this.serial(entry, () =>
+            this.blockStorage(entry, {
+              detectedAt: Date.now(),
+              kind: "modified-files",
+              message:
+                "Previously downloaded pieces are missing or invalid. Repair the download to continue.",
+              paths: invalid.map((file) => file.path),
+            })
+          ).catch(() => undefined);
+          return;
+        }
+        this.selectFiles(entry);
+      }
       this.save(entry);
     });
     torrent.on("done", () => {
       detail.completedAt ??= Date.now();
       this.details(entry);
       this.save(entry);
+      // Record completed file identities independently of periodic storage validation.
+      void this.serial(entry, async () => {
+        const identities = new Map(entry.storageFiles.map((file) => [file.path, file]));
+        for (const file of detail.files) {
+          if (file.progress !== 1) {
+            continue;
+          }
+          // biome-ignore lint/performance/noAwaitInLoops: bound filesystem work within a torrent.
+          const stored = await storedFile(this.storagePath(detail.savePath, file.path));
+          if (stored) {
+            identities.set(file.path, {
+              complete: true,
+              dev: stored.dev,
+              ino: stored.ino,
+              mtimeMs: stored.mtimeMs,
+              path: file.path,
+              size: stored.size,
+            });
+          }
+        }
+        entry.storageFiles = [...identities.values()];
+      }).catch(console.error);
     });
     entry.unwatch = watchTrackers(torrent, detail.trackers);
   }
@@ -936,6 +1437,7 @@ export class TorrentEngine {
     }
     this.details(entry);
     entry.unwatch?.();
+    this.connections.detach(torrent);
     entry.torrent = null;
     if (await this.client.get(entry.detail.id)) {
       await new Promise<void>((resolve, reject) =>
@@ -946,21 +1448,25 @@ export class TorrentEngine {
     }
   }
 
-  private serial(entry: Entry, action: () => Promise<void>) {
+  private serial(entry: Entry, action: () => Promise<void>, options?: { checkpoint: boolean }) {
     if (entry.moving) {
-      throw new UserError("This torrent's files are being moved. Try again afterward.", {
-        status: 409,
-      });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "This torrent's files are being moved. Try again afterward."
+      );
     }
     const next = entry.operation
       .catch(() => undefined)
       .then(async () => {
         if (this.entries.get(entry.detail.id) !== entry) {
-          throw new UserError("Torrent not found", { status: 404 });
+          throw new (HTTPError.id("NOT_FOUND", 404))("Torrent not found");
         }
         await action();
         if (this.entries.get(entry.detail.id) === entry) {
-          this.save(entry);
+          if (options?.checkpoint) {
+            this.dirtyEntries.add(entry);
+          } else {
+            this.save(entry);
+          }
         }
       });
     entry.operation = next;
@@ -979,6 +1485,12 @@ export class TorrentEngine {
   async resume(id: string) {
     const entry = this.get(id);
     await this.serial(entry, async () => {
+      await this.inspectStorage(entry);
+      if (entry.detail.storageIssue) {
+        throw new (HTTPError.id("CONFLICT", 409))(
+          "Resolve the storage problem or repair the download before resuming"
+        );
+      }
       entry.paused = false;
       if (!entry.torrent) {
         await this.start(entry);
@@ -1009,6 +1521,14 @@ export class TorrentEngine {
     await this.serial(entry, async () => {
       await this.stop(entry);
       if (deleteFiles && entry.storageClaimed) {
+        try {
+          await storageRoot(entry.detail.savePath, entry.storageRoot);
+        } catch (cause) {
+          throw new (HTTPError.id("CONFLICT", 409))(
+            "The original storage is unavailable. Reconnect it before deleting files, or remove the torrent while keeping its data.",
+            { cause }
+          );
+        }
         const shared = new Set(
           [...this.entries.values()]
             .filter((other) => other !== entry && other.storageClaimed)
@@ -1029,7 +1549,11 @@ export class TorrentEngine {
         );
       }
       this.entries.delete(id);
+      this.dirtyEntries.delete(entry);
+      this.persistedEntries.delete(entry);
+      this.entryStructures.delete(entry);
       this.db.delete(torrentRecords).where(eq(torrentRecords.id, id)).run();
+      this.changed("state");
     });
     return { ok: true };
   }
@@ -1059,7 +1583,7 @@ export class TorrentEngine {
     await this.serial(entry, () => {
       const file = this.details(entry).files[index];
       if (!file) {
-        throw new UserError("File not found", { status: 404 });
+        throw new (HTTPError.id("NOT_FOUND", 404))("File not found");
       }
       file.priority = priority;
       this.selectFiles(entry);
@@ -1068,43 +1592,112 @@ export class TorrentEngine {
     return { ok: true };
   }
 
-  async verify(id: string) {
-    const entry = this.get(id);
+  private assertVerification(entry: Entry) {
     if (entry.verifying || entryStatus(entry) === "checking") {
-      throw new UserError("Verification is already in progress for this torrent", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Verification is already in progress for this torrent"
+      );
     }
     if (!entry.metadata) {
-      throw new UserError("Metadata must be available before verification", {
-        status: 409,
-      });
+      throw new (HTTPError.id("CONFLICT", 409))("Metadata must be available before verification");
     }
-    const operation = this.serial(entry, async () => {
-      await this.stop(entry);
-      await this.start(entry);
-      const { torrent } = entry;
-      if (!torrent) {
-        throw new UserError("Unable to verify", { status: 500 });
+  }
+
+  private async verifyData(entry: Entry) {
+    try {
+      entry.storageRoot = await storageRoot(entry.detail.savePath, entry.storageRoot);
+      for (const file of entry.detail.files) {
+        const path = this.storagePath(entry.detail.savePath, file.path);
+        if (file.priority !== "skip") {
+          // biome-ignore lint/performance/noAwaitInLoops: preflight access before the engine can treat read failures as missing pieces.
+          await storedFile(path);
+        }
       }
+    } catch (cause) {
+      const issue = storageFailure(
+        cause,
+        entry.detail.files.map((file) => file.path)
+      );
+      await this.blockStorage(entry, issue);
+      throw new (HTTPError.id("CONFLICT", 409))(issue.message, { cause });
+    }
+    await this.stop(entry);
+    await this.start(entry, { checking: true });
+    const { torrent } = entry;
+    if (!torrent) {
+      throw new (HTTPError.id("INTERNAL_SERVER_ERROR", 500))("Unable to verify");
+    }
+    try {
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(
-          () =>
-            reject(new UserError("Verification exceeded the 60-second timeout", { status: 408 })),
-          60_000
-        );
-        torrent.once("ready", () => {
+        const cleanup = () => {
           clearTimeout(timeout);
+          torrent.off("error", failed);
+          torrent.off("ready", ready);
+          torrent.off("close", closed);
+        };
+        const timeout = setTimeout(() => {
+          cleanup();
+          reject(
+            new (HTTPError.id("REQUEST_TIMEOUT", 408))(
+              "Verification exceeded the 60-second timeout"
+            )
+          );
+        }, 60_000);
+        const ready = () => {
+          cleanup();
           resolve();
-        });
-        torrent.once("error", (error) => {
-          clearTimeout(timeout);
-          reject(error);
-        });
+        };
+        const failed = (error: Error | string) => {
+          cleanup();
+          reject(error instanceof Error ? error : new Error(error));
+        };
+        const closed = () => {
+          cleanup();
+          reject(
+            new (HTTPError.id("CONFLICT", 409))(
+              entry.detail.error ?? "Verification stopped before completion"
+            )
+          );
+        };
+        torrent.once("ready", ready);
+        torrent.once("error", failed);
+        torrent.once("close", closed);
       });
       this.details(entry);
-      if (entry.paused) {
-        await this.stop(entry);
+      entry.storageFiles = [];
+      await this.inspectFiles(entry);
+      if (entry.torrent !== torrent) {
+        throw new (HTTPError.id("CONFLICT", 409))(
+          entry.detail.storageIssue?.message ?? "Unable to verify storage"
+        );
       }
-    });
+    } catch (cause) {
+      await this.stop(entry);
+      entry.detail.error ??= cause instanceof Error ? cause.message : "Unable to verify storage";
+      this.save(entry);
+      throw cause;
+    }
+  }
+
+  private async finishVerification(entry: Entry) {
+    if (entry.paused || entry.detail.storageIssue) {
+      await this.stop(entry);
+    } else {
+      this.selectFiles(entry);
+      entry.torrent?.resume();
+      const parsed = await parseTorrent(entry.source);
+      for (const peer of parsed.peerAddresses ?? []) {
+        entry.torrent?.addPeer(peer);
+      }
+      if (entry.torrent) {
+        announce(entry.torrent);
+      }
+    }
+  }
+
+  private async checkedOperation(entry: Entry, action: () => Promise<void>) {
+    this.assertVerification(entry);
+    const operation = this.serial(entry, action);
     entry.verifying = true;
     try {
       await operation;
@@ -1114,22 +1707,149 @@ export class TorrentEngine {
     return { ok: true };
   }
 
+  verify(id: string) {
+    const entry = this.get(id);
+    return this.checkedOperation(entry, async () => {
+      const expected = new Map(
+        this.details(entry).files.map((file) => [file.path, file.downloaded ?? 0])
+      );
+      await this.inspectStorage(entry);
+      await this.verifyData(entry);
+      const invalid = entry.detail.files.filter(
+        (file) =>
+          file.priority !== "skip" && (file.downloaded ?? 0) < (expected.get(file.path) ?? 0)
+      );
+      if (invalid.length && !entry.detail.storageIssue) {
+        entry.detail.storageIssue = {
+          detectedAt: Date.now(),
+          kind: "modified-files",
+          message:
+            "Previously downloaded pieces are missing or invalid. Repair the download to continue.",
+          paths: invalid.map((file) => file.path),
+        };
+        entry.detail.error = entry.detail.storageIssue.message;
+      }
+      if (
+        entry.detail.files
+          .filter((file) => file.priority !== "skip")
+          .every((file) => file.progress === 1)
+      ) {
+        entry.detail.storageIssue = null;
+        entry.detail.error = null;
+      }
+      await this.finishVerification(entry);
+    });
+  }
+
+  repair(id: string) {
+    const entry = this.get(id);
+    return this.checkedOperation(entry, async () => {
+      await this.verifyData(entry);
+      entry.detail.storageIssue = null;
+      entry.detail.error = null;
+      await this.finishVerification(entry);
+    });
+  }
+
+  private assertLocation(entry: Entry, path: string) {
+    for (const file of entry.detail.files) {
+      this.storagePath(path, file.path);
+      const key = this.storageKey(path, file.path);
+      if (
+        [...this.entries.values()].some(
+          (other) =>
+            other !== entry &&
+            other.storageClaimed &&
+            other.detail.files.some(
+              (candidate) => this.storageKey(other.detail.savePath, candidate.path) === key
+            )
+        )
+      ) {
+        throw new (HTTPError.id("CONFLICT", 409))(
+          "These files are already used by another torrent. Choose another folder."
+        );
+      }
+    }
+  }
+
+  locate(id: string, downloadPath: string) {
+    const entry = this.get(id);
+    if (!isAbsolute(downloadPath)) {
+      throw new (HTTPError.id("BAD_REQUEST", 400))("The folder must be an absolute path");
+    }
+    const path = resolvePath(downloadPath);
+    return this.checkedOperation(entry, async () => {
+      let root: StorageIdentity;
+      try {
+        root = await storageRoot(path, null);
+        this.assertLocation(entry, path);
+      } catch (cause) {
+        throw cause instanceof HTTPError
+          ? cause
+          : new (HTTPError.id("CONFLICT", 409))(storageFailure(cause, []).message, { cause });
+      }
+      await this.stop(entry);
+      try {
+        this.assertLocation(entry, path);
+      } catch (cause) {
+        if (!(entry.paused || entry.detail.storageIssue)) {
+          await this.start(entry);
+        }
+        throw cause;
+      }
+      entry.detail.savePath = path;
+      entry.storageRoot = root;
+      entry.storageFiles = [];
+      entry.storageClaimed = true;
+      await this.verifyData(entry);
+      if (
+        entry.detail.files
+          .filter((file) => file.priority !== "skip")
+          .every((file) => file.progress === 1)
+      ) {
+        entry.detail.storageIssue = null;
+        entry.detail.error = null;
+      } else {
+        entry.detail.storageIssue = {
+          detectedAt: Date.now(),
+          kind: "modified-files",
+          message:
+            "Some selected data is missing or invalid in this folder. Repair the download to continue.",
+          paths: entry.detail.files
+            .filter((file) => file.priority !== "skip" && file.progress !== 1)
+            .map((file) => file.path),
+        };
+        entry.detail.error = entry.detail.storageIssue.message;
+      }
+      await this.finishVerification(entry);
+    });
+  }
+
   addPeer(id: string, peer: string) {
     const entry = this.get(id);
     if (!entry.torrent || entry.paused) {
-      throw new UserError("Resume the torrent before adding a peer", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("Resume the torrent before adding a peer");
+    }
+    if (
+      entry.torrent.ready &&
+      entry.torrent.done &&
+      this.settings.seedingConnectionMode === "incoming-only"
+    ) {
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Switch seeding connections to Balanced before adding an outgoing peer to a completed torrent"
+      );
     }
     let address: URL;
     try {
       address = new URL(`tcp://${peer}`);
     } catch (cause) {
-      throw new UserError("Invalid address, use IP:port", { cause, status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Invalid address, use IP:port", { cause });
     }
     if (!(address.hostname && address.port) || Number(address.port) < 1) {
-      throw new UserError("Invalid address, use IP:port", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("Invalid address, use IP:port");
     }
-    if (!entry.torrent.addPeer(peer)) {
-      throw new UserError("This peer is invalid or already connected", { status: 400 });
+    if (!entry.torrent.addPeer(peer, "manual")) {
+      throw new (HTTPError.id("BAD_REQUEST", 400))("This peer is invalid or already connected");
     }
     return parseTorrent(entry.source).then((parsed) => {
       parsed.peerAddresses = [...new Set([...(parsed.peerAddresses ?? []), peer])];
@@ -1142,7 +1862,7 @@ export class TorrentEngine {
 
   async updateSettings(settings: SettingsInput) {
     if (settings.downloadPath !== undefined && !isAbsolute(settings.downloadPath)) {
-      throw new UserError("The folder must be an absolute path", { status: 400 });
+      throw new (HTTPError.id("BAD_REQUEST", 400))("The folder must be an absolute path");
     }
     const destination = this.destinations.get("default");
     if (destination && settings.downloadPath !== undefined) {
@@ -1153,17 +1873,22 @@ export class TorrentEngine {
       });
     }
     Object.assign(this.settings, {
+      deleteTorrentFileAfterAdd:
+        settings.deleteTorrentFileAfterAdd ?? this.settings.deleteTorrentFileAfterAdd,
       downloadLimit: settings.downloadLimit ?? this.settings.downloadLimit,
       downloadPath:
         settings.downloadPath === undefined
           ? this.settings.downloadPath
           : resolvePath(settings.downloadPath),
       runInBackground: settings.runInBackground ?? this.settings.runInBackground,
+      seedingConnectionMode: settings.seedingConnectionMode ?? this.settings.seedingConnectionMode,
       theme: settings.theme ?? this.settings.theme,
       uploadLimit: settings.uploadLimit ?? this.settings.uploadLimit,
     });
     this.client.throttleDownload(this.settings.downloadLimit);
     this.client.throttleUpload(this.settings.uploadLimit);
+    this.connections.setSeedingMode(this.settings.seedingConnectionMode);
+    this.client.seedOutgoingConnections = this.settings.seedingConnectionMode === "balanced";
     this.config("settings", this.settings);
     await this.diskSpace();
     return this.settings;
@@ -1172,10 +1897,12 @@ export class TorrentEngine {
   reannounce(id: string) {
     const entry = this.get(id);
     if (!entry.torrent || entry.paused) {
-      throw new UserError("Resume the torrent before refreshing its trackers", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Resume the torrent before refreshing its trackers"
+      );
     }
     if (!announce(entry.torrent)) {
-      throw new UserError("The tracker connection is not ready yet", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("The tracker connection is not ready yet");
     }
     for (const row of entry.detail.trackers) {
       row.status = "announcing";
@@ -1186,7 +1913,7 @@ export class TorrentEngine {
   get(id: string) {
     const entry = this.entries.get(id);
     if (!entry) {
-      throw new UserError("Torrent not found", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("Torrent not found");
     }
     return entry;
   }
@@ -1217,13 +1944,17 @@ export class TorrentEngine {
     if (!torrent) {
       detail.peerList = [];
       detail.seeds = 0;
+      detail.eta = null;
     }
     if (entry.paused) {
       for (const row of detail.trackers) {
         row.status = "paused";
       }
     }
-    detail.ratio = detail.downloaded > 0 ? detail.uploaded / detail.downloaded : null;
+    detail.ratio =
+      detail.downloaded !== null && detail.downloaded > 0
+        ? detail.uploaded / detail.downloaded
+        : null;
     return detail;
   }
 
@@ -1255,15 +1986,18 @@ export class TorrentEngine {
       const priorities = new Map(
         detail.files.map((file) => [canonicalPath(file.path), file.priority])
       );
-      detail.files = torrent.files.map((file, index) => ({
-        downloaded: file.done ? file.length : file.downloaded,
-        index,
-        length: file.length,
-        name: file.name,
-        path: canonicalPath(file.path),
-        priority: priorities.get(canonicalPath(file.path)) ?? "normal",
-        progress: file.done ? 1 : file.progress,
-      }));
+      detail.files = torrent.files.map((file, index) => {
+        const downloaded = verifiedFileBytes(torrent, file);
+        return {
+          downloaded,
+          index,
+          length: file.length,
+          name: file.name,
+          path: canonicalPath(file.path),
+          priority: priorities.get(canonicalPath(file.path)) ?? "normal",
+          progress: file.length ? downloaded / file.length : 1,
+        };
+      });
       detail.peerList = peers(torrent);
       detail.seeds = detail.peerList.filter((peer) => peer.progress === 1).length;
     }
@@ -1323,53 +2057,87 @@ export class TorrentEngine {
 
   async file(id: string, index: number) {
     const entry = this.get(id);
+    if (!(entry.verifying || entry.moving)) {
+      await this.serial(entry, () => this.inspectStorage(entry));
+    }
     const detail = this.details(entry);
     if (detail.status === "checking" || entry.verifying) {
-      throw new UserError("Files are being verified. Try again after verification completes.", {
-        status: 409,
-      });
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Files are being verified. Try again after verification completes."
+      );
     }
     if (entry.moving) {
-      throw new UserError("Files are being moved. Try again afterward.", {
-        status: 409,
-      });
+      throw new (HTTPError.id("CONFLICT", 409))("Files are being moved. Try again afterward.");
     }
     const file = detail.files[index];
     if (!file) {
-      throw new UserError("File not found", { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))("File not found");
+    }
+    if (detail.storageIssue?.paths.includes(file.path)) {
+      throw new (HTTPError.id(
+        detail.storageIssue.kind === "missing-files" ? "NOT_FOUND" : "CONFLICT",
+        detail.storageIssue.kind === "missing-files" ? 404 : 409
+      ))(
+        detail.storageIssue.kind === "missing-files"
+          ? `The downloaded file is no longer present : ${file.path}`
+          : detail.storageIssue.message
+      );
     }
     if (file.progress !== 1) {
-      throw new UserError("This file has not finished downloading", { status: 409 });
+      throw new (HTTPError.id("CONFLICT", 409))("This file has not finished downloading");
     }
     const path = this.storagePath(detail.savePath, file.path);
     if (!(await Bun.file(path).exists())) {
-      throw new UserError(`The downloaded file is no longer present : ${path}`, { status: 404 });
+      throw new (HTTPError.id("NOT_FOUND", 404))(
+        `The downloaded file is no longer present : ${path}`
+      );
     }
     return { name: file.name, path };
   }
 
   async close() {
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: subsequent calls observe the assignment below; closing must be idempotent.
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: lifecycle state changes between public close calls.
     if (this.closed) {
       return;
     }
     this.closed = true;
-    clearInterval(this.timer);
-    await this.destinationOperation?.catch(() => undefined);
-    await Promise.all(
-      [...this.entries.values()].map((entry) => entry.operation.catch(() => undefined))
-    );
-    for (const entry of this.entries.values()) {
-      this.details(entry);
-      entry.unwatch?.();
+    try {
+      clearInterval(this.timer);
+      if (this.telemetryTimer) {
+        clearTimeout(this.telemetryTimer);
+      }
+      this.connections.close();
+      this.listeners.clear();
+      await this.diskCheck;
+      await this.storageCheck;
+      await this.destinationOperation?.catch(() => undefined);
+      await Promise.all(
+        [...this.entries.values()].map((entry) => entry.operation.catch(() => undefined))
+      );
+      // Drain torrent stores before bounding cleanup of remote router mappings.
+      await Promise.all([...this.entries.values()].map((entry) => this.stop(entry)));
+      for (const entry of this.entries.values()) {
+        this.save(entry);
+      }
+      this.config("traffic", { received: this.received, uploaded: this.uploaded });
+      this.db.$client.close(true);
+      if (!this.client.destroyed) {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            new Promise<void>((resolve, reject) =>
+              this.client.destroy((error) => (error ? reject(error) : resolve()))
+            ),
+            new Promise<void>((resolve) => {
+              deadline = setTimeout(resolve, 1000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(deadline);
+        }
+      }
+    } finally {
+      this.cryptoDiagnostics?.close();
     }
-    if (!this.client.destroyed) {
-      await new Promise<void>((resolve) => this.client.destroy(() => resolve()));
-    }
-    for (const entry of this.entries.values()) {
-      this.save(entry);
-    }
-    this.config("traffic", { received: this.received, uploaded: this.uploaded });
-    this.db.$client.close(true);
   }
 }

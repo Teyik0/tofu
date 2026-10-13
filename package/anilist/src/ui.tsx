@@ -3,7 +3,6 @@ import type { PluginRouteContext } from "@tofu/plugins/routes";
 import { api, coreClient } from "./client-api";
 import { AniListIcon } from "./components/icon";
 import { AniListLibrary } from "./components/library";
-import { readData } from "./lib/api-data";
 
 export const ui = {
   pages: [
@@ -17,10 +16,16 @@ export const ui = {
         return defineRoute()
           .config({ layout: threadLayout, mode: "ssr" })
           .loader(async () => {
-            const [initialAniList, initialAutomation] = await Promise.all([
-              api.anilist.get().then(readData),
-              coreClient.automation.get().then(readData),
-            ]);
+            const [
+              { data: initialAniList, error: anilistError },
+              { data: initialAutomation, error: automationError },
+            ] = await Promise.all([api.anilist.get(), coreClient.automation.get()]);
+            if (anilistError) {
+              throw anilistError;
+            }
+            if (automationError) {
+              throw automationError;
+            }
             return { initialAniList, initialAutomation };
           })
           .head(() => ({ meta: [{ title: "AniList — Tofu" }] }))

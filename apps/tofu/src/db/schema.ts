@@ -1,8 +1,3 @@
-// biome-ignore-all lint/performance/noBarrelFile: Preserve the host API boundary while sharing canonical workspace contracts.
-import { anilistState } from "@tofu/anilist/storage";
-
-export { anilistState } from "@tofu/anilist/storage";
-
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import type { Destination } from "../types";
 
@@ -51,6 +46,11 @@ export const automationReleases = sqliteTable("releases", {
 });
 
 export const automationPreferences = sqliteTable("preferences", {
+  id: text().primaryKey(),
+  value: text().notNull(),
+});
+
+export const anilistState = sqliteTable("anilist", {
   id: text().primaryKey(),
   value: text().notNull(),
 });

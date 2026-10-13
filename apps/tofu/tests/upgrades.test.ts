@@ -2,10 +2,12 @@
 // biome-ignore-all lint/style/noNonNullAssertion: missing fixtures must fail these integration tests immediately.
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { AutomationService } from "../src/api/modules/automation/service";
+import { treaty } from "@elysia/eden";
 import type { AutomationDraft, AutomationRule, AutomationState } from "../src/types";
-import { createTestApi } from "./api-fixture";
-import { fixture, json, waitFor } from "./helpers";
+import { createTestApi } from "./helpers/application";
+import { expectDefined, expectSuccess } from "./helpers/problem";
+import { openTestServices } from "./helpers/services";
+import { fixture, waitFor } from "./helpers/torrent";
 
 test("failed upgrades keep the old files and a manually removed fallback is never resurrected", async () => {
   const context = await fixture(4096, []);
@@ -47,7 +49,7 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { c411: base, jev: base, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -58,48 +60,50 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/tsundere", { ...json({ enabled: true }), method: "PUT" });
-    const draft = (await (
-      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
-    ).json()) as AutomationDraft;
-    const rule = (await (
-      await request(
-        "/automations",
-        json({
-          ...draft,
-          codecs: [],
-          deleteReplacedFiles: true,
-          includeExisting: true,
-          languages: ["VF"],
-          resolutions: ["1080p", "720p"],
-          sources: ["tsundere"],
-        })
-      )
-    ).json()) as AutomationRule;
-    await request(`/automations/${rule.id}/run`, json({}));
+    await client.plugins({ id: "tsundere" }).put({ enabled: true });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({ destinationId: "default", query: "Example" })
+    ) as AutomationDraft;
+    const rule = expectSuccess(
+      await client.automations.post({
+        ...draft,
+        codecs: [],
+        deleteReplacedFiles: true,
+        includeExisting: true,
+        languages: ["VF"],
+        resolutions: ["1080p", "720p"],
+        sources: ["tsundere"],
+      })
+    ) as AutomationRule;
+    await client.automations({ id: rule.id }).run.post({});
     const state = await waitFor(
-      async () => context.engine.snapshot(context.seed.infoHash),
+      async () =>
+        expectSuccess(
+          await context.client.state.get({ query: { selected: context.seed.infoHash } })
+        ),
       (snapshot) => snapshot.detail?.status === "seeding"
     );
     const detail = state.detail!;
-    const oldPath = join(detail.savePath, detail.files[0]!.path);
+    const [oldFile] = detail.files;
+    expectDefined(oldFile);
+    const oldPath = join(detail.savePath, oldFile.path);
     better = true;
-    await request(`/automations/${rule.id}/run`, json({}));
-    expect(service.snapshot().decisions[0]?.status).toBe("error");
-    expect(context.engine.snapshot(null, false).torrents).toHaveLength(1);
+    await client.automations({ id: rule.id }).run.post({});
+    expect(expectSuccess(await client.automation.get()).decisions[0]?.status).toBe("error");
+    expect(
+      expectSuccess(await context.client.state.get({ query: { detail: "false" } })).torrents
+    ).toHaveLength(1);
     expect(await Bun.file(oldPath).bytes()).toEqual(new Uint8Array(context.bytes));
-    await request(`/automations/${rule.id}/run`, json({}));
+    await client.automations({ id: rule.id }).run.post({});
     expect(failures).toBe(2);
-    await request(`/torrents/${context.seed.infoHash}`, {
-      ...json({ deleteFiles: false }),
-      method: "DELETE",
-    });
-    await request(`/automations/${rule.id}/run`, json({}));
+    await client.torrents({ id: context.seed.infoHash }).delete({ deleteFiles: false });
+    await client.automations({ id: rule.id }).run.post({});
     expect(failures).toBe(2);
-    expect(context.engine.snapshot(null, false).torrents).toHaveLength(0);
+    expect(
+      expectSuccess(await context.client.state.get({ query: { detail: "false" } })).torrents
+    ).toHaveLength(0);
     expect(await Bun.file(oldPath).exists()).toBe(true);
   } finally {
     await service.close();
@@ -107,7 +111,6 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
     await context.close();
   }
 });
-
 test("equal and worse releases are skipped, ideal episodes stop Jev matching while new episodes stay monitored", async () => {
   const context = await fixture(4096, []);
   const next = await fixture(8192, [], "next.bin");
@@ -140,7 +143,7 @@ test("equal and worse releases are skipped, ideal episodes stop Jev matching whi
     port: 0,
   });
   const base = `http://127.0.0.1:${upstream.port}`;
-  const service = await AutomationService.open({
+  const service = await openTestServices({
     dataDir: join(context.directory, "feeds"),
     endpoints: { c411: base, jev: `${base}/jev`, nyaa: base, tsundere: base },
     engine: () => context.engine,
@@ -151,29 +154,25 @@ test("equal and worse releases are skipped, ideal episodes stop Jev matching whi
     context.sync.options,
     () => service
   );
-  const request = (path: string, init: RequestInit | undefined) =>
-    api.handle(new Request(`http://localhost/api${path}`, init));
+  const client = treaty(api).api;
   try {
-    await request("/plugins/tsundere", { ...json({ enabled: true }), method: "PUT" });
-    const draft = (await (
-      await request("/automations/interpret", json({ destinationId: "default", query: "Example" }))
-    ).json()) as AutomationDraft;
-    await request("/plugins/jev", { ...json({ apiKey: "test", enabled: true }), method: "PUT" });
-    const rule = (await (
-      await request(
-        "/automations",
-        json({
-          ...draft,
-          codecs: [],
-          includeExisting: true,
-          languages: ["VF"],
-          matchMode: "jev",
-          resolutions: ["1080p", "720p", "480p"],
-          sources: ["tsundere"],
-        })
-      )
-    ).json()) as AutomationRule;
-    await request(`/automations/${rule.id}/run`, json({}));
+    await client.plugins({ id: "tsundere" }).put({ enabled: true });
+    const draft = expectSuccess(
+      await client.automations.interpret.post({ destinationId: "default", query: "Example" })
+    ) as AutomationDraft;
+    await client.plugins({ id: "jev" }).put({ apiKey: "test", enabled: true });
+    const rule = expectSuccess(
+      await client.automations.post({
+        ...draft,
+        codecs: [],
+        includeExisting: true,
+        languages: ["VF"],
+        matchMode: "jev",
+        resolutions: ["1080p", "720p", "480p"],
+        sources: ["tsundere"],
+      })
+    ) as AutomationRule;
+    await client.automations({ id: rule.id }).run.post({});
     expect(calls).toBe(1);
     entries = [
       {
@@ -193,32 +192,32 @@ test("equal and worse releases are skipped, ideal episodes stop Jev matching whi
       },
     ];
     clock += 2 * 86_400_000;
-    await request(`/automations/${rule.id}/run`, json({}));
+    await client.automations({ id: rule.id }).run.post({});
     expect(calls).toBe(1);
-    expect(context.engine.snapshot(null, false).torrents.map((torrent) => torrent.id)).toEqual([
-      context.seed.infoHash,
-    ]);
-    await request(`/automations/${rule.id}`, {
-      ...json({ ...rule, resolutions: ["720p", "480p"] }),
-      method: "PUT",
-    });
+    expect(
+      expectSuccess(await context.client.state.get({ query: { detail: "false" } })).torrents.map(
+        (torrent) => torrent.id
+      )
+    ).toEqual([context.seed.infoHash]);
+    await client.automations({ id: rule.id }).put({ ...rule, resolutions: ["720p", "480p"] });
     entries = [
       { ...entries[0]!, quality: "720p", title: "Example S01E01 VF 720p perfect alternative" },
     ];
-    await request(`/automations/${rule.id}/run`, json({}));
+    await client.automations({ id: rule.id }).run.post({});
     expect(calls).toBe(1);
     entries.push({ ...entries[0]!, episode: 2, id: "next", title: "Example S01E02 VF 720p" });
-    await request(`/automations/${rule.id}/run`, json({}));
+    await client.automations({ id: rule.id }).run.post({});
     expect(calls).toBe(2);
-    expect(service.snapshot().decisions).toHaveLength(2);
-    expect(context.engine.snapshot(null, false).torrents).toHaveLength(2);
+    expect(expectSuccess(await client.automation.get()).decisions).toHaveLength(2);
+    expect(
+      expectSuccess(await context.client.state.get({ query: { detail: "false" } })).torrents
+    ).toHaveLength(2);
   } finally {
     await service.close();
     upstream.stop(true);
     await Promise.all([context.close(), next.close()]);
   }
 });
-
 test.each([true, false])(
   "a fallback is upgraded after restart and old file deletion is opt-in (%s)",
   async (deleteReplacedFiles) => {
@@ -263,80 +262,92 @@ test.each([true, false])(
       engine: () => fallback.engine,
       now: Date.now,
     };
-    let service = await AutomationService.open(options);
+    let service = await openTestServices(options);
     let api = await createTestApi(
       () => fallback.engine,
       fallback.sync.options,
       () => service
     );
-    const request = (path: string, init: RequestInit | undefined) =>
-      api.handle(new Request(`http://localhost/api${path}`, init));
+    let client = treaty(api).api;
     const run = async (id: string) =>
-      (await (await request(`/automations/${id}/run`, json({}))).json()) as AutomationState;
+      expectSuccess(await client.automations({ id }).run.post({})) as AutomationState;
     try {
-      await request("/plugins/tsundere", { ...json({ enabled: true }), method: "PUT" });
-      const draft = (await (
-        await request(
-          "/automations/interpret",
-          json({ destinationId: "default", query: "Example" })
-        )
-      ).json()) as AutomationDraft;
-      const rule = (await (
-        await request(
-          "/automations",
-          json({
-            ...draft,
-            codecs: [],
-            deleteReplacedFiles,
-            includeExisting: true,
-            languages: ["VF"],
-            resolutions: ["1080p", "720p"],
-            sources: ["tsundere"],
-          })
-        )
-      ).json()) as AutomationRule;
+      await client.plugins({ id: "tsundere" }).put({ enabled: true });
+      const draft = expectSuccess(
+        await client.automations.interpret.post({ destinationId: "default", query: "Example" })
+      ) as AutomationDraft;
+      const rule = expectSuccess(
+        await client.automations.post({
+          ...draft,
+          codecs: [],
+          deleteReplacedFiles,
+          includeExisting: true,
+          languages: ["VF"],
+          resolutions: ["1080p", "720p"],
+          sources: ["tsundere"],
+        })
+      ) as AutomationRule;
       expect((await run(rule.id)).decisions[0]?.status).toBe("added");
       await waitFor(
-        async () => fallback.engine.snapshot(fallback.seed.infoHash),
+        async () =>
+          expectSuccess(
+            await fallback.client.state.get({ query: { selected: fallback.seed.infoHash } })
+          ),
         (state) => state.detail?.status === "seeding"
       );
-      const oldDetail = fallback.engine.detail(fallback.seed.infoHash);
-      const oldPath = join(oldDetail.savePath, oldDetail.files[0]!.path);
+      const oldDetail = expectSuccess(
+        await fallback.client.torrents({ id: fallback.seed.infoHash }).get()
+      );
+      const [oldFile] = oldDetail.files;
+      expectDefined(oldFile);
+      const oldPath = join(oldDetail.savePath, oldFile.path);
       expect(await Bun.file(oldPath).bytes()).toEqual(new Uint8Array(fallback.bytes));
       await service.close();
-      service = await AutomationService.open(options);
+      service = await openTestServices(options);
       api = await createTestApi(
         () => fallback.engine,
         fallback.sync.options,
         () => service
       );
+      client = treaty(api).api;
       available = true;
       const upgraded = await run(rule.id);
       expect(upgraded.decisions[0]?.torrentId).toBe(replacement.seed.infoHash);
-      expect(fallback.engine.snapshot(null, false).torrents).toHaveLength(2);
+      expect(
+        expectSuccess(await fallback.client.state.get({ query: { detail: "false" } })).torrents
+      ).toHaveLength(2);
       expect(await Bun.file(oldPath).exists()).toBe(true);
       await service.close();
-      service = await AutomationService.open(options);
+      service = await openTestServices(options);
       api = await createTestApi(
         () => fallback.engine,
         fallback.sync.options,
         () => service
       );
-      await request(
-        `/torrents/${replacement.seed.infoHash}/peers`,
-        json({ peer: `127.0.0.1:${replacement.seeder.torrentPort}` })
-      );
+      client = treaty(api).api;
+      await client
+        .torrents({ id: replacement.seed.infoHash })
+        .peers.post({ peer: `127.0.0.1:${replacement.seeder.torrentPort}` });
       await waitFor(
-        async () => fallback.engine.snapshot(replacement.seed.infoHash),
+        async () =>
+          expectSuccess(
+            await fallback.client.state.get({ query: { selected: replacement.seed.infoHash } })
+          ),
         (state) => state.detail?.status === "seeding"
       );
-      await service.tick();
-      expect(fallback.engine.snapshot(null, false).torrents.map((torrent) => torrent.id)).toEqual([
-        replacement.seed.infoHash,
-      ]);
+      await service.releaseAutomation.tick();
+      expect(
+        expectSuccess(await fallback.client.state.get({ query: { detail: "false" } })).torrents.map(
+          (torrent) => torrent.id
+        )
+      ).toEqual([replacement.seed.infoHash]);
       expect(await Bun.file(oldPath).exists()).toBe(!deleteReplacedFiles);
-      const newDetail = fallback.engine.detail(replacement.seed.infoHash);
-      expect(await Bun.file(join(newDetail.savePath, newDetail.files[0]!.path)).bytes()).toEqual(
+      const newDetail = expectSuccess(
+        await fallback.client.torrents({ id: replacement.seed.infoHash }).get()
+      );
+      const [newFile] = newDetail.files;
+      expectDefined(newFile);
+      expect(await Bun.file(join(newDetail.savePath, newFile.path)).bytes()).toEqual(
         new Uint8Array(replacement.bytes)
       );
       expect((await run(rule.id)).decisions[0]?.torrentId).toBe(replacement.seed.infoHash);

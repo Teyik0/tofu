@@ -40,4 +40,4 @@ export function assertDatabaseReady(connection: TofuDatabase) {
 
 export type TofuDatabase = ReturnType<typeof createDatabase>;
 export type DatabaseTransaction = Parameters<Parameters<TofuDatabase["transaction"]>[0]>[0];
-export type DatabaseConnection = TofuDatabase | DatabaseTransaction;
+export type DatabaseConnection = Pick<TofuDatabase, "select" | "insert" | "update" | "delete">;

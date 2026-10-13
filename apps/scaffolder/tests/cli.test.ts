@@ -2,49 +2,30 @@ import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runBun } from "./helpers/process";
 
 const cli = join(import.meta.dir, "../src/cli.ts");
 
 test("developers can discover the CLI without creating a project", async () => {
-  const result = await runCLI(["--help"]);
+  const result = await runBun([cli, "--help"], undefined);
   expect(result.code).toBe(0);
   expect(result.stdout).toContain("--sdk");
   expect(result.stdout).toContain("--furin");
 });
-
-async function runBun(args: string[], cwd: string | undefined) {
-  const child = Bun.spawn([process.execPath, ...args], { cwd, stderr: "pipe", stdout: "pipe" });
-  const deadline = setTimeout(() => child.kill("SIGKILL"), 60_000);
-  try {
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
-    return { code, stderr, stdout };
-  } finally {
-    clearTimeout(deadline);
-    if (child.exitCode === null) {
-      child.kill("SIGKILL");
-      await child.exited;
-    }
-  }
-}
-
-function runCLI(args: string[]) {
-  return runBun([cli, ...args], undefined);
-}
 
 test("existing directories and invalid plugin IDs are rejected without modifying user files", async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "tofu-scaffold-")));
   try {
     const sentinel = join(directory, "keep.txt");
     await Bun.write(sentinel, "user content");
-    const existing = await runCLI([directory]);
+    const existing = await runBun([cli, directory], undefined);
     expect(existing.code).toBe(1);
     expect(existing.stderr).toContain("already exists");
     expect(await Bun.file(sentinel).text()).toBe("user content");
-    const invalid = await runCLI([join(directory, "new-plugin"), "--name", "Invalid Name"]);
+    const invalid = await runBun(
+      [cli, join(directory, "new-plugin"), "--name", "Invalid Name"],
+      undefined
+    );
     expect(invalid.code).toBe(1);
     expect(invalid.stderr).toContain("lowercase");
     expect(await Bun.file(join(directory, "new-plugin", "package.json")).exists()).toBe(false);
@@ -59,16 +40,20 @@ test("generated projects install, typecheck, build, and serve a native plugin pr
   try {
     const initial = join(directory, "initial-location");
     const root = join(import.meta.dir, "../../..");
-    const generated = await runCLI([
-      initial,
-      "--name",
-      "example-plugin",
-      "--sdk",
-      join(root, "package/plugins"),
-      "--furin",
-      join(root, "vendor/furin-pr163-53e7c56.tgz"),
-    ]);
+    const generated = await runBun([cli, initial, "--name", "example-plugin"], undefined);
     expect(generated.code).toBe(0);
+    const overridden = await runBun(
+      [
+        cli,
+        join(directory, "explicit-local-dependencies"),
+        "--sdk",
+        join(root, "package/plugins"),
+        "--furin",
+        join(root, "vendor/furin-pr163-118d85f.tgz"),
+      ],
+      undefined
+    );
+    expect(overridden.code).toBe(0);
     await rename(initial, project);
     for (const args of [
       ["install", "--ignore-scripts"],

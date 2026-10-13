@@ -8,3 +8,7 @@ export const anilistState = sqliteTable("anilist", {
   id: text().primaryKey(),
   value: text().notNull(),
 });
+
+export type TofuDatabase = DatabaseConnection & {
+  transaction: <T>(task: (transaction: DatabaseConnection) => T) => T;
+};

@@ -3,31 +3,29 @@ import { definePlugin } from "@tofu/plugins";
 import type { PluginCore } from "@tofu/plugins/server";
 import { Elysia } from "elysia";
 import { Type } from "typebox";
-import { closePluginHost, createApplicationPluginHost } from "../src/api/lib/extensions";
 import type { PluginHostOptions } from "../src/api/plugin-host";
+import { closePluginHost, createApplicationPluginHost } from "../src/api/plugin-host";
 import type { EnginePort } from "../src/types";
-import { createTestApplication, mountTestApplication } from "./api-fixture";
-import type { TestSyncOptions } from "./database";
+import { createTestApplication, mountTestApplication } from "./helpers/application";
+import type { TestSyncOptions } from "./helpers/database";
 
-async function createApi(
-  engine: () => EnginePort,
-  options: TestSyncOptions,
-  _automation: undefined,
-  _desktop: undefined,
-  plugins: PluginHostOptions
-) {
-  const core = await createTestApplication(engine(), options);
+async function createApi(engine: EnginePort, options: TestSyncOptions, plugins: PluginHostOptions) {
+  const core = await createTestApplication(engine, options);
   const app = await mountTestApplication(core, { kind: "server" });
-  createApplicationPluginHost({ ...core, platform: { kind: "server" } }, plugins);
-  return Object.assign(app, { closePlugins: () => closePluginHost(engine()) });
+  createApplicationPluginHost(app.application, plugins);
+  return Object.assign(app, { closePlugins: () => closePluginHost(engine) });
 }
 
-import { fixture, json, waitFor } from "./helpers";
+import { fixture, json, waitFor } from "./helpers/torrent";
 
 test("reopening plugins on the same application owns and disposes the new runtime", async () => {
   const context = await fixture(4096, []);
   const core = await createTestApplication(context.engine, context.sync.options);
-  const application = { ...core, platform: { kind: "server" as const } };
+  const application = {
+    ...core,
+    platform: { kind: "server" as const },
+    sync: context.sync.options,
+  };
   let disposed = 0;
   const options: PluginHostOptions = {
     load: () =>
@@ -105,8 +103,7 @@ test("installed plugins retain settings and credentials across disable and resta
         version: "0.0.0",
       }),
     ]);
-  const open = () =>
-    createApi(() => context.engine, context.sync.options, undefined, undefined, { load });
+  const open = () => createApi(context.engine, context.sync.options, { load });
   let api = await open();
   const request = (path: string, init?: RequestInit) =>
     api.handle(new Request(`http://localhost/api${path}`, init));
@@ -207,7 +204,7 @@ test("installed plugins retain settings and credentials across disable and resta
 test("a failing plugin disposer still closes real transfer resources through ordered application shutdown", async () => {
   const context = await fixture(65_536, []);
   const resources = new AsyncDisposableStack();
-  const api = await createApi(() => context.engine, context.sync.options, undefined, undefined, {
+  const api = await createApi(context.engine, context.sync.options, {
     load: () =>
       Promise.resolve([
         definePlugin({
@@ -253,7 +250,7 @@ test("plugin OAuth uses a scoped loopback callback and never requires the privat
     hostname: "127.0.0.1",
     port: 0,
   });
-  const api = await createApi(() => context.engine, context.sync.options, undefined, undefined, {
+  const api = await createApi(context.engine, context.sync.options, {
     load: () =>
       Promise.resolve([
         definePlugin({
@@ -316,7 +313,7 @@ test("plugin OAuth uses a scoped loopback callback and never requires the privat
 test("a plugin startup failure leaves healthy plugins and management available for recovery", async () => {
   const context = await fixture(1024, []);
   let fail = true;
-  const api = await createApi(() => context.engine, context.sync.options, undefined, undefined, {
+  const api = await createApi(context.engine, context.sync.options, {
     load: () =>
       Promise.resolve([
         definePlugin({

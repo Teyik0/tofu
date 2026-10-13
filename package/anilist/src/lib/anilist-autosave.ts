@@ -1,4 +1,5 @@
 import type { AniListListUpdate } from "@tofu/plugins/domain";
+import { errorMessage } from "@tofu/ui/errors";
 
 export interface AniListSaveState {
   error: string | null;
@@ -29,7 +30,7 @@ export function createAniListAutosave({
       } catch (cause) {
         queued = { ...changes, ...queued };
         report({
-          error: cause instanceof Error ? cause.message : "Unable to save to AniList",
+          error: errorMessage(cause, "Unable to save to AniList"),
           status: "failed",
         });
         return;

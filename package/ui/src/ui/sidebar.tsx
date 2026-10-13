@@ -2,18 +2,18 @@
 
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
+import { Button } from "@tofu/ui/button";
+import { Input } from "@tofu/ui/input";
+import { Separator } from "@tofu/ui/separator";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@tofu/ui/sheet";
+import { Skeleton } from "@tofu/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@tofu/ui/tooltip";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 import { PanelLeftIcon } from "lucide-react";
 import type * as React from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useIsMobile } from "../use-mobile";
-import { Button } from "./button";
-import { Input } from "./input";
-import { Separator } from "./separator";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./sheet";
-import { Skeleton } from "./skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;

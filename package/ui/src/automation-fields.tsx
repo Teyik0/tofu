@@ -4,14 +4,12 @@ import type {
   AutomationPreferences,
   SourcePluginId,
 } from "@tofu/plugins/domain";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
-import type { ReactNode } from "react";
-import { ActionTooltip } from "./action-tooltip";
-import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
-import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "./ui/field";
-import { Input } from "./ui/input";
-import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "./ui/input-group";
+import { ActionTooltip } from "@tofu/ui/action-tooltip";
+import { Button } from "@tofu/ui/button";
+import { Checkbox } from "@tofu/ui/checkbox";
+import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "@tofu/ui/field";
+import { Input } from "@tofu/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@tofu/ui/input-group";
 import {
   Select,
   SelectContent,
@@ -19,7 +17,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./ui/select";
+} from "@tofu/ui/select";
+import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 export const sourceNames: Record<SourcePluginId, string> = {
   c411: "C411",
@@ -177,15 +177,16 @@ function SourceOrder({
   values: SourcePluginId[];
   onChange: (values: SourcePluginId[]) => void;
 }) {
+  const selectedSources = new Set(values);
   const unused = (Object.keys(sourceNames) as SourcePluginId[]).filter(
-    (source) => !values.includes(source)
+    (source) => !selectedSources.has(source)
   );
   return (
     <FieldSet>
       <FieldLegend variant="label">Sources, in priority order</FieldLegend>
       <div className="order-list">
         {[...values, ...unused].map((source, index) => {
-          const used = values.includes(source);
+          const used = selectedSources.has(source);
           return (
             <div className="order-row" data-disabled={!used} key={source}>
               <Checkbox
@@ -201,13 +202,13 @@ function SourceOrder({
                 }
               />
               <span className="order-rank">{used ? index + 1 : "–"}</span>
-              <FieldLabel htmlFor={`${id}-${source}`}>{sourceNames[source]}</FieldLabel>
+              <FieldLabel htmlFor={`${id}-${source}`}>{sourceNames[source] ?? source}</FieldLabel>
               {used ? (
                 <MoveButtons
                   first={index === 0}
                   last={index === values.length - 1}
                   move={(direction) => onChange(swap(values, index, direction))}
-                  name={sourceNames[source]}
+                  name={sourceNames[source] ?? source}
                 />
               ) : null}
             </div>

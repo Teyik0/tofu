@@ -1,4 +1,4 @@
-import { Form, getDeepError, useField, useForm } from "@formisch/react";
+import { Form, type FormStore, getDeepError, useField, useForm } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
 import { Alert, AlertDescription } from "@tofu/ui/alert";
 import {
@@ -37,10 +37,20 @@ import {
   SelectValue,
 } from "@tofu/ui/select";
 import { Textarea } from "@tofu/ui/textarea";
+import { useAsyncAction } from "@tofu/ui/use-async-action";
 import { FolderIcon, LinkIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { modalFormSchema } from "../api/modules/torrents/model";
+import { type ComponentProps, type ReactNode, useState } from "react";
+import {
+  addTorrentFormSchema,
+  destinationFormSchema,
+  dropTorrentFormSchema,
+  locateTorrentSchema,
+  peerFormSchema,
+  removeTorrentFormSchema,
+  trackersFormSchema,
+} from "../api/modules/torrents/model";
 import { api } from "../lib/client";
+import { errorMessage } from "../lib/errors";
 import { playSoundCue } from "../lib/sound-cues";
 import type { DashboardState, Destination, DestinationInput, FormModalKind } from "../types";
 import { DestinationIconPicker } from "./destination-icon";
@@ -130,23 +140,15 @@ export function DeleteDestinationModal({
   done: (id: string | null, destinationId: string | null) => Promise<void>;
 }) {
   const deleteDestination = useDeleteDestination(activeDestination);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy, error, run } = useAsyncAction("Unable to delete the tab");
   const fallback = data.destinations.find((item) =>
     destination.id === "default" ? item.id !== "default" : item.id === "default"
   );
-  const remove = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const remove = () =>
+    run(async () => {
       await done(null, await deleteDestination(destination.id));
       close();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to delete the tab");
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   return (
     <ModalFrame
       close={() => {
@@ -178,249 +180,71 @@ export function DeleteDestinationModal({
   );
 }
 
-export function Modal({
-  activeDestination,
-  modal,
-  data,
-  close,
-  done,
-}: {
+type ModalSchema =
+  | typeof addTorrentFormSchema
+  | typeof dropTorrentFormSchema
+  | typeof destinationFormSchema
+  | typeof trackersFormSchema
+  | typeof peerFormSchema
+  | typeof locateTorrentSchema
+  | typeof removeTorrentFormSchema;
+
+interface ModalProps {
   activeDestination: string | null;
-  modal: FormModalKind;
-  data: DashboardState;
   close: () => void;
+  data: DashboardState;
   done: (id: string | null, destinationId: string | null) => Promise<void>;
-}) {
-  const initialDestination =
-    modal.type === "add"
-      ? data.destinations.find((destination) => destination.id === modal.destinationId)
-      : null;
-  const upload = useMutation(api.torrents.file.post);
-  const createDestination = useMutation(api.destinations.post);
-  const updateDestination = useMutation((id: string, body: DestinationInput) =>
-    api.destinations({ id }).put(body)
-  );
-  const addTorrent = useMutation(api.torrents.post);
-  const updateTrackers = useMutation((id: string, trackerUrls: string[]) =>
-    api.torrents({ id }).trackers.put({ urls: trackerUrls })
-  );
-  const addPeer = useMutation((id: string, peer: string) =>
-    api.torrents({ id }).peers.post({ peer })
-  );
-  const removeTorrent = useMutation((id: string, deleteFiles: boolean) =>
-    api.torrents({ id }).delete({ deleteFiles })
-  );
-  const chooseDirectory = useMutation(api.directory.post);
-  const [droppedFiles, setDroppedFiles] = useState(modal.type === "drop" ? modal.files : []);
-  const form = useForm({
-    initialInput: {
-      destinationIcon:
-        modal.type === "destination" ? (modal.destination?.icon ?? "folder") : "folder",
-      destinationId: initialDestination?.id ?? "default",
-      file: null,
-      moveFiles: false,
-      name: modal.type === "destination" ? (modal.destination?.name ?? "") : "",
-      path:
-        modal.type === "destination"
-          ? (modal.destination?.downloadPath ?? data.settings.downloadPath)
-          : data.settings.downloadPath,
-      paused: false,
-      pinned: modal.type === "destination" ? (modal.destination?.pinned ?? false) : false,
-      removeFiles: false,
-      source: "",
-      trackers:
-        modal.type === "trackers" ? modal.torrent.trackers.map((row) => row.url).join("\n") : "",
-    },
-    schema: modalFormSchema(modal.type),
-  });
-  const destinationField = useField(form, { path: ["destinationId"] });
-  const pinnedField = useField(form, { path: ["pinned"] });
-  const iconField = useField(form, { path: ["destinationIcon"] });
-  const nameField = useField(form, { path: ["name"] });
-  const pathField = useField(form, { path: ["path"] });
-  const sourceField = useField(form, { path: ["source"] });
-  const fileField = useField(form, { path: ["file"] });
-  const pausedField = useField(form, { path: ["paused"] });
-  const trackersField = useField(form, { path: ["trackers"] });
-  const removeFilesField = useField(form, { path: ["removeFiles"] });
-  const moveFilesField = useField(form, { path: ["moveFiles"] });
-  const destinationId = destinationField.input ?? "default";
-  const setDestinationId = destinationField.onChange;
-  const pinned = pinnedField.input === true;
-  const setPinned = pinnedField.onChange;
-  const destinationIcon = iconField.input ?? "folder";
-  const setDestinationIcon = iconField.onChange;
-  const name = nameField.input ?? "";
-  const setName = nameField.onChange;
-  const path = pathField.input ?? "";
-  const setPath = pathField.onChange;
-  const source = sourceField.input ?? "";
-  const setSource = sourceField.onChange;
-  const file = fileField.input ?? null;
-  const setFile = fileField.onChange;
-  const paused = pausedField.input === true;
-  const setPaused = pausedField.onChange;
-  const trackers = trackersField.input ?? "";
-  const setTrackers = trackersField.onChange;
-  const removeFiles = removeFilesField.input === true;
-  const setRemoveFiles = removeFilesField.onChange;
-  const moveFiles = moveFilesField.input === true;
-  const setMoveFiles = moveFilesField.onChange;
-  const [serverError, setError] = useState<string | null>(null);
-  const error = getDeepError(form) ?? serverError;
-  const busy = form.isSubmitting;
-  const [deletingDestination, setDeletingDestination] = useState(false);
-  const editedDestination = modal.type === "destination" ? modal.destination : null;
-  const destinationChanged = Boolean(editedDestination && path !== editedDestination.downloadPath);
-  const existingTorrents = editedDestination
-    ? data.torrents.filter((torrent) => torrent.destinationId === editedDestination.id)
-    : [];
-  const offerMove = destinationChanged && existingTorrents.length > 0;
-  const checkingTorrent = existingTorrents.find(
-    (torrent) => torrent.status === "checking" || torrent.status === "moving"
-  );
-  if (deletingDestination && modal.type === "destination" && modal.destination) {
-    return (
-      <DeleteDestinationModal
-        activeDestination={activeDestination}
-        cancel={() => setDeletingDestination(false)}
-        close={close}
-        data={data}
-        destination={modal.destination}
-        done={done}
-      />
-    );
-  }
-  const titles = {
-    add: "Add a torrent",
-    destination: modal.type === "destination" && modal.destination ? "Edit tab" : "Create a tab",
-    drop: "Choose destination",
-    peer: "Add a peer",
-    remove: "Remove torrent",
-    trackers: "Manage trackers",
-  };
-  const descriptions = {
-    add: "Drop a file or paste a link to get started.",
-    destination: "One tab, one folder. Multiple tabs can use the same folder.",
-    drop: "Torrents will start immediately in the selected folder.",
-    peer: "Connect directly to a known peer.",
-    remove: "Files remain on disk unless you choose to delete them.",
-    trackers: "Add, edit, or remove URLs. Downloaded files are preserved.",
-  };
-  const urls = () =>
-    trackers
-      .split("\n")
-      .map((value) => value.trim())
-      .filter(Boolean);
-  const browse = async () => {
-    try {
-      const result = await chooseDirectory.mutateAsync();
-      if (result && "path" in result && result.path) {
-        setPath(result.path);
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to open the folder");
-    }
-  };
-  const submit = async () => {
-    setError(null);
-    try {
-      let selected: string | null = null;
-      let savedDestination: string | null = null;
-      if (modal.type === "drop") {
-        let target = destinationId;
-        if (target === "new") {
-          const destination = await createDestination.mutateAsync({ downloadPath: path, name });
-          if (!(destination && "id" in destination)) {
-            throw new Error("Unable to create the tab");
-          }
-          target = destination.id;
-          setDestinationId(target);
-        }
-        for (const droppedFile of droppedFiles) {
-          // biome-ignore lint/performance/noAwaitInLoops: preserve order and allow retrying only the remaining files.
-          const result = await upload.mutateAsync({
-            destinationId: target,
-            file: droppedFile,
-            paused: "false",
-          });
-          if (!(result && "id" in result)) {
-            throw new Error("Unable to add the torrent");
-          }
-          selected = result.id;
-          setDroppedFiles((remaining) => remaining.filter((item) => item !== droppedFile));
-        }
-        savedDestination = target;
-        playSoundCue("added");
-      } else if (modal.type === "add") {
-        const result = file
-          ? await upload.mutateAsync({
-              destinationId,
-              file,
-              paused: paused ? "true" : "false",
-              trackers,
-            })
-          : await addTorrent.mutateAsync({
-              destinationId,
-              paused,
-              source: source.trim(),
-              trackers: urls(),
-            });
-        if (!(result && "id" in result)) {
-          throw new Error("Unable to add the torrent");
-        }
-        selected = result.id;
-        savedDestination = destinationId;
-        playSoundCue("added");
-      } else if (modal.type === "destination") {
-        const body: DestinationInput = {
-          downloadPath: path,
-          icon: destinationIcon,
-          moveFiles: offerMove && moveFiles,
-          name,
-          pinned,
-        };
-        const result = modal.destination
-          ? await updateDestination.mutateAsync(modal.destination.id, body)
-          : await createDestination.mutateAsync(body);
-        if (!(result && "id" in result)) {
-          throw new Error("Unable to save the tab");
-        }
-        savedDestination = result.id;
-      } else if (modal.type === "trackers") {
-        await updateTrackers.mutateAsync(modal.torrent.id, urls());
-      } else if (modal.type === "peer") {
-        await addPeer.mutateAsync(modal.torrent.id, source.trim());
-      } else if (modal.type === "remove") {
-        await removeTorrent.mutateAsync(modal.torrent.id, removeFiles);
-        playSoundCue("removed");
-      }
-      await done(selected, savedDestination);
+  modal: FormModalKind;
+}
+type OperationProps<Kind extends FormModalKind["type"]> = Omit<ModalProps, "modal"> & {
+  modal: Extract<FormModalKind, { type: Kind }>;
+};
+
+function useModalSubmission(done: ModalProps["done"], close: () => void) {
+  const { error, run, setError } = useAsyncAction("An error occurred");
+  const submit = (task: () => Promise<{ id: string | null; destinationId: string | null }>) => () =>
+    run(async () => {
+      const result = await task();
+      await done(result.id, result.destinationId);
       close();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "An error occurred");
-    }
-  };
-  const submitButton = (
-    <Button
-      disabled={busy}
-      type="submit"
-      variant={modal.type === "remove" ? "destructive" : "default"}
-    >
-      {busy === true && <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />}
-      {busy
-        ? offerMove && moveFiles
-          ? "Moving files…"
-          : "One moment…"
-        : modal.type === "drop"
-          ? "Download"
-          : modal.type === "add"
-            ? "Add torrent"
-            : modal.type === "remove"
-              ? "Remove"
-              : modal.type === "destination" && !modal.destination
-                ? "Create tab"
-                : "Save"}
+    });
+  return { error, setError, submit };
+}
+
+function ModalForm<Schema extends ModalSchema>({
+  form,
+  error,
+  title,
+  description,
+  close,
+  submit,
+  label,
+  pendingLabel,
+  variant,
+  className,
+  children,
+  footer,
+}: {
+  form: FormStore<Schema>;
+  error: string | null;
+  title: string;
+  description: string;
+  close: () => void;
+  submit: () => Promise<void>;
+  label: string;
+  pendingLabel?: string;
+  variant: "default" | "destructive";
+  className?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  const busy = form.isSubmitting;
+  const failure = getDeepError(form) ?? error;
+  const submitLabel = busy ? (pendingLabel ?? "One moment…") : label;
+  const button = (
+    <Button disabled={busy} type="submit" variant={variant}>
+      {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : null}
+      {submitLabel}
     </Button>
   );
   return (
@@ -430,340 +254,810 @@ export function Modal({
           close();
         }
       }}
-      description={descriptions[modal.type]}
-      remove={modal.type === "remove"}
-      title={titles[modal.type]}
+      description={description}
+      remove={variant === "destructive"}
+      title={title}
     >
-      <Form
-        className={modal.type === "add" ? "torrent-add-form" : undefined}
-        of={form}
-        onSubmit={submit}
-      >
+      <Form className={className} of={form} onSubmit={submit}>
         <FieldGroup>
-          {modal.type === "drop" && (
-            <>
-              <FieldDescription>
-                {droppedFiles.map((item) => item.name).join(", ")}
-              </FieldDescription>
-              <Field>
-                <FieldLabel htmlFor="drop-destination">Destination tab</FieldLabel>
-                <Select
-                  disabled={busy}
-                  items={[
-                    ...data.destinations.map((destination) => ({
-                      label: destination.name,
-                      value: destination.id,
-                    })),
-                    { label: "Create a new tab…", value: "new" },
-                  ]}
-                  onValueChange={(value) => {
-                    if (value !== null) {
-                      setDestinationId(value);
-                    }
-                  }}
-                  value={destinationId}
-                >
-                  <SelectTrigger className="w-full" id="drop-destination">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
-                    <SelectGroup>
-                      {data.destinations.map((destination) => (
-                        <SelectItem key={destination.id} value={destination.id}>
-                          {destination.name}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="new">Create a new tab…</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                {destinationId !== "new" && (
-                  <FieldDescription className="destination-path">
-                    {data.destinations.find((destination) => destination.id === destinationId)
-                      ?.downloadPath ?? path}
-                  </FieldDescription>
-                )}
-              </Field>
-            </>
-          )}
-          {modal.type === "add" && (
-            <>
-              <TorrentFileInput
-                disabled={busy}
-                file={file}
-                onChange={(selected) => {
-                  setFile(selected);
-                  if (selected) {
-                    setSource("");
-                  }
-                }}
-                onError={setError}
-              />
-              <div className="torrent-source-divider">
-                <span>or use a link</span>
-              </div>
-              <Field>
-                <FieldLabel htmlFor="torrent-source">Magnet link or URL</FieldLabel>
-                <InputGroup>
-                  <InputGroupAddon>
-                    <LinkIcon />
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    disabled={Boolean(file) || busy}
-                    {...sourceField.props}
-                    aria-invalid={Boolean(sourceField.errors)}
-                    id="torrent-source"
-                    onChange={(event) => setSource(event.target.value)}
-                    placeholder="Paste a magnet link or https://…"
-                    required={!file}
-                    spellCheck={false}
-                    value={source}
-                  />
-                </InputGroup>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="torrent-destination">Destination tab</FieldLabel>
-                <Select
-                  disabled={busy}
-                  items={data.destinations.map((destination) => ({
-                    label: destination.name,
-                    value: destination.id,
-                  }))}
-                  onValueChange={(value) => {
-                    if (value !== null) {
-                      setDestinationId(value);
-                    }
-                  }}
-                  value={destinationId}
-                >
-                  <SelectTrigger className="w-full" id="torrent-destination">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
-                    <SelectGroup>
-                      {data.destinations.map((destination) => (
-                        <SelectItem key={destination.id} value={destination.id}>
-                          {destination.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <FieldDescription className="destination-path">
-                  {
-                    data.destinations.find((destination) => destination.id === destinationId)
-                      ?.downloadPath
-                  }
-                </FieldDescription>
-              </Field>
-              <details className="torrent-add-options">
-                <summary>Additional trackers</summary>
-                <Field className="mt-3">
-                  <FieldLabel htmlFor="extra-trackers">One URL per line</FieldLabel>
-                  <Textarea
-                    {...trackersField.props}
-                    aria-invalid={Boolean(trackersField.errors)}
-                    id="extra-trackers"
-                    onChange={(event) => setTrackers(event.target.value)}
-                    rows={3}
-                    value={trackers}
-                  />
-                </Field>
-              </details>
-              <Field orientation="horizontal">
-                <Checkbox
-                  checked={paused}
-                  disabled={busy}
-                  id="torrent-paused"
-                  onCheckedChange={(value) => setPaused(value === true)}
-                />
-                <FieldLabel htmlFor="torrent-paused">Add paused</FieldLabel>
-              </Field>
-            </>
-          )}
-          {(modal.type === "destination" || (modal.type === "drop" && destinationId === "new")) && (
-            <Field data-invalid={Boolean(error)}>
-              <FieldLabel htmlFor="destination-name">Tab name</FieldLabel>
-              <Input
-                disabled={busy}
-                {...nameField.props}
-                aria-invalid={Boolean(nameField.errors)}
-                id="destination-name"
-                maxLength={80}
-                onChange={(event) => setName(event.target.value)}
-                required
-                value={name}
-              />
-            </Field>
-          )}
-          {modal.type === "destination" && (
-            <>
-              <Field orientation="horizontal">
-                <Checkbox
-                  checked={pinned}
-                  disabled={busy}
-                  id="thread-pinned"
-                  onCheckedChange={(value) => setPinned(value === true)}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor="thread-pinned">Pin thread</FieldLabel>
-                  <FieldDescription>
-                    Show this thread as an icon at the top of the sidebar.
-                  </FieldDescription>
-                </FieldContent>
-              </Field>
-              <DestinationIconPicker
-                disabled={busy}
-                onChange={setDestinationIcon}
-                value={destinationIcon}
-              />
-            </>
-          )}
-          {(modal.type === "destination" || (modal.type === "drop" && destinationId === "new")) && (
-            <Field data-invalid={Boolean(error)}>
-              <FieldLabel htmlFor="destination-path">Download folder</FieldLabel>
-              <InputGroup>
-                <InputGroupInput
-                  disabled={busy}
-                  {...pathField.props}
-                  aria-invalid={Boolean(pathField.errors)}
-                  id="destination-path"
-                  onChange={(event) => setPath(event.target.value)}
-                  required
-                  value={path}
-                />
-                {data.session.mode === "desktop" && (
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton disabled={busy} onClick={() => void browse()} type="button">
-                      <FolderIcon />
-                      Browse
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                )}
-              </InputGroup>
-              <FieldDescription>
-                {offerMove && moveFiles
-                  ? "Downloads in this tab will use the new folder."
-                  : "This folder applies to future additions. Existing files stay in their current location."}
-              </FieldDescription>
-            </Field>
-          )}
-          {offerMove === true && (
-            <>
-              <Field orientation="horizontal">
-                <Checkbox
-                  checked={moveFiles}
-                  disabled={busy}
-                  id="move-files"
-                  onCheckedChange={(value) => setMoveFiles(value === true)}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor="move-files">Move downloaded files</FieldLabel>
-                  <FieldDescription>
-                    {existingTorrents.length} torrent{existingTorrents.length > 1 ? "s" : ""} in
-                    this tab. Transfers will stop during the move and then resume; paused torrents
-                    will remain paused.
-                  </FieldDescription>
-                </FieldContent>
-              </Field>
-              {busy === false && moveFiles === true && checkingTorrent !== undefined && (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    {checkingTorrent.name} is undergoing{" "}
-                    {checkingTorrent.status === "checking" ? "verification" : "move"}. Wait for
-                    completion before moving its files.
-                  </AlertDescription>
-                </Alert>
-              )}
-              {busy === true && moveFiles === true && (
-                <FieldDescription role="status">
-                  Moving files. This may take some time depending on their size.
-                </FieldDescription>
-              )}
-            </>
-          )}
-          {modal.type === "trackers" && (
-            <Field>
-              <FieldLabel htmlFor="tracker-urls">Trackers · one URL per line</FieldLabel>
-              <Textarea
-                {...trackersField.props}
-                aria-invalid={Boolean(trackersField.errors)}
-                id="tracker-urls"
-                onChange={(event) => setTrackers(event.target.value)}
-                rows={8}
-                spellCheck={false}
-                value={trackers}
-              />
-              <FieldDescription>HTTP, HTTPS, UDP, WS, and WSS protocols.</FieldDescription>
-            </Field>
-          )}
-          {modal.type === "peer" && (
-            <Field>
-              <FieldLabel htmlFor="peer-address">IP address or host and port</FieldLabel>
-              <Input
-                {...sourceField.props}
-                aria-invalid={Boolean(sourceField.errors)}
-                id="peer-address"
-                onChange={(event) => setSource(event.target.value)}
-                placeholder="192.168.1.10:51413"
-                required
-                value={source}
-              />
-            </Field>
-          )}
-          {modal.type === "remove" && (
-            <>
-              <p>
-                Remove <strong>{modal.torrent.name}</strong> from Tofu?
-              </p>
-              <Field orientation="horizontal">
-                <Checkbox
-                  checked={removeFiles}
-                  disabled={busy}
-                  id="remove-files"
-                  onCheckedChange={(value) => setRemoveFiles(value === true)}
-                />
-                <FieldLabel htmlFor="remove-files">Also delete downloaded files</FieldLabel>
-              </Field>
-              {removeFiles === true && (
-                <Alert variant="destructive">
-                  <AlertDescription>Deleting these files is permanent.</AlertDescription>
-                </Alert>
-              )}
-            </>
-          )}
-          {error !== null && (
+          {children}
+          {failure ? (
             <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{failure}</AlertDescription>
             </Alert>
-          )}
+          ) : null}
         </FieldGroup>
-        {modal.type === "remove" ? (
+        {variant === "destructive" ? (
           <AlertDialogFooter className="mt-6">
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            {submitButton}
+            {button}
           </AlertDialogFooter>
         ) : (
           <DialogFooter className="mt-6">
-            {modal.type === "destination" && modal.destination && data.destinations.length > 1 && (
-              <Button
-                className="sm:mr-auto"
-                disabled={busy}
-                onClick={() => setDeletingDestination(true)}
-                type="button"
-                variant="destructive"
-              >
-                <Trash2Icon data-icon="inline-start" />
-                Delete tab
-              </Button>
-            )}
+            {footer}
             <Button disabled={busy} onClick={close} type="button" variant="outline">
               Cancel
             </Button>
-            {submitButton}
+            {button}
           </DialogFooter>
         )}
       </Form>
     </ModalFrame>
   );
+}
+
+function DestinationPicker({
+  id,
+  value,
+  options,
+  disabled,
+  onChange,
+  path,
+}: {
+  id: string;
+  value: string;
+  options: { id: string; name: string }[];
+  disabled: boolean;
+  onChange: (value: string) => void;
+  path: string | undefined;
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>Destination tab</FieldLabel>
+      <Select
+        disabled={disabled}
+        items={options.map((item) => ({ label: item.name, value: item.id }))}
+        onValueChange={(next) => {
+          if (next !== null) {
+            onChange(next);
+          }
+        }}
+        value={value}
+      >
+        <SelectTrigger className="w-full" id={id}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          <SelectGroup>
+            {options.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      {value === "new" ? null : (
+        <FieldDescription className="destination-path">{path}</FieldDescription>
+      )}
+    </Field>
+  );
+}
+
+function DestinationFields({
+  name,
+  path,
+  nameProps,
+  pathProps,
+  nameInvalid,
+  pathInvalid,
+  busy,
+  mode,
+  onName,
+  onPath,
+  onError,
+  description,
+  children,
+}: {
+  name: string;
+  path: string;
+  nameProps: ComponentProps<typeof Input>;
+  pathProps: ComponentProps<typeof InputGroupInput>;
+  nameInvalid: boolean;
+  pathInvalid: boolean;
+  busy: boolean;
+  mode: DashboardState["session"]["mode"];
+  onName: (value: string) => void;
+  onPath: (value: string) => void;
+  onError: (message: string) => void;
+  description: string;
+  children?: ReactNode;
+}) {
+  const directory = useMutation(api.directory.post);
+  const browse = async () => {
+    try {
+      const result = await directory.mutateAsync();
+      if (result && "path" in result && result.path) {
+        onPath(result.path);
+      }
+    } catch (cause) {
+      onError(errorMessage(cause, "Unable to open the folder"));
+    }
+  };
+  return (
+    <>
+      <Field data-invalid={nameInvalid}>
+        <FieldLabel htmlFor="destination-name">Tab name</FieldLabel>
+        <Input
+          disabled={busy}
+          {...nameProps}
+          aria-invalid={nameInvalid}
+          id="destination-name"
+          maxLength={80}
+          onChange={(event) => onName(event.target.value)}
+          required
+          value={name}
+        />
+      </Field>
+      {children}
+      <Field data-invalid={pathInvalid}>
+        <FieldLabel htmlFor="destination-path">Download folder</FieldLabel>
+        <InputGroup>
+          <InputGroupInput
+            disabled={busy}
+            {...pathProps}
+            aria-invalid={pathInvalid}
+            id="destination-path"
+            onChange={(event) => onPath(event.target.value)}
+            required
+            value={path}
+          />
+          {mode === "desktop" ? (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton disabled={busy} onClick={() => void browse()} type="button">
+                <FolderIcon />
+                Browse
+              </InputGroupButton>
+            </InputGroupAddon>
+          ) : null}
+        </InputGroup>
+        <FieldDescription>{description}</FieldDescription>
+      </Field>
+    </>
+  );
+}
+
+const futureFolderDescription =
+  "This folder applies to future additions. Existing files stay in their current location.";
+
+function AddTorrentModal({ modal, data, close, done }: OperationProps<"add">) {
+  const upload = useMutation(api.torrents.file.post);
+  const addTorrent = useMutation(api.torrents.post);
+  const submission = useModalSubmission(done, close);
+  const form = useForm({
+    initialInput: {
+      destinationId:
+        data.destinations.find((item) => item.id === modal.destinationId)?.id ?? "default",
+      file: null,
+      paused: false,
+      source: "",
+      trackers: "",
+    },
+    schema: addTorrentFormSchema,
+  });
+  const destinationField = useField(form, { path: ["destinationId"] });
+  const fileField = useField(form, { path: ["file"] });
+  const sourceField = useField(form, { path: ["source"] });
+  const pausedField = useField(form, { path: ["paused"] });
+  const trackersField = useField(form, { path: ["trackers"] });
+  const busy = form.isSubmitting;
+  const file = fileField.input ?? null;
+  const destinationId = destinationField.input ?? "default";
+  const submit = submission.submit(async () => {
+    const result = file
+      ? await upload.mutateAsync({
+          destinationId,
+          file,
+          paused: pausedField.input ? "true" : "false",
+          trackers: trackersField.input ?? "",
+        })
+      : await addTorrent.mutateAsync({
+          destinationId,
+          paused: pausedField.input === true,
+          source: sourceField.input?.trim() ?? "",
+          trackers: trackerLines(trackersField.input ?? ""),
+        });
+    if (!(result && "id" in result)) {
+      throw new Error("Unable to add the torrent");
+    }
+    playSoundCue("added");
+    return { destinationId, id: result.id };
+  });
+  return (
+    <ModalForm
+      className="torrent-add-form"
+      close={close}
+      description="Drop a file or paste a link to get started."
+      error={submission.error}
+      form={form}
+      label="Add torrent"
+      submit={submit}
+      title="Add a torrent"
+      variant="default"
+    >
+      <TorrentFileInput
+        disabled={busy}
+        file={file}
+        onChange={(next) => {
+          fileField.onChange(next);
+          if (next) {
+            sourceField.onChange("");
+          }
+        }}
+        onError={submission.setError}
+      />
+      <div className="torrent-source-divider">
+        <span>or use a link</span>
+      </div>
+      <Field>
+        <FieldLabel htmlFor="torrent-source">Magnet link or URL</FieldLabel>
+        <InputGroup>
+          <InputGroupAddon>
+            <LinkIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            disabled={Boolean(file) || busy}
+            {...sourceField.props}
+            aria-invalid={Boolean(sourceField.errors)}
+            id="torrent-source"
+            onChange={(event) => sourceField.onChange(event.target.value)}
+            placeholder="Paste a magnet link or https://…"
+            required={!file}
+            spellCheck={false}
+            value={sourceField.input ?? ""}
+          />
+        </InputGroup>
+      </Field>
+      <DestinationPicker
+        disabled={busy}
+        id="torrent-destination"
+        onChange={destinationField.onChange}
+        options={data.destinations}
+        path={data.destinations.find((item) => item.id === destinationId)?.downloadPath}
+        value={destinationId}
+      />
+      <details className="torrent-add-options">
+        <summary>Additional trackers</summary>
+        <Field className="mt-3">
+          <FieldLabel htmlFor="extra-trackers">One URL per line</FieldLabel>
+          <Textarea
+            {...trackersField.props}
+            aria-invalid={Boolean(trackersField.errors)}
+            id="extra-trackers"
+            onChange={(event) => trackersField.onChange(event.target.value)}
+            rows={3}
+            value={trackersField.input ?? ""}
+          />
+        </Field>
+      </details>
+      <Field orientation="horizontal">
+        <Checkbox
+          checked={pausedField.input === true}
+          disabled={busy}
+          id="torrent-paused"
+          onCheckedChange={(value) => pausedField.onChange(value === true)}
+        />
+        <FieldLabel htmlFor="torrent-paused">Add paused</FieldLabel>
+      </Field>
+    </ModalForm>
+  );
+}
+
+function DropTorrentModal({ modal, data, close, done }: OperationProps<"drop">) {
+  const upload = useMutation(api.torrents.file.post);
+  const createDestination = useMutation(api.destinations.post);
+  const submission = useModalSubmission(done, close);
+  const [files, setFiles] = useState(modal.files);
+  const form = useForm({
+    initialInput: { destinationId: "default", name: "", path: data.settings.downloadPath },
+    schema: dropTorrentFormSchema,
+  });
+  const destination = useField(form, { path: ["destinationId"] });
+  const name = useField(form, { path: ["name"] });
+  const path = useField(form, { path: ["path"] });
+  const busy = form.isSubmitting;
+  const destinationId = destination.input ?? "default";
+  const submit = submission.submit(async () => {
+    let target = destinationId;
+    if (target === "new") {
+      const created = await createDestination.mutateAsync({
+        downloadPath: path.input ?? "",
+        name: name.input ?? "",
+      });
+      if (!(created && "id" in created)) {
+        throw new Error("Unable to create the tab");
+      }
+      target = created.id;
+      destination.onChange(target);
+    }
+    let selected: string | null = null;
+    for (const file of files) {
+      // biome-ignore lint/performance/noAwaitInLoops: Keep order and retry only files that have not been added.
+      const result = await upload.mutateAsync({ destinationId: target, file, paused: "false" });
+      if (!(result && "id" in result)) {
+        throw new Error("Unable to add the torrent");
+      }
+      selected = result.id;
+      setFiles((remaining) => remaining.filter((item) => item !== file));
+    }
+    playSoundCue("added");
+    return { destinationId: target, id: selected };
+  });
+  return (
+    <ModalForm
+      close={close}
+      description="Torrents will start immediately in the selected folder."
+      error={submission.error}
+      form={form}
+      label="Download"
+      submit={submit}
+      title="Choose destination"
+      variant="default"
+    >
+      <FieldDescription>{files.map((file) => file.name).join(", ")}</FieldDescription>
+      <DestinationPicker
+        disabled={busy}
+        id="drop-destination"
+        onChange={destination.onChange}
+        options={[...data.destinations, { id: "new", name: "Create a new tab…" }]}
+        path={
+          data.destinations.find((item) => item.id === destinationId)?.downloadPath ?? path.input
+        }
+        value={destinationId}
+      />
+      {destinationId === "new" ? (
+        <DestinationFields
+          busy={busy}
+          description={futureFolderDescription}
+          mode={data.session.mode}
+          name={name.input ?? ""}
+          nameInvalid={Boolean(name.errors)}
+          nameProps={name.props}
+          onError={submission.setError}
+          onName={name.onChange}
+          onPath={path.onChange}
+          path={path.input ?? ""}
+          pathInvalid={Boolean(path.errors)}
+          pathProps={path.props}
+        />
+      ) : null}
+    </ModalForm>
+  );
+}
+
+function useDestinationForm({
+  modal,
+  data,
+  close,
+  done,
+}: Pick<OperationProps<"destination">, "modal" | "data" | "close" | "done">) {
+  const create = useMutation(api.destinations.post);
+  const update = useMutation((id: string, body: DestinationInput) =>
+    api.destinations({ id }).put(body)
+  );
+  const submission = useModalSubmission(done, close);
+  const { destination } = modal;
+  const form = useForm({
+    initialInput: {
+      destinationIcon: destination?.icon ?? "folder",
+      moveFiles: false,
+      name: destination?.name ?? "",
+      path: destination?.downloadPath ?? data.settings.downloadPath,
+      pinned: destination?.pinned ?? false,
+    },
+    schema: destinationFormSchema,
+  });
+  const name = useField(form, { path: ["name"] });
+  const path = useField(form, { path: ["path"] });
+  const icon = useField(form, { path: ["destinationIcon"] });
+  const pinned = useField(form, { path: ["pinned"] });
+  const move = useField(form, { path: ["moveFiles"] });
+  const [deleting, setDeleting] = useState(false);
+  const existing = destination
+    ? data.torrents.filter((torrent) => torrent.destinationId === destination.id)
+    : [];
+  const offerMove = Boolean(
+    destination && path.input !== destination.downloadPath && existing.length
+  );
+  const checking = existing.find(
+    (torrent) => torrent.status === "checking" || torrent.status === "moving"
+  );
+  const busy = form.isSubmitting;
+  const submit = submission.submit(async () => {
+    const body: DestinationInput = {
+      downloadPath: path.input ?? "",
+      icon: icon.input ?? "folder",
+      moveFiles: offerMove && move.input === true,
+      name: name.input ?? "",
+      pinned: pinned.input === true,
+    };
+    const result = destination
+      ? await update.mutateAsync(destination.id, body)
+      : await create.mutateAsync(body);
+    if (!(result && "id" in result)) {
+      throw new Error("Unable to save the tab");
+    }
+    return { destinationId: result.id, id: null };
+  });
+  return {
+    busy,
+    checking,
+    deleting,
+    destination,
+    existing,
+    form,
+    icon,
+    move,
+    name,
+    offerMove,
+    path,
+    pinned,
+    setDeleting,
+    submission,
+    submit,
+  };
+}
+
+function DestinationModal({
+  activeDestination,
+  modal,
+  data,
+  close,
+  done,
+}: OperationProps<"destination">) {
+  const model = useDestinationForm({ close, data, done, modal });
+  const {
+    submission,
+    destination,
+    form,
+    name,
+    path,
+    icon,
+    pinned,
+    move,
+    deleting,
+    setDeleting,
+    offerMove,
+    busy,
+    submit,
+  } = model;
+  if (deleting && destination) {
+    return (
+      <DeleteDestinationModal
+        activeDestination={activeDestination}
+        cancel={() => setDeleting(false)}
+        close={close}
+        data={data}
+        destination={destination}
+        done={done}
+      />
+    );
+  }
+  return (
+    <ModalForm
+      close={close}
+      description="One tab, one folder. Multiple tabs can use the same folder."
+      error={submission.error}
+      footer={
+        destination && data.destinations.length > 1 ? (
+          <Button
+            className="sm:mr-auto"
+            disabled={busy}
+            onClick={() => setDeleting(true)}
+            type="button"
+            variant="destructive"
+          >
+            <Trash2Icon data-icon="inline-start" />
+            Delete tab
+          </Button>
+        ) : null
+      }
+      form={form}
+      label={destination ? "Save" : "Create tab"}
+      pendingLabel={offerMove && move.input ? "Moving files…" : undefined}
+      submit={submit}
+      title={destination ? "Edit tab" : "Create a tab"}
+      variant="default"
+    >
+      <DestinationFields
+        busy={busy}
+        description={
+          offerMove && move.input
+            ? "Downloads in this tab will use the new folder."
+            : futureFolderDescription
+        }
+        mode={data.session.mode}
+        name={name.input ?? ""}
+        nameInvalid={Boolean(name.errors)}
+        nameProps={name.props}
+        onError={submission.setError}
+        onName={name.onChange}
+        onPath={path.onChange}
+        path={path.input ?? ""}
+        pathInvalid={Boolean(path.errors)}
+        pathProps={path.props}
+      >
+        <Field orientation="horizontal">
+          <Checkbox
+            checked={pinned.input === true}
+            disabled={busy}
+            id="thread-pinned"
+            onCheckedChange={(value) => pinned.onChange(value === true)}
+          />
+          <FieldContent>
+            <FieldLabel htmlFor="thread-pinned">Pin thread</FieldLabel>
+            <FieldDescription>
+              Show this thread as an icon at the top of the sidebar.
+            </FieldDescription>
+          </FieldContent>
+        </Field>
+        <DestinationIconPicker
+          disabled={busy}
+          onChange={icon.onChange}
+          value={icon.input ?? "folder"}
+        />
+      </DestinationFields>
+      <DestinationMoveOptions model={model} />
+    </ModalForm>
+  );
+}
+
+function trackerLines(text: string) {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function TrackersModal({ modal, close, done }: OperationProps<"trackers">) {
+  const update = useMutation((urls: string[]) =>
+    api.torrents({ id: modal.torrent.id }).trackers.put({ urls })
+  );
+  const submission = useModalSubmission(done, close);
+  const form = useForm({
+    initialInput: { trackers: modal.torrent.trackers.map((item) => item.url).join("\n") },
+    schema: trackersFormSchema,
+  });
+  const field = useField(form, { path: ["trackers"] });
+  const submit = submission.submit(async () => {
+    await update.mutateAsync(trackerLines(field.input ?? ""));
+    return { destinationId: null, id: null };
+  });
+  return (
+    <ModalForm
+      close={close}
+      description="Add, edit, or remove URLs. Downloaded files are preserved."
+      error={submission.error}
+      form={form}
+      label="Save"
+      submit={submit}
+      title="Manage trackers"
+      variant="default"
+    >
+      <Field>
+        <FieldLabel htmlFor="tracker-urls">Trackers · one URL per line</FieldLabel>
+        <Textarea
+          {...field.props}
+          aria-invalid={Boolean(field.errors)}
+          id="tracker-urls"
+          onChange={(event) => field.onChange(event.target.value)}
+          rows={8}
+          spellCheck={false}
+          value={field.input ?? ""}
+        />
+        <FieldDescription>HTTP, HTTPS, UDP, WS, and WSS protocols.</FieldDescription>
+      </Field>
+    </ModalForm>
+  );
+}
+
+function PeerModal({ modal, close, done }: OperationProps<"peer">) {
+  const add = useMutation((peer: string) =>
+    api.torrents({ id: modal.torrent.id }).peers.post({ peer })
+  );
+  const submission = useModalSubmission(done, close);
+  const form = useForm({ initialInput: { source: "" }, schema: peerFormSchema });
+  const field = useField(form, { path: ["source"] });
+  const submit = submission.submit(async () => {
+    await add.mutateAsync(field.input?.trim() ?? "");
+    return { destinationId: null, id: null };
+  });
+  return (
+    <ModalForm
+      close={close}
+      description="Connect directly to a known peer."
+      error={submission.error}
+      form={form}
+      label="Save"
+      submit={submit}
+      title="Add a peer"
+      variant="default"
+    >
+      <Field>
+        <FieldLabel htmlFor="peer-address">IP address or host and port</FieldLabel>
+        <Input
+          {...field.props}
+          aria-invalid={Boolean(field.errors)}
+          id="peer-address"
+          onChange={(event) => field.onChange(event.target.value)}
+          placeholder="192.168.1.10:51413"
+          required
+          value={field.input ?? ""}
+        />
+      </Field>
+    </ModalForm>
+  );
+}
+
+function RemoveTorrentModal({ modal, close, done }: OperationProps<"remove">) {
+  const remove = useMutation((deleteFiles: boolean) =>
+    api.torrents({ id: modal.torrent.id }).delete({ deleteFiles })
+  );
+  const submission = useModalSubmission(done, close);
+  const form = useForm({ initialInput: { removeFiles: false }, schema: removeTorrentFormSchema });
+  const field = useField(form, { path: ["removeFiles"] });
+  const submit = submission.submit(async () => {
+    await remove.mutateAsync(field.input === true);
+    playSoundCue("removed");
+    return { destinationId: null, id: null };
+  });
+  return (
+    <ModalForm
+      close={close}
+      description="Files remain on disk unless you choose to delete them."
+      error={submission.error}
+      form={form}
+      label="Remove"
+      submit={submit}
+      title="Remove torrent"
+      variant="destructive"
+    >
+      <p>
+        Remove <strong>{modal.torrent.name}</strong> from Tofu?
+      </p>
+      <Field orientation="horizontal">
+        <Checkbox
+          checked={field.input === true}
+          disabled={form.isSubmitting}
+          id="remove-files"
+          onCheckedChange={(value) => field.onChange(value === true)}
+        />
+        <FieldLabel htmlFor="remove-files">Also delete downloaded files</FieldLabel>
+      </Field>
+      {field.input ? (
+        <Alert variant="destructive">
+          <AlertDescription>Deleting these files is permanent.</AlertDescription>
+        </Alert>
+      ) : null}
+    </ModalForm>
+  );
+}
+
+export function Modal(props: ModalProps) {
+  switch (props.modal.type) {
+    case "add":
+      return <AddTorrentModal {...props} modal={props.modal} />;
+    case "drop":
+      return <DropTorrentModal {...props} modal={props.modal} />;
+    case "destination":
+      return <DestinationModal {...props} modal={props.modal} />;
+    case "trackers":
+      return <TrackersModal {...props} modal={props.modal} />;
+    case "peer":
+      return <PeerModal {...props} modal={props.modal} />;
+    case "locate":
+      return <LocateTorrentModal {...props} modal={props.modal} />;
+    case "remove":
+      return <RemoveTorrentModal {...props} modal={props.modal} />;
+    default:
+      return null;
+  }
+}
+
+function LocateTorrentModal({ modal, data, close, done }: OperationProps<"locate">) {
+  const locate = useMutation((downloadPath: string) =>
+    api.torrents({ id: modal.torrent.id }).locate.post({ downloadPath })
+  );
+  const directory = useMutation(api.directory.post);
+  const submission = useModalSubmission(done, close);
+  const form = useForm({
+    initialInput: { downloadPath: modal.torrent.savePath },
+    schema: locateTorrentSchema,
+  });
+  const field = useField(form, { path: ["downloadPath"] });
+  const submit = submission.submit(async () => {
+    await locate.mutateAsync(field.input?.trim() ?? "");
+    return { destinationId: null, id: modal.torrent.id };
+  });
+  const browse = async () => {
+    try {
+      const result = await directory.mutateAsync();
+      if (result && "path" in result && result.path) {
+        field.onChange(result.path);
+      }
+    } catch (cause) {
+      submission.setError(errorMessage(cause, "Unable to open the folder"));
+    }
+  };
+  return (
+    <ModalForm
+      close={close}
+      description="Choose the existing folder containing this torrent's files. Tofu verifies the data without moving files. Missing or invalid pieces require an explicit repair."
+      error={submission.error}
+      form={form}
+      label="Verify folder"
+      pendingLabel="Verifying…"
+      submit={submit}
+      title="Locate files"
+      variant="default"
+    >
+      <Field data-invalid={Boolean(field.errors)}>
+        <FieldLabel htmlFor="locate-folder">Folder containing torrent files</FieldLabel>
+        <InputGroup>
+          <InputGroupInput
+            {...field.props}
+            aria-invalid={Boolean(field.errors)}
+            disabled={form.isSubmitting}
+            id="locate-folder"
+            onChange={(event) => field.onChange(event.target.value)}
+            required
+            value={field.input ?? ""}
+          />
+          {data.session.mode === "desktop" && (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                aria-label="Browse for torrent files"
+                disabled={form.isSubmitting}
+                onClick={() => void browse()}
+                type="button"
+                variant="ghost"
+              >
+                <FolderIcon />
+              </InputGroupButton>
+            </InputGroupAddon>
+          )}
+        </InputGroup>
+        <FieldDescription>
+          Keep the paths declared by the torrent inside this folder, such as{" "}
+          {modal.torrent.files[0]?.path ?? "the original file name"}.
+        </FieldDescription>
+      </Field>
+    </ModalForm>
+  );
+}
+
+function DestinationMoveOptions({ model }: { model: ReturnType<typeof useDestinationForm> }) {
+  const { offerMove, move, busy, existing, checking } = model;
+  return offerMove ? (
+    <>
+      <Field orientation="horizontal">
+        <Checkbox
+          checked={move.input === true}
+          disabled={busy}
+          id="move-files"
+          onCheckedChange={(value) => move.onChange(value === true)}
+        />
+        <FieldContent>
+          <FieldLabel htmlFor="move-files">Move downloaded files</FieldLabel>
+          <FieldDescription>
+            {existing.length} torrent{existing.length > 1 ? "s" : ""} in this tab. Transfers will
+            stop during the move and then resume; paused torrents will remain paused.
+          </FieldDescription>
+        </FieldContent>
+      </Field>
+      {!busy && move.input && checking ? (
+        <Alert variant="destructive">
+          <AlertDescription>
+            {checking.name} is undergoing {checking.status === "checking" ? "verification" : "move"}
+            . Wait for completion before moving its files.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {busy && move.input ? (
+        <FieldDescription role="status">
+          Moving files. This may take some time depending on their size.
+        </FieldDescription>
+      ) : null}
+    </>
+  ) : null;
 }

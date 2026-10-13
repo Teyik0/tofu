@@ -1,9 +1,21 @@
-import { UserError } from "@tofu/plugins/server";
+import { HTTPError, problem } from "elysia";
 
 interface AuthorizationAttempt {
   processing: boolean;
   redirect: URL;
   state: string;
+}
+
+function callbackProblem(detail: string, status: number) {
+  const failure = problem(status, { detail });
+  return Response.json(failure.response, {
+    headers: {
+      ...failure.headers,
+      "cache-control": "no-store",
+      "referrer-policy": "no-referrer",
+    },
+    status: failure.status,
+  });
 }
 
 function callbackPage() {
@@ -31,7 +43,7 @@ function callbackPage() {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
+    if (!response.ok) throw new Error(result.detail ?? result.title ?? "Unable to connect AniList");
     status.textContent = "AniList connected successfully. You can close this tab and return to Tofu.";
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : "Unable to connect AniList. Return to Tofu and try again.";
@@ -83,9 +95,9 @@ export class AniListAuthorization {
       }
     } catch (cause) {
       this.attempt = null;
-      throw new UserError(
+      throw new (HTTPError.id("CONFLICT", 409))(
         `AniList connection needs local port ${redirect.port}. Close the app using that port and try again.`,
-        { cause, status: 409 }
+        { cause }
       );
     }
     this.timeout = setTimeout(() => {
@@ -116,9 +128,9 @@ export class AniListAuthorization {
       url.port ||
       url.search
     ) {
-      throw new UserError("Invalid or expired OAuth callback. Restart the connection from Tofu.", {
-        status: 400,
-      });
+      throw new (HTTPError.id("BAD_REQUEST", 400))(
+        "Invalid or expired OAuth callback. Restart the connection from Tofu."
+      );
     }
     const fragment = new URLSearchParams(url.hash.slice(1));
     const response = await this.accept(
@@ -130,29 +142,27 @@ export class AniListAuthorization {
       attempt
     );
     if (!response.ok) {
-      const result = (await response.json()) as { error: string };
-      throw new UserError(result.error, { status: response.status });
+      const result = (await response.json()) as { detail: string };
+      throw new (HTTPError.id("ANILIST_AUTHORIZATION_ERROR", response.status))(result.detail);
     }
   }
 
   private async callback(request: Request, redirect: URL, attempt: AuthorizationAttempt) {
     const url = new URL(request.url);
-    const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
-    const reject = (error: string, status: number) => Response.json({ error }, { headers, status });
     if (url.pathname !== redirect.pathname || url.origin !== redirect.origin) {
-      return reject("Unknown callback", 404);
+      return callbackProblem("Unknown callback", 404);
     }
     if (request.method === "GET") {
       return callbackPage();
     }
     if (request.method !== "POST") {
-      return reject("Method not allowed", 405);
+      return callbackProblem("Method not allowed", 405);
     }
     if (
       request.headers.get("origin") !== redirect.origin ||
       request.headers.get("content-type") !== "application/json"
     ) {
-      return reject("Invalid callback origin", 403);
+      return callbackProblem("Invalid callback origin", 403);
     }
     const body: unknown = await request.json().catch(() => null);
     return this.accept(body, attempt);
@@ -160,7 +170,6 @@ export class AniListAuthorization {
 
   private async accept(body: unknown, attempt: AuthorizationAttempt) {
     const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
-    const reject = (error: string, status: number) => Response.json({ error }, { headers, status });
     if (
       !body ||
       typeof body !== "object" ||
@@ -169,12 +178,15 @@ export class AniListAuthorization {
       this.attempt !== attempt ||
       attempt.processing
     ) {
-      return reject("Invalid or expired OAuth callback. Restart the connection from Tofu.", 400);
+      return callbackProblem(
+        "Invalid or expired OAuth callback. Restart the connection from Tofu.",
+        400
+      );
     }
     if ("error" in body && body.error) {
       this.attempt = null;
       this.error = "AniList authorization was declined. Connect again when you are ready.";
-      return reject(this.error, 400);
+      return callbackProblem(this.error, 400);
     }
     if (
       !("access_token" in body) ||
@@ -182,7 +194,7 @@ export class AniListAuthorization {
       !body.access_token ||
       body.access_token.length > 4096
     ) {
-      return reject("Missing AniList access token", 400);
+      return callbackProblem("Missing AniList access token", 400);
     }
     attempt.processing = true;
     try {
@@ -193,7 +205,7 @@ export class AniListAuthorization {
         this.error =
           "Unable to connect or load your AniList account. Return to Tofu and try again.";
       }
-      return reject(
+      return callbackProblem(
         "Unable to connect or load your AniList account. Return to Tofu and try again.",
         502
       );

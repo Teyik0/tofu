@@ -71,26 +71,11 @@ export function AniListMediaInfo({
   now: number;
 }) {
   const upcoming = media.airingStatus === "NOT_YET_RELEASED";
-  const score = media.averageScore ?? null;
-  const sentiment =
-    score === null ? null : score >= 75 ? "positive" : score >= 60 ? "neutral" : "negative";
-  const ScoreIcon =
-    sentiment === "positive" ? SmileIcon : sentiment === "neutral" ? MehIcon : FrownIcon;
   return (
     <div className="anime-preview" style={aniListMediaColors(media.coverColor)}>
       <div className="anime-preview-heading">
         <strong>{animeAiringLabel(media, now)}</strong>
-        {upcoming ? null : (
-          <span
-            aria-label={`Average score: ${score === null ? "unknown" : `${score}%`}`}
-            className="anime-preview-score"
-            data-sentiment={sentiment}
-            role="img"
-          >
-            {score === null ? null : <ScoreIcon aria-hidden="true" />}
-            {score === null ? "—" : `${score}%`}
-          </span>
-        )}
+        {upcoming ? null : <AverageScore score={media.averageScore ?? null} />}
       </div>
       {upcoming ? null : (
         <div className="anime-preview-details">
@@ -119,5 +104,23 @@ export function AniListMediaInfo({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function AverageScore({ score }: { score: number | null }) {
+  const sentiment =
+    score === null ? null : score >= 75 ? "positive" : score >= 60 ? "neutral" : "negative";
+  const ScoreIcon =
+    sentiment === "positive" ? SmileIcon : sentiment === "neutral" ? MehIcon : FrownIcon;
+  return (
+    <span
+      aria-label={`Average score: ${score === null ? "unknown" : `${score}%`}`}
+      className="anime-preview-score"
+      data-sentiment={sentiment}
+      role="img"
+    >
+      {score === null ? null : <ScoreIcon aria-hidden="true" />}
+      {score === null ? "—" : `${score}%`}
+    </span>
   );
 }

@@ -1,31 +1,88 @@
 import type { SyncRuntimeOptions, TransactionalSyncAdapter } from "@teyik0/furin/sync";
 import type {
-  AniListReleases,
+  AniListClient,
   AutomationDecision,
   AutomationDraft,
   AutomationRule,
+  AutomationState,
+  DashboardState,
+  Destination,
+  DestinationInput,
+  DiscoveryResult,
+  DiscoverySearch,
+  FeedRelease,
+  PluginState,
+  SourcePluginId,
 } from "@tofu/plugins/domain";
+import type { JevQuestions, JevResult } from "@tofu/plugins/jev-questions";
 import type { AniListService } from "./service";
 import type { DatabaseConnection } from "./storage";
 
 export interface PreparedAutomationRule {
   baseline: AutomationDecision[];
+  expectedRevision: number | null;
   rule: AutomationRule;
 }
-
-export interface AniListApplication {
+export interface RuleOwnership {
+  executorId?: string;
+  key: string;
+  ownerId: string;
+}
+// These are injected plugin capabilities; the package never loads the desktop application.
+export interface AniListOptions {
   automation: {
-    anilist: AniListService;
-    animeReleases: (mediaId: number) => Promise<AniListReleases>;
-    prepareRule: (id: string | null, draft: AutomationDraft) => Promise<PreparedAutomationRule>;
+    snapshot: () => Omit<AutomationState, "plugins">;
+    ruleSnapshot: (id: string) => AutomationRule | undefined;
+    enableRule: (id: string, enabled: boolean, connection?: DatabaseConnection) => unknown;
     writeRule: (connection: DatabaseConnection, prepared: PreparedAutomationRule) => AutomationRule;
     refreshState: () => void;
   };
-  platform:
-    | { kind: "server" }
-    | { kind: "desktop"; utils: { openExternal: (url: string) => boolean | Promise<boolean> } };
+  client?: AniListClient;
+  discovery: {
+    cachedReleases: () => FeedRelease[];
+    search: (query: string, sources: SourcePluginId[]) => Promise<DiscoveryResult>;
+    rank: (
+      query: string,
+      search: DiscoverySearch,
+      candidates: FeedRelease[],
+      matches: (release: FeedRelease) => boolean
+    ) => Promise<FeedRelease[]>;
+  };
+  endpoint: string;
+  engine: {
+    snapshot: (detail: string | null, full: boolean) => DashboardState;
+    saveDestination: (id: string | null, input: DestinationInput) => Promise<Destination>;
+  };
+  jev: { evaluate: (state: object, questions: JevQuestions) => Promise<JevResult | null> };
+  now: () => number;
+  plugins: {
+    plugin: (id: string) => PluginState & { apiKey: string; callsDay: string };
+    configure: (
+      id: string,
+      configuration: { enabled: boolean; apiKey?: string; dailyLimit?: number }
+    ) => unknown;
+  };
+  releaseAutomation: {
+    prepareRule: (
+      id: string | null,
+      draft: AutomationDraft,
+      ownership?: RuleOwnership
+    ) => Promise<PreparedAutomationRule>;
+    save: (
+      id: string | null,
+      draft: AutomationDraft,
+      ownership?: RuleOwnership
+    ) => Promise<AutomationRule>;
+    run: (id: string) => Promise<AutomationState>;
+  };
+  tokenEndpoint: string;
 }
-
+export interface AniListApplication {
+  anilist: AniListService;
+  automation: AniListOptions["automation"];
+  platform: { kind: "server" } | { kind: "desktop"; openExternal: (url: string) => boolean };
+  releaseAutomation: AniListOptions["releaseAutomation"];
+}
 export interface AniListApiDependencies {
   application: () => AniListApplication;
   sync: SyncRuntimeOptions<TransactionalSyncAdapter<DatabaseConnection, "sync">>;

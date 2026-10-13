@@ -17,7 +17,9 @@
     "./server/*": "./src/server/*.ts",
     "./lib/*": "./src/lib/*.ts",
     "./components/status": "./src/components/status.ts",
-    "./components/media-colors": "./src/components/media-colors.ts"
+    "./components/media-colors": "./src/components/media-colors.ts",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./server-clients": "./src/server-clients.ts"
   },
   "scripts": {
     "build": "bun build ./src/index.ts --target=bun --packages=external --outdir=dist",
@@ -29,8 +31,9 @@
   },
   "dependencies": {
     "@base-ui/react": "catalog:",
+    "@elysia/eden": "catalog:",
     "@formisch/react": "catalog:",
-    "@teyik0/furin": "file:../../vendor/furin-pr163-53e7c56.tgz",
+    "@teyik0/furin": "catalog:",
     "@tofu/plugins": "workspace:*",
     "@tofu/ui": "workspace:*",
     "cn": "catalog:",

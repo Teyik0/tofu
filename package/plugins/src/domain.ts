@@ -34,11 +34,14 @@ export type TorrentStatus =
   | "error";
 export type FilePriority = "skip" | "normal" | "high";
 export type ThemePreference = "system" | "light" | "dark";
+export type SeedingConnectionMode = "balanced" | "incoming-only";
 
 export interface Settings {
+  deleteTorrentFileAfterAdd: boolean;
   downloadLimit: number;
   downloadPath: string;
   runInBackground: boolean;
+  seedingConnectionMode: SeedingConnectionMode;
   theme: ThemePreference;
   uploadLimit: number;
 }
@@ -131,13 +134,27 @@ export interface TrackerStats {
 }
 
 export interface FileStats {
-  downloaded: number;
+  downloaded: number | null;
   index: number;
   length: number;
   name: string;
   path: string;
   priority: FilePriority;
-  progress: number;
+  progress: number | null;
+}
+
+export interface TorrentStorageIssue {
+  detectedAt: number;
+  kind:
+    | "missing-files"
+    | "modified-files"
+    | "storage-unavailable"
+    | "permission-denied"
+    | "no-space"
+    | "invalid-path"
+    | "io-error";
+  message: string;
+  paths: string[];
 }
 
 export interface PeerStats {
@@ -157,7 +174,7 @@ export interface TorrentSummary {
   addedAt: number;
   completedAt: number | null;
   destinationId: string;
-  downloaded: number;
+  downloaded: number | null;
   downloadSpeed: number;
   error: string | null;
   eta: number | null;
@@ -165,11 +182,12 @@ export interface TorrentSummary {
   length: number;
   name: string;
   peers: number;
-  progress: number;
+  progress: number | null;
   ratio: number | null;
   received: number;
   seeds: number;
   status: TorrentStatus;
+  storageIssue: TorrentStorageIssue | null;
   swarmPeers: number | null;
   swarmSeeds: number | null;
   uploaded: number;
@@ -191,7 +209,7 @@ export interface TorrentDetail extends TorrentSummary {
   savePath: string;
   seedSeconds: number;
   trackers: TrackerStats[];
-  verifiedPieces: number;
+  verifiedPieces: number | null;
 }
 
 export interface SpeedSample {
@@ -224,7 +242,7 @@ export interface DashboardState {
   torrents: TorrentSummary[];
 }
 
-export type SourcePluginId = "nyaa" | "tsundere" | "c411";
+export type SourcePluginId = string;
 export type PluginId = SourcePluginId | "jev" | "anilist";
 export type CredentialPluginId = "c411" | "jev";
 export interface PluginCredentialPage {
@@ -273,6 +291,7 @@ export interface FeedRelease {
   language: "VF" | "VOSTFR" | "MULTI" | null;
   pack: boolean;
   pageUrl: string | null;
+  privateDownload?: boolean;
   publishedAt: number | null;
   resolution: string | null;
   season: number | null;
@@ -477,6 +496,14 @@ export interface AniListCatalogOptions {
 export interface AniListReleases extends DiscoveryResult {
   torrents: TorrentSummary[];
 }
+export interface AniListReleaseSearchPlan {
+  entry: AniListMedia;
+  part: number | null;
+  season: number | null;
+  seriesTitles: string[];
+  titles: string[];
+  warning: string | null;
+}
 export interface AniListThreadProposal {
   destinationId: string | null;
   downloadPath: string;
@@ -519,12 +546,17 @@ export interface AniListState {
 export interface AutomationRule extends AutomationDraft {
   createdAt: number;
   error: string | null;
+  executorId?: string;
   id: string;
+  key?: string;
   lastRunAt: number | null;
   nextRunAt: number | null;
+  ownerId?: string;
+  revision: number;
   status: "active" | "paused" | "source-disabled" | "running" | "error";
 }
 export interface AutomationDecision {
+  approved?: boolean;
   automationId: string;
   contentKey: string;
   createdAt: number;

@@ -1,11 +1,11 @@
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { ActionTooltip } from "@tofu/ui/action-tooltip";
+import { Button } from "@tofu/ui/button";
 import { cn } from "cn";
 import { XIcon } from "lucide-react";
 import type * as React from "react";
-import { ActionTooltip } from "../action-tooltip";
-import { Button } from "./button";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
