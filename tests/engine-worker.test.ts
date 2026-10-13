@@ -78,7 +78,7 @@ test("isolated engine lifecycle preserves files and public errors across restart
   const options = {
     dataDir: join(context.directory, "worker-state"),
     downloadPath: join(context.directory, "worker-downloads"),
-    network,
+    network: { ...network, natPmp: true, natUpnp: true },
   };
   let engine = await WorkerTorrentEngine.open(options);
   let api = await createTestApi(() => engine, context.sync.options);
@@ -100,7 +100,9 @@ test("isolated engine lifecycle preserves files and public errors across restart
     expect(Bun.SHA256.hash(await Bun.file(retained).arrayBuffer(), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
     );
+    const shutdownStarted = performance.now();
     await engine.close();
+    expect(performance.now() - shutdownStarted).toBeLessThan(5000);
     engine = await WorkerTorrentEngine.open(options);
     api = await createTestApi(() => engine, context.sync.options);
     client = treaty(api).api;

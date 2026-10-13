@@ -2114,18 +2114,28 @@ export class TorrentEngine {
       await Promise.all(
         [...this.entries.values()].map((entry) => entry.operation.catch(() => undefined))
       );
-      for (const entry of this.entries.values()) {
-        this.details(entry);
-        entry.unwatch?.();
-      }
-      if (!this.client.destroyed) {
-        await new Promise<void>((resolve) => this.client.destroy(() => resolve()));
-      }
+      // Drain torrent stores before bounding cleanup of remote router mappings.
+      await Promise.all([...this.entries.values()].map((entry) => this.stop(entry)));
       for (const entry of this.entries.values()) {
         this.save(entry);
       }
       this.config("traffic", { received: this.received, uploaded: this.uploaded });
       this.db.$client.close(true);
+      if (!this.client.destroyed) {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            new Promise<void>((resolve, reject) =>
+              this.client.destroy((error) => (error ? reject(error) : resolve()))
+            ),
+            new Promise<void>((resolve) => {
+              deadline = setTimeout(resolve, 1000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(deadline);
+        }
+      }
     } finally {
       this.cryptoDiagnostics?.close();
     }

@@ -6,6 +6,7 @@ import { waitFor } from "./torrent";
 export function launchServer(config: InstanceConfig, watchEntry?: string) {
   const command = watchEntry ? ["--watch", "--no-clear-screen", watchEntry] : ["src/server.ts"];
   const shutdownPath = join(config.dataDir, `test-shutdown-${crypto.randomUUID()}`);
+  let applicationPid: number | undefined;
   const child = Bun.spawn(
     [process.execPath, "--preload", join(import.meta.dir, "process-control.ts"), ...command],
     {
@@ -18,6 +19,11 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
         TOFU_PORT: String(config.port),
         TOFU_PROFILE: config.profile,
         TOFU_TEST_SHUTDOWN: process.platform === "win32" ? shutdownPath : undefined,
+      },
+      ipc(message) {
+        if (typeof message === "number") {
+          applicationPid = message;
+        }
       },
       stderr: "pipe",
       stdout: "pipe",
@@ -41,10 +47,10 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
             return null;
           }
           const { pid, url } = (await info.json()) as { pid: number; url: string };
-          if (!watchEntry && pid !== child.pid) {
+          if (!watchEntry && pid !== applicationPid) {
             return null;
           }
-          return (await treaty<Api>(url).api.health.get()).response.ok ? url : null;
+          return (await treaty<Api>(url).api.health.get()).response?.ok ? url : null;
         },
         (url) => url !== null
       );
@@ -64,6 +70,14 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
           // Windows cannot deliver SIGTERM; the preload asks the application to shut down.
           if (process.platform === "win32") {
             await Bun.write(shutdownPath, "shutdown");
+            if (watchEntry) {
+              await waitFor(
+                () => Bun.file(join(config.dataDir, "server.json")).exists(),
+                (exists) => !exists,
+                8000
+              );
+              child.kill();
+            }
           } else {
             child.kill("SIGTERM");
           }

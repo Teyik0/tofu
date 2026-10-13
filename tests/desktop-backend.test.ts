@@ -75,6 +75,9 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     import { startDesktopBackend } from "@teyik0/furin-electrobun/host";
     const backend = await startDesktopBackend(() => import("./src/server.ts"), process.env.TOFU_DATA_DIR, "dev");
     process.on("SIGTERM", async () => { await backend.stop(); process.exit(0); });
+    process.on("message", async message => {
+      if (message === "shutdown") { await backend.stop(); process.exit(0); }
+    });
     console.log(JSON.stringify({ cookie: backend.cookie, url: backend.origin }));
   `;
   const launch = async () => {
@@ -86,6 +89,9 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
         TOFU_DOWNLOAD_DIR: join(context.directory, "desktop-downloads"),
         TOFU_MODE: "server",
         TOFU_PROFILE: "dev",
+      },
+      ipc() {
+        // Enable graceful shutdown requests on Windows.
       },
       stderr: "pipe",
       stdout: "pipe",
@@ -109,7 +115,11 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
             page: (path: string) =>
               fetch(`${url}${path}`, { headers: { cookie }, redirect: "manual" }),
             async stop() {
-              child.kill("SIGTERM");
+              if (process.platform === "win32") {
+                child.send("shutdown");
+              } else {
+                child.kill("SIGTERM");
+              }
               await child.exited;
             },
             url,

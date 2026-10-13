@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../src/api";
 import { resolveInstanceConfig } from "../src/api/lib/instance";
@@ -94,7 +95,7 @@ test("watch mode restarts the application and restores its profile, settings and
   const source = join(import.meta.dir, "../src/server.ts");
   const serverProgram = (await Bun.file(source).text()).replaceAll(
     'from "./',
-    `from "${join(import.meta.dir, "../src").replaceAll("\\", "/")}/`
+    `from "${pathToFileURL(join(import.meta.dir, "../src")).href}/`
   );
   // Publish readiness atomically so polling never reads a partially written JSON file.
   const program = (iteration: number) => `import { rename } from "node:fs/promises";

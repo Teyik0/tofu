@@ -51,8 +51,11 @@ test("worker sync wakes browsers after commit and stops telemetry when the last 
   const second = await openSyncBrowser(origin);
   resources.defer(second.close);
   await waitFor(
-    async () => second.cursor,
-    (cursor) => cursor !== undefined && BigInt(cursor) > BigInt(backgroundCursor)
+    async () => [first.cursor, second.cursor] as const,
+    ([firstCursor, secondCursor]) =>
+      firstCursor !== undefined &&
+      firstCursor === secondCursor &&
+      BigInt(firstCursor) > BigInt(backgroundCursor)
   );
   expect(first.cursor).toBe(second.cursor);
   const visibleCursor = second.cursor;
