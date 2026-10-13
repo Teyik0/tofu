@@ -22,6 +22,7 @@ import type {
   FeedRelease,
 } from "../../../types";
 import type { DatabaseConnection, TofuDatabase } from "../../lib/db";
+import { recordLog } from "../../lib/diagnostics";
 import { refreshRecords } from "../../lib/persisted-cache";
 import type { ReleaseAutomationService } from "../automation/integration";
 import { compareReleases, interpretLocally } from "../automation/rules";
@@ -1509,7 +1510,9 @@ export class AniListService {
     } finally {
       if (!this.lifecycle.closed) {
         this.timer = setInterval(() => {
-          void this.tick(false).catch(console.error);
+          void this.tick(false).catch((error: unknown) => {
+            recordLog({ component: "anilist", error, level: "error", operation: "poll" });
+          });
         }, 15_000);
         this.timer.unref();
       }

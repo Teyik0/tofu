@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import { db, instance } from "../../lib/database-plugin";
+import { recordLog } from "../../lib/diagnostics";
 import { resources } from "../../lib/runtime";
 import { automation, automationPlugin } from "../automation";
 import { releaseAutomation, releaseAutomationPlugin } from "../automation/plugin";
@@ -34,5 +35,13 @@ export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
   .decorate("anilist", anilist);
 resources.defer(anilist.close.bind(anilist));
 anilistServicePlugin.setup(() => {
-  void anilist.start().catch(console.error);
+  void anilist.start().catch((error: unknown) => {
+    recordLog({
+      component: "anilist",
+      dataDir: instance.dataDir,
+      error,
+      level: "error",
+      operation: "start",
+    });
+  });
 });

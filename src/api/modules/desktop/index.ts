@@ -1,7 +1,7 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, problem } from "elysia";
 import { sync } from "../../../sync";
-import { instance } from "../../lib/database-plugin";
+import { instance, logs } from "../../lib/database-plugin";
 import { runtime } from "../../lib/runtime";
 import { torrentServicePlugin } from "../torrents/plugin";
 import { updatesServicePlugin } from "../updates/plugin";
@@ -14,6 +14,13 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   .use(furinSync(sync))
   .guard({ sync: false })
   .get("/instance", () => instance)
+  .post("/desktop/logs/open", async () => {
+    if (runtime.current.kind !== "desktop") {
+      return problem(409, { detail: "The logs folder is on the machine hosting Tofu" });
+    }
+    await logs.flush();
+    return { opened: runtime.current.desktop.shell.openPath(logs.directory) };
+  })
   .post("/desktop/associations/torrent", () => {
     if (runtime.current.kind !== "desktop") {
       return problem(409, { detail: "This action requires the desktop app" });

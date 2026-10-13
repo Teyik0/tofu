@@ -1,6 +1,8 @@
 import "@teyik0/furin/server-only";
 import { desktopApp } from "@teyik0/furin-electrobun/server";
-import { Elysia } from "elysia";
+import { Elysia, ValidationError } from "elysia";
+import { instance as configuredInstance } from "./lib/database-plugin";
+import { recordLog } from "./lib/diagnostics";
 import { currentInstanceConfig } from "./lib/instance";
 import { onReady, onShutdown } from "./lib/lifecycle";
 import { resources, runtime } from "./lib/runtime";
@@ -43,6 +45,13 @@ const [
   { instance },
   { updates },
 ] = await Promise.all(routeModules).catch(async (error: unknown) => {
+  recordLog({
+    component: "application",
+    dataDir: configuredInstance.dataDir,
+    error,
+    level: "error",
+    operation: "startup",
+  });
   await Promise.allSettled(routeModules);
   try {
     await resources.disposeAsync();
@@ -90,6 +99,31 @@ export const apiPlugin = new Elysia({
       restrictWebToLoopback: true,
     })
   )
+  .error("global", ({ request, error }) => {
+    recordLog({
+      component: "api",
+      context: { method: request.method, path: new URL(request.url).pathname },
+      dataDir: instance.dataDir,
+      error: error instanceof ValidationError ? new Error("Request validation failed") : error,
+      level: "error",
+      operation: "request",
+    });
+  })
+  .afterResponse("global", ({ request, path, set }) => {
+    if (
+      path.startsWith("/api/") &&
+      (!["GET", "HEAD", "OPTIONS"].includes(request.method) ||
+        (typeof set.status === "number" && set.status >= 400))
+    ) {
+      recordLog({
+        component: "api",
+        context: { method: request.method, path, status: set.status ?? 200 },
+        dataDir: instance.dataDir,
+        level: typeof set.status === "number" && set.status >= 400 ? "warn" : "info",
+        operation: "response",
+      });
+    }
+  })
   .group("/api", (app) =>
     app
       .use(torrentServicePlugin)

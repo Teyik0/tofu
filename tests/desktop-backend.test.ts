@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../src/api";
 import type { DashboardState } from "../src/types";
+import { readLogRecords } from "./helpers/logs";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
@@ -59,6 +60,19 @@ test.each(["desktop", "web"])(
         await Bun.file(join(context.directory, "failed-startup-state/server.json")).exists()
       ).toBe(false);
       expect(await Bun.file(downloadPath).text()).toBe("This is a file, not a download directory.");
+      const records = await readLogRecords(
+        join(context.directory, "failed-startup-state/logs/app.jsonl")
+      );
+      expect(records).toContainEqual(
+        expect.objectContaining({
+          error: expect.objectContaining({
+            message: expect.stringContaining(downloadPath),
+            stack: expect.any(String),
+          }),
+          level: "error",
+          operation: "startup",
+        })
+      );
     } finally {
       clearTimeout(deadline);
       child.kill("SIGTERM");

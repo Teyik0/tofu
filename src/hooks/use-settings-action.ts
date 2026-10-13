@@ -11,6 +11,7 @@ type SettingsCommand =
   | { type: "update"; settings: NonNullable<Parameters<typeof api.settings.patch>[0]> }
   | { type: "browse"; moveFiles: boolean }
   | { type: "background" }
+  | { type: "open-logs" }
   | { type: "default-torrent-app" };
 
 export function useSettingsAction() {
@@ -34,27 +35,42 @@ export function useSettingsAction() {
     async (_previous, command) => {
       setFeedback(null);
       try {
-        if (command.type === "default-torrent-app") {
-          const result = await setDefaultTorrentApp.mutateAsync();
-          if (!(result && "torrent" in result && result.torrent)) {
-            throw new Error("Unable to change the default application for .torrent files");
-          }
-          setFeedback("Tofu is now the default application for .torrent files.");
-          return null;
-        }
-        if (command.type === "background") {
-          await request("/desktop/background", "POST", {});
-          return null;
-        }
         let patch: NonNullable<Parameters<typeof api.settings.patch>[0]>;
-        if (command.type === "browse") {
-          const result = await request<{ path: string | null }>("/directory", "POST", undefined);
-          if (!result.path) {
+        switch (command.type) {
+          case "open-logs": {
+            const { data, error } = await api.desktop.logs.open.post();
+            if (error) {
+              throw error;
+            }
+            if (!data.opened) {
+              throw new Error("Unable to open the logs folder");
+            }
             return null;
           }
-          patch = { downloadPath: result.path, moveFiles: command.moveFiles };
-        } else {
-          patch = command.settings;
+          case "default-torrent-app": {
+            const result = await setDefaultTorrentApp.mutateAsync();
+            if (!(result && "torrent" in result && result.torrent)) {
+              throw new Error("Unable to change the default application for .torrent files");
+            }
+            setFeedback("Tofu is now the default application for .torrent files.");
+            return null;
+          }
+          case "background":
+            await request("/desktop/background", "POST", {});
+            return null;
+          case "browse": {
+            const result = await request<{ path: string | null }>("/directory", "POST", undefined);
+            if (!result.path) {
+              return null;
+            }
+            patch = { downloadPath: result.path, moveFiles: command.moveFiles };
+            break;
+          }
+          case "update":
+            patch = command.settings;
+            break;
+          default:
+            throw new Error("Unsupported settings action", { cause: command satisfies never });
         }
         await saveSettings(patch);
         return null;
