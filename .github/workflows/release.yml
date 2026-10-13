@@ -133,6 +133,8 @@ jobs:
           merge-multiple: true
           path: .furin/electrobun/artifacts
 
+      - run: bun install --frozen-lockfile --ignore-scripts
+
       - name: Publish GitHub release
         run: bun scripts/release.ts publish
         env:
