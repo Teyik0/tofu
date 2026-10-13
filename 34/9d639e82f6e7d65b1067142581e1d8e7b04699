@@ -1,0 +1,42 @@
+tests/helpers/native-update-host.ts
+  s_e766a880040bcc::t_12053c4d38548f 91,119-120,139,155-158,167,169,174
+  s_e766a880040bcc::t_875d84909efbcd 168
+tests/desktop-update-host.test.ts
+  s_e766a880040bcc::t_12053c4d38548f 18,27,65-67,74,82-88,90-91
+  s_e766a880040bcc::t_875d84909efbcd 79-81,89,92
+tests/instance.test.ts
+  s_e766a880040bcc::t_875d84909efbcd 79
+  s_e766a880040bcc::t_38b2b0c6f15a76 151
+tests/helpers/process-control.ts
+  s_e766a880040bcc::t_38b2b0c6f15a76 1-14
+tests/storage-recovery.test.ts
+  s_e766a880040bcc::t_12053c4d38548f 340-343,492-494,496-498,502-504,585-587,589-591,598-600
+tests/helpers/server-process.ts
+  s_da1befa6eff361::t_a0ae127d9f39d3 5
+  s_e766a880040bcc::t_38b2b0c6f15a76 20,44,57-72,75-76
+  s_e766a880040bcc::t_875d84909efbcd 8,73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "349d639e82f6e7d65b1067142581e1d8e7b04699",
+  "prompts": {},
+  "sessions": {
+    "s_da1befa6eff361": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13403-ff8a-7200-a93b-f6af441e8862",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_e766a880040bcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12cc3-4f79-7310-8f04-78b637c894b7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
