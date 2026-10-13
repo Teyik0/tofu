@@ -1,0 +1,21 @@
+apps/tofu/scripts/native-workflow-main.ts
+  s_a0a481a34b8480::t_db5ff585486ecf 217,230,244
+apps/tofu/tests/plugin-install.test.ts
+  s_a0a481a34b8480::t_8701524535a3d6 3,5,237-257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30bba093d840153a785c1ff68a9294bdfc554c1e",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
