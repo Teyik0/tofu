@@ -115,12 +115,17 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
             page: (path: string) =>
               fetch(`${url}${path}`, { headers: { cookie }, redirect: "manual" }),
             async stop() {
-              if (process.platform === "win32") {
-                child.send("shutdown");
-              } else {
-                child.kill("SIGTERM");
+              const shutdownDeadline = setTimeout(() => child.kill("SIGTERM"), 10_000);
+              try {
+                if (process.platform === "win32") {
+                  child.send("shutdown");
+                } else {
+                  child.kill("SIGTERM");
+                }
+                expect(await child.exited, await stderr).toBe(0);
+              } finally {
+                clearTimeout(shutdownDeadline);
               }
-              await child.exited;
             },
             url,
           };
@@ -244,4 +249,5 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     await host?.stop();
     await context.close();
   }
-}, 30_000);
+  // Two host startups and on-demand page builds need a larger budget on Windows runners.
+}, 60_000);
