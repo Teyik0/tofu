@@ -197,7 +197,7 @@ test("disposing OAuth during credential persistence drains writes and restores t
     expect(await restored.get("expires-at")).toBeNull();
   } finally {
     release.resolve();
-    provider.stop(true);
+    await provider.stop(true);
     await rm(directory, { recursive: true });
   }
 });

@@ -25,6 +25,16 @@ interface AniListLoaderFixture {
 }
 
 const root = join(import.meta.dir, "..");
+if (process.platform === "darwin") {
+  const session = Bun.spawn(["ioreg", "-n", "Root", "-d", "1", "-l"], {
+    stderr: "ignore",
+    stdout: "pipe",
+  });
+  const status = await new Response(session.stdout).text();
+  if ((await session.exited) === 0 && /CGSSessionScreenIsLocked"\s*=\s*Yes/.test(status)) {
+    throw new Error("Native UI tests require an unlocked macOS session");
+  }
+}
 const desktopTarget = hostDesktopTarget();
 const nativeProfile: InstanceProfile =
   process.env.TOFU_NATIVE_PROFILE === "release" ? "release" : "dev";
@@ -121,6 +131,7 @@ const secondarySeed = await new Promise<Torrent>((resolve) =>
 );
 const magnet = `${seed.magnetURI}&x.pe=${encodeURIComponent(`127.0.0.1:${seedClient.torrentPort}`)}`;
 let resolveReport: (value: string) => void = () => undefined;
+const progress: { name: string; passed: boolean }[] = [];
 const reportPromise = new Promise<string>((resolve) => {
   resolveReport = resolve;
 });
@@ -169,6 +180,7 @@ const collector = Bun.serve({
     }
     const body = await request.text();
     if (new URL(request.url).pathname === "/progress") {
+      progress.push(JSON.parse(body));
       console.log(body);
     } else if (new URL(request.url).pathname === "/" && request.method === "POST") {
       const report: { passed?: boolean } = JSON.parse(body);
@@ -231,6 +243,7 @@ const timeout = setTimeout(
   () =>
     resolveReport(
       JSON.stringify({
+        checks: progress,
         error: "The WebView did not complete the flow within 90 seconds",
         passed: false,
       })
