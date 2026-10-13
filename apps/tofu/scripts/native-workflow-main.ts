@@ -214,6 +214,7 @@ export async function nativeWorkflow(config: {
       ).every((button) => button.getClientRects().length === 0)
     );
     // WebKit tracks keyboard modality separately from programmatic focus.
+    await fetch("/api/desktop/open", { method: "POST" });
     (document.activeElement as HTMLElement | null)?.blur();
     window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Tab" }));
     sidebarToggle.focus();
@@ -226,6 +227,7 @@ export async function nativeWorkflow(config: {
     );
     check("Icon action tooltips visible on keyboard focus", true);
     sidebarToggle.blur();
+    await wait(() => !document.querySelector('[data-slot="tooltip-content"][data-open]'));
     const originalPath = (await state()).settings.downloadPath;
     await fetch("/api/destinations", {
       body: JSON.stringify({ downloadPath: originalPath, name: "Sync" }),
@@ -239,7 +241,7 @@ export async function nativeWorkflow(config: {
     );
     check("An external change appears automatically through Sync", true);
     const createTab = async (name: string) => {
-      document.querySelector<HTMLButtonElement>('button[aria-label="Create a tab"]')!.click();
+      click(document.querySelector<HTMLButtonElement>('button[aria-label="Create a tab"]')!);
       await wait(() => !!document.querySelector('[role="dialog"][data-open]'));
       set(document.querySelector<HTMLInputElement>("#destination-name")!, name);
       set(document.querySelector<HTMLInputElement>("#destination-path")!, originalPath);

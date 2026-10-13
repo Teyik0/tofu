@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { cp, mkdtemp, realpath, rename, rm, symlink } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, realpath, rename, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { migrateSqliteSync, sqliteSyncAdapter } from "@teyik0/furin/sync/sqlite";
 import type { DashboardState, Destination } from "@tofu/plugins/domain";
 import { createCore, createPluginRuntime } from "@tofu/plugins/server";
@@ -234,10 +234,27 @@ test("a scaffolded plugin compiles in a native host and runs from a relocated de
       join(host, "package.json"),
       JSON.stringify({ name: "tofu-plugin-host-fixture", private: true, type: "module" })
     );
-    await symlink(
-      join(workspace, "apps/tofu/node_modules"),
-      join(host, "node_modules"),
-      process.platform === "win32" ? "junction" : "dir"
+    // Link canonical package directories instead of nesting Windows junctions across drives.
+    await Promise.all(
+      [
+        "react",
+        "react-dom",
+        "elysia",
+        "typebox",
+        "valibot",
+        "@elysia/eden",
+        "@teyik0/furin",
+        "@tofu/plugins",
+        "@tofu/ui",
+      ].map(async (name) => {
+        const target = join(host, "node_modules", name);
+        await mkdir(dirname(target), { recursive: true });
+        await symlink(
+          await realpath(join(workspace, "apps/tofu/node_modules", name)),
+          target,
+          process.platform === "win32" ? "junction" : "dir"
+        );
+      })
     );
     await Bun.write(
       join(host, "bunfig.toml"),
