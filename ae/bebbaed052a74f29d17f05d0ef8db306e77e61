@@ -1,0 +1,19 @@
+apps/tofu/tests/helpers/native-update-host.ts
+  s_a0a481a34b8480::t_083d4cfe8a863c 24,49-50,69-70,89-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aebebbaed052a74f29d17f05d0ef8db306e77e61",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
