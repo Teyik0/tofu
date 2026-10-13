@@ -1,0 +1,120 @@
+src/pages/options/index.tsx
+  s_8b0046e127d2d1::t_b52b4e0bc66873 147-148,152-158
+  s_8b0046e127d2d1::t_2d726fb314d965 137-141,145-146,149-151,159-164
+  s_8b0046e127d2d1::t_a9bd08e1e7eea5 142-144
+src/sync.ts
+  s_8b0046e127d2d1::t_38b01e6dd8899a 5,19-21
+tests/helpers/application-services.ts
+  s_8b0046e127d2d1::t_a44f23b38a86a7 19
+tests/desktop-backend.test.ts
+  s_8b0046e127d2d1::t_d9b8c09bbd753c 63-75
+  s_8b0046e127d2d1::t_33825bcb86a6c7 7
+src/api/modules/anilist/plugin.ts
+  s_8b0046e127d2d1::t_609d4d7fb16052 39-45
+  s_8b0046e127d2d1::t_38b01e6dd8899a 3,38,46
+tests/logging.test.ts
+  s_8b0046e127d2d1::t_609d4d7fb16052 69-72
+  s_8b0046e127d2d1::t_33825bcb86a6c7 1-13,15-17,19-31,37-42,50-54,59-61,84-88,91-104
+  s_8b0046e127d2d1::t_d9b8c09bbd753c 32-36,43-49,55-58,62-68,73-83
+  s_8b0046e127d2d1::t_38b01e6dd8899a 14,18
+  s_8b0046e127d2d1::t_7742f5bc292398 89-90
+src/api/lib/lifecycle.ts
+  s_8b0046e127d2d1::t_b52b4e0bc66873 13-18
+  s_8b0046e127d2d1::t_2d726fb314d965 3-4
+  s_8b0046e127d2d1::t_a44f23b38a86a7 9
+src/api/lib/diagnostics.ts
+  s_8b0046e127d2d1::t_09633e7724f524 86-95
+  s_8b0046e127d2d1::t_38b01e6dd8899a 6,18,28,50-52
+  s_8b0046e127d2d1::t_b52b4e0bc66873 13-16,27,29,32-33
+  s_8b0046e127d2d1::t_7742f5bc292398 42,71-73
+  s_8b0046e127d2d1::t_0fcb3914aaedd9 43-49,53-56,58,60-70
+  s_8b0046e127d2d1::t_749cb473539f20 1-5,7-12,17,19-26,30-31,34-41,57,59,74-85,96-98
+tests/helpers/logs.ts
+  s_8b0046e127d2d1::t_33825bcb86a6c7 1-2,8
+  s_8b0046e127d2d1::t_d9b8c09bbd753c 3-7
+src/api/modules/torrents/storage.ts
+  s_8b0046e127d2d1::t_2d726fb314d965 6,67-68,77,110
+  s_8b0046e127d2d1::t_b52b4e0bc66873 57-66,69-76,111-112
+src/api/modules/torrents/worker-client.ts
+  s_8b0046e127d2d1::t_a44f23b38a86a7 28-29,44-45,175-176,182-183
+  s_8b0046e127d2d1::t_b52b4e0bc66873 18-19,100-106
+  s_8b0046e127d2d1::t_d9b8c09bbd753c 43,177-181
+  s_8b0046e127d2d1::t_749cb473539f20 48-51,144,153
+tests/desktop-associations.test.ts
+  s_8b0046e127d2d1::t_33825bcb86a6c7 21
+  s_8b0046e127d2d1::t_d9b8c09bbd753c 22-39
+src/api/modules/desktop/index.ts
+  s_8b0046e127d2d1::t_2d726fb314d965 4,17-23
+src/api/modules/automation/plugin.ts
+  s_8b0046e127d2d1::t_38b01e6dd8899a 2,23-25
+tests/helpers/application.ts
+  s_8b0046e127d2d1::t_a44f23b38a86a7 7,19,34,61-62
+  s_8b0046e127d2d1::t_33825bcb86a6c7 39,263
+  s_8b0046e127d2d1::t_d9b8c09bbd753c 113
+src/api/lib/database-plugin.ts
+  s_8b0046e127d2d1::t_a9bd08e1e7eea5 30-45
+  s_8b0046e127d2d1::t_749cb473539f20 4,6,18
+  s_8b0046e127d2d1::t_b52b4e0bc66873 12-17,19-29,46
+src/api/lib/server-info.ts
+  s_8b0046e127d2d1::t_b52b4e0bc66873 5,26-32
+CHANGELOG.md
+  s_8b0046e127d2d1::t_ff54ae31e2121f 5-11
+src/api/modules/anilist/service.ts
+  s_8b0046e127d2d1::t_38b01e6dd8899a 25,1513-1515
+src/server.ts
+  s_8b0046e127d2d1::t_2d726fb314d965 4
+  s_8b0046e127d2d1::t_b52b4e0bc66873 22-28
+README.md
+  s_8b0046e127d2d1::t_33825bcb86a6c7 26-27
+src/api/modules/torrents/plugin.ts
+  s_8b0046e127d2d1::t_b52b4e0bc66873 7-14
+  s_8b0046e127d2d1::t_749cb473539f20 3
+src/types.ts
+  s_8b0046e127d2d1::t_749cb473539f20 701
+src/api/modules/automation/integration.ts
+  s_8b0046e127d2d1::t_38b01e6dd8899a 417-419
+  s_8b0046e127d2d1::t_609d4d7fb16052 11
+src/api/index.ts
+  s_8b0046e127d2d1::t_d9b8c09bbd753c 113-124
+  s_8b0046e127d2d1::t_b52b4e0bc66873 48-54,103-104,106,108-110
+  s_8b0046e127d2d1::t_a44f23b38a86a7 3,102,105,107,111-112,125
+  s_8b0046e127d2d1::t_2d726fb314d965 4-5,126
+src/api/lib/logs.ts
+  s_8b0046e127d2d1::t_a44f23b38a86a7 43,54-59,61
+  s_8b0046e127d2d1::t_38b01e6dd8899a 23-24
+  s_8b0046e127d2d1::t_b52b4e0bc66873 48-53,60,62-63,65-74
+  s_8b0046e127d2d1::t_749cb473539f20 1-11,13-22,25-42,44-47,64,75-86
+  s_8b0046e127d2d1::t_2d67980e1a498e 12
+src/api/modules/torrents/worker.ts
+  s_8b0046e127d2d1::t_b52b4e0bc66873 3,10,80-86,197-198,205-209
+  s_8b0046e127d2d1::t_a44f23b38a86a7 106
+  s_8b0046e127d2d1::t_7742f5bc292398 13,201
+  s_8b0046e127d2d1::t_d9b8c09bbd753c 199-200,202-204
+  s_8b0046e127d2d1::t_749cb473539f20 8-9,11-12,14
+src/api/lib/sync-notifier.ts
+  s_8b0046e127d2d1::t_38b01e6dd8899a 2,27
+src/api/modules/torrents/service.ts
+  s_8b0046e127d2d1::t_a44f23b38a86a7 174,207,210
+  s_8b0046e127d2d1::t_b52b4e0bc66873 255-261,552-557,619-630,759-766,1402-1409,1417-1422,1481-1488,1681-1686,1856-1860
+  s_8b0046e127d2d1::t_2d726fb314d965 35,206,254,262,345-346,551,1416,1480,1489,1680
+src/hooks/use-settings-action.ts
+  s_8b0046e127d2d1::t_7c64712d1f4a2f 39-48,50-59,61-67,69-71
+  s_8b0046e127d2d1::t_0d14598c6f9fc8 72-73
+  s_8b0046e127d2d1::t_2d726fb314d965 14,49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eab584b39f82fcd508c1cd7d0e64a5004bbb8423",
+  "prompts": {},
+  "sessions": {
+    "s_8b0046e127d2d1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a136f7-9a8d-75d0-ac14-4b5af9ba2fcc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
