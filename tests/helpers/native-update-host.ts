@@ -88,6 +88,7 @@ export async function launchNativeUpdateHost(options: {
             await desktop.quit(); process.exit(0);
           }
         });
+        process.send("ready");
   `
   );
   // Bundle the package's actual restart resource, as the desktop build does.
@@ -115,7 +116,8 @@ export async function launchNativeUpdateHost(options: {
     const child = Bun.spawn([${JSON.stringify(process.execPath)}, ${JSON.stringify(entry)}], {
       cwd: ${JSON.stringify(root)},
       env: { ...process.env, ELECTROBUN_LAUNCHER_PID: String(process.pid) },
-      stdout: "inherit", stderr: "inherit", ipc() {},
+      stdout: "inherit", stderr: "inherit",
+      ipc(message) { process.send?.(message); },
     });
     process.on("message", message => child.send(message));
     const code = await child.exited;
@@ -134,6 +136,7 @@ export async function launchNativeUpdateHost(options: {
   if (!compilation.success) {
     throw new AggregateError(compilation.logs, "Unable to prepare the native launcher");
   }
+  const ready = Promise.withResolvers<void>();
   const child = Bun.spawn([launcher], {
     cwd: root,
     env: {
@@ -149,8 +152,10 @@ export async function launchNativeUpdateHost(options: {
       TOFU_MODE: "desktop",
       TOFU_PROFILE: "dev",
     },
-    ipc() {
-      // Keep the test-to-launcher shutdown channel open.
+    ipc(message) {
+      if (message === "ready") {
+        ready.resolve();
+      }
     },
     stderr: "pipe",
     stdout: "pipe",
@@ -159,10 +164,14 @@ export async function launchNativeUpdateHost(options: {
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
+  void child.exited.then((code) =>
+    ready.reject(new Error(`The native launcher exited before readiness (code ${code})`))
+  );
   return {
     child,
     events,
     output,
+    ready: ready.promise,
     async stop() {
       const descriptor = Bun.file(join(options.dataDir, "server.json"));
       if (await descriptor.exists()) {

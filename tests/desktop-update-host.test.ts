@@ -15,7 +15,7 @@ test
     const context = await fixture(256 * 1024, []);
     const dataDir = join(context.directory, "native-state");
     const downloadPath = join(context.directory, "native-downloads");
-    const { child, output, events, stop } = await launchNativeUpdateHost({
+    const { child, output, events, ready, stop } = await launchNativeUpdateHost({
       dataDir,
       directory: context.directory,
       downloadPath,
@@ -24,6 +24,7 @@ test
     });
     const deadline = setTimeout(() => child.kill(), 25_000);
     try {
+      await ready;
       const server = await waitFor(
         async () => {
           if (child.exitCode !== null) {
@@ -61,19 +62,34 @@ test
       await waitFor(state, (value) =>
         value.torrents.some((torrent) => torrent.id === id && torrent.status === "seeding")
       );
-      await client.settings.put({ ...(await state()).settings, runInBackground: true });
+      expectSuccess(
+        await client.settings.put({ ...(await state()).settings, runInBackground: true })
+      );
       expect((await client.desktop.background.post({})).status).toBe(200);
       await waitFor(
         async () => expectSuccess(await client.desktop.get()),
         (value) => value.background
       );
       expect((await client.desktop.open.post({})).status).toBe(200);
-      await client.torrents({ id }).pause.post({});
+      expectSuccess(await client.torrents({ id }).pause.post({}));
       child.send("install");
       const approval = await waitFor(
         async () => {
           const file = Bun.file(join(context.directory, "quit-approval.json"));
-          return (await file.exists()) ? await file.json() : null;
+          if (await file.exists()) {
+            return file.json();
+          }
+          const failure = Bun.file(join(context.directory, "native-error.json"));
+          if (await failure.exists()) {
+            const message = await failure.json();
+            if (message.title === "Update failed") {
+              throw new Error(message.detail);
+            }
+          }
+          if (child.exitCode !== null) {
+            throw new Error((await output).join("\n"));
+          }
+          return null;
         },
         (value) => value !== null
       );

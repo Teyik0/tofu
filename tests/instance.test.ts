@@ -76,6 +76,7 @@ test("the first protected startup refuses a running legacy instance without a lo
     await context.close();
   }
 }, 30_000);
+// This scenario initializes Furin twice and transfers data between the two startups.
 test("watch mode restarts the application and restores its profile, settings and downloaded bytes", async () => {
   const context = await fixture(65_536, []);
   const config = resolveInstanceConfig({
@@ -147,7 +148,7 @@ await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
     await dev.stop();
     await Promise.all([context.close(), rm(watchDirectory, { force: true, recursive: true })]);
   }
-}, 30_000);
+}, 60_000);
 test("parallel dev and release APIs keep settings, transfers and persisted state separate", async () => {
   const context = await fixture(65_536, []);
   const options = {

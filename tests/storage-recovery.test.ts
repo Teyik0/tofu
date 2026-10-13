@@ -337,6 +337,10 @@ test("adding into unavailable storage never recreates a missing destination, eve
       (detail) => detail.status === "seeding"
     );
     const path = completed.savePath;
+    if (process.platform === "win32") {
+      // Windows cannot rename a directory while WebTorrent holds its files open.
+      expectSuccess(await context.client.torrents({ id }).pause.post({}));
+    }
     await rename(path, join(context.directory, "offline"));
     expect(
       (await context.client.torrents.post({ paused: false, source: context.magnet })).status
@@ -485,10 +489,19 @@ test("locating moved files verifies and reuses them without moving or downloadin
       expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
     const completed = await waitFor(read, (detail) => detail.status === "seeding");
     const target = join(context.directory, "relocated");
+    if (process.platform === "win32") {
+      expectSuccess(await context.client.torrents({ id }).pause.post({}));
+    }
     await rename(completed.savePath, target);
+    if (process.platform === "win32") {
+      expect((await context.client.torrents({ id }).resume.post({})).status).toBe(409);
+    }
     await waitFor(read, (detail) => detail.storageIssue !== null);
     const response = await context.client.torrents({ id }).locate.post({ downloadPath: target });
     expect(response.status).toBe(200);
+    if (process.platform === "win32") {
+      expectSuccess(await context.client.torrents({ id }).resume.post({}));
+    }
     await waitFor(read, (detail) => detail.status === "seeding");
     const located = await read();
     expect(located.storageIssue).toBeNull();
@@ -569,13 +582,22 @@ test("an unavailable destination is never recreated and retry waits for the orig
       expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
     const completed = await waitFor(read, (detail) => detail.status === "seeding");
     const disconnected = join(context.directory, "disconnected");
+    if (process.platform === "win32") {
+      expectSuccess(await context.client.torrents({ id }).pause.post({}));
+    }
     await rename(completed.savePath, disconnected);
+    if (process.platform === "win32") {
+      expect((await context.client.torrents({ id }).resume.post({})).status).toBe(409);
+    }
     const blocked = await waitFor(read, (detail) => detail.storageIssue !== null);
     expect(blocked.storageIssue?.kind).toBe("storage-unavailable");
     expect((await context.client.torrents({ id }).repair.post({})).status).toBe(409);
     expect(await Bun.file(join(completed.savePath, "source.bin")).exists()).toBe(false);
     await rename(disconnected, completed.savePath);
     expect((await context.client.torrents({ id }).repair.post({})).status).toBe(200);
+    if (process.platform === "win32") {
+      expectSuccess(await context.client.torrents({ id }).resume.post({}));
+    }
     await waitFor(read, (detail) => detail.status === "seeding");
     expect((await read()).received - completed.received).toBeLessThan(completed.pieceLength);
     expect(

@@ -2,10 +2,10 @@ import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../../src/api";
 import type { InstanceConfig } from "../../src/types";
-import { waitFor } from "./torrent"; // Bun 1.4.2's diagnostic from the pinned WebTorrent's optional uTP probe.
-// Match the complete notice so unrelated stderr before or after it still fails.
+import { waitFor } from "./torrent";
 export function launchServer(config: InstanceConfig, watchEntry?: string) {
   const command = watchEntry ? ["--watch", "--no-clear-screen", watchEntry] : ["src/server.ts"];
+  const shutdownPath = join(config.dataDir, `test-shutdown-${crypto.randomUUID()}`);
   const child = Bun.spawn(
     [process.execPath, "--preload", join(import.meta.dir, "process-control.ts"), ...command],
     {
@@ -17,9 +17,7 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
         TOFU_MODE: "server",
         TOFU_PORT: String(config.port),
         TOFU_PROFILE: config.profile,
-      },
-      ipc() {
-        // Enable the parent-to-child shutdown channel; the child sends no messages.
+        TOFU_TEST_SHUTDOWN: process.platform === "win32" ? shutdownPath : undefined,
       },
       stderr: "pipe",
       stdout: "pipe",
@@ -43,7 +41,7 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
             return null;
           }
           const { pid, url } = (await info.json()) as { pid: number; url: string };
-          if (pid !== child.pid) {
+          if (!watchEntry && pid !== child.pid) {
             return null;
           }
           return (await treaty<Api>(url).api.health.get()).response.ok ? url : null;
@@ -56,15 +54,27 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
       return address;
     },
     async stop() {
-      if (child.exitCode === null) {
-        // Windows termination cannot deliver a POSIX signal; ask the child to run its shutdown handler.
-        if (process.platform === "win32") {
-          child.send("shutdown");
-        } else {
-          child.kill("SIGTERM");
+      let forced = false;
+      const deadline = setTimeout(() => {
+        forced = true;
+        child.kill();
+      }, 10_000);
+      try {
+        if (child.exitCode === null) {
+          // Windows cannot deliver SIGTERM; the preload asks the application to shut down.
+          if (process.platform === "win32") {
+            await Bun.write(shutdownPath, "shutdown");
+          } else {
+            child.kill("SIGTERM");
+          }
         }
+        await child.exited;
+        if (forced) {
+          throw new Error(`The test server did not shut down within 10 seconds.\n${await output}`);
+        }
+      } finally {
+        clearTimeout(deadline);
       }
-      await child.exited;
     },
   };
 }
