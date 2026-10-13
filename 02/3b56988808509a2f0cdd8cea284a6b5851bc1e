@@ -1,0 +1,26 @@
+package/plugins/package.json
+  s_a0a481a34b8480::t_5b85c0bddecf96 33
+apps/tofu/scripts/native-smoke.ts
+  s_a0a481a34b8480::t_e6800b17a8c8ee 134,183,246
+  s_a0a481a34b8480::t_7e0da5b40bb5a5 28-37
+apps/tofu/scripts/native-workflow-main.ts
+  s_a0a481a34b8480::t_f4a59935529f6f 242
+package/plugins/tests/auth.test.ts
+  s_a0a481a34b8480::t_5b85c0bddecf96 200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "023b56988808509a2f0cdd8cea284a6b5851bc1e",
+  "prompts": {},
+  "sessions": {
+    "s_a0a481a34b8480": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11830-66c0-7db0-b0af-3670e9f2f43e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
