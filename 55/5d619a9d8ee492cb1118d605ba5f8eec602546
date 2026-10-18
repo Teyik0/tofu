@@ -1,0 +1,30 @@
+src/styles.css
+  s_081f62834ceb8f::t_b3f98c6745459a 4909-4982
+  s_081f62834ceb8f::t_e38173020d7959 4983-4984
+src/components/ui/select.tsx
+  s_081f62834ceb8f::t_c19e136ce62a1e 67,70,91
+src/components/media-player.tsx
+  s_081f62834ceb8f::t_b3f98c6745459a 313,372-375,394-397,402-406
+  s_081f62834ceb8f::t_870794241ba92a 288-292
+  s_081f62834ceb8f::t_c19e136ce62a1e 6-8,10,23-31,63,71,84-90,125-126,188-189,226-244,254,259,280-287,293,302-312,314-321,347,351,364-371,376-378
+  s_081f62834ceb8f::t_d7a59ebd44feef 512-520,522-543,546-556,559-581
+  s_081f62834ceb8f::t_3cc6dadad816bc 107
+src/pages/player/[id].tsx
+  s_081f62834ceb8f::t_c19e136ce62a1e 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "555d619a9d8ee492cb1118d605ba5f8eec602546",
+  "prompts": {},
+  "sessions": {
+    "s_081f62834ceb8f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a150c9-d9df-71f3-95b5-75fa096943e0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
