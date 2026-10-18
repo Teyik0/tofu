@@ -130,103 +130,83 @@ export function DetailFiles({
       {torrent.files.length === 0 ? (
         <p className="panel-empty">Waiting for torrent metadata.</p>
       ) : (
-        <div className="table-scroll">
-          <table className="inner-table">
-            <thead>
-              <tr>
-                <th>File name</th>
-                <th>Size</th>
-                <th>Progress</th>
-                <th>Priority</th>
-                <th>
-                  <span className="sr-only">Download</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {torrent.files.map((file) => (
-                <tr key={file.index}>
-                  <td>
-                    <span className="file-name">
-                      <Icon name="file" />
-                      {file.path}
-                    </span>
-                  </td>
-                  <td className="mono">{bytes(file.length)}</td>
-                  <td>
-                    <div className="file-progress">
-                      <Progress
-                        aria-label={`Progress for ${file.name}`}
-                        value={file.progress === null ? null : file.progress * 100}
-                      />
-                      <span className="mono">{percent(file.progress)}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <Select
-                      disabled={busy}
-                      items={[
-                        { label: "Skip", value: "skip" },
-                        { label: "Normal", value: "normal" },
-                        { label: "High", value: "high" },
-                      ]}
-                      onValueChange={(value) =>
-                        void act(torrent.id, () =>
-                          setPriority.mutateAsync(file.index, value as FilePriority)
-                        )
-                      }
-                      value={file.priority}
+        <ul className="detail-files">
+          {torrent.files.map((file) => (
+            <li key={file.index}>
+              <div className="detail-file-heading">
+                <Icon name="file" />
+                <div className="detail-file-copy">
+                  <strong>{file.path}</strong>
+                  <span className="mono">
+                    {bytes(file.length)} · {percent(file.progress)}
+                  </span>
+                </div>
+              </div>
+              <div className="detail-file-controls">
+                <Select
+                  disabled={busy}
+                  items={[
+                    { label: "Skip", value: "skip" },
+                    { label: "Normal", value: "normal" },
+                    { label: "High", value: "high" },
+                  ]}
+                  onValueChange={(value) =>
+                    void act(torrent.id, () =>
+                      setPriority.mutateAsync(file.index, value as FilePriority)
+                    )
+                  }
+                  value={file.priority}
+                >
+                  <SelectTrigger aria-label={`Priority for ${file.name}`} size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      <SelectItem value="skip">Skip</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>{" "}
+                {(file.progress === 1 || torrent.status !== "paused") &&
+                  playable.test(file.name) && (
+                    <ActionTooltip>
+                      <Button
+                        aria-label={`Play ${file.name}`}
+                        onClick={() =>
+                          // The player needs a full page load for its cross-origin isolation.
+                          window.location.assign(`/player/${torrent.id}?file=${file.index}`)
+                        }
+                        size="icon-sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Icon name="play" />
+                      </Button>
+                    </ActionTooltip>
+                  )}
+                {file.progress === 1 && (
+                  <ActionTooltip>
+                    <Button
+                      aria-label={`Save ${file.name}`}
+                      disabled={busy || savingFile !== null}
+                      onClick={() => void downloadFile(file.index, file.name)}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
                     >
-                      <SelectTrigger aria-label={`Priority for ${file.name}`} size="sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectGroup>
-                          <SelectItem value="skip">Skip</SelectItem>
-                          <SelectItem value="normal">Normal</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td>
-                    {(file.progress === 1 || torrent.status !== "paused") &&
-                      playable.test(file.name) && (
-                        <ActionTooltip>
-                          <Button
-                            aria-label={`Play ${file.name}`}
-                            onClick={() =>
-                              // The player needs a full page load for its cross-origin isolation.
-                              window.location.assign(`/player/${torrent.id}?file=${file.index}`)
-                            }
-                            size="icon-sm"
-                            type="button"
-                            variant="ghost"
-                          >
-                            <Icon name="play" />
-                          </Button>
-                        </ActionTooltip>
-                      )}
-                    {file.progress === 1 && (
-                      <ActionTooltip>
-                        <Button
-                          aria-label={`Save ${file.name}`}
-                          disabled={busy || savingFile !== null}
-                          onClick={() => void downloadFile(file.index, file.name)}
-                          size="icon-sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Icon name="download" />
-                        </Button>
-                      </ActionTooltip>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      <Icon name="download" />
+                    </Button>
+                  </ActionTooltip>
+                )}
+              </div>
+              <Progress
+                aria-label={`Progress for ${file.name}`}
+                value={file.progress === null ? null : file.progress * 100}
+              />
+            </li>
+          ))}
+        </ul>
       )}
     </TabsContent>
   );

@@ -70,23 +70,27 @@ export function useTorrentLibrary({
     }
     return totals;
   }, [scoped]);
-  const torrents = useMemo(
-    () =>
-      scoped
-        .filter(
-          (torrent) =>
-            matches(torrent, filter) &&
-            torrent.name.toLocaleLowerCase("en-US").includes(search.toLocaleLowerCase("en-US"))
-        )
-        .sort((a, b) =>
-          sort === "name"
-            ? a.name.localeCompare(b.name, "en-US")
-            : sort === "progress"
-              ? (b.progress ?? -1) - (a.progress ?? -1)
-              : b.addedAt - a.addedAt
-        ),
-    [scoped, filter, search, sort]
-  );
+  const torrents = useMemo(() => {
+    const query = search.toLocaleLowerCase("en-US");
+    const locations = new Map(
+      data.destinations.map((item) => [item.id, `${item.name} ${item.downloadPath}`])
+    );
+    return scoped
+      .filter(
+        (torrent) =>
+          matches(torrent, filter) &&
+          `${torrent.name} ${locations.get(torrent.destinationId) ?? ""}`
+            .toLocaleLowerCase("en-US")
+            .includes(query)
+      )
+      .sort((a, b) =>
+        sort === "name"
+          ? a.name.localeCompare(b.name, "en-US")
+          : sort === "progress"
+            ? (b.progress ?? -1) - (a.progress ?? -1)
+            : b.addedAt - a.addedAt
+      );
+  }, [scoped, filter, search, sort, data.destinations]);
   const selectedId = selectedTorrentId(data.torrents, activeDestination, requested);
   const reveal = useEffectEvent((id: string) => {
     // A torrent opened from search or added elsewhere stays visible despite the current filter.
@@ -129,6 +133,7 @@ export function useTorrentLibrary({
     bulk,
     counts,
     destination,
+    destinations: data.destinations,
     error,
     filter,
     pause,
