@@ -55,4 +55,5 @@ jobs:
 
       - run: bun run tscheck
 
-      - run: bun run test
+      # Native host tests spawn their own Bun processes; limit contention on Windows runners.
+      - run: bun run test ${{ runner.os == 'Windows' && '--parallel=2' || '' }}

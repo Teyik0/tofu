@@ -555,6 +555,11 @@ test("deleting a file during a real transfer stops writing until explicit repair
       (detail) => (detail.downloaded ?? 0) > 0 && detail.progress !== 1
     );
     const path = join(downloading.savePath, "source.bin");
+    // Received blocks can be buffered before the first asynchronous disk write completes.
+    await waitFor(
+      () => Bun.file(path).exists(),
+      (exists) => exists
+    );
     await rm(path);
     const blocked = await waitFor(read, (detail) => detail.status === "error");
     expect(blocked.storageIssue?.kind).toBe("missing-files");
