@@ -29,10 +29,13 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
       stdout: "pipe",
     }
   );
-  const output = Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]).then((parts) => parts.join("\n"));
+  const output = (async () => {
+    const parts = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    return parts.join("\n");
+  })();
   return {
     child,
     output,
@@ -52,7 +55,9 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
           }
           return (await treaty<Api>(url).api.health.get()).response?.ok ? url : null;
         },
-        (url) => url !== null
+        (url) => url !== null,
+        // Watch mode also compiles Furin's development graph before opening the listener.
+        watchEntry ? 30_000 : 15_000
       );
       if (!address) {
         throw new Error("The Tofu server did not start");
