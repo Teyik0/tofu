@@ -1,0 +1,23 @@
+patches/libvlc-wasm@0.2.0.patch
+  s_b3951d4fa40800::t_29eda9cf209846 1-40
+package.json
+  s_b3951d4fa40800::t_29eda9cf209846 88-90
+bun.lock
+  s_b3951d4fa40800::t_c0720937bb075a 52-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "954300fb59e6b037a87faf4a278414fa88d43a82",
+  "prompts": {},
+  "sessions": {
+    "s_b3951d4fa40800": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9495a513-059b-4924-af52-b57f7d1eb0b4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
