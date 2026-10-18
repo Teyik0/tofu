@@ -79,7 +79,7 @@ export function useTorrentLibrary({
       .filter(
         (torrent) =>
           matches(torrent, filter) &&
-          `${torrent.name} ${locations.get(torrent.destinationId) ?? ""}`
+          `${torrent.name} ${activeDestination === null ? (locations.get(torrent.destinationId) ?? "") : ""}`
             .toLocaleLowerCase("en-US")
             .includes(query)
       )
@@ -90,7 +90,7 @@ export function useTorrentLibrary({
             ? (b.progress ?? -1) - (a.progress ?? -1)
             : b.addedAt - a.addedAt
       );
-  }, [scoped, filter, search, sort, data.destinations]);
+  }, [scoped, filter, search, sort, data.destinations, activeDestination]);
   const selectedId = selectedTorrentId(data.torrents, activeDestination, requested);
   const reveal = useEffectEvent((id: string) => {
     // A torrent opened from search or added elsewhere stays visible despite the current filter.
