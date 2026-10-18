@@ -12,9 +12,10 @@ import { Detail } from "./detail";
 import { speed } from "./format";
 import { Icon } from "./icon";
 import { SidebarToggle } from "./sidebar-toggle";
-import { TorrentLibraryTable, TorrentLibraryToolbar } from "./torrent-library-views";
+import { TorrentLibraryList, TorrentLibraryToolbar } from "./torrent-library-views";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
 import { Skeleton } from "./ui/skeleton";
 import { useTorrentLibrary } from "./use-torrent-library";
 
@@ -87,12 +88,23 @@ export function App({
           </AlertDescription>
         </Alert>
       )}
-      <section aria-label="Torrent list" className="library">
-        <TorrentLibraryToolbar model={model} />
-        <TorrentLibraryTable model={model} />
-      </section>
-      {selectedId !== null &&
-        (selectedDetail && summary ? (
+      <div className="library-workspace">
+        <section aria-label="Torrent list" className="library">
+          <TorrentLibraryToolbar model={model} />
+          <TorrentLibraryList model={model} />
+        </section>
+        {selectedId === null ? (
+          <section aria-label="Torrent details" className="detail-pane">
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>No torrent selected</EmptyTitle>
+                <EmptyDescription>
+                  Select a torrent to inspect its files and transfer activity.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </section>
+        ) : selectedDetail && summary ? (
           <Detail
             act={act}
             busy={pending.has(selectedId)}
@@ -102,7 +114,8 @@ export function App({
           />
         ) : (
           <DetailLoading />
-        ))}
+        )}
+      </div>
       <footer className="status-bar">
         <span className="status-port">
           Port <b>{data.session.port}</b>

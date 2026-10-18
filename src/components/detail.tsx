@@ -1,4 +1,5 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
+import { cn } from "cn";
 import { memo } from "react";
 import type { DashboardState, TorrentDetail } from "../types";
 import { ActionTooltip } from "./action-tooltip";
@@ -9,13 +10,14 @@ import {
   DetailPeers,
   DetailTrackers,
 } from "./detail-panels";
-import { bytes, percent, torrentStatusLabel } from "./format";
+import { bytes, duration, percent, ratio, speed, torrentStatusLabel } from "./format";
 import { Icon } from "./icon";
 import type { ModalKind } from "./modal";
 import { StatusGlyph } from "./status-glyph";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Progress } from "./ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { useDetailActions } from "./use-detail-actions";
 
@@ -33,27 +35,17 @@ export const Detail = memo(function DetailView({
   open: (modal: ModalKind) => void;
 }) {
   const model = useDetailActions({ data, torrent });
-  const { verify, repair, reveal, fileError, tabs } = model;
+  const { verify, repair, reveal, pause, resume, fileError, tabs } = model;
+  const destination = data.destinations.find((item) => item.id === torrent.destinationId);
+  const stopped = torrent.status === "paused" || torrent.status === "error";
   return (
     <section aria-label="Torrent details" className="detail-pane">
-      <div className="detail-top">
-        <div className="detail-name">
-          <StatusGlyph progress={torrent.progress} size={40} status={torrent.status} />
-          <div className="detail-title">
-            <strong title={torrent.name}>{torrent.name}</strong>
-            <div className="detail-meta">
-              <Badge className={`status ${torrent.status}`} variant="secondary">
-                {torrentStatusLabel(torrent)}
-              </Badge>
-              <span className="num">
-                {bytes(torrent.downloaded)} of {bytes(torrent.length)}
-              </span>
-              <span className="num">{percent(torrent.progress)}</span>
-              <span className="detail-path" title={torrent.savePath}>
-                {torrent.savePath}
-              </span>
-            </div>
-          </div>
+      <div className="detail-toolbar">
+        <div className="detail-breadcrumb">
+          <Icon name="folder" size={14} />
+          <span>{destination?.name ?? "Downloads"}</span>
+          <Icon name="chevron" size={12} />
+          <span>Torrent details</span>
         </div>
         <div className="detail-actions">
           <ActionTooltip>
@@ -79,20 +71,6 @@ export const Detail = memo(function DetailView({
               <Icon name="copy" />
             </Button>
           </ActionTooltip>
-          {data.session.mode === "desktop" && (
-            <ActionTooltip>
-              <Button
-                aria-label="Open folder"
-                disabled={busy}
-                onClick={() => void act(torrent.id, () => reveal.mutateAsync())}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <Icon name="folder" />
-              </Button>
-            </ActionTooltip>
-          )}
           <span aria-hidden="true" className="toolbar-divider" />
           <ActionTooltip>
             <Button
@@ -106,6 +84,100 @@ export const Detail = memo(function DetailView({
               <Icon name="trash" />
             </Button>
           </ActionTooltip>
+        </div>
+      </div>
+      <div className="detail-top">
+        <div className="detail-name">
+          <StatusGlyph progress={torrent.progress} size={40} status={torrent.status} />
+          <div className="detail-title">
+            <h2 title={torrent.name}>{torrent.name}</h2>
+            <p>
+              {torrent.files.length} file{torrent.files.length === 1 ? "" : "s"} ·{" "}
+              {bytes(torrent.length)}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="detail-transfer">
+        <div className="detail-status-row">
+          <Badge className={cn("status", torrent.status)} variant="secondary">
+            {torrentStatusLabel(torrent)}
+          </Badge>
+          <Button
+            disabled={busy}
+            onClick={() =>
+              void act(torrent.id, () =>
+                torrent.storageIssue
+                  ? repair.mutateAsync()
+                  : stopped
+                    ? resume.mutateAsync()
+                    : pause.mutateAsync()
+              )
+            }
+            size="sm"
+            variant="outline"
+          >
+            <Icon name={stopped ? "play" : "pause"} />
+            {torrent.storageIssue ? "Repair download" : stopped ? "Resume" : "Pause"}
+          </Button>
+        </div>
+        <div className="detail-progress-heading">
+          <span>
+            {torrent.progress === null
+              ? "Waiting for metadata"
+              : `${percent(torrent.progress)} complete`}
+          </span>
+          <span>
+            {stopped
+              ? torrentStatusLabel(torrent)
+              : torrent.progress === 1
+                ? "Complete"
+                : torrent.eta === null
+                  ? "Calculating…"
+                  : `${duration(torrent.eta)} remaining`}
+          </span>
+        </div>
+        <Progress
+          aria-label="Torrent progress"
+          value={torrent.progress === null ? null : torrent.progress * 100}
+        />
+        <dl className="detail-metrics">
+          <div>
+            <dt>↓ Download</dt>
+            <dd>{speed(torrent.downloadSpeed)}</dd>
+          </div>
+          <div>
+            <dt>↑ Upload</dt>
+            <dd>{speed(torrent.uploadSpeed)}</dd>
+          </div>
+          <div>
+            <dt>Peers</dt>
+            <dd>{torrent.peers}</dd>
+          </div>
+          <div>
+            <dt>Ratio</dt>
+            <dd>{ratio(torrent.ratio)}</dd>
+          </div>
+        </dl>
+        <div className="detail-destination">
+          <Icon name="folder" />
+          <div>
+            <span>Save location</span>
+            <code>{torrent.savePath}</code>
+          </div>
+          {data.session.mode === "desktop" && (
+            <ActionTooltip>
+              <Button
+                aria-label="Open folder"
+                disabled={busy}
+                onClick={() => void act(torrent.id, () => reveal.mutateAsync())}
+                size="icon-sm"
+                variant="ghost"
+              >
+                <Icon name="folder" />
+              </Button>
+            </ActionTooltip>
+          )}
         </div>
       </div>
       {fileError !== null && (

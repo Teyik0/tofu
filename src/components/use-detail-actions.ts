@@ -17,6 +17,8 @@ export interface DetailActionsProps {
 
 export function useDetailActions({ torrent, data }: Pick<DetailActionsProps, "torrent" | "data">) {
   const endpoint = api.torrents({ id: torrent.id });
+  const pause = useMutation(endpoint.pause.post);
+  const resume = useMutation(endpoint.resume.post);
   const verify = useMutation(endpoint.verify.post);
   const repair = useMutation(endpoint.repair.post);
   const reveal = useMutation(endpoint.reveal.post);
@@ -58,7 +60,9 @@ export function useDetailActions({ torrent, data }: Pick<DetailActionsProps, "to
     downloadFile,
     fileError,
     latest,
+    pause,
     repair,
+    resume,
     reveal,
     savingFile,
     setPriority,

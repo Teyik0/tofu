@@ -1,0 +1,2204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <title>Tofu — Torrent workspace proposals</title>
+    <style>
+    /* biome-ignore-all lint/style/noDescendingSpecificity: The independent proposal themes intentionally override shared styles. */
+    :root {
+      --ink: #ebece5;
+      --quiet: #9caa96;
+      --line: #30392d;
+      --paper: #171d16;
+      --accent: #c5d9a6;
+      --radius: 16px;
+      color-scheme: dark;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      background: transparent;
+    }
+    body {
+      font-family: "Avenir Next", "Gill Sans", sans-serif;
+      font-size: 14px;
+      color: var(--foreground, #e8ebe2);
+    }
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+    button {
+      color: inherit;
+    }
+    .proposal-bar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0 16px;
+    }
+    .proposal-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      min-width: 0;
+      padding: 0;
+      margin: 0;
+      border: 0;
+    }
+    .proposal-tab {
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--muted-foreground, #a7b09f);
+      background: transparent;
+      border: 1px solid var(--border, #353b32);
+      border-radius: 9px;
+    }
+    .proposal-tab span {
+      margin-right: 7px;
+      font-family: monospace;
+      opacity: 0.65;
+    }
+    .proposal-tab[aria-pressed="true"] {
+      color: #263020;
+      background: #d2dfb9;
+      border-color: #d2dfb9;
+    }
+    .fit-button {
+      padding: 9px 14px;
+      font-size: 11px;
+      color: var(--muted-foreground, #b2b9ad);
+      white-space: nowrap;
+      background: transparent;
+      border: 1px solid var(--border, #3c453a);
+      border-radius: 999px;
+    }
+    .fit-button:hover {
+      color: var(--foreground, #e8ebe2);
+      border-color: var(--accent, #8da877);
+    }
+    .fit-hint {
+      display: none;
+      margin: 0 0 12px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted-foreground, #9fa998);
+    }
+    .stage {
+      overflow: auto;
+      background: #10150f;
+      border-radius: var(--radius);
+    }
+    .stage.fit {
+      overflow: hidden;
+    }
+    .screen-wrap {
+      width: 1280px;
+    }
+    .app {
+      --bg: #171d16;
+      --nav: #111710;
+      --list: #1b2219;
+      --panel: #20271d;
+      --line: #333d2e;
+      --text: #e5eadd;
+      --muted: #a1af97;
+      --accent: #c5d9a6;
+      --selected: #303e27;
+      --amber: #e6bb74;
+      --danger: #e29a86;
+      width: 1280px;
+      height: 762px;
+      overflow: hidden;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+    .app[data-mode="directory"] {
+      --bg: #1b2021;
+      --nav: #121718;
+      --list: #1b2021;
+      --panel: #232a2b;
+      --line: #354042;
+      --text: #e1e9e7;
+      --muted: #a0b2b1;
+      --accent: #9dd3c8;
+      --selected: #283e3b;
+      --amber: #e3bc83;
+    }
+    .app[data-mode="library"] {
+      --bg: #f7f6f0;
+      --nav: #eeeee5;
+      --list: #f4f3ec;
+      --panel: #fffef9;
+      --line: #dddfd1;
+      --text: #303b2c;
+      --muted: #6b7863;
+      --accent: #476a3d;
+      --selected: #e2e8d7;
+      --amber: #946621;
+      --danger: #b64f3b;
+      color-scheme: light;
+    }
+    .titlebar {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      height: 39px;
+      padding: 0 17px;
+      background: var(--nav);
+      border-bottom: 1px solid var(--line);
+    }
+    .traffic {
+      width: 10px;
+      height: 10px;
+      background: #fa6d66;
+      border-radius: 50%;
+    }
+    .traffic:nth-child(2) {
+      background: #ecc057;
+    }
+    .traffic:nth-child(3) {
+      background: #7eae63;
+    }
+    .window-title {
+      padding-right: 48px;
+      margin: auto;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+    }
+    .workspace {
+      display: grid;
+      grid-template-columns: 178px 404px minmax(0, 1fr);
+      height: 686px;
+    }
+    .workspace > * {
+      min-height: 0;
+    }
+    .app[data-mode="focus"] .workspace {
+      grid-template-rows: 64px minmax(0, 1fr);
+      grid-template-columns: 178px 620px minmax(0, 1fr);
+    }
+    .app[data-mode="focus"] .nav {
+      grid-row: 1 / -1;
+      grid-column: 1;
+    }
+    .app[data-mode="focus"] .torrent-pane {
+      grid-row: 2;
+      grid-column: 2;
+    }
+    .app[data-mode="focus"] .detail {
+      grid-row: 2;
+      grid-column: 3;
+      padding: 20px 24px;
+    }
+    .library-topbar {
+      display: flex;
+      grid-row: 1;
+      grid-column: 2 / -1;
+      gap: 20px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    .library-title {
+      display: flex;
+      gap: 11px;
+      align-items: center;
+      min-width: 0;
+    }
+    .library-glyph {
+      display: grid;
+      flex-shrink: 0;
+      place-items: center;
+      width: 35px;
+      height: 35px;
+      color: var(--accent);
+      background: var(--list);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .library-heading {
+      min-width: 0;
+    }
+    .library-heading h1 {
+      font-size: 18px;
+      font-weight: 550;
+      line-height: 1.25;
+      letter-spacing: -0.4px;
+    }
+    .topbar-path {
+      display: block;
+      margin-top: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .library-actions {
+      display: flex;
+      flex-shrink: 0;
+      gap: 8px;
+      align-items: center;
+    }
+    .library-actions .automations-button {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      min-height: 33px;
+      padding: 7px 9px;
+    }
+    .automations-button span {
+      font-size: 10px;
+    }
+    .torrent-toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .torrent-toolbar .search {
+      flex: 1;
+      min-width: 0;
+      padding: 7px 9px;
+      margin: 0;
+    }
+    .torrent-toolbar .filters {
+      flex: 1;
+      gap: 3px;
+      padding: 0;
+      border: 0;
+    }
+    .torrent-toolbar .filter {
+      padding: 6px 8px;
+    }
+    .torrent-toolbar .sort {
+      max-width: 80px;
+    }
+    .app[data-mode="focus"] .torrent-card {
+      padding: 11px 18px 10px;
+    }
+    .app[data-mode="focus"] .torrent-card.compact {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .compact-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .status-glyph {
+      --status: var(--muted);
+      --status-soft: var(--panel);
+      position: relative;
+      display: grid;
+      flex-shrink: 0;
+      place-items: center;
+      color: var(--status);
+      background: var(--status-soft);
+      border-radius: 50%;
+    }
+    .status-glyph[data-status="downloading"] {
+      --status: #b9d39a;
+      --status-soft: #2a3523;
+    }
+    .status-glyph[data-status="seeding"] {
+      --status: #e2b56c;
+      --status-soft: #3a3020;
+    }
+    .status-glyph[data-status="error"] {
+      --status: #e59a86;
+      --status-soft: #3a2721;
+    }
+    .status-glyph > svg:first-child {
+      position: absolute;
+      inset: 0;
+    }
+    .status-glyph circle {
+      fill: none;
+      stroke-width: 2.5;
+    }
+    .status-glyph-track {
+      stroke: #2c3426;
+    }
+    .status-glyph-value {
+      stroke: var(--status);
+      stroke-linecap: round;
+    }
+    .status-glyph > .icon {
+      width: 42%;
+      height: 42%;
+      stroke-width: 1.7;
+    }
+    .detail-heading > .status-glyph {
+      margin-top: 2px;
+    }
+    .compact-heading {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+    .compact-heading .torrent-name {
+      flex: 1;
+      min-width: 0;
+      padding: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 14px;
+      line-height: 1.35;
+      white-space: nowrap;
+    }
+    .compact-heading .status {
+      flex-shrink: 0;
+    }
+    .compact-summary {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      margin-top: 5px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+    .compact-summary .release {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .compact-summary .torrent-destination {
+      opacity: 0.75;
+    }
+    .compact-summary .torrent-size {
+      flex-shrink: 0;
+    }
+    .compact-summary .torrent-rate {
+      flex-shrink: 0;
+      width: 82px;
+      text-align: right;
+    }
+    .app[data-mode="focus"] .torrent-progress {
+      height: 2px;
+      margin: 8px 0 0;
+    }
+    .app[data-mode="focus"] .torrent-card.selected::before {
+      top: 11px;
+      bottom: 11px;
+    }
+    .app[data-mode="focus"] .detail-crumb {
+      margin-bottom: 20px;
+    }
+    .app[data-mode="focus"] .detail-heading {
+      gap: 12px;
+    }
+    .app[data-mode="focus"] .detail-heading h2 {
+      font-size: 23px;
+    }
+    .app[data-mode="focus"] .file-symbol {
+      width: 42px;
+      height: 50px;
+    }
+    .app[data-mode="focus"] .detail-tabs {
+      gap: 16px;
+    }
+    .app h1,
+    .app h2,
+    .app h3 {
+      color: var(--text);
+    }
+    .nav {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 23px 12px 15px;
+      background: var(--nav);
+      border-right: 1px solid var(--line);
+    }
+    .brand {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 0 10px;
+      margin-bottom: 22px;
+      font-size: 20px;
+      font-weight: 650;
+      letter-spacing: -0.7px;
+    }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      color: var(--nav);
+      background: var(--accent);
+      border-radius: 9px;
+    }
+    .brand-mark svg {
+      width: 23px;
+      height: 23px;
+    }
+    .nav-label {
+      padding: 23px 10px 9px;
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+    }
+    .nav-button {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      width: 100%;
+      padding: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: left;
+      background: transparent;
+      border: 0;
+      border-radius: 7px;
+    }
+    .nav-button.active {
+      color: var(--accent);
+      background: var(--selected);
+    }
+    .nav-button:hover {
+      background: var(--panel);
+    }
+    .nav-button b {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 500;
+      opacity: 0.8;
+    }
+    .icon {
+      flex-shrink: 0;
+      width: 17px;
+      height: 17px;
+      vertical-align: middle;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .nav-bottom {
+      padding: 17px 9px 0;
+      margin-top: auto;
+      border-top: 1px solid var(--line);
+    }
+    .storage-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .storage-bar {
+      height: 4px;
+      margin: 10px 0;
+      overflow: hidden;
+      background: var(--line);
+      border-radius: 4px;
+    }
+    .storage-bar i {
+      display: block;
+      width: 97%;
+      height: 100%;
+      background: var(--accent);
+      opacity: 0.6;
+    }
+    .storage-hint {
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .settings {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 18px;
+    }
+    .icon-button {
+      display: inline-grid;
+      place-items: center;
+      padding: 7px;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+    }
+    .icon-button:hover {
+      color: var(--text);
+      background: var(--selected);
+    }
+    .torrent-pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--list);
+      border-right: 1px solid var(--line);
+    }
+    .pane-heading {
+      padding: 20px 22px 14px;
+    }
+    .eyebrow {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1.3px;
+    }
+    .heading-line {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin: 7px 0 3px;
+    }
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 550;
+      letter-spacing: -0.8px;
+    }
+    .count {
+      margin-left: 5px;
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--muted);
+    }
+    .subline {
+      margin-top: 5px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .search {
+      display: flex;
+      gap: 9px;
+      align-items: center;
+      padding: 9px 10px;
+      margin: 0 22px 14px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+    }
+    .search input {
+      width: 100%;
+      min-width: 0;
+      font-size: 12px;
+      color: var(--text);
+      outline: none;
+      background: transparent;
+      border: 0;
+    }
+    .search input::placeholder {
+      color: var(--muted);
+    }
+    .search kbd {
+      padding: 1px 4px;
+      font-size: 9px;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+    }
+    .filters {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      padding: 0 22px 15px;
+      border-bottom: 1px solid var(--line);
+    }
+    .filter {
+      padding: 6px 9px;
+      font-size: 11px;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+      border-radius: 5px;
+    }
+    .filter.active {
+      color: var(--accent);
+      background: var(--selected);
+    }
+    .filter em {
+      margin-left: 4px;
+      font-style: normal;
+      opacity: 0.7;
+    }
+    .sort {
+      max-width: 96px;
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--list);
+      border: 0;
+    }
+    .torrent-list {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      scrollbar-color: var(--line) transparent;
+      scrollbar-width: thin;
+    }
+    .torrent-card {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 13px 20px 12px;
+      color: var(--text);
+      text-align: left;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+    }
+    .torrent-card:hover {
+      background: color-mix(in srgb, var(--selected) 40%, transparent);
+    }
+    .torrent-card.selected {
+      background: var(--selected);
+    }
+    .torrent-card.selected::before {
+      position: absolute;
+      top: 16px;
+      bottom: 16px;
+      left: 0;
+      width: 3px;
+      content: "";
+      background: var(--accent);
+      border-radius: 0 4px 4px 0;
+    }
+    .torrent-top {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .status {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      font-size: 10px;
+      color: var(--accent);
+    }
+    .status.seed {
+      color: var(--amber);
+    }
+    .status.error {
+      color: var(--danger);
+    }
+    .status.paused {
+      color: var(--muted);
+    }
+    .dot {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      background: currentColor;
+      border-radius: 50%;
+    }
+    .torrent-name {
+      padding-right: 10px;
+      font-size: 14px;
+      font-weight: 550;
+      line-height: 1.4;
+      letter-spacing: -0.1px;
+    }
+    .release {
+      margin-top: 4px;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+    .torrent-progress {
+      height: 3px;
+      margin: 10px 0 7px;
+      overflow: hidden;
+      background: var(--line);
+      border-radius: 5px;
+    }
+    .torrent-progress i {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 5px;
+    }
+    .torrent-progress.seed i {
+      background: var(--amber);
+    }
+    .torrent-progress.error i {
+      background: var(--danger);
+    }
+    .torrent-meta {
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .mono {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      letter-spacing: -0.2px;
+    }
+    .detail {
+      position: relative;
+      min-width: 0;
+      padding: 23px 30px;
+      overflow: auto;
+      background: var(--bg);
+    }
+    .detail-crumb {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .crumbs {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+    }
+    .detail-actions {
+      display: flex;
+      gap: 7px;
+    }
+    .detail-actions .icon-button {
+      padding: 5px;
+      border: 0;
+    }
+    .detail-heading {
+      display: flex;
+      gap: 15px;
+      align-items: flex-start;
+    }
+    .file-symbol {
+      display: grid;
+      flex-shrink: 0;
+      place-items: center;
+      width: 48px;
+      height: 57px;
+      color: var(--accent);
+      background: var(--selected);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .file-symbol .icon {
+      width: 25px;
+      height: 25px;
+    }
+    .detail-heading h2 {
+      margin-bottom: 8px;
+      font-size: 26px;
+      font-weight: 550;
+      line-height: 1.18;
+      letter-spacing: -0.85px;
+    }
+    .detail-release {
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+    .tags {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-top: 17px;
+    }
+    .tag {
+      padding: 3px 7px;
+      font-size: 10px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+    }
+    .primary {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--nav);
+      background: var(--accent);
+      border: 1px solid transparent;
+      border-radius: 6px;
+    }
+    .app[data-mode="library"] .primary {
+      color: #fff;
+    }
+    .secondary {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 12px;
+      font-size: 11px;
+      color: var(--text);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .progress-section {
+      margin-top: 26px;
+    }
+    .progress-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 11px;
+    }
+    .progress-heading strong {
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .progress-heading span {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .big-progress {
+      height: 5px;
+      overflow: hidden;
+      background: var(--line);
+      border-radius: 6px;
+    }
+    .big-progress i {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 6px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      margin: 22px 0;
+    }
+    .metric {
+      padding-left: 16px;
+      border-left: 1px solid var(--line);
+    }
+    .metric:first-child {
+      padding: 0;
+      border: 0;
+    }
+    .metric dt {
+      margin-bottom: 7px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .metric dd {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.6px;
+    }
+    .metric dd small {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0;
+    }
+    .destination-box {
+      display: flex;
+      gap: 11px;
+      align-items: center;
+      padding: 13px;
+      margin: 17px 0 22px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+    }
+    .destination-box > .icon {
+      color: var(--accent);
+    }
+    .destination-box > div {
+      flex: 1;
+      min-width: 0;
+    }
+    .destination-box p {
+      margin-bottom: 4px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .destination-box code {
+      font-size: 11px;
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }
+    .detail-tabs {
+      display: flex;
+      gap: 21px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .detail-tab {
+      padding: 0 0 12px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+    }
+    .detail-tab.active {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+    .detail-tab small {
+      margin-left: 3px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .section-heading h3 {
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .section-heading span {
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .graph {
+      position: relative;
+      height: 100px;
+      overflow: hidden;
+      background: repeating-linear-gradient(
+        to top,
+        transparent 0,
+        transparent 30px,
+        var(--line) 31px,
+        transparent 32px
+      );
+    }
+    .graph svg {
+      width: 100%;
+      height: 100%;
+    }
+    .graph-labels {
+      display: flex;
+      justify-content: space-between;
+      margin: 8px 0 18px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px 25px;
+      margin-top: 20px;
+    }
+    .info-grid dt {
+      margin-bottom: 5px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .info-grid dd {
+      margin: 0;
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+    .file-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 11px 0;
+      font-size: 11px;
+      border-bottom: 1px solid var(--line);
+    }
+    .file-row > div {
+      flex: 1;
+      min-width: 0;
+    }
+    .file-row p {
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+    .file-row small {
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .file-row select {
+      padding: 5px;
+      font-size: 10px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+    }
+    .error-banner {
+      padding: 12px;
+      margin: 20px 0;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+      border-radius: 6px;
+    }
+    .empty {
+      padding: 40px 22px;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--muted);
+      text-align: center;
+    }
+    .app-footer {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      height: 36px;
+      padding: 0 18px;
+      font-size: 10px;
+      color: var(--muted);
+      background: var(--nav);
+      border-top: 1px solid var(--line);
+    }
+    .app-footer .online {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .app-footer .online .dot {
+      color: var(--accent);
+    }
+    .app-footer .prototype {
+      margin-left: auto;
+    }
+    .group-heading {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 14px 22px 9px;
+      font-size: 12px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--line);
+    }
+    .group-heading span {
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--muted);
+    }
+    .app[data-mode="directory"] .workspace {
+      grid-template-columns: 66px minmax(0, 1fr) 356px;
+    }
+    .app[data-mode="directory"] .nav {
+      align-items: center;
+      padding-right: 10px;
+      padding-left: 10px;
+    }
+    .app[data-mode="directory"] .brand {
+      padding: 0;
+      margin-bottom: 19px;
+    }
+    .app[data-mode="directory"] .brand-name,
+    .app[data-mode="directory"] .nav-text,
+    .app[data-mode="directory"] .nav-button b,
+    .app[data-mode="directory"] .nav-label,
+    .app[data-mode="directory"] .storage-label,
+    .app[data-mode="directory"] .storage-bar,
+    .app[data-mode="directory"] .storage-hint {
+      display: none;
+    }
+    .app[data-mode="directory"] .nav-button {
+      justify-content: center;
+      width: 38px;
+      padding: 10px;
+      margin-bottom: 3px;
+    }
+    .app[data-mode="directory"] .nav-bottom {
+      padding: 15px 0 0;
+    }
+    .app[data-mode="directory"] .settings {
+      flex-direction: column;
+      gap: 10px;
+      margin: 0;
+    }
+    .app[data-mode="directory"] .pane-heading {
+      padding: 24px 25px 16px;
+    }
+    .app[data-mode="directory"] .search {
+      width: 246px;
+      padding: 8px 10px;
+      margin: 0;
+    }
+    .directory-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 25px 17px;
+    }
+    .app[data-mode="directory"] .filters {
+      padding: 0;
+      border: 0;
+    }
+    .app[data-mode="directory"] .detail {
+      padding: 24px 21px;
+      border-left: 1px solid var(--line);
+    }
+    .app[data-mode="directory"] .torrent-pane {
+      border: 0;
+    }
+    .app[data-mode="directory"] .detail-crumb {
+      margin-bottom: 27px;
+    }
+    .app[data-mode="directory"] .detail-heading {
+      display: block;
+    }
+    .app[data-mode="directory"] .file-symbol {
+      width: 42px;
+      height: 48px;
+      margin-bottom: 16px;
+    }
+    .app[data-mode="directory"] .detail-heading h2 {
+      font-size: 24px;
+    }
+    .app[data-mode="directory"] .metrics {
+      grid-template-columns: 1fr 1fr;
+      gap: 20px 15px;
+    }
+    .app[data-mode="directory"] .metric:nth-child(3) {
+      padding: 0;
+      border: 0;
+    }
+    .app[data-mode="directory"] .detail-tabs {
+      gap: 12px;
+    }
+    .app[data-mode="directory"] .detail-tab {
+      font-size: 11px;
+    }
+    .app[data-mode="directory"] .detail-tab small {
+      display: none;
+    }
+    .app[data-mode="directory"] .graph {
+      height: 70px;
+    }
+    .app[data-mode="directory"] .destination-box {
+      margin-bottom: 26px;
+    }
+    .table-head,
+    .table-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 168px 77px 68px;
+      gap: 16px;
+      align-items: center;
+      text-align: left;
+    }
+    .table-head {
+      padding: 10px 25px;
+      font-size: 10px;
+      color: var(--muted);
+      background: var(--nav);
+      border-block: 1px solid var(--line);
+    }
+    .table-row {
+      position: relative;
+      width: 100%;
+      min-height: 66px;
+      padding: 12px 25px;
+      color: var(--text);
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .table-row:hover {
+      background: var(--panel);
+    }
+    .table-row.selected {
+      background: var(--selected);
+    }
+    .table-row.selected::before {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 3px;
+      content: "";
+      background: var(--accent);
+    }
+    .table-row .torrent-name {
+      padding: 0;
+      font-size: 12px;
+    }
+    .table-row .release {
+      margin-top: 4px;
+      font-size: 10px;
+    }
+    .table-row .path {
+      font-size: 10px;
+      line-height: 1.8;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+    .table-row .path strong {
+      display: block;
+      font-family: "Avenir Next", sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .table-row .torrent-progress {
+      margin: 6px 0;
+    }
+    .table-row .number {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .table-row .row-status {
+      font-size: 10px;
+    }
+    .app[data-mode="library"] .workspace {
+      grid-template-columns: 184px 352px minmax(0, 1fr);
+    }
+    .app[data-mode="library"] .detail {
+      padding-inline: 32px;
+    }
+    .app[data-mode="library"] .torrent-card {
+      padding-top: 15px;
+      padding-bottom: 15px;
+    }
+    .app[data-mode="library"] .detail-heading h2 {
+      font-family: "Palatino Linotype", Palatino, serif;
+      font-size: 31px;
+      font-weight: 500;
+      letter-spacing: -0.8px;
+    }
+    .app[data-mode="library"] .detail-crumb {
+      margin-bottom: 28px;
+    }
+    .app[data-mode="library"] .file-symbol {
+      background: #e9eddc;
+    }
+    .app[data-mode="library"] .graph {
+      background: repeating-linear-gradient(
+        to top,
+        transparent 0,
+        transparent 30px,
+        var(--line) 31px,
+        transparent 32px
+      );
+    }
+    .app[data-mode="library"] .torrent-name {
+      font-size: 13px;
+    }
+    .app[data-mode="library"] h1 {
+      font-family: Palatino, serif;
+      font-size: 26px;
+    }
+    .app[data-mode="library"] .group-heading {
+      background: var(--bg);
+    }
+    .app[data-mode="library"] .window-title {
+      letter-spacing: 0.07em;
+    }
+    .proposal-notes {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 22px;
+      padding-bottom: 6px;
+      margin-top: 18px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .proposal-notes h3 {
+      margin-bottom: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--foreground, #e7e9e2);
+    }
+    .proposal-notes p {
+      font-size: 11px;
+      color: var(--muted-foreground, #9fa998);
+    }
+    .note-number {
+      margin-right: 7px;
+      font-family: monospace;
+      font-size: 10px;
+      color: #9cae86;
+    }
+    .recommended {
+      margin-left: 6px;
+      font-size: 8px;
+      font-weight: 600;
+      color: #8da877;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+    }
+    .toast {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      z-index: 10;
+      max-width: 460px;
+      padding: 11px 17px;
+      font-size: 12px;
+      color: var(--bg);
+      text-align: center;
+      background: var(--text);
+      border-radius: 8px;
+      box-shadow: 0 6px 30px #0003;
+      transform: translateX(-50%);
+    }
+    .dialog-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      background: #0007;
+    }
+    .dialog {
+      width: 430px;
+      padding: 25px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 25px 80px #0006;
+    }
+    .dialog h3 {
+      margin-bottom: 7px;
+      font-size: 21px;
+    }
+    .dialog p {
+      margin-bottom: 20px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    .dialog label {
+      display: block;
+      margin: 12px 0 7px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .dialog input,
+    .dialog select {
+      width: 100%;
+      padding: 10px;
+      font-size: 12px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .dialog-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    .dialog-error {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--danger);
+    }
+    @media (min-width: 1500px) {
+      body {
+        max-width: 1500px;
+        margin-inline: auto;
+      }
+    }
+    @media (max-width: 560px) {
+      .proposal-tab {
+        flex: 1;
+        padding: 9px 8px;
+        font-size: 11px;
+      }
+      .proposal-tab span {
+        margin-right: 3px;
+      }
+      .proposal-tabs {
+        flex-wrap: nowrap;
+      }
+      .proposal-bar {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+      }
+      .fit-button {
+        padding: 10px 12px;
+        font-size: 11px;
+      }
+      .proposal-notes {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .proposal-notes p {
+        font-size: 12px;
+      }
+    }
+    @media (max-width: 728px) {
+      .proposal-bar {
+        position: sticky;
+        top: 0;
+        z-index: 6;
+        padding: 10px 0 12px;
+        background: var(--paper, #10150f);
+      }
+      .fit-hint {
+        display: block;
+      }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .torrent-card,
+      .table-row,
+      .icon-button {
+        transition: background-color 0.15s ease;
+      }
+    }
+    </style>
+  </head>
+  <body>
+    <main aria-label="Tofu interface design proposals">
+      <div class="proposal-bar">
+        <fieldset aria-label="Design proposal" class="proposal-tabs">
+          <button aria-pressed="true" class="proposal-tab" data-proposal="focus" type="button">
+            <span>01</span>Focus
+          </button>
+          <button aria-pressed="false" class="proposal-tab" data-proposal="directory" type="button">
+            <span>02</span>Directory
+          </button>
+          <button aria-pressed="false" class="proposal-tab" data-proposal="library" type="button">
+            <span>03</span>Library
+          </button>
+        </fieldset>
+        <button aria-pressed="true" class="fit-button" id="fit-button" type="button">
+          View at actual size ↗
+        </button>
+      </div>
+      <p class="fit-hint" id="fit-hint">
+        The frame below is a full 1280&nbsp;px desktop window, scaled down to fit. Switch to actual
+        size to read it.
+      </p>
+      <div class="stage fit" id="stage">
+        <div class="screen-wrap" id="screen-wrap">
+          <div class="app" data-mode="focus" id="app"></div>
+        </div>
+      </div>
+      <div class="proposal-notes" id="notes"></div>
+    </main>
+    <script>
+    // biome-ignore-all lint/style/noNestedTernary: Inline markup selects between three alternative design layouts.
+    // biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: This standalone prototype keeps its rendering modes and event dispatch together.
+    "use strict";
+    const paths = {
+      alert: "m12 3 10 18H2L12 3Zm0 6v5m0 3v.01",
+      box: "M3 6l9-4 9 4v12l-9 4-9-4z M3 6l9 4 9-4 M12 10v12",
+      check: "M5 12l4 4L20 5",
+      chevron: "M9 5l7 7-7 7",
+      close: "M5 5l14 14 M19 5L5 19",
+      copy: "M8 8h13v13H8z M3 16V3h13",
+      down: "M12 3v16 M6 13l6 6 6-6 M4 21h16",
+      download: "M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4",
+      external: "M14 3h7v7 M21 3l-11 11 M10 4H4v16h16v-6",
+      file: "M5 3h9l5 5v13H5z M14 3v6h5 M8 14h8 M8 17h6",
+      folder: "M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11H3z",
+      grid: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
+      leaf: "M20 3C9 2 3 6 4 14c1 7 11 8 15 0 2-4 1-11 1-11z M5 19L16 8",
+      more: "M5 12h.01 M12 12h.01 M19 12h.01",
+      music: "M9 18V5l12-2v13 M9 9l12-2 M9 18a3 3 0 1 1-3-3h3 M21 16a3 3 0 1 1-3-3h3",
+      pause: "M8 5v14 M16 5v14",
+      play: "M7 4l14 8-14 8z",
+      plus: "M12 5v14 M5 12h14",
+      search: "M21 21l-5-5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
+      settings: "M9 3h6l1 4 4 1v7l-4 1-1 5H9l-1-5-5-1V8l5-1z M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
+      spark: "M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3z",
+      up: "M12 21V5 M6 11l6-6 6 6",
+      upload: "M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4",
+      video: "M4 3h16v18H4z M4 8h16 M4 16h16 M8 3v18 M16 3v18",
+      zap: "M13 2L3 14h8l-1 8 11-13h-8z",
+    };
+    const torrents = [
+      {
+        destination: "Videos",
+        episode: "Season 01 · Episode 18",
+        eta: "54 seconds",
+        file: "[SubsPlease] Sousou no Frieren - 18 (1080p).mkv",
+        files: 3,
+        id: 1,
+        name: "Frieren: Beyond Journey’s End",
+        path: "/Users/teyik0/Downloads/video",
+        peers: 24,
+        progress: 68,
+        ratio: "0.12",
+        release: "[SubsPlease] Sousou no Frieren - 18 (1080p)",
+        size: "1.42 GiB",
+        speed: "8.4 MB/s",
+        status: "Downloading",
+        tags: ["1080p", "WEB-DL", "MKV"],
+        upload: "420 KB/s",
+      },
+      {
+        destination: "Videos",
+        episode: "Season 01 · Episode 02",
+        eta: "Complete",
+        file: "Firefly Wedding S01E02 SUBFRENCH 1080p CR WEB-DL AAC2.0 x264-Tsundere-Raws.mkv",
+        files: 1,
+        id: 2,
+        name: "Firefly Wedding",
+        path: "/Users/teyik0/Downloads/video",
+        peers: 6,
+        progress: 100,
+        ratio: "2.41",
+        release: "SUBFRENCH · 1080p · CR WEB-DL · AAC2.0",
+        size: "1.31 GiB",
+        speed: "0 B/s",
+        status: "Seeding",
+        tags: ["1080p", "WEB-DL", "MKV"],
+        upload: "84 KB/s",
+      },
+      {
+        destination: "Videos",
+        episode: "Episodes 13–24 · Complete season",
+        eta: "Needs attention",
+        file: "[Erai-raws] Beastars Final Season - 13 ~ 24 [1080p NF WEBRip]",
+        files: 12,
+        id: 3,
+        name: "Beastars — Final Season",
+        path: "/Users/teyik0/Downloads/video",
+        peers: 0,
+        progress: 24,
+        ratio: "0.00",
+        release: "[Erai-raws] · 1080p · NF WEBRip",
+        size: "7.11 GiB",
+        speed: "0 B/s",
+        status: "Disk full",
+        tags: ["1080p", "WEBRip", "12 episodes"],
+        upload: "0 B/s",
+      },
+      {
+        destination: "Videos",
+        episode: "Season 02 · Episode 03",
+        eta: "Complete",
+        file: "Aoashi S02E03 SUBFRENCH 720p CR WEB-DL AAC2.0 x264.mkv",
+        files: 1,
+        id: 4,
+        name: "Aoashi",
+        path: "/Users/teyik0/Downloads/video",
+        peers: 8,
+        progress: 100,
+        ratio: "6.76",
+        release: "SUBFRENCH · 720p · CR WEB-DL · AAC2.0",
+        size: "733 MiB",
+        speed: "0 B/s",
+        status: "Seeding",
+        tags: ["720p", "WEB-DL", "MKV"],
+        upload: "112 KB/s",
+      },
+      {
+        destination: "Music",
+        episode: "2005 · Studio album",
+        eta: "Complete",
+        file: "Nujabes - Modal Soul (2005) [FLAC]",
+        files: 14,
+        id: 5,
+        name: "Nujabes — Modal Soul",
+        path: "/Users/teyik0/Music/Albums",
+        peers: 3,
+        progress: 100,
+        ratio: "3.82",
+        release: "FLAC · 24-bit · 44.1 kHz",
+        size: "486 MiB",
+        speed: "0 B/s",
+        status: "Seeding",
+        tags: ["FLAC", "24-bit", "14 tracks"],
+        upload: "32 KB/s",
+      },
+      {
+        destination: "Software",
+        episode: "Desktop · AMD64",
+        eta: "Paused",
+        file: "ubuntu-26.04-desktop-amd64.iso",
+        files: 1,
+        id: 6,
+        name: "Ubuntu 26.04 LTS",
+        path: "/Users/teyik0/Downloads/software",
+        peers: 0,
+        progress: 42,
+        ratio: "0.04",
+        release: "Official image · Linux",
+        size: "5.8 GiB",
+        speed: "0 B/s",
+        status: "Paused",
+        tags: ["ISO", "AMD64", "Linux"],
+        upload: "0 B/s",
+      },
+      {
+        destination: "Videos",
+        episode: "Complete series · 26 episodes",
+        eta: "Complete",
+        file: "[EMBER] Samurai Champloo (2004) [1080p BluRay HEVC]",
+        files: 26,
+        id: 7,
+        name: "Samurai Champloo",
+        path: "/Users/teyik0/Downloads/video",
+        peers: 11,
+        progress: 100,
+        ratio: "1.93",
+        release: "[EMBER] · 1080p · BluRay · HEVC",
+        size: "12.6 GiB",
+        speed: "0 B/s",
+        status: "Seeding",
+        tags: ["1080p", "BluRay", "HEVC"],
+        upload: "61 KB/s",
+      },
+    ];
+    const state = {
+      destination: "All torrents",
+      filter: "all",
+      fit: true,
+      mode: "focus",
+      query: "",
+      selected: 1,
+      sort: "recent",
+      tab: "Activity",
+    };
+    const app = document.getElementById("app");
+    const stage = document.getElementById("stage");
+    const wrap = document.getElementById("screen-wrap");
+    let toastTimer;
+    function icon(name) {
+      return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name] || paths.file}"/></svg>`;
+    }
+    function escapeHtml(value) {
+      return String(value).replace(
+        /[&<>"']/g,
+        (character) =>
+          ({ "'": "&#39;", '"': "&quot;", "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]
+      );
+    }
+    function statusClass(torrent) {
+      return torrent.status === "Seeding"
+        ? "seed"
+        : torrent.status === "Disk full"
+          ? "error"
+          : torrent.status === "Paused"
+            ? "paused"
+            : "";
+    }
+    function statusGlyph(torrent, size) {
+      const status = torrent.status === "Disk full" ? "error" : torrent.status.toLowerCase();
+      const glyph =
+        status === "downloading"
+          ? "download"
+          : status === "seeding"
+            ? "upload"
+            : status === "error"
+              ? "alert"
+              : "pause";
+      const radius = size / 2 - 2;
+      const circumference = 2 * Math.PI * radius;
+      const progress = Math.min(1, Math.max(0, torrent.progress / 100));
+      return `<span class="status-glyph" data-status="${status}" style="width:${size}px;height:${size}px" aria-hidden="true"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle class="status-glyph-track" cx="${size / 2}" cy="${size / 2}" r="${radius}"/><circle class="status-glyph-value" cx="${size / 2}" cy="${size / 2}" r="${radius}" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference * (1 - progress)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>${icon(glyph)}</span>`;
+    }
+    function rate(text) {
+      const [amount, unit] = String(text).split(" ");
+      return Number(amount || 0) * (unit === "MB/s" ? 1024 : unit === "KB/s" ? 1 : 0);
+    }
+    function rateLabel(kilobytes) {
+      return kilobytes >= 1024
+        ? `${(kilobytes / 1024).toFixed(1)} MB/s`
+        : `${Math.round(kilobytes)} KB/s`;
+    }
+    function visibleTorrents() {
+      const result = torrents.filter(
+        (t) =>
+          (state.destination === "All torrents" || t.destination === state.destination) &&
+          (state.filter === "all" ||
+            (state.filter === "active" && ["Downloading", "Seeding"].includes(t.status)) ||
+            (state.filter === "errors" && t.status === "Disk full")) &&
+          `${t.name} ${t.release} ${t.path}`.toLowerCase().includes(state.query.toLowerCase())
+      );
+      if (state.sort === "name") {
+        result.sort((a, b) => a.name.localeCompare(b.name));
+      }
+      if (state.sort === "progress") {
+        result.sort((a, b) => a.progress - b.progress);
+      }
+      return result;
+    }
+    function renderList() {
+      const visible = visibleTorrents();
+      let previousGroup = "";
+      if (state.mode === "library") {
+        visible.sort(
+          (a, b) =>
+            ["Videos", "Music", "Software"].indexOf(a.destination) -
+            ["Videos", "Music", "Software"].indexOf(b.destination)
+        );
+      }
+      document.getElementById("torrent-list").innerHTML =
+        visible
+          .map((t) => {
+            const status = statusClass(t);
+            let heading = "";
+            if (state.mode === "library" && previousGroup !== t.destination) {
+              previousGroup = t.destination;
+              heading = `<div class="group-heading">${escapeHtml(t.destination)}<span class="mono">${escapeHtml(t.path.replace("/Users/teyik0", "~"))}</span></div>`;
+            }
+            if (state.mode === "focus") {
+              return `<button type="button" class="torrent-card compact ${state.selected === t.id ? "selected" : ""}" data-torrent="${t.id}" aria-pressed="${state.selected === t.id}">${statusGlyph(t, 34)}<div class="compact-body"><div class="compact-heading"><span class="torrent-name" title="${escapeHtml(t.file)}">${escapeHtml(t.name)}</span><span class="status ${status}"><i class="dot"></i>${escapeHtml(t.status)}</span></div><div class="compact-summary"><span class="release">${escapeHtml(t.episode)}${state.destination === "All torrents" ? ` <span class="torrent-destination">· ${escapeHtml(t.destination)}</span>` : ""}</span><span class="torrent-size mono">${t.progress}% · ${escapeHtml(t.size)}</span><span class="torrent-rate mono">${t.status === "Downloading" ? `↓ ${escapeHtml(t.speed)}` : t.status === "Seeding" ? `↑ ${escapeHtml(t.upload)}` : t.status === "Disk full" ? "Disk full" : "Paused"}</span></div><div class="torrent-progress ${status}"><i style="width:${t.progress}%"></i></div></div></button>`;
+            }
+            if (state.mode === "directory") {
+              return `<button type="button" class="table-row ${state.selected === t.id ? "selected" : ""}" data-torrent="${t.id}" aria-pressed="${state.selected === t.id}"><div><div class="torrent-name">${escapeHtml(t.name)}</div><div class="release">${escapeHtml(t.episode)}</div></div><div class="path mono"><strong>${escapeHtml(t.destination)}</strong>${escapeHtml(t.path.replace("/Users/teyik0", "~"))}</div><div><span class="number mono">${t.progress}%</span><div class="torrent-progress ${status}"><i style="width:${t.progress}%"></i></div><span class="status row-status ${status}">${escapeHtml(t.status)}</span></div><span class="number mono">${escapeHtml(t.speed)}</span></button>`;
+            }
+            return (
+              heading +
+              `<button type="button" class="torrent-card ${state.selected === t.id ? "selected" : ""}" data-torrent="${t.id}" aria-pressed="${state.selected === t.id}"><div class="torrent-top"><span class="status ${status}"><i class="dot"></i>${escapeHtml(t.status)}</span><span>${state.destination === "All torrents" && state.mode !== "library" ? escapeHtml(t.destination) : escapeHtml(t.size)}</span></div><div class="torrent-name">${escapeHtml(t.name)}</div><div class="release">${escapeHtml(t.episode)}</div><div class="torrent-progress ${status}"><i style="width:${t.progress}%"></i></div><div class="torrent-meta"><span class="mono">${t.progress}% <span style="opacity:.45">·</span> ${escapeHtml(t.size)}</span><span class="mono">${t.status === "Downloading" ? `↓ ${escapeHtml(t.speed)}` : t.status === "Seeding" ? `↑ ${escapeHtml(t.upload)}` : escapeHtml(t.eta)}</span></div></button>`
+            );
+          })
+          .join("") ||
+        '<div class="empty">No torrents match this view.<br>Try another filter or search.</div>';
+      const list = document.getElementById("torrent-list");
+      const selected = list.querySelector(".selected");
+      if (selected) {
+        if (selected.offsetTop < list.scrollTop) {
+          list.scrollTop = selected.offsetTop;
+        } else if (
+          selected.offsetTop + selected.offsetHeight >
+          list.scrollTop + list.clientHeight
+        ) {
+          list.scrollTop = selected.offsetTop + selected.offsetHeight - list.clientHeight;
+        }
+      }
+    }
+    function renderDetail() {
+      const t = torrents.find((item) => item.id === state.selected);
+      const detail = document.getElementById("detail");
+      if (!t) {
+        detail.innerHTML = '<div class="empty">Select a torrent to see its details.</div>';
+        return;
+      }
+      const status = statusClass(t);
+      const paused = t.status === "Paused";
+      let content = "";
+      if (state.tab === "Activity") {
+        content = `<div class="section-heading"><h3>Transfer activity</h3><span>Last 60 seconds · MB/s</span></div><div class="graph"><svg viewBox="0 0 580 100" preserveAspectRatio="none" aria-label="Sample download activity chart" role="img"><defs><linearGradient id="chart-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="currentColor" stop-opacity=".22"/><stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs><path d="M0 92 L16 86 31 90 48 72 64 78 80 65 96 69 112 43 128 48 144 35 160 48 176 40 192 51 208 23 224 31 240 29 256 42 272 21 288 34 304 19 320 28 336 36 352 21 368 30 384 16 400 23 416 20 432 32 448 21 464 28 480 16 496 24 512 19 528 28 544 18 560 23 580 20 L580 100H0Z" fill="url(#chart-fill)" style="color:var(--accent)"/><path d="M0 92 L16 86 31 90 48 72 64 78 80 65 96 69 112 43 128 48 144 35 160 48 176 40 192 51 208 23 224 31 240 29 256 42 272 21 288 34 304 19 320 28 336 36 352 21 368 30 384 16 400 23 416 20 432 32 448 21 464 28 480 16 496 24 512 19 528 28 544 18 560 23 580 20" fill="none" stroke="var(--accent)" stroke-width="2"/><path d="M0 97 L40 94 80 95 120 89 160 92 200 86 240 90 280 87 320 92 360 87 400 91 440 85 480 88 520 83 580 87" fill="none" stroke="var(--amber)" stroke-width="1.5"/></svg></div><div class="graph-labels"><span>−60s</span><span>−30s</span><span>Now</span></div><dl class="info-grid"><div><dt>Downloaded</dt><dd class="mono">${t.progress === 0 ? "0 B" : t.progress === 100 ? t.size : t.progress === 68 ? "988 MiB" : t.progress === 24 ? "1.71 GiB" : "2.44 GiB"} of ${t.size}</dd></div><div><dt>Availability</dt><dd class="mono">${t.peers ? "12.84 · Healthy swarm" : "Waiting for peers"}</dd></div></dl><p class="subline">Illustrative transfer history · Sample data</p>`;
+      }
+      if (state.tab === "Files") {
+        const count = Math.min(t.files, 4);
+        content =
+          `<div class="section-heading"><h3>${t.files} ${t.files === 1 ? "file" : "files"}</h3><span>Choose what to download</span></div>` +
+          Array.from(
+            { length: count },
+            (_, i) =>
+              `<div class="file-row">${icon("file")}<div><p>${escapeHtml(t.files === 1 ? t.file : i === 0 ? t.file : `${t.name} — ${t.destination === "Music" ? "Track" : "Episode"} ${String(i + 1).padStart(2, "0")}.${t.destination === "Music" ? "flac" : "mkv"}`)}</p><small class="mono">${i === 0 ? t.size : "Included in total"} · ${t.progress}%</small></div><select aria-label="Download priority for file ${i + 1}" data-priority><option>Normal</option><option>High</option><option>Skip</option></select></div>`
+          ).join("") +
+          (t.files > 4
+            ? `<p class="subline">Showing 4 of ${t.files} files in this prototype.</p>`
+            : "");
+      }
+      if (state.tab === "Trackers") {
+        content =
+          `<div class="section-heading"><h3>Tracker connections</h3><span>3 sample trackers</span></div>` +
+          ["tracker.opentrackr.org:1337", "open.stealth.si:80", "tracker.torrent.eu.org:451"]
+            .map(
+              (host, i) =>
+                `<div class="file-row">${icon("grid")}<div><p class="mono">udp://${host}/announce</p><small>${i === 2 ? "Next announce in 12 minutes" : "Working · Announced 4 minutes ago"}</small></div><span class="status"><i class="dot"></i>Connected</span></div>`
+            )
+            .join("");
+      }
+      if (state.tab === "Peers") {
+        content = t.peers
+          ? `<div class="section-heading"><h3>${t.peers} connected peers</h3><span>3 sample peers</span></div>` +
+            ["192.0.2.14", "198.51.100.28", "203.0.113.92"]
+              .map(
+                (ip, i) =>
+                  `<div class="file-row">${icon("grid")}<div><p class="mono">${ip}:51413</p><small>${["qBittorrent 5.1", "Transmission 4.0", "libtorrent 2.0"][i]}</small></div><span class="mono">${[2.8, 1.7, 1.2][i]} MB/s</span></div>`
+              )
+              .join("")
+          : '<div class="empty">No peers connected.<br>Connections appear when the torrent is active.</div>';
+      }
+      if (state.tab === "Information") {
+        content = `<dl class="info-grid"><div><dt>Original name</dt><dd>${escapeHtml(t.file)}</dd></div><div><dt>Added</dt><dd>Today at 14:32</dd></div><div><dt>Total size</dt><dd class="mono">${t.size}</dd></div><div><dt>Share ratio</dt><dd class="mono">${t.ratio}</dd></div><div><dt>Save location</dt><dd class="mono">${escapeHtml(t.path)}</dd></div><div><dt>Piece size</dt><dd class="mono">4 MiB</dd></div></dl>`;
+      }
+      detail.innerHTML = `<div class="detail-crumb"><div class="crumbs">${icon("folder")} ${escapeHtml(t.destination)} ${icon("chevron")} <span>Torrent details</span></div><div class="detail-actions"><button type="button" class="icon-button" data-action="copy" title="Copy torrent name" aria-label="Copy torrent name">${icon("copy")}</button><button type="button" class="icon-button" data-action="information" title="Show torrent information" aria-label="Show torrent information">${icon("more")}</button></div></div><div class="detail-heading">${state.mode === "focus" ? statusGlyph(t, 40) : `<div class="file-symbol">${icon(t.destination === "Music" ? "music" : t.destination === "Software" ? "box" : "video")}</div>`}<div><h2>${escapeHtml(t.name)}</h2><p class="detail-release">${escapeHtml(t.episode)}<br>${escapeHtml(t.release)}</p></div></div><div class="tags"><span class="status ${status}"><i class="dot"></i>${escapeHtml(t.status)}</span>${t.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}<button type="button" class="secondary" style="margin-left:auto;padding:6px 9px" data-action="pause">${icon(paused ? "play" : "pause")}${paused ? "Resume" : "Pause"}</button></div>${t.status === "Disk full" ? '<div class="error-banner"><strong>There is not enough space to continue.</strong><br>Free up 5.4 GiB or choose another download location.</div>' : ""}<section class="progress-section" aria-label="Transfer progress"><div class="progress-heading"><strong>${t.progress}% <span>complete</span></strong><span>${escapeHtml(t.eta)}${t.status === "Downloading" && t.eta !== "Starting" ? " remaining" : ""}</span></div><div class="big-progress"><i style="width:${t.progress}%;${t.status === "Disk full" ? "background:var(--danger)" : ""}"></i></div></section><dl class="metrics"><div class="metric"><dt>↓ Download</dt><dd>${escapeHtml(t.speed.split(" ")[0])} <small>${escapeHtml(t.speed.split(" ")[1])}</small></dd></div><div class="metric"><dt>↑ Upload</dt><dd>${escapeHtml(t.upload.split(" ")[0])} <small>${escapeHtml(t.upload.split(" ")[1])}</small></dd></div><div class="metric"><dt>Peers</dt><dd>${t.peers} <small>connected</small></dd></div><div class="metric"><dt>Ratio</dt><dd>${t.ratio}</dd></div></dl><div class="destination-box">${icon("folder")}<div><p>Save location · ${escapeHtml(t.destination)}</p><code>${escapeHtml(t.path)}</code></div><button type="button" class="icon-button" data-action="folder" aria-label="Reveal download folder" title="Reveal download folder">${icon("external")}</button></div><div class="detail-tabs" role="tablist" aria-label="Torrent details">${["Activity", "Files", "Trackers", "Peers", "Information"].map((tab) => `<button type="button" class="detail-tab ${state.tab === tab ? "active" : ""}" role="tab" aria-selected="${state.tab === tab}" aria-controls="detail-content" id="tab-${tab}" data-tab="${tab}">${tab}${tab === "Files" ? ` <small>${t.files}</small>` : tab === "Peers" ? ` <small>${t.peers}</small>` : ""}</button>`).join("")}</div><div id="detail-content" role="tabpanel" aria-labelledby="tab-${state.tab}">${content}</div>`;
+    }
+    function render() {
+      app.dataset.mode = state.mode;
+      const base = torrents.filter(
+        (t) => state.destination === "All torrents" || t.destination === state.destination
+      );
+      const down = torrents
+        .filter((t) => t.status === "Downloading")
+        .reduce((sum, t) => sum + rate(t.speed), 0);
+      const up = torrents
+        .filter((t) => t.status === "Seeding" || t.status === "Downloading")
+        .reduce((sum, t) => sum + rate(t.upload), 0);
+      const attention = torrents.filter((t) => t.status === "Disk full").length;
+      const filters = `<div class="filters">${[
+        ["all", "All", base.length],
+        [
+          "active",
+          "Active",
+          base.filter((t) => ["Downloading", "Seeding"].includes(t.status)).length,
+        ],
+        ["errors", "Errors", base.filter((t) => t.status === "Disk full").length],
+      ]
+        .map(
+          ([id, label, count]) =>
+            `<button type="button" class="filter ${state.filter === id ? "active" : ""}" data-filter="${id}" aria-pressed="${state.filter === id}">${label}<em>${count}</em></button>`
+        )
+        .join(
+          ""
+        )}${state.mode === "directory" ? "" : `<select class="sort" aria-label="Sort torrents" id="sort"><option value="recent" ${state.sort === "recent" ? "selected" : ""}>Recent</option><option value="name" ${state.sort === "name" ? "selected" : ""}>Name</option><option value="progress" ${state.sort === "progress" ? "selected" : ""}>Progress</option></select>`}</div>`;
+      const search = `<label class="search">${icon("search")}<input id="torrent-search" type="search" placeholder="Search torrents or paths…" aria-label="Search torrents or paths" value="${escapeHtml(state.query)}"><kbd>/</kbd></label>`;
+      app.innerHTML = `
+    <div class="titlebar"><i class="traffic"></i><i class="traffic"></i><i class="traffic"></i><span class="window-title">Tofu${state.mode === "focus" ? "" : ` <span style="opacity:.5">/</span> ${state.mode === "directory" ? "Every transfer, in its place" : "Make yourself at home"}`}</span></div>
+    <div class="workspace">
+      <nav class="nav" aria-label="Main navigation">
+        <div class="brand"><div class="brand-mark">${icon("box")}</div><span class="brand-name">Tofu</span></div>
+        <button type="button" class="nav-button ${state.destination === "All torrents" ? "active" : ""}" data-destination="All torrents" title="All torrents">${icon("grid")}<span class="nav-text">All torrents</span><b>${torrents.length}</b></button>
+        ${state.mode === "focus" ? "" : `<button type="button" class="nav-button" data-action="automation" title="Automation">${icon("spark")}<span class="nav-text">Automation</span></button>`}
+        <div class="nav-label">Destinations</div>
+        ${[
+          ["Videos", "video"],
+          ["Music", "music"],
+          ["Software", "box"],
+        ]
+          .map(
+            ([name, symbol]) =>
+              `<button type="button" class="nav-button ${state.destination === name ? "active" : ""}" data-destination="${name}" title="${name}">${icon(symbol)}<span class="nav-text">${name}</span><b>${torrents.filter((t) => t.destination === name).length}</b></button>`
+          )
+          .join("")}
+        <button type="button" class="nav-button" data-action="destination" title="Add destination">${icon("plus")}<span class="nav-text">New destination</span></button>
+        <div class="nav-bottom">
+          <div class="storage-label"><span>Macintosh HD</span><span>97%</span></div><div class="storage-bar"><i></i></div><div class="storage-hint"><strong style="color:var(--accent);font-weight:500">2.18 GiB</strong> available</div>
+          <div class="settings"><button type="button" class="icon-button" data-action="settings" title="Preferences" aria-label="Preferences">${icon("settings")}</button><span style="display:flex;align-items:center;color:var(--muted);font-size:9px" title="Local connection">${icon("leaf")}</span></div>
+        </div>
+      </nav>
+      ${
+        state.mode === "focus"
+          ? `<header class="library-topbar">
+        <div class="library-title"><span class="library-glyph">${icon(state.destination === "All torrents" ? "grid" : state.destination === "Videos" ? "video" : state.destination === "Music" ? "music" : "box")}</span><div class="library-heading"><h1>${escapeHtml(state.destination)}</h1><span class="topbar-path mono" title="${escapeHtml(base[0]?.path || "Every destination")}">${state.destination === "All torrents" ? "Every destination" : escapeHtml(base[0]?.path || "Your download destination")}</span></div></div>
+        <div class="library-actions"><button type="button" class="icon-button automations-button" data-action="automation" title="Automations · 1 item needs attention" aria-label="Automations · 1 item needs attention">${icon("zap")}<span>1</span></button><button type="button" class="primary" data-action="add">${icon("plus")}Add a torrent</button></div>
+      </header>`
+          : ""
+      }
+      <section class="torrent-pane" aria-label="Torrent list">
+        ${state.mode === "focus" ? "" : `<div class="pane-heading"><div class="eyebrow">${state.mode === "directory" ? "Transfer directory" : "Your collection"}</div><div class="heading-line"><h1>${state.destination === "All torrents" && state.mode === "library" ? "At a glance" : escapeHtml(state.destination)}<span class="count">${base.length}</span></h1><button type="button" class="${state.mode === "directory" ? "primary" : "icon-button"}" data-action="add" title="Add a torrent" aria-label="Add a torrent">${icon("plus")}${state.mode === "directory" ? "Add torrent" : ""}</button></div><p class="subline">${state.destination === "All torrents" ? "Three destinations. Everything in one place." : escapeHtml(base[0]?.path || "Your download destination")}</p></div>`}
+        ${state.mode === "directory" ? `<div class="directory-tools">${filters}${search}</div><div class="table-head"><span>Name</span><span>Destination / path</span><span>Progress</span><span>↓ Speed</span></div>` : state.mode === "focus" ? `<div class="torrent-toolbar">${search}${filters}</div>` : search + filters}
+        <div class="torrent-list" id="torrent-list"></div>
+      </section>
+      <section class="detail" id="detail" aria-label="Selected torrent details"></section>
+    </div>
+    <footer class="app-footer"><span class="online"><i class="dot"></i>Connected</span><span class="mono">↓ ${rateLabel(down)}</span><span class="mono">↑ ${rateLabel(up)}</span>${attention ? `<span>${attention} torrent${attention === 1 ? "" : "s"} ${attention === 1 ? "needs" : "need"} attention</span>` : ""}<span class="prototype">Interactive prototype · Sample data · Tofu</span></footer>`;
+      renderList();
+      renderDetail();
+      for (const button of document.querySelectorAll("[data-proposal]")) {
+        button.setAttribute("aria-pressed", String(button.dataset.proposal === state.mode));
+      }
+      const notes = {
+        directory: [
+          [
+            "The complete transfer directory",
+            "A compact navigation rail makes room for a dense table. Destination names and actual save paths are visible together, even across folders.",
+          ],
+          [
+            "A persistent side inspector",
+            "Select any row to inspect it without losing the table. This narrower inspector favours quick checks and file priorities.",
+          ],
+          [
+            "Best for a large queue",
+            "The strongest All torrents view. More items fit on screen; the trade-off is less space for long filenames in the inspector.",
+          ],
+        ],
+        focus: [
+          [
+            "More room for torrents",
+            "The torrent list is now 620 px wide, with a 480 px inspector. Longer titles have more space while selection keeps the details within reach.",
+          ],
+          [
+            "Compact, familiar header",
+            "The original title and destination path return in one shared header, with Automations and Add a torrent on the right. Search and filters share a single row.",
+          ],
+          [
+            "More torrents at a glance",
+            "Each torrent uses two text lines and a slim progress bar. Status, episode, size and speed stay visible with much less vertical space.",
+          ],
+        ],
+        library: [
+          [
+            "A calmer, destination-first library",
+            "A warm light palette and folder sections turn the second sidebar into an organised collection. Each section shows its save path once.",
+          ],
+          [
+            "A little more breathing room",
+            "Soft green selection, quieter separators and an editorial detail title. Transfer status stays visible without dominating the interface.",
+          ],
+          [
+            "Best for browsing your collection",
+            "Folder grouping makes location easy to understand. More vertical space is used than in Directory, especially with many destinations.",
+          ],
+        ],
+      };
+      document.getElementById("notes").innerHTML = notes[state.mode]
+        .map(
+          ([title, body], i) =>
+            `<section><h3><span class="note-number">0${i + 1}</span>${title}${state.mode === "focus" && i === 2 ? '<span class="recommended">Selected direction</span>' : ""}</h3><p>${body}</p></section>`
+        )
+        .join("");
+    }
+    function resize() {
+      const scale = state.fit ? Math.min(1, stage.clientWidth / 1280) : 1;
+      const fitButton = document.getElementById("fit-button");
+      fitButton.textContent = state.fit
+        ? scale < 1
+          ? `View at actual size · ${Math.round(scale * 100)}% ↗`
+          : "View at actual size ↗"
+        : "Fit to width ↙";
+      document.getElementById("fit-hint").textContent = state.fit
+        ? "The frame below is a full 1280 px desktop window, scaled down to fit. Switch to actual size to read it."
+        : "The frame is shown at actual size. Scroll within it to explore, or fit it to the available width.";
+      wrap.style.transform = `scale(${scale})`;
+      wrap.style.transformOrigin = "top left";
+      stage.style.height = `${762 * scale}px`;
+      wrap.style.height = `${762 * scale}px`;
+      stage.classList.toggle("fit", state.fit);
+      if (state.fit) {
+        stage.scrollLeft = 0;
+      }
+    }
+    function toast(message) {
+      clearTimeout(toastTimer);
+      app.querySelector(".toast")?.remove();
+      const element = document.createElement("div");
+      element.className = "toast";
+      element.role = "status";
+      element.textContent = message;
+      app.append(element);
+      toastTimer = setTimeout(() => element.remove(), 3200);
+    }
+    document.addEventListener("click", async (event) => {
+      const button = event.target.closest("button");
+      if (!button) {
+        return;
+      }
+      if (button.dataset.proposal) {
+        state.mode = button.dataset.proposal;
+        render();
+        resize();
+      }
+      if (button.id === "fit-button") {
+        state.fit = !state.fit;
+        button.setAttribute("aria-pressed", String(state.fit));
+        resize();
+      }
+      if (button.dataset.destination) {
+        state.destination = button.dataset.destination;
+        state.query = "";
+        state.filter = "all";
+        const visible = visibleTorrents();
+        if (!visible.some((t) => t.id === state.selected)) {
+          state.selected = visible[0]?.id || null;
+        }
+        render();
+      }
+      if (button.dataset.filter) {
+        state.filter = button.dataset.filter;
+        render();
+      }
+      if (button.dataset.torrent) {
+        state.selected = Number(button.dataset.torrent);
+        renderList();
+        renderDetail();
+      }
+      if (button.dataset.tab) {
+        state.tab = button.dataset.tab;
+        renderDetail();
+        document.getElementById(`tab-${state.tab}`).focus({ preventScroll: true });
+      }
+      const { action } = button.dataset;
+      if (action === "pause") {
+        const t = torrents.find((item) => item.id === state.selected);
+        if (t.status === "Disk full") {
+          toast("Prototype: free up space or move this torrent before resuming.");
+          return;
+        }
+        t.status =
+          t.status === "Paused" ? (t.progress === 100 ? "Seeding" : "Downloading") : "Paused";
+        t.speed = t.status === "Downloading" ? "8.4 MB/s" : "0 B/s";
+        t.upload =
+          t.status === "Seeding" ? "84 KB/s" : t.status === "Downloading" ? "420 KB/s" : "0 B/s";
+        t.peers = t.status === "Paused" ? 0 : 6;
+        t.eta = t.status === "Paused" ? "Paused" : t.progress === 100 ? "Complete" : "54 seconds";
+        render();
+      }
+      if (action === "information") {
+        state.tab = "Information";
+        renderDetail();
+      }
+      if (action === "folder") {
+        toast(`Prototype: this opens ${torrents.find((item) => item.id === state.selected).path}`);
+      }
+      if (action === "copy") {
+        const t = torrents.find((item) => item.id === state.selected);
+        try {
+          await navigator.clipboard.writeText(t.file);
+          toast("Torrent name copied.");
+        } catch {
+          toast("Clipboard unavailable here. The full filename is in Information.");
+        }
+      }
+      if (["automation", "destination", "settings"].includes(action)) {
+        toast(
+          {
+            automation: "Prototype: automation rules open here.",
+            destination: "Prototype: choose a folder and give your destination a name.",
+            settings: "Prototype: application preferences open here.",
+          }[action]
+        );
+      }
+      if (action === "add") {
+        const backdrop = document.createElement("div");
+        backdrop.className = "dialog-backdrop";
+        backdrop.innerHTML = `<form class="dialog" id="add-form" aria-labelledby="add-title" role="dialog" aria-modal="true"><h3 id="add-title">A new arrival.</h3><p>Add a sample torrent to explore the layout. This prototype does not start real transfers.</p><label for="magnet">Magnet link</label><input id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:…" required autofocus><label for="new-destination">Destination</label><select id="new-destination" name="destination"><option>Videos</option><option>Music</option><option>Software</option></select><div class="dialog-error" id="dialog-error" role="status"></div><div class="dialog-actions"><button type="button" class="secondary" data-action="cancel">Cancel</button><button type="submit" class="primary">Add sample torrent</button></div></form>`;
+        app.append(backdrop);
+        document.getElementById("magnet").focus();
+      }
+      if (action === "cancel") {
+        app.querySelector(".dialog-backdrop")?.remove();
+        app.querySelector('[data-action="add"]').focus();
+      }
+    });
+    document.addEventListener("input", (event) => {
+      if (event.target.id === "torrent-search") {
+        state.query = event.target.value;
+        renderList();
+      }
+    });
+    document.addEventListener("change", (event) => {
+      if (event.target.id === "sort") {
+        state.sort = event.target.value;
+        renderList();
+      }
+      if (event.target.hasAttribute("data-priority")) {
+        toast(`Sample file priority changed to ${event.target.value}.`);
+      }
+    });
+    document.addEventListener("submit", (event) => {
+      if (event.target.id !== "add-form") {
+        return;
+      }
+      event.preventDefault();
+      const data = new FormData(event.target);
+      const magnet = String(data.get("magnet"));
+      const destination = String(data.get("destination"));
+      if (!magnet.startsWith("magnet:?")) {
+        document.getElementById("dialog-error").textContent =
+          "Enter a magnet link starting with magnet:?";
+        return;
+      }
+      const id = Math.max(...torrents.map((t) => t.id)) + 1;
+      const example = torrents.find((t) => t.destination === destination);
+      const sample = {
+        Music: ["sample-album.flac", ["FLAC", "Album"]],
+        Software: ["sample-image.iso", ["ISO", "Linux"]],
+        Videos: ["sample-download.mkv", ["1080p", "WEB-DL", "MKV"]],
+      }[destination];
+      torrents.unshift({
+        destination,
+        episode: "Just added · Sample torrent",
+        eta: "Starting",
+        file: sample[0],
+        files: 1,
+        id,
+        name: "New sample download",
+        path: example.path,
+        peers: 0,
+        progress: 0,
+        ratio: "0.00",
+        release: "Prototype transfer",
+        size: "1.42 GiB",
+        speed: "0 B/s",
+        status: "Downloading",
+        tags: sample[1],
+        upload: "0 B/s",
+      });
+      state.destination = destination;
+      state.filter = "all";
+      state.query = "";
+      state.selected = id;
+      render();
+      toast("Sample torrent added. No real download was started.");
+    });
+    document.addEventListener("keydown", (event) => {
+      const dialog = app.querySelector(".dialog");
+      if (dialog) {
+        if (event.key === "Escape") {
+          dialog.parentElement.remove();
+          app.querySelector('[data-action="add"]').focus();
+        }
+        if (event.key === "Tab") {
+          const fields = [...dialog.querySelectorAll("input,select,button")];
+          const [first] = fields;
+          const last = fields.at(-1);
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
+        return;
+      }
+      if (
+        event.key === "/" &&
+        !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)
+      ) {
+        event.preventDefault();
+        document.getElementById("torrent-search").focus();
+      }
+      if (event.target.matches('[role="tab"]') && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
+        event.preventDefault();
+        const tabs = ["Activity", "Files", "Trackers", "Peers", "Information"];
+        state.tab = tabs[(tabs.indexOf(state.tab) + (event.key === "ArrowRight" ? 1 : 4)) % 5];
+        renderDetail();
+        document.getElementById(`tab-${state.tab}`).focus({ preventScroll: true });
+      }
+    });
+    let observedStageWidth = stage.clientWidth;
+    render();
+    resize();
+    new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width !== observedStageWidth) {
+        observedStageWidth = entry.contentRect.width;
+        resize();
+      }
+    }).observe(stage);
+    </script>
+  </body>
+</html>

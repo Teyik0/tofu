@@ -1,7 +1,9 @@
+import { cn } from "cn";
 import { DownloadIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { showTorrent } from "../lib/navigation";
 import { ActionTooltip } from "./action-tooltip";
-import { bytes, duration, percent, ratio, speed, torrentStatusLabel } from "./format";
+import { bytes, percent, speed, torrentStatusLabel } from "./format";
 import { Icon } from "./icon";
 import { StatusGlyph } from "./status-glyph";
 import { Button } from "./ui/button";
@@ -23,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { filters, statusFilters, type useTorrentLibrary } from "./use-torrent-library";
 
 export function TorrentLibraryToolbar({ model }: { model: ReturnType<typeof useTorrentLibrary> }) {
@@ -42,37 +45,36 @@ export function TorrentLibraryToolbar({ model }: { model: ReturnType<typeof useT
   } = model;
   return (
     <div className="library-toolbar">
-      <fieldset aria-label="Torrents by status" className="status-chips">
-        <button
-          aria-pressed={filter === "all"}
-          className="status-chip"
-          onClick={() => setFilter("all")}
-          type="button"
-        >
+      <ToggleGroup
+        aria-label="Torrents by status"
+        className="status-chips"
+        onValueChange={(values) => setFilter((values[0] as typeof filter | undefined) ?? "all")}
+        size="sm"
+        value={[filter]}
+      >
+        <ToggleGroupItem className="status-chip" value="all">
           All <b>{scoped.length}</b>
-        </button>
+        </ToggleGroupItem>
         {statusFilters
           .filter((item) => counts[item.id] > 0 || filter === item.id)
           .map((item) => (
-            <button
-              aria-pressed={filter === item.id}
+            <ToggleGroupItem
               className="status-chip"
               data-status={item.id}
               key={item.id}
-              onClick={() => setFilter(filter === item.id ? "all" : item.id)}
-              type="button"
+              value={item.id}
             >
               <i aria-hidden="true" />
               {item.label} <b>{counts[item.id]}</b>
-            </button>
+            </ToggleGroupItem>
           ))}
-      </fieldset>
+      </ToggleGroup>
       <div className="toolbar-controls">
         <InputGroup className="torrent-search">
           <InputGroupInput
-            aria-label="Filter torrents"
+            aria-label="Filter torrents or paths"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filter torrents"
+            placeholder="Filter torrents or paths"
             type="search"
             value={search}
           />
@@ -183,11 +185,12 @@ export function TorrentLibraryToolbar({ model }: { model: ReturnType<typeof useT
   );
 }
 
-export function TorrentLibraryTable({ model }: { model: ReturnType<typeof useTorrentLibrary> }) {
+export function TorrentLibraryList({ model }: { model: ReturnType<typeof useTorrentLibrary> }) {
   const {
     setModal,
     router,
     activeDestination,
+    destinations,
     pause,
     resume,
     repair,
@@ -199,117 +202,113 @@ export function TorrentLibraryTable({ model }: { model: ReturnType<typeof useTor
     add,
     act,
   } = model;
+  const listRef = useRef<HTMLUListElement>(null);
+  const selectedIndex = torrents.findIndex((torrent) => torrent.id === selectedId);
+  useEffect(() => {
+    const list = listRef.current;
+    const selected = list?.children.item(selectedIndex);
+    if (!(list && selected instanceof HTMLElement)) {
+      return;
+    }
+    if (selected.offsetTop < list.scrollTop) {
+      list.scrollTop = selected.offsetTop;
+    } else if (selected.offsetTop + selected.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = selected.offsetTop + selected.offsetHeight - list.clientHeight;
+    }
+  }, [selectedIndex]);
   return (
-    <div className="table-scroll torrent-scroll">
-      <table className="torrent-table">
-        <thead>
-          <tr>
-            <th className="name-col">Name</th>
-            <th className="progress-col">Progress</th>
-            <th className="num">Download</th>
-            <th className="num">Upload</th>
-            <th className="num">Peers</th>
-            <th className="num">Ratio</th>
-            <th className="action-col">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {torrents.map((torrent) => {
-            const stopped = torrent.status === "paused" || torrent.status === "error";
-            return (
-              <tr
-                className={selectedId === torrent.id ? "selected" : ""}
-                data-status={torrent.status}
-                key={torrent.id}
+    <div className="torrent-scroll">
+      <ul aria-label="Torrents" className="torrent-list" ref={listRef}>
+        {torrents.map((torrent) => {
+          const stopped = torrent.status === "paused" || torrent.status === "error";
+          const destination = destinations.find((item) => item.id === torrent.destinationId);
+          const outbound = torrent.status === "seeding";
+          const transferSpeed = outbound ? torrent.uploadSpeed : torrent.downloadSpeed;
+          return (
+            <li
+              className={cn("torrent-row", selectedId === torrent.id && "selected")}
+              data-status={torrent.status}
+              key={torrent.id}
+            >
+              <button
+                aria-pressed={selectedId === torrent.id}
+                className="torrent-select"
+                onClick={() => void showTorrent(router, activeDestination, torrent.id)}
+                type="button"
               >
-                <td>
-                  <button
-                    aria-pressed={selectedId === torrent.id}
-                    className="torrent-select"
-                    onClick={() => void showTorrent(router, activeDestination, torrent.id)}
-                    type="button"
-                  >
-                    <StatusGlyph progress={torrent.progress} size={34} status={torrent.status} />
-                    <span className="torrent-copy">
-                      <strong title={torrent.name}>{torrent.name}</strong>
-                      <small>
-                        <span className="status-label" data-status={torrent.status}>
-                          {torrentStatusLabel(torrent)}
-                        </span>
-                        <span>
-                          {torrent.progress === 1
-                            ? bytes(torrent.length)
-                            : `${bytes(torrent.downloaded)} of ${bytes(torrent.length)}`}
-                        </span>
-                        {torrent.progress !== null &&
-                          torrent.progress < 1 &&
-                          torrent.eta !== null &&
-                          !stopped && <span>{duration(torrent.eta)} left</span>}
-                      </small>
+                <StatusGlyph progress={torrent.progress} size={34} status={torrent.status} />
+                <div className="torrent-copy">
+                  <span className="torrent-row-heading">
+                    <strong title={torrent.name}>{torrent.name}</strong>
+                    <span className="status-label" data-status={torrent.status}>
+                      {torrentStatusLabel(torrent)}
                     </span>
-                  </button>
-                </td>
-                <td>
-                  <div className="row-progress">
-                    <Progress
-                      aria-label={`Progress for ${torrent.name}`}
-                      value={torrent.progress === null ? null : torrent.progress * 100}
-                    />
-                    <span className="num">{percent(torrent.progress)}</span>
-                  </div>
-                </td>
-                <td className="num speed" data-direction="down" data-idle={!torrent.downloadSpeed}>
-                  {speed(torrent.downloadSpeed)}
-                </td>
-                <td className="num speed" data-direction="up" data-idle={!torrent.uploadSpeed}>
-                  {speed(torrent.uploadSpeed)}
-                </td>
-                <td className="num">{torrent.peers}</td>
-                <td className="num">{ratio(torrent.ratio)}</td>
-                <td className="action-col">
-                  <div className="row-actions">
-                    <ActionTooltip>
-                      <Button
-                        aria-label={`${torrent.storageIssue ? "Repair download" : stopped ? "Resume" : "Pause"} ${torrent.name}`}
-                        className="row-action"
-                        disabled={pending.has(torrent.id)}
-                        onClick={() =>
-                          void act(torrent.id, () =>
-                            torrent.storageIssue
-                              ? repair.mutateAsync(torrent.id)
-                              : stopped
-                                ? resume.mutateAsync(torrent.id)
-                                : pause.mutateAsync(torrent.id)
-                          )
-                        }
-                        size="icon-sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Icon name={stopped ? "play" : "pause"} size={15} />
-                      </Button>
-                    </ActionTooltip>
-                    <ActionTooltip>
-                      <Button
-                        aria-label={`Remove ${torrent.name}`}
-                        className="row-action row-remove"
-                        onClick={() => setModal({ torrent, type: "remove" })}
-                        size="icon-sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Icon name="trash" size={15} />
-                      </Button>
-                    </ActionTooltip>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  </span>
+                  <span className="torrent-row-meta">
+                    <span className="torrent-location" title={destination?.downloadPath}>
+                      {activeDestination === null
+                        ? (destination?.downloadPath ?? destination?.name ?? "—")
+                        : torrent.downloaded === null
+                          ? bytes(torrent.length)
+                          : `${bytes(torrent.downloaded)} of ${bytes(torrent.length)}`}
+                    </span>
+                    <span className="num">
+                      {percent(torrent.progress)} · {bytes(torrent.length)}
+                    </span>
+                    <span
+                      className="num speed torrent-rate"
+                      data-direction={outbound ? "up" : "down"}
+                      data-idle={!transferSpeed}
+                    >
+                      {outbound ? "↑" : "↓"} {speed(transferSpeed)}
+                    </span>
+                  </span>
+                  <Progress
+                    aria-label={`Progress for ${torrent.name}`}
+                    className="torrent-row-progress"
+                    value={torrent.progress === null ? null : torrent.progress * 100}
+                  />
+                </div>
+              </button>
+              <div className="row-actions">
+                <ActionTooltip>
+                  <Button
+                    aria-label={`${torrent.storageIssue ? "Repair download" : stopped ? "Resume" : "Pause"} ${torrent.name}`}
+                    className="row-action"
+                    disabled={pending.has(torrent.id)}
+                    onClick={() =>
+                      void act(torrent.id, () =>
+                        torrent.storageIssue
+                          ? repair.mutateAsync(torrent.id)
+                          : stopped
+                            ? resume.mutateAsync(torrent.id)
+                            : pause.mutateAsync(torrent.id)
+                      )
+                    }
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Icon name={stopped ? "play" : "pause"} size={15} />
+                  </Button>
+                </ActionTooltip>
+                <ActionTooltip>
+                  <Button
+                    aria-label={`Remove ${torrent.name}`}
+                    className="row-action row-remove"
+                    onClick={() => setModal({ torrent, type: "remove" })}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Icon name="trash" size={15} />
+                  </Button>
+                </ActionTooltip>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
       {!torrents.length && (
         <Empty className="empty-state">
           <EmptyHeader>
