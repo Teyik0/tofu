@@ -1,0 +1,19 @@
+tests/persistence.test.ts
+  s_7b8290e25f3cd4::t_eff9876af5974d 50-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "878147be93788062205c054f947292068257ab64",
+  "prompts": {},
+  "sessions": {
+    "s_7b8290e25f3cd4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1505f-1dca-77d2-85b3-aec6c73b9e20",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
