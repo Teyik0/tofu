@@ -1,0 +1,85 @@
+AGENTS.md
+  s_b3951d4fa40800::t_43d6549e0bbebb 5-20
+src/api/modules/anilist/index.ts
+  s_b3951d4fa40800::t_9c7a3603c45b69 3,85,92-98
+src/api/modules/automation/integration.ts
+  s_b3951d4fa40800::t_b9d5b7b5fa339a 155-164
+src/api/modules/automation/management.ts
+  s_b3951d4fa40800::t_c559380f11f8ac 2,34,37-46,57,60-69
+src/api/modules/automation/model.ts
+  s_b3951d4fa40800::t_4c29fe85d0db72 105
+src/api/modules/automation/rules.ts
+  s_b3951d4fa40800::t_79fe14d2fddb2f 11,13,19,21-24,78-80,87,90-91
+src/api/modules/automation/service.ts
+  s_b3951d4fa40800::t_a3040e2cb95257 87,92-98,159-160,163-164,167,366-375
+src/api/modules/jev/service.ts
+  s_b3951d4fa40800::t_c329aa8dd7ac57 210,218
+src/api/modules/torrents/index.ts
+  s_b3951d4fa40800::t_5fe3744d423dd5 1,3,5,11,23-26,28-69
+src/api/modules/torrents/model.ts
+  s_b3951d4fa40800::t_e6b763643cb345 65-66
+src/api/modules/torrents/worker-client.ts
+  s_b3951d4fa40800::t_2d34e3ebfd40ec 1,27,44-46,60,85,92-93,97
+src/api/modules/torrents/worker.ts
+  s_b3951d4fa40800::t_7e9d63f0027126 17,37-60
+src/api/modules/updates/service.ts
+  s_b3951d4fa40800::t_59af8e9a3d202b 157
+src/components/app.tsx
+  s_b3951d4fa40800::t_534119febd88ef 1-2,6,22,24-25,29-32,34-39,94-96,100-101,103-105
+src/components/automation-fields.tsx
+  s_b3951d4fa40800::t_de0185e05fe823 492,500-502
+src/components/automation-rules.tsx
+  s_b3951d4fa40800::t_f63da8a09739d2 98,101-115
+src/components/automation-section.tsx
+  s_b3951d4fa40800::t_71562387083301 154
+src/components/tofu-state-sync.tsx
+  s_b3951d4fa40800::t_cb79037c9fbe50 1,4-7,9,13-25,31-63
+src/components/torrent-drop.tsx
+  s_b3951d4fa40800::t_706f127d76b310 2,8,10,16,28,40,46
+src/components/torrent-library-views.tsx
+  s_b3951d4fa40800::t_049da53f0edf18 2,189-190,231
+src/components/use-global-search.ts
+  s_b3951d4fa40800::t_12309ae8aa764a 3,12,65-68,77,82,104,148
+src/components/use-torrent-library.ts
+  s_b3951d4fa40800::t_62c7cbd5b46cb6 2-4,7,9-10,31-36,38,90-102,127,138
+src/components/workspace-dialogs.tsx
+  s_b3951d4fa40800::t_875a21e51e9e82 3-4,34-38
+src/lib/navigation.ts
+  s_b3951d4fa40800::t_752338228511a3 3,27-50,72-89,96
+src/pages/anilist.tsx
+  s_b3951d4fa40800::t_6dec5bc9421b61 2,21,42-43
+src/pages/index.tsx
+  s_b3951d4fa40800::t_83902a1d51e631 2,5,9-10,12-20,22-24,27-28
+src/pages/root.tsx
+  s_b3951d4fa40800::t_8b951a524a098e 4,15,26-28,40
+src/pages/thread/[id].tsx
+  s_b3951d4fa40800::t_6174d8eb51857e 5,9-15,20-28,30-32,35,39-40
+src/state/workspace.ts
+  s_b3951d4fa40800::t_488df7629b0a95 2,4-8,16,18-19
+src/types.ts
+  s_b3951d4fa40800::t_2a680bcdab280e 702
+tests/automation-lifecycle.test.ts
+  s_b3951d4fa40800::t_a19f00fd55d40b 1-164
+tests/automation-preferences.test.ts
+  s_b3951d4fa40800::t_f388b0d477838a 6-11,171-287
+tests/live-state.test.ts
+  s_b3951d4fa40800::t_e701fe64292308 6,12-28,55,63-78,80-81,84-85,87-90,92-94,96-97,99-100,110-113,115-117,120
+tests/persistence.test.ts
+  s_b3951d4fa40800::t_c3c68a093f397d 2,6,12-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b8fb651e903438138f69905e2a6f15922ee2f4b2",
+  "prompts": {},
+  "sessions": {
+    "s_b3951d4fa40800": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9495a513-059b-4924-af52-b57f7d1eb0b4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
