@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { constants, lstatSync, realpathSync, statSync } from "node:fs";
 import { access, copyFile, link, lstat, mkdir, mkdtemp, rm, statfs } from "node:fs/promises";
 import {
@@ -164,6 +165,12 @@ export class TorrentEngine {
   readonly client: WebTorrent;
   readonly settings: Settings;
   private readonly entries = new Map<string, Entry>();
+  private readonly ranges = new Map<string, { id: string; controller: AbortController }>();
+  // The window played next in each file, kept between the player's requests.
+  private readonly readAhead = new Map<
+    string,
+    { id: string; release: () => void; timer: ReturnType<typeof setTimeout> }
+  >();
   private readonly destinations = new Map<string, Destination>();
   private readonly movingDestinations = new Set<string>();
   private destinationOperation: Promise<void> | null = null;
@@ -934,6 +941,7 @@ export class TorrentEngine {
     this.movingDestinations.add(id);
     for (const entry of entries) {
       entry.moving = true;
+      this.cancelRanges(entry.detail.id);
     }
     let running: Entry[] = [];
     let files: RelocatedFile[] = [];
@@ -1533,6 +1541,7 @@ export class TorrentEngine {
   }
 
   private async stop(entry: Entry) {
+    this.cancelRanges(entry.detail.id);
     const { torrent } = entry;
     if (!torrent) {
       return;
@@ -1807,6 +1816,7 @@ export class TorrentEngine {
     this.assertVerification(entry);
     const operation = this.serial(entry, action);
     entry.verifying = true;
+    this.cancelRanges(entry.detail.id);
     try {
       await operation;
     } finally {
@@ -2167,6 +2177,143 @@ export class TorrentEngine {
     };
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Validation and cancellation stay with the selection cleanup they protect.
+  async waitForRange(request: string, id: string, index: number, start: number, end: number) {
+    const entry = this.get(id);
+    if (entry.verifying || entryStatus(entry) === "checking") {
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Files are being verified. Try again after verification completes."
+      );
+    }
+    if (entry.moving) {
+      throw new (HTTPError.id("CONFLICT", 409))("Files are being moved. Try again afterward.");
+    }
+    const { torrent } = entry;
+    const stats = this.details(entry).files[index];
+    if (!stats) {
+      throw new (HTTPError.id("NOT_FOUND", 404))("File not found");
+    }
+    if (entry.paused || !torrent?.ready) {
+      throw new (HTTPError.id("CONFLICT", 409))("Resume this torrent to play it");
+    }
+    const file = torrent.files[index];
+    if (!file) {
+      throw new (HTTPError.id("NOT_FOUND", 404))("File not found");
+    }
+    if (entry.detail.storageIssue) {
+      throw new (HTTPError.id("CONFLICT", 409))(entry.detail.storageIssue.message);
+    }
+    if (
+      !(Number.isSafeInteger(start) && Number.isSafeInteger(end)) ||
+      start < 0 ||
+      end < start ||
+      end >= file.length
+    ) {
+      throw new (HTTPError.id("RANGE_NOT_SATISFIABLE", 416))(
+        "The requested range is outside the file"
+      );
+    }
+    const path = this.storagePath(entry.detail.savePath, stats.path);
+    const first = Math.floor((file.offset + start) / torrent.pieceLength);
+    const last = Math.floor((file.offset + end) / torrent.pieceLength);
+    // These private stream selections are pinned to WebTorrent 3.0.21. Unlike public
+    // selections, they never merge with or change the user's file priorities.
+    const runtime = torrent as Torrent & {
+      bitfield: { get: (piece: number) => boolean };
+      destroyed: boolean;
+      _select: (from: number, to: number, priority: number, notify: null, stream: boolean) => void;
+      _deselect: (from: number, to: number, stream: boolean) => void;
+    };
+    const missing = () => {
+      for (let piece = first; piece <= last; piece += 1) {
+        if (!runtime.bitfield.get(piece)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const fileLast = Math.floor((file.offset + file.length - 1) / torrent.pieceLength);
+    // Read ahead in bytes: VLC asks for 1 MiB at a time, and pieces can be 16 KiB to 16 MiB.
+    const ahead = Math.min(last + Math.ceil((16 * 1024 * 1024) / torrent.pieceLength), fileLast);
+    const playing = `${id}:${index}`;
+    const previous = this.readAhead.get(playing);
+    if (previous) {
+      clearTimeout(previous.timer);
+      previous.release();
+    }
+    runtime._select(first, ahead, 20, null, true);
+    const release = () => {
+      if (!runtime.destroyed) {
+        runtime._deselect(first, ahead, true);
+      }
+    };
+    this.readAhead.set(playing, {
+      id,
+      release,
+      // A player that stopped reading gives the bandwidth back to the whole torrent.
+      timer: setTimeout(() => {
+        release();
+        this.readAhead.delete(playing);
+      }, 30_000),
+    });
+    if (!missing()) {
+      return { path };
+    }
+    const controller = new AbortController();
+    this.ranges.set(request, { controller, id });
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90_000)]);
+    // The first request also fetches the end of the file, where containers often keep indexes.
+    const tail = start === 0 ? Math.max(first, fileLast - 1) : null;
+    const stopped = () => controller.abort();
+    torrent.once("close", stopped);
+    if (tail !== null) {
+      runtime._select(tail, fileLast, 15, null, true);
+    }
+    try {
+      while (missing()) {
+        // biome-ignore lint/performance/noAwaitInLoops: Each verified piece may satisfy the pending range.
+        await once(torrent, "verified", { signal });
+      }
+      return { path };
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        throw new (HTTPError.id("PLAYBACK_STOPPED", 499))("Playback stopped", { cause });
+      }
+      if (signal.aborted) {
+        throw new (HTTPError.id("GATEWAY_TIMEOUT", 504))(
+          "No peer sent this part of the file. Try again when more peers are available.",
+          { cause }
+        );
+      }
+      throw cause;
+    } finally {
+      torrent.off("close", stopped);
+      if (tail !== null && !runtime.destroyed) {
+        runtime._deselect(tail, fileLast, true);
+      }
+      this.ranges.delete(request);
+    }
+  }
+
+  cancelRange(request: string) {
+    this.ranges.get(request)?.controller.abort();
+  }
+
+  cancelRanges(id?: string) {
+    for (const range of this.ranges.values()) {
+      if (id === undefined || range.id === id) {
+        range.controller.abort();
+      }
+    }
+    for (const [playing, readAhead] of this.readAhead) {
+      if (id === undefined || readAhead.id === id) {
+        clearTimeout(readAhead.timer);
+        readAhead.release();
+        this.readAhead.delete(playing);
+      }
+    }
+  }
+
   async file(id: string, index: number) {
     const entry = this.get(id);
     if (!(entry.verifying || entry.moving)) {
@@ -2208,11 +2355,12 @@ export class TorrentEngine {
   }
 
   async close() {
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: lifecycle state changes between public close calls.
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: Lifecycle state changes between public close calls.
     if (this.closed) {
       return;
     }
     this.closed = true;
+    this.cancelRanges();
     try {
       clearInterval(this.timer);
       if (this.telemetryTimer) {

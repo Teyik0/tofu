@@ -3,6 +3,7 @@ import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, HTTPError, problem, sse } from "elysia";
 import { sync } from "../../../sync";
 import type { TorrentDetail } from "../../../types";
+import { recordLog } from "../../lib/diagnostics";
 import {
   addPeerSchema,
   bulkActionSchema,
@@ -133,32 +134,72 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
   })
   // The player reads media through ranged requests; the trailing name gives VLC the extension.
   .head("/torrents/:id/files/:index/stream/:name", async ({ torrents, params }) => {
-    const content = Bun.file((await torrents.file(params.id, Number(params.index))).path);
+    // The size comes from torrent metadata, so this answers before any piece arrives.
+    const file = (await torrents.detail(params.id)).files[Number(params.index)];
+    if (!file) {
+      return problem(404, { detail: "File not found" });
+    }
     return new Response(null, {
       headers: {
         "accept-ranges": "bytes",
-        "content-length": String(content.size),
-        "content-type": content.type,
+        "content-length": String(file.length),
+        "content-type": Bun.file(file.name).type,
       },
     });
   })
   .get("/torrents/:id/files/:index/stream/:name", async ({ torrents, params, request, set }) => {
-    const content = Bun.file((await torrents.file(params.id, Number(params.index))).path);
-    const { size } = content;
-    const headers = { "accept-ranges": "bytes", "content-type": content.type };
+    const index = Number(params.index);
+    const file = (await torrents.detail(params.id)).files[index];
+    if (!file) {
+      return problem(404, { detail: "File not found" });
+    }
+    const size = file.length;
+    const complete = file.progress === 1;
+    const headers = { "accept-ranges": "bytes", "content-type": Bun.file(file.name).type };
     const range = request.headers.get("range");
-    if (!range) {
+    if (!range && complete) {
+      const content = Bun.file((await torrents.file(params.id, index)).path);
       return new Response(content, { headers: { ...headers, "content-length": String(size) } });
     }
-    const [, first = "", last = ""] = byteRange.exec(range) ?? [];
+    const [, first = "", last = ""] = byteRange.exec(range ?? "bytes=0-") ?? [];
     // A suffix range ("bytes=-500") requests the last bytes of the file.
     const start = first === "" ? Math.max(size - Number(last), 0) : Number(first);
-    const end = first === "" || last === "" ? size - 1 : Math.min(Number(last), size - 1);
-    if (!(first || last) || start > end || start >= size) {
+    const requestedEnd = first === "" || last === "" ? size - 1 : Math.min(Number(last), size - 1);
+    if (
+      !((first || last) && Number.isSafeInteger(start) && Number.isSafeInteger(requestedEnd)) ||
+      start > requestedEnd ||
+      start >= size
+    ) {
       set.headers["content-range"] = `bytes */${size}`;
       return problem(416, { detail: "The requested range is outside the file" });
     }
-    return new Response(content.slice(start, end + 1), {
+    // Incomplete files answer in bounded windows, each served once its pieces are verified.
+    const end = complete ? requestedEnd : Math.min(requestedEnd, start + 4 * 1024 * 1024 - 1);
+    let path: string;
+    if (complete) {
+      ({ path } = await torrents.file(params.id, index));
+    } else {
+      const key = crypto.randomUUID();
+      // Send the wait first so cancellation cannot overtake its registration in the worker.
+      const waiting = torrents.waitForRange(key, params.id, index, start, end);
+      const cancel = async () => {
+        try {
+          await torrents.cancelRange(key);
+        } catch (error) {
+          recordLog({ component: "torrent-stream", error, level: "error", operation: "cancel" });
+        }
+      };
+      request.signal.addEventListener("abort", cancel, { once: true });
+      if (request.signal.aborted) {
+        void cancel();
+      }
+      try {
+        ({ path } = await waiting);
+      } finally {
+        request.signal.removeEventListener("abort", cancel);
+      }
+    }
+    return new Response(Bun.file(path).slice(start, end + 1), {
       headers: {
         ...headers,
         "content-length": String(end - start + 1),

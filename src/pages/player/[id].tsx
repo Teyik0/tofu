@@ -34,6 +34,10 @@ export const route = defineRoute()
       name={file.name}
       source={`/api/torrents/${torrent.id}/files/${file.index}/stream/${encodeURIComponent(file.name)}`}
       torrentId={torrent.id}
-      unavailable={file.progress === 1 ? null : "This file has not finished downloading yet."}
+      unavailable={
+        torrent.status === "paused" && file.progress !== 1
+          ? "Resume this torrent in the library to play it while it downloads."
+          : null
+      }
     />
   ));

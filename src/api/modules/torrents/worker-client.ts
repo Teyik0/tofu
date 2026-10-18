@@ -237,6 +237,15 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
   file(id: string, index: number) {
     return this.call("file", [id, index]);
   }
+  waitForRange(request: string, id: string, index: number, start: number, end: number) {
+    return this.call("waitForRange", [request, id, index, start, end]);
+  }
+  cancelRange(request: string) {
+    return this.call("cancelRange", [request]);
+  }
+  cancelRanges(id?: string) {
+    return this.call("cancelRanges", [id]);
+  }
   locate(id: string, downloadPath: string) {
     return this.call("locate", [id, downloadPath]);
   }

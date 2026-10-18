@@ -190,22 +190,23 @@ export function DetailFiles({
                     </Select>
                   </td>
                   <td>
-                    {file.progress === 1 && playable.test(file.name) && (
-                      <ActionTooltip>
-                        <Button
-                          aria-label={`Play ${file.name}`}
-                          onClick={() =>
-                            // The player needs a full page load for its cross-origin isolation.
-                            window.location.assign(`/player/${torrent.id}?file=${file.index}`)
-                          }
-                          size="icon-sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Icon name="play" />
-                        </Button>
-                      </ActionTooltip>
-                    )}
+                    {(file.progress === 1 || torrent.status !== "paused") &&
+                      playable.test(file.name) && (
+                        <ActionTooltip>
+                          <Button
+                            aria-label={`Play ${file.name}`}
+                            onClick={() =>
+                              // The player needs a full page load for its cross-origin isolation.
+                              window.location.assign(`/player/${torrent.id}?file=${file.index}`)
+                            }
+                            size="icon-sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <Icon name="play" />
+                          </Button>
+                        </ActionTooltip>
+                      )}
                     {file.progress === 1 && (
                       <ActionTooltip>
                         <Button

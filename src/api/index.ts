@@ -68,7 +68,7 @@ const [
 
 export const apiPlugin = new Elysia({
   name: "tofu-api",
-  serve: { maxRequestBodySize: 9 * 1024 * 1024 },
+  serve: { idleTimeout: 120, maxRequestBodySize: 9 * 1024 * 1024 },
 })
   .use(
     desktopApp({

@@ -63,6 +63,9 @@ export function MediaPlayer({
   const canvas = useRef<HTMLCanvasElement>(null);
   const shell = useRef<HTMLDivElement>(null);
   const audio = useRef<AudioContext | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  // VLC reports the input cache fill from 0 to 1.
+  const [buffering, setBuffering] = useState(1);
   const [player, setPlayer] = useState<Player | null>(null);
   const [state, setState] = useState<PlaybackState>(unavailable ? "error" : "loading");
   const [error, setError] = useState<string | null>(unavailable);
@@ -79,22 +82,50 @@ export function MediaPlayer({
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
   const openExternally = useMutation(api.torrents({ id: torrentId }).files({ index }).open.post);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry deliberately replaces the complete player and engine.
   useEffect(() => {
     const target = canvas.current;
     if (unavailable || !target) {
       return;
     }
+    setState("loading");
+    setError(null);
+    setPlayer(null);
+    setTime(0);
+    setDuration(0);
+    setScrub(null);
+    setTracks([]);
+    setVolume(1);
+    setMuted(false);
+    setIdle(false);
+    setBuffering(1);
+    setAudioBlocked(false);
     let disposed = false;
     let engine: VLC | null = null;
     let current: Player | null = null;
-    // One AudioContext serves the whole page; WebKit limits how many can exist.
+    const subscriptions: (() => void)[] = [];
+    // Each attempt owns its context and releases it when the player is replaced.
     const context = new AudioContext({ latencyHint: "interactive" });
     audio.current = context;
-    context.addEventListener("statechange", () => setAudioBlocked(context.state !== "running"));
+    const audioChanged = () => setAudioBlocked(context.state !== "running");
+    context.addEventListener("statechange", audioChanged);
     const start = async () => {
       try {
         const { createVLC } = (await import(engineUrl)) as typeof import("libvlc-wasm");
+        if (disposed) {
+          return;
+        }
         engine = await createVLC({ logLevel: "error" });
+        if (disposed) {
+          await engine.destroy();
+          return;
+        }
+        subscriptions.push(
+          engine.on("error", (cause) => {
+            setError(cause.message || "The playback engine stopped. Retry to reconnect.");
+            setState("error");
+          })
+        );
         current = await engine.createPlayer({ audioContext: context, canvas: target });
         if (disposed) {
           await current.destroy();
@@ -102,29 +133,39 @@ export function MediaPlayer({
           return;
         }
         const selected = current;
-        selected.on("statechange", (next) => {
-          if (next === "playing" || next === "paused") {
-            setState(next);
-          }
-        });
-        selected.on("ended", () => setState("ended"));
-        selected.on("timeupdate", setTime);
-        selected.on("durationchange", setDuration);
-        selected.on("volumechange", (next) => {
-          setVolume(next.volume);
-          setMuted(next.muted);
-        });
-        selected.on("error", (cause) => {
-          setError(cause.message);
-          setState("error");
-        });
-        selected.on("tracks", (list) => setTracks([...list]));
+        subscriptions.push(
+          selected.on("statechange", (next) => {
+            if (next === "playing" || next === "paused") {
+              setState(next);
+            }
+          })
+        );
+        subscriptions.push(selected.on("buffering", setBuffering));
+        subscriptions.push(selected.on("ended", () => setState("ended")));
+        subscriptions.push(selected.on("timeupdate", setTime));
+        subscriptions.push(selected.on("durationchange", setDuration));
+        subscriptions.push(
+          selected.on("volumechange", (next) => {
+            setVolume(next.volume);
+            setMuted(next.muted);
+          })
+        );
+        subscriptions.push(
+          selected.on("error", (cause) => {
+            setError(cause.message);
+            setState("error");
+          })
+        );
+        subscriptions.push(selected.on("tracks", (list) => setTracks([...list])));
         // Anime releases expect their subtitles on: select the first track before playback so
         // the opening lines are not missed.
         await selected.open(new URL(source, window.location.href).href, {
           autoplay: false,
           options: [":sub-track=0"],
         });
+        if (disposed) {
+          return;
+        }
         setPlayer(selected);
         // WebKit keeps resume() pending until a user gesture when autoplay is restricted.
         await Promise.race([context.resume(), new Promise((resolve) => setTimeout(resolve, 300))]);
@@ -147,11 +188,15 @@ export function MediaPlayer({
     void start();
     return () => {
       disposed = true;
+      for (const unsubscribe of subscriptions) {
+        unsubscribe();
+      }
+      context.removeEventListener("statechange", audioChanged);
       void current?.destroy();
       void engine?.destroy();
       void context.close();
     };
-  }, [source, unavailable]);
+  }, [source, unavailable, attempt]);
 
   useEffect(() => {
     // The page renders on the server first, where full screen support is unknown.
@@ -255,10 +300,16 @@ export function MediaPlayer({
         </Button>
         <h1 className="truncate font-medium text-sm">{name}</h1>
       </div>
-      {state === "loading" || audioBlocked || state === "error" ? (
+      {state === "loading" || audioBlocked || state === "error" || buffering < 1 ? (
         <div className="absolute inset-0 grid place-items-center p-6">
           {state === "loading" ? (
             <LoaderCircleIcon aria-label="Loading" className="size-10 animate-spin text-white/70" />
+          ) : null}
+          {buffering < 1 && state !== "loading" && state !== "error" && !audioBlocked ? (
+            <div className="flex items-center gap-3 text-sm text-white/80" role="status">
+              <LoaderCircleIcon className="size-5 animate-spin" />
+              Buffering… {Math.round(buffering * 100)}%
+            </div>
           ) : null}
           {audioBlocked && state !== "loading" && state !== "error" ? (
             <Button onClick={() => void toggle()} size="lg">
@@ -271,7 +322,12 @@ export function MediaPlayer({
               <p className="text-sm text-white/80" role="alert">
                 {error ?? "This file cannot be played."}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-center gap-2">
+                {unavailable ? null : (
+                  <Button onClick={() => setAttempt((value) => value + 1)} variant="secondary">
+                    Retry
+                  </Button>
+                )}
                 <Button onClick={() => window.location.assign(back)} variant="secondary">
                   Back
                 </Button>
