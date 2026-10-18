@@ -1,0 +1,19 @@
+src/components/use-torrent-library.ts
+  s_6d233bf7866450::t_44921154853ef4 82,93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "acaefe89abf3badf155b198c1e5458adea1c5b95",
+  "prompts": {},
+  "sessions": {
+    "s_6d233bf7866450": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a150c2-802e-79b3-a404-1eba7f69461d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
