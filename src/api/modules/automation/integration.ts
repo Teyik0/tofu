@@ -8,6 +8,7 @@ import type {
   EnginePort,
   FeedRelease,
 } from "../../../types";
+import { recordLog } from "../../lib/diagnostics";
 import { normalizeTitle } from "../../lib/title";
 import type { DiscoveryService } from "../discovery/service";
 import { collectSourceQueries, uniqueReleases } from "../discovery/sources";
@@ -151,9 +152,16 @@ export class ReleaseAutomationService {
   }
   async save(id: string | null, draft: AutomationDraft, ownership?: RuleOwnership) {
     const prepared = await this.prepareRule(id, draft, ownership);
-    const result = this.options.automation.db.transaction((tx) =>
-      this.options.automation.writeRule(tx, prepared)
-    );
+    const result = this.options.automation.db.transaction((tx) => {
+      if (
+        !this.options.engine
+          .snapshot(null, false)
+          .destinations.some((destination) => destination.id === prepared.rule.destinationId)
+      ) {
+        throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+      }
+      return this.options.automation.writeRule(tx, prepared);
+    });
     this.options.automation.refreshState();
     return result;
   }
@@ -413,7 +421,9 @@ export class ReleaseAutomationService {
     } finally {
       if (!this.lifecycle.closed) {
         this.timer = setInterval(() => {
-          void this.tick().catch(console.error);
+          void this.tick().catch((error: unknown) => {
+            recordLog({ component: "automation", error, level: "error", operation: "poll" });
+          });
         }, 15_000);
         this.timer.unref();
       }

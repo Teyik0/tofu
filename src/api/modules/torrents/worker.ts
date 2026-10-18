@@ -1,14 +1,20 @@
 import { HTTPError } from "elysia";
 import type { EngineFailure, EngineMessage, EngineRequest, EngineSnapshot } from "../../../types";
+import { logEvents, recordLog } from "../../lib/diagnostics";
 import { TorrentEngine } from "./service";
 
 declare let self: Worker;
 
+logEvents.addEventListener("log", (event) => {
+  const { line } = (event as CustomEvent<{ line: string }>).detail;
+  postMessage({ line, type: "log" } satisfies EngineMessage);
+});
+let dataDir = "";
+const torrentIdPattern = /^[a-f0-9]{40}$/;
+
 let engine: TorrentEngine | null = null;
 let unsubscribe: (() => void) | undefined;
-let publishing: Promise<void> | null = null;
-let retry: ReturnType<typeof setTimeout> | null = null;
-let requested = false;
+let posting = false;
 let closing = false;
 const operations = new Set<Promise<void>>();
 
@@ -24,73 +30,34 @@ function snapshot(): EngineSnapshot | null {
   };
 }
 
-async function publishChanges() {
-  if (!engine || closing) {
-    return;
-  }
-  const adapter = engine.syncAdapter;
-  const reservation = await adapter.beginMutation({
-    fingerprint: "live",
-    key: crypto.randomUUID(),
-    principal: "local",
-  });
-  if (reservation.kind !== "execute") {
-    throw new Error("The worker could not reserve its sync publication");
-  }
-  try {
-    const completion = await adapter.executeMutation(reservation.lease, () => ({
-      invalidations: [{ kind: "path", path: "/", type: "layout" }],
-      response: { body: new Uint8Array(), headers: [], status: 204 },
-      value: undefined,
-    }));
-    const current = snapshot();
-    if (current && completion.cursor !== undefined) {
-      // Cache this committed snapshot before the server wakes Furin subscribers.
-      postMessage({
-        cursor: completion.cursor,
-        snapshot: current,
-        type: "snapshot",
-      } satisfies EngineMessage);
-    }
-  } catch (error) {
-    await adapter.abortMutation(reservation.lease);
-    throw error;
-  }
-}
-
-function requestPublish() {
-  if (closing) {
-    return;
-  }
-  requested = true;
-  if (publishing || retry) {
-    return;
-  }
-  requested = false;
-  publishing = publishChanges()
-    .catch((error: unknown) => {
-      console.error(error);
-      if (!closing) {
-        requested = true;
-        retry = setTimeout(() => {
-          retry = null;
-          requestPublish();
-        }, 1000);
-        retry.unref();
-      }
-    })
-    .finally(() => {
-      publishing = null;
-      if (requested && !retry) {
-        requestPublish();
-      }
-    });
-}
-
 async function execute(request: EngineRequest) {
   if (request.method === "open") {
+    ({ dataDir } = request.args[0]);
     engine = await TorrentEngine.open(request.args[0]);
-    unsubscribe = engine.subscribeChanges(requestPublish);
+    unsubscribe = engine.subscribeChanges(() => {
+      // Coalesce synchronous bursts of engine changes into one snapshot message.
+      if (posting) {
+        return;
+      }
+      posting = true;
+      queueMicrotask(() => {
+        posting = false;
+        try {
+          const current = snapshot();
+          if (current) {
+            postMessage({ snapshot: current, type: "snapshot" } satisfies EngineMessage);
+          }
+        } catch (error) {
+          recordLog({
+            component: "torrent-worker",
+            dataDir,
+            error,
+            level: "error",
+            operation: "publish",
+          });
+        }
+      });
+    });
     return;
   }
   if (!engine || closing) {
@@ -143,12 +110,8 @@ async function execute(request: EngineRequest) {
       return engine.verify(...request.args);
     case "close": {
       closing = true;
-      if (retry) {
-        clearTimeout(retry);
-      }
       unsubscribe?.();
       await Promise.allSettled([...operations]);
-      await publishing;
       return engine.close();
     }
     default:
@@ -179,6 +142,19 @@ self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
       }
     },
     (error: unknown) => {
+      recordLog({
+        component: "torrent-worker",
+        context: {
+          torrentId:
+            typeof data.args[0] === "string" && torrentIdPattern.test(data.args[0])
+              ? data.args[0]
+              : undefined,
+        },
+        dataDir,
+        error,
+        level: "error",
+        operation: data.method,
+      });
       const failure: EngineFailure =
         error instanceof HTTPError && typeof error.status === "number"
           ? {

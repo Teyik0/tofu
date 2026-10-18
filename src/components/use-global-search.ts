@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { useSourceSearch } from "../hooks/use-source-search";
@@ -9,12 +9,7 @@ import { errorMessage } from "../lib/errors";
 import { groupSearchReleases, searchTorrents } from "../lib/global-search";
 import { isSupersededNavigation, useRefresh } from "../lib/navigation";
 import { playSoundCue } from "../lib/sound-cues";
-import {
-  recentSearchesAtom,
-  revealTorrentAtom,
-  searchDestinationAtom,
-  selectedTorrentAtom,
-} from "../state/workspace";
+import { recentSearchesAtom, searchDestinationAtom } from "../state/workspace";
 import type {
   DashboardState,
   GlobalSearchScope,
@@ -40,8 +35,6 @@ export function useGlobalSearch({
 }: Pick<GlobalSearchProps, "dashboard" | "activeDestination" | "close">) {
   const router = useRouter();
   const refresh = useRefresh();
-  const setSelectedTorrent = useSetAtom(selectedTorrentAtom);
-  const setRevealTorrent = useSetAtom(revealTorrentAtom);
   const [recent, setRecent] = useAtom(recentSearchesAtom);
   const [lastDestination, setLastDestination] = useAtom(searchDestinationAtom);
   const [destinationId, setDestinationId] = useState(
@@ -56,8 +49,6 @@ export function useGlobalSearch({
   const [review, setReview] = useState<SearchReleaseGroup | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const { busy, error, setError, run } = useAsyncAction("Unable to download the release");
-  const { data: live } = useQuery(api.state.get, { query: { detail: "false" } });
-  const data = live && "torrents" in live ? live : dashboard;
   const { data: automation, error: pluginError } = useQuery(api.automation.get);
   const add = useMutation(api.discover.add.post);
   const sourceIds =
@@ -71,7 +62,10 @@ export function useGlobalSearch({
     () => groupSearchReleases(sources.flatMap((source) => source.releases)),
     [sources]
   );
-  const found = useMemo(() => searchTorrents(data.torrents, query), [data.torrents, query]);
+  const found = useMemo(
+    () => searchTorrents(dashboard.torrents, query),
+    [dashboard.torrents, query]
+  );
   const local = query.trim()
     ? found
     : found.filter((torrent) => !["paused", "error"].includes(torrent.status)).slice(0, 6);
@@ -80,12 +74,12 @@ export function useGlobalSearch({
   const releaseItems: SearchItem[] =
     scope === "torrents" ? [] : grouped.map((group) => ({ group, kind: "release" }));
   const items = [...localItems, ...releaseItems];
-  const destination = data.destinations.find((item) => item.id === destinationId);
+  const destination = dashboard.destinations.find((item) => item.id === destinationId);
   const currentReview = review ? (grouped.find((group) => group.key === review.key) ?? null) : null;
   const enabledSources = new Set(sourceIds);
   const release = currentReview?.releases.find((item) => enabledSources.has(item.sourceId));
   const existing = currentReview
-    ? data.torrents.find((torrent) => torrent.id.toLowerCase() === currentReview.key)
+    ? dashboard.torrents.find((torrent) => torrent.id.toLowerCase() === currentReview.key)
     : null;
   const loading = sources.some((source) => source.loading);
   const remember = () => {
@@ -102,15 +96,14 @@ export function useGlobalSearch({
   };
   const openTorrent = async (torrent: TorrentSummary) => {
     setError(null);
-    setSelectedTorrent(torrent.id);
     remember();
     try {
       await router.navigate({
         params: { id: torrent.destinationId },
         resetScroll: false,
+        search: { torrent: torrent.id },
         to: "/thread/:id",
       });
-      setRevealTorrent({ destinationId: torrent.destinationId, id: torrent.id });
       close();
     } catch (cause) {
       if (!isSupersededNavigation(cause)) {
@@ -152,7 +145,7 @@ export function useGlobalSearch({
     busy,
     choose,
     currentReview,
-    data,
+    data: dashboard,
     destination,
     destinationId,
     download,
@@ -160,7 +153,6 @@ export function useGlobalSearch({
     existing,
     found,
     items,
-    live,
     loading,
     localItems,
     notice,

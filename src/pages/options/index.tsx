@@ -66,9 +66,10 @@ export const route = defineRoute()
                       Delete .torrent file after adding
                     </FieldLabel>
                     <FieldDescription id="delete-torrent-file-after-add-description">
-                      Permanently delete the original .torrent file after a successful import from
-                      your file manager. Downloaded content is kept. Browser uploads and
-                      drag-and-drop imports keep the original file.
+                      Permanently delete the original .torrent file after it is added from your file
+                      manager or a watched thread folder. Each thread can override this. Downloaded
+                      content is kept. Browser uploads and drag-and-drop imports keep the original
+                      file.
                     </FieldDescription>
                   </FieldContent>
                   <Switch
@@ -132,6 +133,34 @@ export const route = defineRoute()
                 </Button>
               </Field>
             )}
+          </FieldGroup>
+        </FieldSet>
+        <FieldSet>
+          <FieldLegend>Diagnostics</FieldLegend>
+          <FieldGroup className="settings-group">
+            <Field className="settings-row" orientation="horizontal">
+              <FieldContent>
+                <FieldLabel htmlFor={data.session.mode === "desktop" ? "open-logs" : undefined}>
+                  Application logs
+                </FieldLabel>
+                <FieldDescription id="open-logs-description">
+                  Local logs help diagnose errors and are kept across restarts.
+                  {data.session.mode !== "desktop" &&
+                    " Logs are stored on the machine hosting Tofu."}
+                </FieldDescription>
+              </FieldContent>
+              {data.session.mode === "desktop" && (
+                <Button
+                  aria-describedby="open-logs-description"
+                  disabled={busy}
+                  id="open-logs"
+                  onClick={() => startTransition(() => dispatchAction({ type: "open-logs" }))}
+                  variant="outline"
+                >
+                  Open logs folder
+                </Button>
+              )}
+            </Field>
           </FieldGroup>
         </FieldSet>
         {error !== null && (

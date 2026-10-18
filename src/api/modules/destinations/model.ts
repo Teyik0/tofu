@@ -1,7 +1,19 @@
-import { boolean, maxLength, minLength, object, optional, picklist, pipe, string } from "valibot";
+import {
+  boolean,
+  maxLength,
+  minLength,
+  nullable,
+  object,
+  optional,
+  picklist,
+  pipe,
+  string,
+} from "valibot";
 import { destinationIconNames } from "../../../types";
 
 export const createDestinationSchema = object({
+  autoAddTorrentFiles: optional(boolean()),
+  deleteTorrentFileAfterAdd: optional(nullable(boolean())),
   downloadPath: pipe(string(), minLength(1), maxLength(4096)),
   icon: optional(picklist(destinationIconNames)),
   name: pipe(string(), minLength(1), maxLength(80)),
@@ -9,6 +21,8 @@ export const createDestinationSchema = object({
 });
 
 export const updateDestinationSchema = object({
+  autoAddTorrentFiles: optional(boolean()),
+  deleteTorrentFileAfterAdd: optional(nullable(boolean())),
   downloadPath: pipe(string(), minLength(1), maxLength(4096)),
   icon: optional(picklist(destinationIconNames)),
   moveFiles: optional(boolean()),

@@ -1,4 +1,5 @@
 import { DownloadIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import { showTorrent } from "../lib/navigation";
 import { ActionTooltip } from "./action-tooltip";
 import { bytes, duration, percent, ratio, speed, torrentStatusLabel } from "./format";
 import { Icon } from "./icon";
@@ -185,7 +186,8 @@ export function TorrentLibraryToolbar({ model }: { model: ReturnType<typeof useT
 export function TorrentLibraryTable({ model }: { model: ReturnType<typeof useTorrentLibrary> }) {
   const {
     setModal,
-    setSelected,
+    router,
+    activeDestination,
     pause,
     resume,
     repair,
@@ -226,7 +228,7 @@ export function TorrentLibraryTable({ model }: { model: ReturnType<typeof useTor
                   <button
                     aria-pressed={selectedId === torrent.id}
                     className="torrent-select"
-                    onClick={() => setSelected(torrent.id)}
+                    onClick={() => void showTorrent(router, activeDestination, torrent.id)}
                     type="button"
                   >
                     <StatusGlyph progress={torrent.progress} size={34} status={torrent.status} />

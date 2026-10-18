@@ -1,5 +1,5 @@
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia } from "elysia";
+import { Elysia, HTTPError } from "elysia";
 import { sync } from "../../../sync";
 import { automationPlugin } from ".";
 import { draft, preferences } from "./model";
@@ -31,10 +31,19 @@ export const automationManagementPlugin = new Elysia({ name: "tofu-automation-ma
       body: draft,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ automation, releaseAutomation, body, mutation }) => {
+    async ({ automation, releaseAutomation, torrents, body, mutation }) => {
       const service = automation;
       const prepared = await releaseAutomation.prepareRule(null, body);
-      const result = await mutation((tx) => service.writeRule(tx, prepared));
+      const result = await mutation((tx) => {
+        if (
+          !torrents
+            .snapshot(null, false)
+            .destinations.some((destination) => destination.id === prepared.rule.destinationId)
+        ) {
+          throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+        }
+        return service.writeRule(tx, prepared);
+      });
       service.refreshState();
       return result;
     }
@@ -45,10 +54,19 @@ export const automationManagementPlugin = new Elysia({ name: "tofu-automation-ma
       body: draft,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ automation, releaseAutomation, params, body, mutation }) => {
+    async ({ automation, releaseAutomation, torrents, params, body, mutation }) => {
       const service = automation;
       const prepared = await releaseAutomation.prepareRule(params.id, body);
-      const result = await mutation((tx) => service.writeRule(tx, prepared));
+      const result = await mutation((tx) => {
+        if (
+          !torrents
+            .snapshot(null, false)
+            .destinations.some((destination) => destination.id === prepared.rule.destinationId)
+        ) {
+          throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+        }
+        return service.writeRule(tx, prepared);
+      });
       service.refreshState();
       return result;
     }

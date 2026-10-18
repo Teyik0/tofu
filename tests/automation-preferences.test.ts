@@ -3,7 +3,12 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { createDatabase } from "../src/api/lib/db";
-import type { AutomationDraft, AutomationPreferences, AutomationState } from "../src/types";
+import type {
+  AutomationDraft,
+  AutomationPreferences,
+  AutomationState,
+  FeedRelease,
+} from "../src/types";
 import { automationFixture } from "./helpers/automation";
 import { expectSuccess } from "./helpers/problem";
 import { fixture } from "./helpers/torrent";
@@ -160,6 +165,123 @@ test("preferences reject sources and languages outside the supported set", async
     expect(state.preferences.sources).toEqual(["tsundere", "nyaa", "c411"]);
   } finally {
     await service.close();
+    await context.close();
+  }
+});
+
+test("Jev retains inherited formats and season-zero rules save and match specials", async () => {
+  const context = await fixture(1024, []);
+  const provider = Bun.serve({
+    async fetch(incoming) {
+      if (incoming.method === "POST") {
+        const body = (await incoming.json()) as {
+          questions: Record<string, { type: string; criteria?: Record<string, string> }>;
+        };
+        return Response.json({
+          answers: Object.fromEntries(
+            Object.entries(body.questions).map(([id, question]) => [
+              id,
+              question.type === "noul"
+                ? { noul: 0.99, type: "noul" }
+                : {
+                    choice:
+                      id === "languages" || id === "resolutions"
+                        ? "1"
+                        : Object.keys(question.criteria ?? {})[0],
+                    confidence: 0.99,
+                    type: "choice",
+                  },
+            ])
+          ),
+          model: "test-jev",
+        });
+      }
+      return Response.json({
+        entries: [0, 1].map((season) => ({
+          episode: 1,
+          id: `season-${season}`,
+          language: "VOSTFR",
+          quality: "1080p",
+          season,
+          title: `Kaijuu no 8 S0${season}E01 VOSTFR 1080p x264 Narumi`,
+          torrentUrl: context.magnet,
+        })),
+      });
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  });
+  const { client, service } = await automationFixture(
+    context.directory,
+    context,
+    provider.url.href
+  );
+  try {
+    const configured = {
+      ...preferences,
+      codecs: ["H.265", "H.264"],
+      languages: ["VOSTFR", "MULTI"] as AutomationPreferences["languages"],
+      sources: ["tsundere"],
+    };
+    expectSuccess(await client.automation.preferences.put(configured));
+    const requests = [
+      ["New episode of Kaijuu no 8 s00 Narumi", "Kaijuu no 8", 0],
+      ["New episodes of Example season 2 in VF", "Example", 2],
+      ["The Apothecary Diaries", "The Apothecary Diaries", null],
+    ] as const;
+    await Promise.all(
+      requests.map(async ([query, title, season]) => {
+        const local = expectSuccess(
+          await client.automations.interpret.post({ destinationId: "default", query })
+        );
+        expect(local).toMatchObject({ season, title });
+      })
+    );
+    expectSuccess(await client.plugins({ id: "tsundere" }).put({ enabled: true }));
+    expectSuccess(await client.plugins({ id: "jev" }).put({ apiKey: "test-jev", enabled: true }));
+    const draft = expectSuccess(
+      await client.automations.interpret.post({
+        destinationId: "default",
+        query: "New episode of Kaijuu no 8 s00 Narumi",
+      })
+    );
+    expect(draft).toMatchObject({
+      languages: configured.languages,
+      matchMode: "jev",
+      resolutions: configured.resolutions,
+      season: 0,
+      title: "Kaijuu no 8",
+    });
+    const input = { ...draft, includeExisting: true };
+    const rule = expectSuccess(await client.automations.post(input));
+    expect(rule).toMatchObject(input);
+    const preview = expectSuccess(await client.automations.preview.post(input)) as {
+      candidates: { release: FeedRelease }[];
+    };
+    expect(preview.candidates.map((candidate) => candidate.release.season)).toEqual([0]);
+    const checked = expectSuccess(await client.automations({ id: rule.id }).run.post());
+    expect(checked.decisions).toHaveLength(1);
+    expect(checked.decisions[0]).toMatchObject({ release: { season: 0 }, status: "review" });
+    const edited = {
+      ...input,
+      languages: ["VF"] as AutomationDraft["languages"],
+      resolutions: ["720p"],
+    };
+    expect(expectSuccess(await client.automations({ id: rule.id }).put(edited))).toMatchObject(
+      edited
+    );
+    expect(expectSuccess(await client.automation.get()).automations[0]).toMatchObject(edited);
+    const unrestricted = expectSuccess(
+      await client.automations.interpret.post({
+        destinationId: "default",
+        query: "Follow Example with any language and any resolution",
+      })
+    );
+    expect(unrestricted.languages).toEqual([]);
+    expect(unrestricted.resolutions).toEqual([]);
+  } finally {
+    await service.close();
+    provider.stop(true);
     await context.close();
   }
 });

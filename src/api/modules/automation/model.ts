@@ -102,7 +102,7 @@ export const draft = pipe(
     priority: criteria,
     query: pipe(string(), minLength(1), maxLength(2000)),
     resolutions: pipe(array(pipe(string(), maxLength(10))), maxLength(6)),
-    season: union([pipe(integerInput, integer(), minValue(1), maxValue(1000)), nullSchema()]),
+    season: union([pipe(integerInput, integer(), minValue(0), maxValue(1000)), nullSchema()]),
     sources: pipe(
       array(source),
       minLength(1),

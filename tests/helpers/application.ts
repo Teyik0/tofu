@@ -4,8 +4,10 @@ import { dirname, join } from "node:path";
 import { furinSync } from "@teyik0/furin/sync";
 import { version } from "../../package.json";
 import { resolveInstanceConfig } from "../../src/api/lib/instance";
+import { ApplicationLogs } from "../../src/api/lib/logs";
 import { AniListService } from "../../src/api/modules/anilist/service";
 import { pluginEndpoints } from "../../src/api/modules/plugins/service";
+import { TorrentFolders } from "../../src/api/modules/torrents/folders";
 import { TorrentEngine } from "../../src/api/modules/torrents/service";
 import { UpdatesService } from "../../src/api/modules/updates/service";
 import type { AniListClient, ApplicationPlatform, EnginePort } from "../../src/types";
@@ -15,8 +17,11 @@ import { openTestServices } from "./services";
 
 const serviceReplacements = [
   [/[\\/]api[\\/]lib[\\/]runtime\.ts$/, "resources, runtime"],
-  [/[\\/]api[\\/]lib[\\/]database-plugin\.ts$/, "db, instance, databasePlugin"],
-  [/[\\/]api[\\/]modules[\\/]torrents[\\/]plugin\.ts$/, "engine, torrentServicePlugin"],
+  [/[\\/]api[\\/]lib[\\/]database-plugin\.ts$/, "db, instance, logs, databasePlugin"],
+  [
+    /[\\/]api[\\/]modules[\\/]torrents[\\/]plugin\.ts$/,
+    "engine, torrentFolders, torrentServicePlugin",
+  ],
   [/[\\/]api[\\/]modules[\\/]plugins[\\/]plugin\.ts$/, "plugins, pluginRegistryPlugin"],
   [/[\\/]api[\\/]modules[\\/]jev[\\/]plugin\.ts$/, "jev, jevServicePlugin"],
   [/[\\/]api[\\/]modules[\\/]automation[\\/]index\.ts$/, "automation, automationPlugin"],
@@ -30,11 +35,12 @@ const serviceReplacements = [
 ] as const;
 const serviceRegistryPattern = /(?:^|[\\/])service-registry(?:\.ts)?$/;
 const packagePattern = /^(?:@[^/]+\/[^/]+|[a-zA-Z][^:]*)(?:\/.*)?$/;
-const serviceModulePattern = /(?:^|[\\/])(?:worker-client|service)(?:\.ts)?$/;
+const serviceModulePattern = /(?:^|[\\/])(?:worker-client|service|diagnostics)(?:\.ts)?$/;
 
 interface OpeningServices {
   isDesktop: () => boolean;
   openExternal: (url: string) => boolean;
+  openPath?: (path: string) => boolean;
 }
 export async function createTestApplication(
   engine: EnginePort,
@@ -56,6 +62,8 @@ export async function createTestApplication(
     }),
     desktop: engine.mode === "desktop",
   };
+  const logs = await ApplicationLogs.open({ dataDir: instance.dataDir });
+  resources.defer(logs.close.bind(logs));
   const feeds =
     services ??
     (await openTestServices(
@@ -97,6 +105,13 @@ export async function createTestApplication(
   if (!updates) {
     resources.defer(() => updater.close());
   }
+  const torrentFolders = new TorrentFolders({
+    dataDir: options.directory,
+    db: feeds.db,
+    engine,
+    rescanMs: 1000,
+  });
+  resources.defer(() => torrentFolders.close());
   const application = {
     anilist,
     automation: feeds.automation,
@@ -106,9 +121,11 @@ export async function createTestApplication(
     engine,
     instance,
     jev: feeds.jev,
+    logs,
     plugins: feeds.plugins,
     releaseAutomation: feeds.releaseAutomation,
     resources,
+    torrentFolders,
     updates: updater,
   };
   options.resources.defer(() => application.close());
@@ -255,7 +272,7 @@ export async function createTestAniListOpeningApi(opening: OpeningServices) {
           restart: async () => undefined,
           shell: {
             openExternal: opening.openExternal,
-            openPath: () => false,
+            openPath: opening.openPath ?? (() => false),
             showItemInFolder: () => undefined,
           },
           snapshot,

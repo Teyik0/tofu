@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { HTTPError } from "elysia";
 import workerBundle from "../../../../runtime/engine-worker.worker" with { type: "file" };
@@ -15,14 +16,18 @@ import type {
   SettingsInput,
   TorrentAddOptions,
 } from "../../../types";
+import { recordLog } from "../../lib/diagnostics";
+import type { ApplicationLogs } from "../../lib/logs";
 
 interface PendingOperation {
   reject: (error: Error) => void;
   resolve: (value: unknown) => void;
 }
 
-export class WorkerTorrentEngine {
+export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }> {
   private readonly worker: Worker;
+  private readonly options: EngineOpenOptions;
+  private readonly logs?: ApplicationLogs;
   private readonly pending = new Map<number, PendingOperation>();
   private readonly ready = Promise.withResolvers<void>();
   private state!: DashboardState;
@@ -30,21 +35,29 @@ export class WorkerTorrentEngine {
   private currentTelemetryRevision = 0;
   private sampledAt = 0;
   private refresh: Promise<DashboardState> | null = null;
-  private readonly listeners = new Set<(change: EngineChange) => void>();
   private sequence = 0;
   private failure: Error | null = null;
   private shutdown: Promise<void> | null = null;
   mode: "desktop" | "server" = "server";
 
-  private constructor(entry: string | URL) {
+  private constructor(entry: string | URL, options: EngineOpenOptions, logs?: ApplicationLogs) {
+    super();
+    // Every open live stream listens for changes.
+    this.setMaxListeners(0);
+    this.options = options;
+    this.logs = logs;
     this.worker = new Worker(entry);
     this.worker.addEventListener("message", ({ data }: MessageEvent<EngineMessage>) => {
+      if (data.type === "log") {
+        this.logs?.write(data.line);
+        return;
+      }
       if (data.type === "ready") {
         this.ready.resolve();
         return;
       }
       if (data.type === "snapshot") {
-        this.receive(data.snapshot, data.cursor);
+        this.receive(data.snapshot);
         return;
       }
       const operation = this.pending.get(data.id);
@@ -69,27 +82,19 @@ export class WorkerTorrentEngine {
     );
   }
 
-  private receive(snapshot: EngineSnapshot, cursor?: string) {
+  private receive(snapshot: EngineSnapshot) {
     const structural = snapshot.stateRevision !== this.currentStateRevision;
     const telemetry = snapshot.telemetryRevision !== this.currentTelemetryRevision;
     this.state = snapshot.state;
     this.sampledAt = snapshot.sampledAt;
     this.currentStateRevision = snapshot.stateRevision;
     this.currentTelemetryRevision = snapshot.telemetryRevision;
-    if (structural || telemetry || cursor !== undefined) {
-      const change: EngineChange = {
-        cursor,
+    if (structural || telemetry) {
+      this.emit("change", {
         kind: structural ? "state" : "telemetry",
         stateRevision: this.currentStateRevision,
         telemetryRevision: this.currentTelemetryRevision,
-      };
-      for (const listener of this.listeners) {
-        try {
-          listener(change);
-        } catch (error) {
-          console.error(error);
-        }
-      }
+      });
     }
   }
 
@@ -99,11 +104,6 @@ export class WorkerTorrentEngine {
 
   get telemetryRevision() {
     return this.currentTelemetryRevision;
-  }
-
-  subscribeChanges(listener: (change: EngineChange) => void) {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
   }
 
   refreshSnapshot(maxAgeMs: number): Promise<DashboardState> {
@@ -125,7 +125,7 @@ export class WorkerTorrentEngine {
     return this.call("setObserved", [observed]);
   }
 
-  static async open(options: EngineOpenOptions) {
+  static async open(options: EngineOpenOptions, logs?: ApplicationLogs) {
     const source = new URL("./worker.ts", import.meta.url);
     const compiled = new URL(workerBundle, import.meta.url);
     // The native host shares the backend's worker and external package tree.
@@ -134,7 +134,7 @@ export class WorkerTorrentEngine {
     if (!entry) {
       throw new Error("The torrent worker entrypoint is missing");
     }
-    const engine = new WorkerTorrentEngine(entry);
+    const engine = new WorkerTorrentEngine(entry, options, logs);
     try {
       await engine.ready.promise;
       await engine.send({
@@ -156,6 +156,15 @@ export class WorkerTorrentEngine {
   }
 
   private fail(error: Error) {
+    if (!this.shutdown) {
+      recordLog({
+        component: "torrent-worker",
+        dataDir: this.options.dataDir,
+        error,
+        level: "error",
+        operation: "stopped",
+      });
+    }
     this.failure = error;
     this.ready.reject(error);
     for (const operation of this.pending.values()) {

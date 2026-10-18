@@ -1,11 +1,77 @@
 import { expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import { TorrentEngine } from "../src/api/modules/torrents/service";
+import { WorkerTorrentEngine } from "../src/api/modules/torrents/worker-client";
 import type { DashboardState } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, network, torrentBytes, waitFor } from "./helpers/torrent";
+
+test("a completed torrent resumes and uploads after its imported torrent file is deleted", async () => {
+  const context = await fixture(256 * 1024, []);
+  const options = {
+    dataDir: join(context.directory, "worker-state"),
+    downloadPath: join(context.directory, "worker-downloads"),
+    network,
+  };
+  let engine = await WorkerTorrentEngine.open(options);
+  let app = await createTestApi(() => engine, context.sync.options);
+  let client = treaty(app).api;
+  try {
+    const source = join(context.directory, "original.torrent");
+    await Bun.write(source, context.seed.torrentFile);
+    const { id } = expectSuccess(
+      await client.torrents.file.post({
+        file: new File([await Bun.file(source).arrayBuffer()], "original.torrent"),
+        paused: "false",
+      })
+    );
+    expectSuccess(
+      await client.torrents({ id }).peers.post({ peer: `127.0.0.1:${context.seeder.torrentPort}` })
+    );
+    const completed = await waitFor(
+      async () => expectSuccess(await client.torrents({ id }).get()),
+      (detail) => detail.status === "seeding"
+    );
+    await rm(source);
+    await engine.close();
+    engine = await WorkerTorrentEngine.open(options);
+    app = await createTestApi(() => engine, context.sync.options);
+    client = treaty(app).api;
+    const restored = await waitFor(
+      async () => expectSuccess(await client.torrents({ id }).get()),
+      (detail) => detail.status === "seeding"
+    );
+    expect(restored.error).toBeNull();
+    expect(restored.storageIssue).toBeNull();
+    expect(restored.progress).toBe(1);
+    expect(restored.received).toBe(completed.received);
+    expect(restored.peers).toBe(0);
+    expect(await Bun.file(source).exists()).toBe(false);
+    const file = await client.torrents({ id }).files({ index: "0" }).content.get();
+    expect(Bun.SHA256.hash(torrentBytes(file), "hex")).toBe(Bun.SHA256.hash(context.bytes, "hex"));
+    const state = expectSuccess(await client.state.get());
+    expectSuccess(
+      await context.client.torrents.post({
+        paused: false,
+        source: `${restored.magnet}&x.pe=127.0.0.1:${state.session.port}`,
+      })
+    );
+    await waitFor(
+      async () => expectSuccess(await context.client.torrents({ id }).get()),
+      (detail) => detail.status === "seeding"
+    );
+    const uploaded = await context.client.torrents({ id }).files({ index: "0" }).content.get();
+    expect(Bun.SHA256.hash(torrentBytes(uploaded), "hex")).toBe(
+      Bun.SHA256.hash(context.bytes, "hex")
+    );
+  } finally {
+    await engine.close();
+    await context.close();
+  }
+}, 30_000);
 
 test("torrent source deletion is opt-in, persists, and survives older settings requests", async () => {
   const context = await fixture(1024, []);

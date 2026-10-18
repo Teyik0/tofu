@@ -48,6 +48,12 @@ export const uploadTorrentSchema = object({
   ),
 });
 
+export const acceptOpenedTorrentSchema = object({
+  destinationId: string(),
+  paused: boolean(),
+  trackers: optional(trackersSchema.entries.urls),
+});
+
 export const removeTorrentSchema = object({ deleteFiles: boolean() });
 
 export const locateTorrentSchema = object({
@@ -61,6 +67,8 @@ export const filePrioritySchema = object({
 export const addPeerSchema = object({
   peer: pipe(string(), minLength(1), maxLength(255)),
 });
+
+export const liveQuerySchema = object({ selected: optional(string()) });
 
 export const bulkActionSchema = object({
   action: union([literal("pause"), literal("resume")]),
@@ -85,6 +93,8 @@ export const addTorrentFormSchema = pipe(
   )
 );
 export const destinationFormSchema = object({
+  autoAddTorrentFiles: boolean(),
+  deleteTorrentFile: picklist(["inherit", "always", "never"]),
   destinationIcon: updateDestinationSchema.entries.icon.wrapped,
   moveFiles: boolean(),
   name: updateDestinationSchema.entries.name,
@@ -125,4 +135,9 @@ export const peerFormSchema = pipe(
     ["source"]
   )
 );
+export const openTorrentFormSchema = object({
+  destinationId: string(),
+  paused: boolean(),
+  trackers: string(),
+});
 export const removeTorrentFormSchema = object({ removeFiles: boolean() });

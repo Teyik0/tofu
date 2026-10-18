@@ -90,7 +90,6 @@ export class UpdatesService {
   private pending: Promise<UpdateState> | null = null;
   private mutations: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | undefined;
-  private initial: ReturnType<typeof setTimeout> | undefined;
   private preparation: Promise<void> | null = null;
   private restart: ReturnType<typeof setTimeout> | undefined;
   private unsubscribe: (() => void) | undefined;
@@ -155,10 +154,7 @@ export class UpdatesService {
       return;
     }
     this.observeNative();
-    this.initial = setTimeout(() => {
-      void this.check();
-    }, 10_000);
-    this.initial.unref();
+    void this.check();
     this.timer = setInterval(
       () => {
         void this.check();
@@ -169,7 +165,6 @@ export class UpdatesService {
   }
   close() {
     clearInterval(this.timer);
-    clearTimeout(this.initial);
     clearTimeout(this.restart);
     this.unsubscribe?.();
     this.unsubscribe = undefined;

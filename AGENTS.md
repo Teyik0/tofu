@@ -2,6 +2,22 @@
 
 These rules apply throughout the repository, to both new files and changes to existing code.
 
+## Async syntax
+
+- Use `async` / `await` for all promise sequencing. Never use `.then()`.
+- Use `try` / `catch` / `finally` instead of promise `.catch()` or `.finally()` chains.
+- Preserve concurrency explicitly: reserve operation queues before the first `await`, and use `await Promise.all(...)` or `await Promise.allSettled(...)` for independent work.
+
+## Returned API errors
+
+- Never throw errors to express API failures. Return Elysia's typed `problem(...)` or `status(...)` responses so Elysia and Eden can infer the failure status and body.
+- Apply this rule to route handlers and the services and processing functions they call. Propagate returned failures explicitly through every caller; never discard a failure and return a success response.
+- Preserve inferred return types and literal status codes. Do not widen failure results into `unknown`, `Response`, or a generic status type at the API boundary.
+- Worker transport must preserve returned failures and reconstruct Elysia status responses in the receiving process; do not turn returned API failures into rejected promises.
+- Unexpected runtime exceptions still require resource cleanup and diagnostics; thrown exceptions do not establish a typed API error contract.
+- This rule concerns producing API responses. Route loaders must still throw received Eden errors and use Furin's `notFound()` as required below.
+- Reference: https://elysiajs.com/essential/handler#status
+
 ## No function wrappers
 
 - Never create a function that simply wraps a call, a configuration object, or a construction chain. Write that code directly where it is used.

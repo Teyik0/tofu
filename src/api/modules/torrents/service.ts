@@ -9,7 +9,6 @@ import {
   resolve as resolvePath,
   sep,
 } from "node:path";
-import { type DrizzleSqliteSyncAdapter, drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import { eq, sql } from "drizzle-orm";
 import { HTTPError } from "elysia";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
@@ -32,6 +31,7 @@ import type {
   TrackerStats,
 } from "../../../types";
 import { type DatabaseConnection, openDatabase, type TofuDatabase } from "../../lib/db";
+import { recordLog } from "../../lib/diagnostics";
 import { ConnectionScheduler, defaultConnectionPolicy } from "./connections";
 import { installCryptoDiagnostics } from "./crypto-diagnostics";
 import { announce, peers, watchTrackers } from "./stats";
@@ -163,13 +163,13 @@ function trackerStats(url: string): TrackerStats {
 export class TorrentEngine {
   readonly client: WebTorrent;
   readonly settings: Settings;
-  readonly syncAdapter: DrizzleSqliteSyncAdapter<TofuDatabase>;
   private readonly entries = new Map<string, Entry>();
   private readonly destinations = new Map<string, Destination>();
   private readonly movingDestinations = new Set<string>();
   private destinationOperation: Promise<void> | null = null;
   private readonly startedAt = Date.now();
   private readonly db: TofuDatabase;
+  private readonly dataDir: string;
   private readonly history: SpeedSample[] = [];
   private timer: ReturnType<typeof setInterval>;
   private telemetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -201,10 +201,11 @@ export class TorrentEngine {
     network: Options,
     database: TofuDatabase,
     policy: ConnectionPolicy,
-    cryptoDiagnostics: ReturnType<typeof installCryptoDiagnostics> | null
+    cryptoDiagnostics: ReturnType<typeof installCryptoDiagnostics> | null,
+    dataDir: string
   ) {
     this.db = database;
-    this.syncAdapter = drizzleSyncAdapter({ db: database, namespace: "tofu" });
+    this.dataDir = dataDir;
     this.cryptoDiagnostics = cryptoDiagnostics;
     const stored = this.db
       .select()
@@ -221,6 +222,8 @@ export class TorrentEngine {
     }
     if (!this.destinations.has("default")) {
       this.storeDestination({
+        autoAddTorrentFilesSince: null,
+        deleteTorrentFileAfterAdd: null,
         downloadPath: this.settings.downloadPath,
         icon: "folder",
         id: "default",
@@ -247,7 +250,15 @@ export class TorrentEngine {
     );
     this.client.throttleDownload(this.settings.downloadLimit);
     this.client.throttleUpload(this.settings.uploadLimit);
-    this.client.on("error", console.error);
+    this.client.on("error", (error) => {
+      recordLog({
+        component: "torrent-engine",
+        dataDir: this.dataDir,
+        error,
+        level: "error",
+        operation: "client",
+      });
+    });
     for (const row of this.db.select().from(torrentRecords).orderBy(sql`rowid`).all()) {
       const storedEntry: StoredEntry = JSON.parse(row.value);
       storedEntry.detail.destinationId ??= this.destinationForPath(
@@ -330,7 +341,8 @@ export class TorrentEngine {
         options.network,
         database,
         options.connectionPolicy ?? defaultConnectionPolicy,
-        cryptoDiagnostics
+        cryptoDiagnostics,
+        options.dataDir
       );
     } catch (error) {
       cryptoDiagnostics?.close();
@@ -535,7 +547,13 @@ export class TorrentEngine {
         entry,
         storageFailure(
           cause,
-          detail.files.map((file) => file.path)
+          detail.files.map((file) => file.path),
+          {
+            dataDir: this.dataDir,
+            expected: entry.storageRoot,
+            savePath: detail.savePath,
+            torrentId: detail.id,
+          }
         )
       );
     }
@@ -597,6 +615,18 @@ export class TorrentEngine {
   }
 
   private markStorageIssue(entry: Entry, issue: TorrentStorageIssue) {
+    recordLog({
+      component: "storage",
+      context: {
+        expected: entry.storageRoot,
+        issue,
+        savePath: entry.detail.savePath,
+        torrentId: entry.detail.id,
+      },
+      dataDir: this.dataDir,
+      level: "warn",
+      operation: "blocked",
+    });
     entry.detail.storageIssue = issue;
     entry.detail.error = issue.message;
     entry.detail.downloaded = null;
@@ -708,6 +738,8 @@ export class TorrentEngine {
         (destination) => destination.downloadPath === downloadPath
       ) ??
       this.storeDestination({
+        autoAddTorrentFilesSince: null,
+        deleteTorrentFileAfterAdd: null,
         downloadPath,
         icon: "folder",
         id: crypto.randomUUID(),
@@ -725,11 +757,49 @@ export class TorrentEngine {
       try {
         await storageRoot(path, bound.storageRoot);
       } catch (cause) {
-        throw new (HTTPError.id("CONFLICT", 409))(storageFailure(cause, []).message, { cause });
+        throw new (HTTPError.id("CONFLICT", 409))(
+          storageFailure(cause, [], {
+            dataDir: this.dataDir,
+            expected: bound.storageRoot,
+            savePath: path,
+          }).message,
+          { cause }
+        );
       }
     } else {
       await mkdir(path, { recursive: true });
     }
+  }
+
+  /** Resolves how a thread handles .torrent files, keeping each folder watched by one thread. */
+  private torrentFileOptions(id: string | null, input: DestinationInput, downloadPath: string) {
+    const current = id ? this.destinations.get(id) : undefined;
+    let autoAddTorrentFilesSince = current?.autoAddTorrentFilesSince ?? null;
+    if (input.autoAddTorrentFiles !== undefined) {
+      autoAddTorrentFilesSince = input.autoAddTorrentFiles
+        ? (autoAddTorrentFilesSince ?? Date.now())
+        : null;
+    }
+    if (
+      autoAddTorrentFilesSince !== null &&
+      [...this.destinations.values()].some(
+        (other) =>
+          other.id !== id &&
+          other.autoAddTorrentFilesSince !== null &&
+          other.downloadPath === downloadPath
+      )
+    ) {
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Another thread already adds .torrent files from this folder"
+      );
+    }
+    return {
+      autoAddTorrentFilesSince,
+      deleteTorrentFileAfterAdd:
+        input.deleteTorrentFileAfterAdd === undefined
+          ? (current?.deleteTorrentFileAfterAdd ?? null)
+          : input.deleteTorrentFileAfterAdd,
+    };
   }
 
   async saveDestination(id: string | null, input: DestinationInput) {
@@ -744,9 +814,16 @@ export class TorrentEngine {
       throw new (HTTPError.id("CONFLICT", 409))("A move is already in progress for this tab");
     }
     const downloadPath = resolvePath(input.downloadPath);
+    const { autoAddTorrentFilesSince, deleteTorrentFileAfterAdd } = this.torrentFileOptions(
+      id,
+      input,
+      downloadPath
+    );
     if (id && input.moveFiles) {
       const previous = this.destinations.get(id);
       const destination: Destination = {
+        autoAddTorrentFilesSince,
+        deleteTorrentFileAfterAdd,
         downloadPath,
         icon: input.icon ?? previous?.icon ?? "folder",
         id,
@@ -771,6 +848,8 @@ export class TorrentEngine {
     }
     const previous = id ? this.destinations.get(id) : undefined;
     const destination = this.storeDestination({
+      autoAddTorrentFilesSince,
+      deleteTorrentFileAfterAdd,
       downloadPath,
       icon: input.icon ?? previous?.icon ?? "folder",
       id: id ?? crypto.randomUUID(),
@@ -1361,13 +1440,27 @@ export class TorrentEngine {
         return;
       }
       detail.error = String(error);
+      recordLog({
+        component: "torrent-engine",
+        context: { savePath: detail.savePath, torrentId: detail.id },
+        dataDir: this.dataDir,
+        error,
+        level: "error",
+        operation: "torrent",
+      });
       if (entry.torrent === torrent) {
         entry.torrent = null;
       }
       entry.unwatch?.();
       const issue = storageFailure(
         error,
-        detail.files.map((file) => file.path)
+        detail.files.map((file) => file.path),
+        {
+          dataDir: this.dataDir,
+          expected: entry.storageRoot,
+          savePath: detail.savePath,
+          torrentId: detail.id,
+        }
       );
       if (issue.kind !== "io-error" || (error instanceof Error && "code" in error)) {
         this.markStorageIssue(entry, issue);
@@ -1425,7 +1518,16 @@ export class TorrentEngine {
           }
         }
         entry.storageFiles = [...identities.values()];
-      }).catch(console.error);
+      }).catch((error: unknown) => {
+        recordLog({
+          component: "storage",
+          context: { savePath: detail.savePath, torrentId: detail.id },
+          dataDir: this.dataDir,
+          error,
+          level: "error",
+          operation: "completed-file-identity",
+        });
+      });
     });
     entry.unwatch = watchTrackers(torrent, detail.trackers);
   }
@@ -1616,7 +1718,13 @@ export class TorrentEngine {
     } catch (cause) {
       const issue = storageFailure(
         cause,
-        entry.detail.files.map((file) => file.path)
+        entry.detail.files.map((file) => file.path),
+        {
+          dataDir: this.dataDir,
+          expected: entry.storageRoot,
+          savePath: entry.detail.savePath,
+          torrentId: entry.detail.id,
+        }
       );
       await this.blockStorage(entry, issue);
       throw new (HTTPError.id("CONFLICT", 409))(issue.message, { cause });
@@ -1786,7 +1894,11 @@ export class TorrentEngine {
       } catch (cause) {
         throw cause instanceof HTTPError
           ? cause
-          : new (HTTPError.id("CONFLICT", 409))(storageFailure(cause, []).message, { cause });
+          : new (HTTPError.id("CONFLICT", 409))(
+              storageFailure(cause, [], { dataDir: this.dataDir, savePath: path, torrentId: id })
+                .message,
+              { cause }
+            );
       }
       await this.stop(entry);
       try {

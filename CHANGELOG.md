@@ -2,6 +2,13 @@
 
 Notable changes to Tofu are tracked here. Release tags follow the version in package.json.
 
+## [Unreleased]
+
+### Added
+
+- Persistent local JSONL diagnostics for startup, shutdown, API mutations and failures, background services, and torrent storage errors, with credential redaction and 5 MiB rotation retaining three backups.
+- An **Open logs folder** action in general desktop settings, and original filesystem error codes, stacks, and expected and observed directory identities in storage diagnostics.
+
 ## [0.2.3]
 
 ### Fixed
