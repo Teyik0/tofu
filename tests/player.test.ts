@@ -5,7 +5,8 @@ import { fixture, waitFor } from "./helpers/torrent";
 
 test("the player streams completed files by range and serves its engine in isolation", async () => {
   await using resources = new AsyncDisposableStack();
-  const context = await fixture(64 * 1024, [], "episode.bin");
+  const length = 6 * 1024 * 1024;
+  const context = await fixture(length, [], "episode.bin");
   resources.defer(context.close);
   const { id } = expectSuccess(
     await context.client.torrents.post({ paused: false, source: context.magnet })
@@ -22,11 +23,11 @@ test("the player streams completed files by range and serves its engine in isola
   const head = await stream.head();
   expect(head.status).toBe(200);
   expect(new Headers(head.headers).get("accept-ranges")).toBe("bytes");
-  expect(new Headers(head.headers).get("content-length")).toBe(String(64 * 1024));
+  expect(new Headers(head.headers).get("content-length")).toBe(String(length));
 
   const part = await stream.get({ headers: { range: "bytes=1000-1999" } });
   expect(part.status).toBe(206);
-  expect(new Headers(part.headers).get("content-range")).toBe(`bytes 1000-1999/${64 * 1024}`);
+  expect(new Headers(part.headers).get("content-range")).toBe(`bytes 1000-1999/${length}`);
   // Ranged responses carry binary data with a 206 status.
   expect(part.data).toBeInstanceOf(ArrayBuffer);
   expect(new Uint8Array(part.data as unknown as ArrayBuffer)).toEqual(
@@ -34,11 +35,17 @@ test("the player streams completed files by range and serves its engine in isola
   );
   const tail = await stream.get({ headers: { range: "bytes=-100" } });
   expect(new Uint8Array(tail.data as unknown as ArrayBuffer)).toEqual(
-    new Uint8Array(context.bytes.subarray(64 * 1024 - 100))
+    new Uint8Array(context.bytes.subarray(length - 100))
   );
-  const outside = await stream.get({ headers: { range: `bytes=${64 * 1024}-` } });
+  const window = await stream.get({ headers: { range: "bytes=0-" } });
+  expect(window.status).toBe(206);
+  expect(new Headers(window.headers).get("content-length")).toBe(String(4 * 1024 * 1024));
+  expect(new Uint8Array(window.data as unknown as ArrayBuffer)).toEqual(
+    new Uint8Array(context.bytes.subarray(0, 4 * 1024 * 1024))
+  );
+  const outside = await stream.get({ headers: { range: `bytes=${length}-` } });
   expect(outside.status).toBe(416);
-  expect(new Headers(outside.headers).get("content-range")).toBe(`bytes */${64 * 1024}`);
+  expect(new Headers(outside.headers).get("content-range")).toBe(`bytes */${length}`);
 
   // The engine route has a wildcard path, which the typed client cannot express.
   const engine = `http://localhost/api/player/engine/${version}`;

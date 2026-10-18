@@ -173,8 +173,8 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
       set.headers["content-range"] = `bytes */${size}`;
       return problem(416, { detail: "The requested range is outside the file" });
     }
-    // Incomplete files answer in bounded windows, each served once its pieces are verified.
-    const end = complete ? requestedEnd : Math.min(requestedEnd, start + 4 * 1024 * 1024 - 1);
+    // Bound every range, including completed files, so materializing it cannot load a whole movie.
+    const end = Math.min(requestedEnd, start + 4 * 1024 * 1024 - 1);
     let path: string;
     if (complete) {
       ({ path } = await torrents.file(params.id, index));
@@ -199,14 +199,21 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
         request.signal.removeEventListener("abort", cancel);
       }
     }
-    return new Response(Bun.file(path).slice(start, end + 1), {
-      headers: {
-        ...headers,
-        "content-length": String(end - start + 1),
-        "content-range": `bytes ${start}-${end}/${size}`,
-      },
-      status: 206,
-    });
+    // The desktop runtime's Bun version loses file slice bounds when middleware reads
+    // Response.body. Materialize only the bounded range before it reaches middleware.
+    return new Response(
+      await Bun.file(path)
+        .slice(start, end + 1)
+        .arrayBuffer(),
+      {
+        headers: {
+          ...headers,
+          "content-length": String(end - start + 1),
+          "content-range": `bytes ${start}-${end}/${size}`,
+        },
+        status: 206,
+      }
+    );
   })
   .get("/torrents/:id/files/:index/content", async ({ torrents, params }) => {
     const file = await torrents.file(params.id, Number(params.index));
