@@ -1,0 +1,81 @@
+src/api/modules/desktop/opening.ts
+  s_b3951d4fa40800::t_351c4f3ce3b99c 71
+  s_b3951d4fa40800::t_a5d7e8dfb39161 1,3,5,7,9-25,27-29,31-52,54-70,72-113,115-116
+src/api/modules/desktop/service.ts
+  s_b3951d4fa40800::t_af2c638832d98b 83
+  s_b3951d4fa40800::t_1f6c1c67c70647 3,6,9,72-82,84-87
+tests/helpers/application-services.ts
+  s_b3951d4fa40800::t_c91019e1b56bc1 24,33-34
+src/api/modules/torrents/plugin.ts
+  s_b3951d4fa40800::t_6b169d75e4ebbc 3,5,19-20,24-25
+src/api/modules/destinations/index.ts
+  s_b3951d4fa40800::t_351c4f3ce3b99c 46-59
+  s_b3951d4fa40800::t_c91019e1b56bc1 22-26,33-37
+src/api/modules/settings/index.ts
+  s_b3951d4fa40800::t_c91019e1b56bc1 17-22,24-28
+src/pages/options/index.tsx
+  s_b3951d4fa40800::t_351c4f3ce3b99c 69-72
+src/components/opened-torrents.tsx
+  s_b3951d4fa40800::t_e542e916d2a34e 15-16,55,59
+  s_b3951d4fa40800::t_209ed2f82c0c77 1-14,17-54,56-58,60-69
+src/api/modules/desktop/index.ts
+  s_b3951d4fa40800::t_1780cf49c58117 1,3,7,11,26-52
+src/api/modules/torrents/model.ts
+  s_b3951d4fa40800::t_1780cf49c58117 51-56,138-142
+  s_b3951d4fa40800::t_a5497f89027b87 96-97
+src/db/drizzle/0001_thread_torrent_files.sql
+  s_b3951d4fa40800::t_969292e70f67ff 1-8
+src/db/schema.ts
+  s_b3951d4fa40800::t_969292e70f67ff 15-16,24-27
+  s_b3951d4fa40800::t_da984f719ed6dc 28-29
+tests/torrent-files.test.ts
+  s_b3951d4fa40800::t_0d7057bc737f80 1-44,49-89,91,93-105,107-129
+  s_b3951d4fa40800::t_1384e78041ce51 45-48
+  s_b3951d4fa40800::t_85c59b4f7035b8 90,92,106
+tests/desktop-update-host.test.ts
+  s_b3951d4fa40800::t_665f9478745554 61-78
+src/components/modal.tsx
+  s_b3951d4fa40800::t_351c4f3ce3b99c 546-548
+  s_b3951d4fa40800::t_a5497f89027b87 740,745,748-749,763-764,778-782,798,801,917,1149-1208
+  s_b3951d4fa40800::t_e542e916d2a34e 10,21,183,544-545,549-645,1060-1061,1209-1210
+  s_b3951d4fa40800::t_eff18de45abe89 741-744
+  s_b3951d4fa40800::t_e8456f21c194fd 1211
+src/pages/root.tsx
+  s_b3951d4fa40800::t_e542e916d2a34e 8,57
+src/types.ts
+  s_b3951d4fa40800::t_969292e70f67ff 119-122,136-137
+  s_b3951d4fa40800::t_1f6c1c67c70647 657-669,736
+src/api/modules/destinations/model.ts
+  s_b3951d4fa40800::t_346022768cafd9 1-11,15-16,24-25
+src/api/modules/torrents/service.ts
+  s_b3951d4fa40800::t_346022768cafd9 225-226,741-742,776-785,790-795,825-826,851-852
+  s_b3951d4fa40800::t_95c432ccd13429 774-775,786-789,796-804,817-821
+tests/helpers/application.ts
+  s_b3951d4fa40800::t_c91019e1b56bc1 10,21-24,108-114,128
+tests/destinations.test.ts
+  s_b3951d4fa40800::t_643f987b961422 304-312,618-619
+src/api/modules/torrents/folders.ts
+  s_b3951d4fa40800::t_665f9478745554 41-47,49-50
+  s_b3951d4fa40800::t_bf89a476bfc9c7 1-6,8-26,28-37,39-40,48,51-116,118-122,124-147,154-181,186-187,202-203,205-207,227,233,235-237,239-240,243,245,258-259,277-279,281-292
+  s_b3951d4fa40800::t_23a637771a3e20 7,27,38,117,123,148-153,182-185,188-201,204,208-226,228-232,234,238,241-242,244,246-257,260-276,280
+src/db/drizzle/meta/0001_snapshot.json
+  s_b3951d4fa40800::t_945d51aca43ab3 1-333
+src/db/drizzle/meta/_journal.json
+  s_b3951d4fa40800::t_b50ffce9c2450f 11-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ffb627544812f81d685a239c38da4539f50ff0cc",
+  "prompts": {},
+  "sessions": {
+    "s_b3951d4fa40800": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9495a513-059b-4924-af52-b57f7d1eb0b4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
