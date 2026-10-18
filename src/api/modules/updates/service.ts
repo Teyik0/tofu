@@ -204,6 +204,34 @@ export class UpdatesService {
       signal: AbortSignal.timeout(30_000),
     });
   }
+  private async readNativeLatest(native: DesktopCapabilities["updates"]) {
+    // Electrobun checks the public manifest without using GitHub's REST API quota.
+    const info = await native.check();
+    this.snapshotState.checkedAt = Date.now();
+    if (info.error) {
+      this.snapshotState.status = "error";
+      this.snapshotState.error = info.error;
+      return this.snapshot();
+    }
+    const version = info.version || this.options.version;
+    const available = info.updateAvailable && newer(version, this.options.version);
+    const target = desktopTarget(this.options.platform, this.options.arch);
+    Object.assign(this.snapshotState, {
+      downloadName: available && target ? installerName(version, target) : null,
+      latestVersion: version,
+      releaseUrl: `https://github.com/${repository}/releases/tag/v${version}`,
+      status: "current",
+    });
+    if (available) {
+      this.snapshotState.status = info.updateReady ? "ready" : "available";
+      if (this.state.notifiedVersion !== version) {
+        this.options.notify(version);
+        this.state.notifiedVersion = version;
+        await this.persist();
+      }
+    }
+    return this.snapshot();
+  }
   private async readLatest() {
     this.asset = null;
     Object.assign(this.snapshotState, {
@@ -214,6 +242,9 @@ export class UpdatesService {
       status: "checking",
     });
     try {
+      if (this.options.native) {
+        return await this.readNativeLatest(this.options.native);
+      }
       const response = await this.github("/releases/latest", "application/vnd.github+json");
       this.snapshotState.checkedAt = Date.now();
       if (response.status === 401 || response.status === 403) {
@@ -244,18 +275,6 @@ export class UpdatesService {
       }
       this.snapshotState.downloadName = this.asset.name;
       this.snapshotState.status = "available";
-      if (this.options.native) {
-        const info = await this.options.native.check();
-        if (info.error) {
-          throw new Error(info.error);
-        }
-        if (info.version !== version || !info.updateAvailable) {
-          throw new Error(
-            "The update bundle does not match the latest release. Check again later."
-          );
-        }
-        this.snapshotState.status = info.updateReady ? "ready" : "available";
-      }
       if (this.state.notifiedVersion !== version) {
         this.options.notify(version);
         this.state.notifiedVersion = version;
