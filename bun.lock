@@ -18,6 +18,7 @@
         "graphql": "17.0.2",
         "graphql-request": "7.4.0",
         "jotai": "3.0.1",
+        "libvlc-wasm": "0.2.0",
         "lucide-react": "1.55.0",
         "parse-torrent": "11.0.24",
         "react": "19.3.0",
@@ -1168,6 +1169,8 @@
     "lefthook-windows-arm64": ["lefthook-windows-arm64@2.2.1", "", { "os": "win32", "cpu": "arm64" }, "sha512-Pi8vOvObjg8HJDl8d96s7jsI6TN33klpqv6tXSXpoKEeoAwEh5Y9NawO6bzoOpLfAxf2SfMBcuaBzFQ5zE2gjA=="],
 
     "lefthook-windows-x64": ["lefthook-windows-x64@2.2.1", "", { "os": "win32", "cpu": "x64" }, "sha512-7FtuPrc1XzxIFLAbzneOF1hr9r/vGi2lcMpX14QG9d/mnLhwu4EyNBh48JNEqsQqrOB9QKavsNqxVl1e8zcukA=="],
+
+    "libvlc-wasm": ["libvlc-wasm@0.2.0", "", {}, "sha512-MdzgN/krYOIWtHbyyCHZoh8GPoTB1TPbObBltZS/wxMidkppam7yafceqLHq3jOpuTjhpiIUrV5OVq+xXD3VeA=="],
 
     "limiter": ["limiter@1.1.5", "", {}, "sha512-FWWMIEOxz3GwUI4Ts/IvgVy6LPvoMPgjMdQ185nN6psJyBJ4yOpzqm695/h5umdLJg2vW3GR5iG11MAkR2AzJA=="],
 

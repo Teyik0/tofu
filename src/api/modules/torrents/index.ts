@@ -1,6 +1,6 @@
 import { on } from "node:events";
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia, HTTPError, sse } from "elysia";
+import { Elysia, HTTPError, problem, sse } from "elysia";
 import { sync } from "../../../sync";
 import type { TorrentDetail } from "../../../types";
 import {
@@ -15,6 +15,8 @@ import {
   uploadTorrentSchema,
 } from "./model";
 import { torrentServicePlugin } from "./plugin";
+
+const byteRange = /^bytes=(\d*)-(\d*)$/;
 
 export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
   .use(torrentServicePlugin)
@@ -128,6 +130,42 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
   .get("/torrents/:id/files/:index/availability", async ({ torrents, params }) => {
     await torrents.file(params.id, Number(params.index));
     return { ok: true };
+  })
+  // The player reads media through ranged requests; the trailing name gives VLC the extension.
+  .head("/torrents/:id/files/:index/stream/:name", async ({ torrents, params }) => {
+    const content = Bun.file((await torrents.file(params.id, Number(params.index))).path);
+    return new Response(null, {
+      headers: {
+        "accept-ranges": "bytes",
+        "content-length": String(content.size),
+        "content-type": content.type,
+      },
+    });
+  })
+  .get("/torrents/:id/files/:index/stream/:name", async ({ torrents, params, request, set }) => {
+    const content = Bun.file((await torrents.file(params.id, Number(params.index))).path);
+    const { size } = content;
+    const headers = { "accept-ranges": "bytes", "content-type": content.type };
+    const range = request.headers.get("range");
+    if (!range) {
+      return new Response(content, { headers: { ...headers, "content-length": String(size) } });
+    }
+    const [, first = "", last = ""] = byteRange.exec(range) ?? [];
+    // A suffix range ("bytes=-500") requests the last bytes of the file.
+    const start = first === "" ? Math.max(size - Number(last), 0) : Number(first);
+    const end = first === "" || last === "" ? size - 1 : Math.min(Number(last), size - 1);
+    if (!(first || last) || start > end || start >= size) {
+      set.headers["content-range"] = `bytes */${size}`;
+      return problem(416, { detail: "The requested range is outside the file" });
+    }
+    return new Response(content.slice(start, end + 1), {
+      headers: {
+        ...headers,
+        "content-length": String(end - start + 1),
+        "content-range": `bytes ${start}-${end}/${size}`,
+      },
+      status: 206,
+    });
   })
   .get("/torrents/:id/files/:index/content", async ({ torrents, params }) => {
     const file = await torrents.file(params.id, Number(params.index));

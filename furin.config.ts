@@ -3,6 +3,7 @@ import { defineDesktopConfig } from "@teyik0/furin-electrobun";
 import tailwind from "bun-plugin-tailwind";
 import { version } from "./package.json";
 import { databaseMigrationsPlugin } from "./scripts/database-migrations";
+import { playerEnginePlugin } from "./scripts/player-engine";
 
 const release = process.env.TOFU_RELEASE === "1";
 process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
@@ -62,6 +63,7 @@ export default defineConfig({
   }),
   plugins: [
     databaseMigrationsPlugin,
+    playerEnginePlugin,
     {
       buildOnly: true,
       name: "tofu-build-scan-cleanup",

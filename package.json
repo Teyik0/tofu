@@ -54,6 +54,7 @@
     "graphql": "17.0.2",
     "graphql-request": "7.4.0",
     "jotai": "3.0.1",
+    "libvlc-wasm": "0.2.0",
     "lucide-react": "1.55.0",
     "parse-torrent": "11.0.24",
     "react": "19.3.0",
