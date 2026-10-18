@@ -10,24 +10,29 @@ import { openTestDatabase } from "./helpers/database";
 import { expectSuccess } from "./helpers/problem";
 import { torrentBytes, waitFor } from "./helpers/torrent";
 
-test("desktop updates prepare in app and only restart after an explicit install action", async () => {
+test("desktop updates bypass the GitHub API quota and only restart after an explicit install action", async () => {
   const folder = await mkdtemp(join(tmpdir(), "tofu-update-native-"));
   const sync = await openTestDatabase(join(folder, "sync"));
   let ready = false;
   let installed = false;
   let downloads = 0;
+  let requests = 0;
+  const notifications: string[] = [];
+  const info = {
+    error: "Update feed unavailable",
+    hash: "new",
+    updateAvailable: false,
+    version: "",
+  };
   let finish: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
     finish = resolve;
   });
   const github = Bun.serve({
-    fetch: () =>
-      Response.json({
-        assets: [{ id: 17, name: "Tofu-0.2.0-macos-arm64.dmg" }],
-        draft: false,
-        prerelease: false,
-        tag_name: "v0.2.0",
-      }),
+    fetch: () => {
+      requests += 1;
+      return new Response("API rate limit exceeded", { status: 403 });
+    },
     hostname: "127.0.0.1",
     port: 0,
   });
@@ -37,11 +42,8 @@ test("desktop updates prepare in app and only restart after an explicit install 
     dataDir: folder,
     native: {
       check: async () => ({
-        error: "",
-        hash: "new",
-        updateAvailable: true,
+        ...info,
         updateReady: ready,
-        version: "0.2.0",
       }),
       download: async () => {
         downloads += 1;
@@ -53,15 +55,14 @@ test("desktop updates prepare in app and only restart after an explicit install 
         return Promise.resolve();
       },
       snapshot: () => ({
-        error: "",
-        hash: "new",
-        updateAvailable: true,
+        ...info,
         updateReady: ready,
-        version: "0.2.0",
       }),
       subscribe: () => () => undefined,
     },
-    notify: () => undefined,
+    notify: (version) => {
+      notifications.push(version);
+    },
     platform: "darwin",
     version: "0.1.0",
   });
@@ -69,9 +70,26 @@ test("desktop updates prepare in app and only restart after an explicit install 
   const client = treaty(app).api;
   try {
     expect((await client.updates.install.post({})).status).toBe(409);
+    const failed = expectSuccess(await client.updates.check.post({}));
+    expect(failed.status).toBe("error");
+    expect(failed.error).toBe("Update feed unavailable");
+    expect(failed.checkedAt).not.toBeNull();
+    info.error = "";
+    const current = expectSuccess(await client.updates.check.post({}));
+    expect(current.status).toBe("current");
+    expect(current.latestVersion).toBe("0.1.0");
+    expect(current.error).toBeNull();
+    expect(notifications).toEqual([]);
+    info.updateAvailable = true;
+    info.version = "0.2.0";
     const checked = expectSuccess(await client.updates.check.post({}));
     expect(checked.automatic).toBe(true);
     expect(checked.status).toBe("available");
+    expect(checked.latestVersion).toBe("0.2.0");
+    expect(checked.downloadName).toBe("Tofu-0.2.0-macos-arm64.dmg");
+    expect(checked.releaseUrl).toBe("https://github.com/Teyik0/Tofu/releases/tag/v0.2.0");
+    expect(expectSuccess(await client.updates.check.post({})).status).toBe("available");
+    expect(notifications).toEqual(["0.2.0"]);
     expect((await client.updates.prepare.post({})).status).toBe(200);
     expect(expectSuccess(await client.updates.get()).status).toBe("downloading");
     expect((await client.updates.prepare.post({})).status).toBe(200);
@@ -87,6 +105,7 @@ test("desktop updates prepare in app and only restart after an explicit install 
     expect((await client.updates.install.post({})).status).toBe(200);
     expect(expectSuccess(await client.updates.get()).status).toBe("restarting");
     await waitFor(async () => installed, Boolean);
+    expect(requests).toBe(0);
   } finally {
     finish();
     updates.close();
@@ -113,25 +132,15 @@ test("failed native downloads can be retried and scheduled checks preserve the p
     updateReady: false,
     version: "0.2.0",
   };
-  const github = Bun.serve({
-    fetch: () => {
-      checks += 1;
-      return Response.json({
-        assets: [{ id: 17, name: "Tofu-0.2.0-macos-arm64.dmg" }],
-        draft: false,
-        prerelease: false,
-        tag_name: "v0.2.0",
-      });
-    },
-    hostname: "127.0.0.1",
-    port: 0,
-  });
   const updates = await UpdatesService.open({
-    apiOrigin: `http://127.0.0.1:${github.port}`,
+    apiOrigin: "http://127.0.0.1:1",
     arch: "arm64",
     dataDir: folder,
     native: {
-      check: async () => info,
+      check: () => {
+        checks += 1;
+        return Promise.resolve(info);
+      },
       download: async () => {
         downloads += 1;
         progress?.({
@@ -189,7 +198,6 @@ test("failed native downloads can be retried and scheduled checks preserve the p
   } finally {
     updates.close();
     await sync.close();
-    github.stop(true);
     await rm(folder, { force: true, recursive: true });
   }
 });
