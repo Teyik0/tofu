@@ -30,6 +30,7 @@ export const route = defineRoute()
     <MediaPlayer
       // Leaving the player reloads the library outside the player's cross-origin isolation.
       back={`/thread/${torrent.destinationId}?torrent=${torrent.id}`}
+      complete={file.progress === 1}
       index={file.index}
       name={file.name}
       source={`/api/torrents/${torrent.id}/files/${file.index}/stream/${encodeURIComponent(file.name)}`}
