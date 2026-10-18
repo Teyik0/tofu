@@ -376,11 +376,6 @@ export class AniListService {
       visibleStatuses: this.visibleStatuses,
     };
   }
-  preferences(visibleStatuses: AniListStatus[]) {
-    this.writePreferences(this.db, visibleStatuses);
-    this.visibleStatuses = visibleStatuses;
-    return this.snapshot();
-  }
   writePreferences(tx: DatabaseConnection, visibleStatuses: AniListStatus[]) {
     this.writeState("preferences", JSON.stringify(visibleStatuses), tx);
     return { visibleStatuses };
@@ -1021,21 +1016,6 @@ export class AniListService {
     }
     this.writeState(input.key, JSON.stringify(ruleId), tx);
   }
-  async saveAutomation(mediaId: number, draft: AutomationDraft) {
-    const input = this.prepareAutomation(mediaId, draft);
-    const prepared = await this.options.releaseAutomation.prepareRule(input.id, input.draft, {
-      key: input.key,
-      ownerId: "tofu.anilist",
-    });
-    const rule = this.db.transaction((tx) => {
-      const saved = this.options.automation.writeRule(tx, prepared);
-      this.writeAutomationLink(tx, input, saved.id);
-      return saved;
-    });
-    this.options.automation.refreshState();
-    this.refreshState();
-    return rule;
-  }
   completeEpisode(mediaId: number, episode: number, completed: boolean): Promise<AniListState> {
     return this.mutateMedia(mediaId, () => this.updateEpisode(mediaId, episode, completed));
   }
@@ -1160,33 +1140,6 @@ export class AniListService {
         };
       });
   }
-  select(mediaIds: number[], enabled: boolean) {
-    const selectedIds = new Set(mediaIds);
-    if (
-      !this.account ||
-      mediaIds.some((id) => !this.entries.some((entry) => entry.mediaId === id))
-    ) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))(
-        "Load the AniList list before choosing its titles"
-      );
-    }
-    for (const mediaId of mediaIds) {
-      const key = `selection:${this.account.id}:${mediaId}`;
-      this.selections.set(key, enabled);
-      this.writeState(key, JSON.stringify(enabled));
-    }
-    for (const subscription of this.subscriptions.values()) {
-      for (const binding of subscription.bindings) {
-        if (!enabled && selectedIds.has(binding.mediaId)) {
-          this.options.automation.enableRule(binding.ruleId, false);
-          binding.active = false;
-        }
-      }
-      subscription.nextSyncAt = this.options.now();
-      this.persist(subscription);
-    }
-    return this.snapshot();
-  }
   writeSelection(tx: DatabaseConnection, mediaIds: number[], enabled: boolean) {
     const selectedIds = new Set(mediaIds);
     if (
@@ -1231,16 +1184,6 @@ export class AniListService {
       }
       this.persist(subscription, connection);
     }
-  }
-  subscribe(
-    input: Pick<
-      AniListSubscription,
-      "template" | "statuses" | "enabled" | "intervalMinutes" | "organization"
-    >
-  ) {
-    const subscription = this.writeSubscription(this.db, input);
-    this.subscriptions.set(subscription.id, subscription);
-    return subscription;
   }
   writeSubscription(
     tx: DatabaseConnection,
@@ -1448,14 +1391,6 @@ export class AniListService {
     this.persist(subscription);
     return this.snapshot();
   }
-  toggle(id: string, enabled: boolean) {
-    const subscription = { ...this.subscription(id), enabled, nextSyncAt: this.options.now() };
-    this.persist(subscription);
-    if (!enabled) {
-      this.pause(subscription);
-    }
-    return this.snapshot();
-  }
   writeToggle(tx: DatabaseConnection, id: string, enabled: boolean) {
     const subscription = {
       ...structuredClone(this.subscription(id)),
@@ -1484,12 +1419,6 @@ export class AniListService {
       binding.active = false;
     }
     this.persist(subscription);
-  }
-  remove(id: string) {
-    this.pause(this.subscription(id));
-    this.subscriptions.delete(id);
-    this.db.delete(anilistState).where(eq(anilistState.id, id)).run();
-    return this.snapshot();
   }
   suspend() {
     this.stopCallback();

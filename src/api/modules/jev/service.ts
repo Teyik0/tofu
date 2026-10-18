@@ -207,7 +207,7 @@ export function interpretationQuestions(draft: AutomationDraft) {
     priorities,
     questions: {
       languages: choice(
-        "Which languages are permitted by `query`, in preference order? Empty list means no language restriction. VF is French audio; VOSTFR is original audio with French subtitles; MULTI is multi-language, not proof of French subtitles.",
+        "Which languages are permitted by `query`, in preference order? If unspecified, retain the first option, which includes the user's general preferences. Select an empty list only when the user explicitly requests no language restriction. VF is French audio; VOSTFR is original audio with French subtitles; MULTI is multi-language, not proof of French subtitles.",
         languages.map((list) => JSON.stringify(list))
       ),
       priority: choice(
@@ -215,7 +215,7 @@ export function interpretationQuestions(draft: AutomationDraft) {
         priorities.map((list) => JSON.stringify(list))
       ),
       resolutions: choice(
-        "Which resolutions are permitted by `query`, in preference order? An empty list means no resolution restriction.",
+        "Which resolutions are permitted by `query`, in preference order? If unspecified, retain the first option, which includes the user's general preferences. Select an empty list only when the user explicitly requests no resolution restriction.",
         resolutions.map((list) => JSON.stringify(list))
       ),
       sources: choice(

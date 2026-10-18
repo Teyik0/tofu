@@ -1,32 +1,29 @@
 import { defineRoute } from "@teyik0/furin";
-import { defer } from "@teyik0/furin/client";
+import { t } from "elysia";
 import { App } from "../components/app";
 import { api } from "../lib/client";
+import { selectedTorrentId } from "../lib/navigation";
 import { route as root } from "./root";
 
 export const route = defineRoute()
-  .config({ layout: root, mode: "ssr" })
-  .loader(async ({ dashboard }) => {
+  .config({ layout: root, mode: "ssr", query: t.Object({ torrent: t.Optional(t.String()) }) })
+  .loader(async ({ dashboard, query }) => {
     const state = await dashboard;
-    const initialTorrentId = state.torrents[0]?.id ?? null;
-    const initialDetail = (async () => {
-      if (!initialTorrentId) {
-        return null;
+    const selectedId = selectedTorrentId(state.torrents, null, query.torrent);
+    if (!selectedId) {
+      return { detail: null };
+    }
+    const { data, error } = await api.torrents({ id: selectedId }).get();
+    if (error) {
+      // The torrent can be removed after the dashboard snapshot; the live stream catches up.
+      if (error.status === 404) {
+        return { detail: null };
       }
-      const { data, error } = await api.torrents({ id: initialTorrentId }).get();
-      if (error) {
-        throw error;
-      }
-      return data;
-    })();
-    return defer({ initialDetail, initialTorrentId });
+      throw error;
+    }
+    return { detail: data };
   })
   .head(() => ({ meta: [{ title: "All torrents — Tofu" }] }))
-  .page(({ dashboard, initialDetail, initialTorrentId }) => (
-    <App
-      activeDestination={null}
-      dashboard={dashboard}
-      initialDetail={initialDetail}
-      initialTorrentId={initialTorrentId}
-    />
+  .page(({ dashboard, detail, query }) => (
+    <App activeDestination={null} dashboard={dashboard} detail={detail} requested={query.torrent} />
   ));

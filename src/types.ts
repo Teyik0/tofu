@@ -643,7 +643,6 @@ export interface EngineSnapshot {
 }
 
 export interface EngineChange {
-  cursor?: string;
   kind: "state" | "telemetry";
   stateRevision: number;
   telemetryRevision: number;
@@ -700,7 +699,7 @@ export type EngineFailure =
 export type EngineMessage =
   | { type: "log"; line: string }
   | { type: "ready" }
-  | { type: "snapshot"; snapshot: EngineSnapshot; cursor: string }
+  | { type: "snapshot"; snapshot: EngineSnapshot }
   | { type: "result"; id: number; value: unknown; snapshot: EngineSnapshot | null }
   | { type: "error"; id: number; failure: EngineFailure };
 

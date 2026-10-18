@@ -84,11 +84,18 @@ export class AutomationService {
   }
 
   snapshot() {
+    let historyCount = 0;
     return structuredClone({
       automations: [...this.rules.values()],
       decisions: [...this.decisions.values()]
         .sort((a, b) => b.createdAt - a.createdAt)
-        .slice(0, 300)
+        .filter((decision) => {
+          if (decision.status !== "added" && decision.status !== "ignored") {
+            return true;
+          }
+          historyCount += 1;
+          return historyCount <= 300;
+        })
         .map((decision) => ({
           ...decision,
           release: publicRelease(decision.release),
@@ -102,11 +109,6 @@ export class AutomationService {
   }
   decisionRecords() {
     return structuredClone([...this.decisions.values()]);
-  }
-  savePreferences(preferences: AutomationPreferences) {
-    this.writePreferences(this.db, preferences);
-    this.preferences = preferences;
-    return this.snapshot();
   }
   ruleSnapshot(id: string) {
     const rule = this.rules.get(id);
@@ -154,12 +156,15 @@ export class AutomationService {
         ? (values[Number(answer.choice)] ?? fallback)
         : fallback;
     };
+    const languages = read("languages", interpretation.languages, draft.languages);
+    const resolutions = read("resolutions", interpretation.resolutions, draft.resolutions);
     return {
       ...draft,
-      languages: read("languages", interpretation.languages, draft.languages),
+      // An omitted format inherits preferences; only an explicit unrestricted request clears it.
+      languages: languages.length ? languages : draft.languages,
       matchMode: "jev" as const,
       priority: read("priority", interpretation.priorities, draft.priority),
-      resolutions: read("resolutions", interpretation.resolutions, draft.resolutions),
+      resolutions: resolutions.length ? resolutions : draft.resolutions,
       sources: read("sources", interpretation.orders, draft.sources),
       title: read("title", interpretation.titles, draft.title),
     };
@@ -358,13 +363,18 @@ export class AutomationService {
   }
   deleteRule(tx: DatabaseConnection, id: string) {
     this.rule(id);
+    for (const row of tx.select().from(automationDecisions).all()) {
+      const decision = JSON.parse(row.value) as AutomationDecision;
+      if (
+        decision.automationId === id &&
+        decision.status !== "added" &&
+        decision.status !== "ignored"
+      ) {
+        this.persistDecision({ ...decision, reason: "Automation deleted", status: "ignored" }, tx);
+      }
+    }
     tx.delete(automationRules).where(eq(automationRules.id, id)).run();
     return { ok: true };
-  }
-  remove(id: string) {
-    const result = this.deleteRule(this.db, id);
-    this.rules.delete(id);
-    return result;
   }
 
   async prepareIngestion(input: IngestionInput) {
@@ -578,11 +588,6 @@ export class AutomationService {
         nextRunAt: this.options.now() + 60_000,
       });
     }
-  }
-  ignore(id: string) {
-    this.ignoreDecision(this.db, id);
-    this.refreshState();
-    return this.snapshot();
   }
   ignoreDecision(tx: DatabaseConnection, id: string) {
     const decision = this.decisions.get(id);

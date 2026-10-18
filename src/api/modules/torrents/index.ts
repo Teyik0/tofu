@@ -1,11 +1,14 @@
+import { on } from "node:events";
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia } from "elysia";
+import { Elysia, HTTPError, sse } from "elysia";
 import { sync } from "../../../sync";
+import type { TorrentDetail } from "../../../types";
 import {
   addPeerSchema,
   bulkActionSchema,
   createTorrentSchema,
   filePrioritySchema,
+  liveQuerySchema,
   locateTorrentSchema,
   removeTorrentSchema,
   trackersSchema,
@@ -17,9 +20,53 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
   .use(torrentServicePlugin)
   .use(furinSync(sync))
   .guard({ sync: false })
-  .get("/torrents/:id", { sync: { id: "tofu.torrent", scope: {} } }, ({ torrents, params }) =>
-    torrents.detail(params.id)
+  .get(
+    "/torrents/:id",
+    { sync: { id: "tofu.torrent", scope: ({ params }) => ({ id: params.id }) } },
+    ({ torrents, params }) => torrents.detail(params.id)
   )
+  .get("/live", { query: liveQuerySchema }, async function* ({ torrents, request, query }) {
+    // Register before observing so no change between the first snapshot and the loop is lost.
+    const changes = on(torrents, "change", { signal: request.signal });
+    try {
+      await torrents.setObserved(true);
+      // The first snapshot is fresh; each change then publishes the engine's latest snapshot.
+      for (
+        let state = await torrents.refreshSnapshot(0);
+        ;
+        state = torrents.snapshot(null, false)
+      ) {
+        let detail: TorrentDetail | null = null;
+        if (query.selected && state.torrents.some((torrent) => torrent.id === query.selected)) {
+          try {
+            // biome-ignore lint/performance/noAwaitInLoops: Each snapshot carries the detail read after it.
+            detail = await torrents.detail(query.selected);
+          } catch (error) {
+            // The torrent can be removed between the snapshot and this read.
+            if (!(error instanceof HTTPError && error.status === 404)) {
+              throw error;
+            }
+          }
+        }
+        yield sse({ data: { ...state, detail }, event: "snapshot" });
+        const { done } = await changes.next();
+        if (done) {
+          return;
+        }
+      }
+    } catch (error) {
+      // A disconnected browser aborts the pending change iterator.
+      if (!request.signal.aborted) {
+        throw error;
+      }
+    } finally {
+      // The change iterator is read manually, so it must be closed explicitly.
+      await changes.return?.();
+      if (torrents.listenerCount("change") === 0) {
+        await torrents.setObserved(false);
+      }
+    }
+  })
   .post(
     "/torrents",
     {

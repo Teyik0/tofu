@@ -8,16 +8,20 @@ import { normalizeTitle } from "../../lib/title";
 
 const feedExpression3 = /[«"“]([^»"”]+)[»"”]/;
 const feedExpression4 =
-  /^(?:t[eé]l[eé]charge(?:r)?|suivre|r[eé]cup[eè]re|download|follow)\s+(?:les\s+|the\s+)?(?:nouveaux\s+|new\s+)?(?:[eé]pisodes\s+(?:de\s+)?|episodes\s+(?:of\s+)?)?/i;
+  /^(?:(?:t[eé]l[eé]charge(?:r)?|suivre|r[eé]cup[eè]re|download|follow)\s+(?:les\s+|the\s+)?(?:nouveaux?\s+|new\s+)?(?:episodes?\s+(?:of\s+|de\s+)?|[eé]pisodes?\s+(?:de\s+)?)?|(?:les\s+|the\s+)?(?:nouveaux?\s+|new\s+)?(?:episodes?\s+(?:of\s+|de\s+)?|[eé]pisodes?\s+(?:de\s+)?))/i;
 const feedExpression5 =
-  /\s+(?:(?:saison|season)\s+\d+|(?:en|with|in)\s+(?:VF|VOSTFR|MULTI)|(?:en|with|in)\s+\d{3,4}p|(?:(?:en|with|in)\s+)?(?:x26[45]|h[ .]?26[45]|HEVC|AVC|AV1)\b|pr[eé]f[eè]re|prefer|avec\s|with\s|sur\s|on\s)|[,;]/i;
+  /\s+(?:(?:saison|season)\s+\d+|s\d+\b|(?:en|with|in)\s+(?:VF|VOSTFR|MULTI)|(?:en|with|in)\s+\d{3,4}p|(?:(?:en|with|in)\s+)?(?:x26[45]|h[ .]?26[45]|HEVC|AVC|AV1)\b|pr[eé]f[eè]re|prefer|avec\s|with\s|sur\s|on\s)|[,;]/i;
 const feedExpression6 = /\b(?:2160|1080|900|720|480)p\b/gi;
 const feedExpression7 = /\b(?:VOSTFR|VF|MULTI)\b/gi;
 const feedExpression8 = /tsundere(?:-raws)?/i;
 const feedExpression9 = /nyaa(?:\.si)?/i;
 const feedExpression10 = /c411/i;
-const feedExpression11 = /\b(?:saison|season)\s+(\d+)\b/i;
+const feedExpression11 = /\b(?:(?:saison|season)\s+|s)(\d+)\b/i;
 const codecExpression = /\b(?:x26[45]|h[ .]?26[45]|HEVC|AVC|AV1)\b/gi;
+const unrestrictedLanguages =
+  /\b(?:(?:any|all|every)\s+languages?|no\s+language\s+restrictions?|(?:toutes?\s+(?:les\s+)?)langues?|sans\s+restriction\s+de\s+langue)\b/i;
+const unrestrictedResolutions =
+  /\b(?:(?:any|all|every)\s+resolutions?|no\s+resolution\s+restrictions?|(?:toutes?\s+(?:les\s+)?)r[eé]solutions?|sans\s+restriction\s+de\s+r[eé]solution)\b/i;
 
 export const defaultAutomationPreferences: AutomationPreferences = {
   automatic: true,
@@ -71,17 +75,20 @@ export function interpretLocally(
     .filter((source) => source.index >= 0)
     .sort((a, b) => a.index - b.index)
     .map((source) => source.id);
+  const season = query.match(feedExpression11)?.[1];
+  const acceptedLanguages = languages.length ? languages : preferences.languages;
+  const acceptedResolutions = resolutions.length ? resolutions : preferences.resolutions;
   return {
     ...preferences,
     codecs: codecs.length ? codecs : preferences.codecs,
     destinationId,
     enabled: true,
     includeExisting: false,
-    languages: languages.length ? languages : preferences.languages,
+    languages: unrestrictedLanguages.test(query) ? [] : acceptedLanguages,
     matchMode: "exact",
     query,
-    resolutions: resolutions.length ? resolutions : preferences.resolutions,
-    season: Number(query.match(feedExpression11)?.[1]) || null,
+    resolutions: unrestrictedResolutions.test(query) ? [] : acceptedResolutions,
+    season: season === undefined ? null : Number(season),
     sources: listed.length ? listed : preferences.sources,
     title,
   };

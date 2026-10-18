@@ -152,9 +152,16 @@ export class ReleaseAutomationService {
   }
   async save(id: string | null, draft: AutomationDraft, ownership?: RuleOwnership) {
     const prepared = await this.prepareRule(id, draft, ownership);
-    const result = this.options.automation.db.transaction((tx) =>
-      this.options.automation.writeRule(tx, prepared)
-    );
+    const result = this.options.automation.db.transaction((tx) => {
+      if (
+        !this.options.engine
+          .snapshot(null, false)
+          .destinations.some((destination) => destination.id === prepared.rule.destinationId)
+      ) {
+        throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+      }
+      return this.options.automation.writeRule(tx, prepared);
+    });
     this.options.automation.refreshState();
     return result;
   }

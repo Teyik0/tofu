@@ -9,7 +9,6 @@ import {
   resolve as resolvePath,
   sep,
 } from "node:path";
-import { type DrizzleSqliteSyncAdapter, drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import { eq, sql } from "drizzle-orm";
 import { HTTPError } from "elysia";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
@@ -164,7 +163,6 @@ function trackerStats(url: string): TrackerStats {
 export class TorrentEngine {
   readonly client: WebTorrent;
   readonly settings: Settings;
-  readonly syncAdapter: DrizzleSqliteSyncAdapter<TofuDatabase>;
   private readonly entries = new Map<string, Entry>();
   private readonly destinations = new Map<string, Destination>();
   private readonly movingDestinations = new Set<string>();
@@ -208,7 +206,6 @@ export class TorrentEngine {
   ) {
     this.db = database;
     this.dataDir = dataDir;
-    this.syncAdapter = drizzleSyncAdapter({ db: database, namespace: "tofu" });
     this.cryptoDiagnostics = cryptoDiagnostics;
     const stored = this.db
       .select()

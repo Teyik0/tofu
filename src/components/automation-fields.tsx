@@ -489,7 +489,7 @@ export function RuleFields({
             <FieldLabel htmlFor="automation-season">Season</FieldLabel>
             <Input
               id="automation-season"
-              min="1"
+              min="0"
               onChange={(event) =>
                 set("season", event.target.value ? Number(event.target.value) : null)
               }
@@ -497,6 +497,9 @@ export function RuleFields({
               type="number"
               value={draft.season ?? ""}
             />
+            <FieldDescription>
+              Leave empty for all seasons. Season 0 follows specials.
+            </FieldDescription>
           </Field>
           <Toggle
             checked={draft.includeExisting}

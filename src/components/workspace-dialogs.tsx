@@ -1,7 +1,7 @@
 import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
-import { showDestination } from "../lib/navigation";
-import { modalAtom, selectedTorrentAtom } from "../state/workspace";
+import { showDestination, showTorrent } from "../lib/navigation";
+import { modalAtom } from "../state/workspace";
 import type { DashboardState, FormModalKind } from "../types";
 import { AutomationCenter } from "./automation-center";
 import { DeleteDestinationModal, Modal } from "./modal";
@@ -28,16 +28,15 @@ export function WorkspaceDialogs({
 }) {
   const router = useRouter();
   const [modal, open] = useAtom(modalAtom);
-  const [selected, setSelected] = useAtom(selectedTorrentAtom);
   const close = () => open(null);
   const done = async (id: string | null, destinationId: string | null) => {
     if (id) {
-      setSelected(id);
+      await showTorrent(router, destinationId ?? activeDestination, id);
+    } else if (modal?.type === "remove" && modal.torrent.id === router.search.torrent) {
+      await showTorrent(router, activeDestination, undefined);
+    } else {
+      await showDestination(router, destinationId, activeDestination);
     }
-    if (modal?.type === "remove" && modal.torrent.id === selected) {
-      setSelected(null);
-    }
-    await showDestination(router, destinationId, activeDestination);
   };
 
   if (modal === null) {

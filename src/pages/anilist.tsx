@@ -1,4 +1,5 @@
 import { defineRoute } from "@teyik0/furin";
+import { useAtomValue } from "jotai";
 import { useState } from "react";
 import { browseRequest, catalogSortOptions } from "@/components/anilist/browse-filters";
 import { AniListEpisodeModal } from "@/components/anilist/episode-modal";
@@ -17,6 +18,7 @@ import { useAsyncAction } from "@/hooks/use-async-action";
 import { useAuthorizationPolling } from "@/hooks/use-authorization-polling";
 import { useNow } from "@/hooks/use-now";
 import { useRefresh } from "@/lib/navigation";
+import { dashboardAtom } from "@/state/workspace";
 import type { AniListCatalogFilters, AniListCatalogSort, AniListMedia } from "@/types";
 import { api } from "../lib/client";
 import { route as root } from "./root";
@@ -37,7 +39,8 @@ export const route = defineRoute()
     };
   })
   .head(() => ({ meta: [{ title: "AniList — Tofu" }] }))
-  .page(({ dashboard, initialAniList: state, initialAutomation: automationState }) => {
+  .page(({ dashboard: loaded, initialAniList: state, initialAutomation: automationState }) => {
+    const dashboard = useAtomValue(dashboardAtom) ?? loaded;
     const refresh = useRefresh();
     const actions = useAsyncAction("Unable to update AniList");
     const [search, setSearch] = useState("");

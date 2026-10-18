@@ -95,11 +95,25 @@ export function AutomationRules({
       }
       reset();
       if (rule.enabled) {
-        await runRule.mutateAsync(rule.id);
+        const checked = await runRule.mutateAsync(rule.id);
         await reload();
         await refresh();
+        const checkedRule = checked?.automations.find((item) => item.id === rule.id);
+        if (checkedRule?.error) {
+          throw new Error(`Rule saved, but the first check failed: ${checkedRule.error}`);
+        }
       }
-      setNotice(editId ? "Rule saved." : "Automation created and checked once.");
+      if (editId) {
+        setNotice("Rule saved.");
+      } else if (rule.enabled) {
+        setNotice(
+          rule.includeExisting
+            ? "Automation created and checked once. Existing releases are included."
+            : "Automation created and checked once. Only new releases will be followed; existing releases are excluded."
+        );
+      } else {
+        setNotice("Automation created and paused.");
+      }
     });
 
   return (

@@ -1,6 +1,6 @@
 import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia } from "elysia";
+import { Elysia, HTTPError } from "elysia";
 import { sync } from "../../../sync";
 import type { AniListCatalogFilters } from "../../../types";
 import { automationPlugin } from "../automation";
@@ -82,13 +82,20 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
       params: mediaParamsSchema,
       sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ anilist, automation, releaseAutomation, params, body, mutation }) => {
+    async ({ anilist, automation, releaseAutomation, torrents, params, body, mutation }) => {
       const input = anilist.prepareAutomation(params.mediaId, body);
       const prepared = await releaseAutomation.prepareRule(input.id, input.draft, {
         key: input.key,
         ownerId: "tofu.anilist",
       });
       const result = await mutation((tx) => {
+        if (
+          !torrents
+            .snapshot(null, false)
+            .destinations.some((destination) => destination.id === prepared.rule.destinationId)
+        ) {
+          throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+        }
         const rule = automation.writeRule(tx, prepared);
         anilist.writeAutomationLink(tx, input, rule.id);
         return rule;

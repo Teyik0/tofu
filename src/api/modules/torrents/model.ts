@@ -62,6 +62,8 @@ export const addPeerSchema = object({
   peer: pipe(string(), minLength(1), maxLength(255)),
 });
 
+export const liveQuerySchema = object({ selected: optional(string()) });
+
 export const bulkActionSchema = object({
   action: union([literal("pause"), literal("resume")]),
   ids: optional(pipe(array(string()), maxLength(1000))),

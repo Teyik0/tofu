@@ -1,7 +1,7 @@
 import "../styles.css";
 
 import { defineRootRoute, HeadContent, Scripts } from "@teyik0/furin";
-import { Provider } from "jotai";
+import { Provider, useAtomValue } from "jotai";
 import { type CSSProperties, useState } from "react";
 import { DestinationSidebar } from "../components/destination-sidebar";
 import { GlobalSearch } from "../components/global-search";
@@ -12,7 +12,7 @@ import { TooltipProvider } from "../components/ui/tooltip";
 import { WorkspaceDialogs } from "../components/workspace-dialogs";
 import { api } from "../lib/client";
 import { destinationFromPath, isPreferencesPath } from "../lib/navigation";
-import { createTofuStore } from "../state/workspace";
+import { createTofuStore, dashboardAtom } from "../state/workspace";
 
 export const route = defineRootRoute()
   .config({ mode: "ssr" })
@@ -23,8 +23,9 @@ export const route = defineRootRoute()
     }
     return { dashboard: data };
   })
-  .layout(({ children, dashboard, path }) => {
-    const [store] = useState(() => createTofuStore(dashboard.settings.theme));
+  .layout(({ children, dashboard: loaded, path }) => {
+    const [store] = useState(() => createTofuStore(loaded));
+    const dashboard = useAtomValue(dashboardAtom, { store }) ?? loaded;
     const activeDestination = destinationFromPath(path);
     return (
       <html data-theme={dashboard.settings.theme} lang="en">
@@ -36,7 +37,7 @@ export const route = defineRootRoute()
         </head>
         <body>
           <Provider store={store}>
-            <TofuStateSync initialTheme={dashboard.settings.theme} path={path} />
+            <TofuStateSync dashboard={loaded} path={path} />
             <TooltipProvider>
               <SidebarProvider
                 className="app-shell"

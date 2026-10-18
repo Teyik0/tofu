@@ -1,10 +1,9 @@
-import { Await, useQuery } from "@teyik0/furin/client";
-import { useSetAtom } from "jotai";
+import { useQuery } from "@teyik0/furin/client";
+import { useAtomValue } from "jotai";
 import { AlertCircleIcon, LayersIcon, PlusIcon, ZapIcon } from "lucide-react";
-import { Suspense, useMemo } from "react";
 import { version } from "../../package.json";
 import { api } from "../lib/client";
-import { modalAtom } from "../state/workspace";
+import { dashboardAtom } from "../state/workspace";
 import type { DashboardState, TorrentDetail } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import type { AutomationSection } from "./automation-center";
@@ -20,18 +19,24 @@ import { Skeleton } from "./ui/skeleton";
 import { useTorrentLibrary } from "./use-torrent-library";
 
 export function App({
-  dashboard: data,
+  dashboard,
   activeDestination,
-  initialDetail,
-  initialTorrentId,
+  detail,
+  requested,
 }: {
   dashboard: DashboardState;
   activeDestination: string | null;
-  initialDetail: Promise<TorrentDetail | null>;
-  initialTorrentId: string | null;
+  /** Detail read by the page loader for its selection. */
+  detail: TorrentDetail | null;
+  /** Torrent requested by the `torrent` search param. */
+  requested: string | undefined;
 }) {
-  const model = useTorrentLibrary({ activeDestination, dashboard: data, initialDetail });
-  const { setModal, pending, error, setError, torrents, selectedId, destination, add, act } = model;
+  const data = useAtomValue(dashboardAtom) ?? dashboard;
+  const model = useTorrentLibrary({ activeDestination, dashboard: data, requested });
+  const { setModal, pending, error, setError, selectedId, destination, add, act } = model;
+  // The live stream follows the same selection; the loader detail covers the time until it does.
+  const selectedDetail = [data.detail, detail].find((item) => item && item.id === selectedId);
+  const summary = data.torrents.find((torrent) => torrent.id === selectedId);
   return (
     <div className="main">
       <header className="library-topbar">
@@ -86,17 +91,18 @@ export function App({
         <TorrentLibraryToolbar model={model} />
         <TorrentLibraryTable model={model} />
       </section>
-      {selectedId && torrents.some((torrent) => torrent.id === selectedId) && (
-        <Suspense fallback={<DetailLoading />}>
-          <SelectedDetail
+      {selectedId !== null &&
+        (selectedDetail && summary ? (
+          <Detail
             act={act}
             busy={pending.has(selectedId)}
             data={data}
-            id={selectedId}
-            initial={selectedId === initialTorrentId ? initialDetail : null}
+            open={setModal}
+            torrent={{ ...selectedDetail, ...summary }}
           />
-        </Suspense>
-      )}
+        ) : (
+          <DetailLoading />
+        ))}
       <footer className="status-bar">
         <span className="status-port">
           Port <b>{data.session.port}</b>
@@ -161,58 +167,5 @@ function DetailLoading() {
       <Skeleton className="h-5 w-64" />
       <Skeleton className="h-32 w-full" />
     </section>
-  );
-}
-
-function SelectedDetail({
-  data,
-  id,
-  initial,
-  act,
-  busy,
-}: {
-  data: DashboardState;
-  id: string;
-  initial: Promise<TorrentDetail | null> | null;
-  act: (id: string, task: () => Promise<unknown>) => Promise<void>;
-  busy: boolean;
-}) {
-  const open = useSetAtom(modalAtom);
-  const { data: live, error } = useQuery(api.torrents({ id }).get);
-  const summary = data.torrents.find((item) => item.id === id);
-  const cached = live && "id" in live ? live : null;
-  const torrent = useMemo(
-    () => (cached && summary ? { ...cached, ...summary } : null),
-    [cached, summary]
-  );
-  if (error || (live && !("id" in live))) {
-    return (
-      <Alert className="connection-banner">
-        <AlertCircleIcon />
-        <AlertDescription>Unable to load details. Retrying on the next update.</AlertDescription>
-      </Alert>
-    );
-  }
-  if (torrent) {
-    return <Detail act={act} busy={busy} data={data} open={open} torrent={torrent} />;
-  }
-  return initial ? (
-    <Await resolve={initial}>
-      {(snapshot) =>
-        snapshot && summary ? (
-          <Detail
-            act={act}
-            busy={busy}
-            data={data}
-            open={open}
-            torrent={{ ...snapshot, ...summary }}
-          />
-        ) : (
-          <DetailLoading />
-        )
-      }
-    </Await>
-  ) : (
-    <DetailLoading />
   );
 }

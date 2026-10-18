@@ -151,6 +151,7 @@ export function RuleCard({
         <li>{rule.resolutions.join(" → ") || "Any resolution"}</li>
         <li>{rule.sources.map((id) => sourceNames[id]).join(" → ")}</li>
         {rule.season === null ? null : <li>Season {rule.season}</li>}
+        <li>{rule.includeExisting ? "Includes existing releases" : "New releases only"}</li>
         <li>{rule.automatic ? "Downloads automatically" : "Asks before downloading"}</li>
         {rule.waitMinutes > 0 ? <li>Waits {rule.waitMinutes} min for better</li> : null}
       </ul>

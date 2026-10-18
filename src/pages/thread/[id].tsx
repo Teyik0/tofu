@@ -1,37 +1,42 @@
 import { defineRoute, notFound } from "@teyik0/furin";
-import { defer } from "@teyik0/furin/client";
 import { t } from "elysia";
 import { App } from "../../components/app";
 import { api } from "../../lib/client";
+import { selectedTorrentId } from "../../lib/navigation";
 import { route as root } from "../root";
 
 export const route = defineRoute()
-  .config({ layout: root, mode: "ssr", params: t.Object({ id: t.String() }) })
-  .loader(async ({ dashboard, params }) => {
+  .config({
+    layout: root,
+    mode: "ssr",
+    params: t.Object({ id: t.String() }),
+    query: t.Object({ torrent: t.Optional(t.String()) }),
+  })
+  .loader(async ({ dashboard, params, query }) => {
     const state = await dashboard;
     if (!state.destinations.some((destination) => destination.id === params.id)) {
       notFound({ message: "This tab does not exist" });
     }
-    const initialTorrentId =
-      state.torrents.find((torrent) => torrent.destinationId === params.id)?.id ?? null;
-    const initialDetail = (async () => {
-      if (!initialTorrentId) {
-        return null;
+    const selectedId = selectedTorrentId(state.torrents, params.id, query.torrent);
+    if (!selectedId) {
+      return { detail: null };
+    }
+    const { data, error } = await api.torrents({ id: selectedId }).get();
+    if (error) {
+      // The torrent can be removed after the dashboard snapshot; the live stream catches up.
+      if (error.status === 404) {
+        return { detail: null };
       }
-      const { data, error } = await api.torrents({ id: initialTorrentId }).get();
-      if (error !== null) {
-        throw error;
-      }
-      return data;
-    })();
-    return defer({ initialDetail, initialTorrentId });
+      throw error;
+    }
+    return { detail: data };
   })
   .head(() => ({ meta: [{ title: "Your downloads — Tofu" }] }))
-  .page(({ dashboard, params, initialDetail, initialTorrentId }) => (
+  .page(({ dashboard, params, detail, query }) => (
     <App
       activeDestination={params.id}
       dashboard={dashboard}
-      initialDetail={initialDetail}
-      initialTorrentId={initialTorrentId}
+      detail={detail}
+      requested={query.torrent}
     />
   ));
