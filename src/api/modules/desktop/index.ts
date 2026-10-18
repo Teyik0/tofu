@@ -73,6 +73,13 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
       opened: runtime.current.desktop.shell.openPath((await torrents.detail(params.id)).savePath),
     };
   })
+  .post("/torrents/:id/files/:index/open", async ({ torrents, params }) => {
+    if (runtime.current.kind !== "desktop") {
+      return problem(409, { detail: "The file is on the machine hosting Tofu" });
+    }
+    const file = await torrents.file(params.id, Number(params.index));
+    return { opened: runtime.current.desktop.shell.openPath(file.path) };
+  })
   .get("/desktop", () => {
     if (runtime.current.kind !== "desktop") {
       return problem(409, { detail: "This action requires the desktop app" });

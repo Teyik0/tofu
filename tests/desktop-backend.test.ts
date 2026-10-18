@@ -184,6 +184,20 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
       await host.client.torrents({ id }).files({ index: "0" }).content.get()
     );
     expect(Bun.SHA256.hash(bytes, "hex")).toBe(Bun.SHA256.hash(context.bytes, "hex"));
+    const range = await host.client
+      .torrents({ id })
+      .files({ index: "0" })
+      .stream({ name: "source.bin" })
+      .get({ headers: { range: "bytes=1000-1999" } });
+    expect(range.status).toBe(206);
+    expect(new Headers(range.headers).get("content-length")).toBe("1000");
+    expect(new Headers(range.headers).get("content-range")).toBe(
+      `bytes 1000-1999/${context.bytes.length}`
+    );
+    expect(range.data).toBeInstanceOf(ArrayBuffer);
+    expect(new Uint8Array(range.data as unknown as ArrayBuffer)).toEqual(
+      new Uint8Array(context.bytes.subarray(1000, 2000))
+    );
     const home = await host.page("/");
     expect(home.status).toBe(200);
     expect(await home.text()).toContain('<strong title="source.bin">');

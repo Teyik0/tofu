@@ -1,8 +1,9 @@
 import { on } from "node:events";
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia, HTTPError, sse } from "elysia";
+import { Elysia, HTTPError, problem, sse } from "elysia";
 import { sync } from "../../../sync";
 import type { TorrentDetail } from "../../../types";
+import { recordLog } from "../../lib/diagnostics";
 import {
   addPeerSchema,
   bulkActionSchema,
@@ -15,6 +16,8 @@ import {
   uploadTorrentSchema,
 } from "./model";
 import { torrentServicePlugin } from "./plugin";
+
+const byteRange = /^bytes=(\d*)-(\d*)$/;
 
 export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
   .use(torrentServicePlugin)
@@ -128,6 +131,89 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
   .get("/torrents/:id/files/:index/availability", async ({ torrents, params }) => {
     await torrents.file(params.id, Number(params.index));
     return { ok: true };
+  })
+  // The player reads media through ranged requests; the trailing name gives VLC the extension.
+  .head("/torrents/:id/files/:index/stream/:name", async ({ torrents, params }) => {
+    // The size comes from torrent metadata, so this answers before any piece arrives.
+    const file = (await torrents.detail(params.id)).files[Number(params.index)];
+    if (!file) {
+      return problem(404, { detail: "File not found" });
+    }
+    return new Response(null, {
+      headers: {
+        "accept-ranges": "bytes",
+        "content-length": String(file.length),
+        "content-type": Bun.file(file.name).type,
+      },
+    });
+  })
+  .get("/torrents/:id/files/:index/stream/:name", async ({ torrents, params, request, set }) => {
+    const index = Number(params.index);
+    const file = (await torrents.detail(params.id)).files[index];
+    if (!file) {
+      return problem(404, { detail: "File not found" });
+    }
+    const size = file.length;
+    const complete = file.progress === 1;
+    const headers = { "accept-ranges": "bytes", "content-type": Bun.file(file.name).type };
+    const range = request.headers.get("range");
+    if (!range && complete) {
+      const content = Bun.file((await torrents.file(params.id, index)).path);
+      return new Response(content, { headers: { ...headers, "content-length": String(size) } });
+    }
+    const [, first = "", last = ""] = byteRange.exec(range ?? "bytes=0-") ?? [];
+    // A suffix range ("bytes=-500") requests the last bytes of the file.
+    const start = first === "" ? Math.max(size - Number(last), 0) : Number(first);
+    const requestedEnd = first === "" || last === "" ? size - 1 : Math.min(Number(last), size - 1);
+    if (
+      !((first || last) && Number.isSafeInteger(start) && Number.isSafeInteger(requestedEnd)) ||
+      start > requestedEnd ||
+      start >= size
+    ) {
+      set.headers["content-range"] = `bytes */${size}`;
+      return problem(416, { detail: "The requested range is outside the file" });
+    }
+    // Bound every range, including completed files, so materializing it cannot load a whole movie.
+    const end = Math.min(requestedEnd, start + 4 * 1024 * 1024 - 1);
+    let path: string;
+    if (complete) {
+      ({ path } = await torrents.file(params.id, index));
+    } else {
+      const key = crypto.randomUUID();
+      // Send the wait first so cancellation cannot overtake its registration in the worker.
+      const waiting = torrents.waitForRange(key, params.id, index, start, end);
+      const cancel = async () => {
+        try {
+          await torrents.cancelRange(key);
+        } catch (error) {
+          recordLog({ component: "torrent-stream", error, level: "error", operation: "cancel" });
+        }
+      };
+      request.signal.addEventListener("abort", cancel, { once: true });
+      if (request.signal.aborted) {
+        void cancel();
+      }
+      try {
+        ({ path } = await waiting);
+      } finally {
+        request.signal.removeEventListener("abort", cancel);
+      }
+    }
+    // The desktop runtime's Bun version loses file slice bounds when middleware reads
+    // Response.body. Materialize only the bounded range before it reaches middleware.
+    return new Response(
+      await Bun.file(path)
+        .slice(start, end + 1)
+        .arrayBuffer(),
+      {
+        headers: {
+          ...headers,
+          "content-length": String(end - start + 1),
+          "content-range": `bytes ${start}-${end}/${size}`,
+        },
+        status: 206,
+      }
+    );
   })
   .get("/torrents/:id/files/:index/content", async ({ torrents, params }) => {
     const file = await torrents.file(params.id, Number(params.index));

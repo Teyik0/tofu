@@ -82,6 +82,12 @@ async function execute(request: EngineRequest) {
       return engine.detail(...request.args);
     case "file":
       return engine.file(...request.args);
+    case "waitForRange":
+      return engine.waitForRange(...request.args);
+    case "cancelRange":
+      return engine.cancelRange(...request.args);
+    case "cancelRanges":
+      return engine.cancelRanges(...request.args);
     case "locate":
       return engine.locate(...request.args);
     case "pause":
@@ -111,6 +117,7 @@ async function execute(request: EngineRequest) {
     case "close": {
       closing = true;
       unsubscribe?.();
+      engine.cancelRanges();
       await Promise.allSettled([...operations]);
       return engine.close();
     }
@@ -122,14 +129,27 @@ async function execute(request: EngineRequest) {
 
 // Commands must wait until imports have loaded and the listener is installed.
 self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
-  const operation = execute(data).then(
-    (value) => {
+  // Reserve the operation before executing it, including commands that finish synchronously.
+  const pending = Promise.withResolvers<void>();
+  const operation = pending.promise;
+  if (data.method !== "close") {
+    operations.add(operation);
+  }
+  const argument = data.method === "waitForRange" ? data.args[1] : data.args[0];
+  const torrentId =
+    typeof argument === "string" && torrentIdPattern.test(argument) ? argument : undefined;
+  const run = async () => {
+    try {
+      const value = await execute(data);
       if (engine) {
         const readOnly = [
           "assertReady",
           "connectionDiagnostics",
           "detail",
           "file",
+          "waitForRange",
+          "cancelRange",
+          "cancelRanges",
           "close",
         ].includes(data.method);
         const current = readOnly ? null : snapshot();
@@ -140,16 +160,10 @@ self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
           value,
         } satisfies EngineMessage);
       }
-    },
-    (error: unknown) => {
+    } catch (error) {
       recordLog({
         component: "torrent-worker",
-        context: {
-          torrentId:
-            typeof data.args[0] === "string" && torrentIdPattern.test(data.args[0])
-              ? data.args[0]
-              : undefined,
-        },
+        context: { torrentId },
         dataDir,
         error,
         level: "error",
@@ -172,9 +186,11 @@ self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
         id: data.id,
         type: "error",
       } satisfies EngineMessage);
+    } finally {
+      operations.delete(operation);
+      pending.resolve();
     }
-  );
-  operations.add(operation);
-  void operation.finally(() => operations.delete(operation));
+  };
+  void run();
 };
 postMessage({ type: "ready" } satisfies EngineMessage);

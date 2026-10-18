@@ -47,7 +47,8 @@ test("a completed torrent resumes and uploads after its imported torrent file is
     expect(restored.error).toBeNull();
     expect(restored.storageIssue).toBeNull();
     expect(restored.progress).toBe(1);
-    expect(restored.received).toBe(completed.received);
+    // Peer traffic can still arrive between the live snapshot and the shutdown checkpoint.
+    expect(restored.received).toBeGreaterThanOrEqual(completed.received);
     expect(restored.peers).toBe(0);
     expect(await Bun.file(source).exists()).toBe(false);
     const file = await client.torrents({ id }).files({ index: "0" }).content.get();

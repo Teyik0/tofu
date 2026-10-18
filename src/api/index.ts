@@ -18,6 +18,7 @@ const routeModules = [
   import("./modules/discovery"),
   import("./modules/health"),
   import("./modules/jev"),
+  import("./modules/player"),
   import("./modules/plugins"),
   import("./modules/settings"),
   import("./modules/torrents"),
@@ -37,6 +38,7 @@ const [
   { discoveryPlugin },
   { healthPlugin },
   { jevManagementPlugin },
+  { playerPlugin },
   { pluginsPlugin },
   { settingsPlugin },
   { torrentPlugin },
@@ -66,7 +68,7 @@ const [
 
 export const apiPlugin = new Elysia({
   name: "tofu-api",
-  serve: { maxRequestBodySize: 9 * 1024 * 1024 },
+  serve: { idleTimeout: 120, maxRequestBodySize: 9 * 1024 * 1024 },
 })
   .use(
     desktopApp({
@@ -99,6 +101,15 @@ export const apiPlugin = new Elysia({
       restrictWebToLoopback: true,
     })
   )
+  .request(({ request, set }) => {
+    const { pathname } = new URL(request.url);
+    // VLC runs in threads that share memory, which requires a cross-origin isolated player page.
+    if (pathname.startsWith("/player/") || pathname.startsWith("/api/player/")) {
+      set.headers["cross-origin-embedder-policy"] = "require-corp";
+      set.headers["cross-origin-opener-policy"] = "same-origin";
+      set.headers["cross-origin-resource-policy"] = "same-origin";
+    }
+  })
   .error("global", ({ request, error }) => {
     recordLog({
       component: "api",
@@ -138,6 +149,7 @@ export const apiPlugin = new Elysia({
       .use(discoveryPlugin)
       .use(pluginsPlugin)
       .use(jevManagementPlugin)
+      .use(playerPlugin)
       .use(desktopPlugin)
       .use(updatesPlugin)
   );

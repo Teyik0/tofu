@@ -1,6 +1,6 @@
 {
   "name": "tofu",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "description": "Torrent client powered by Bun, Furin, and Electrobun",
   "bugs": {
@@ -54,6 +54,7 @@
     "graphql": "17.0.2",
     "graphql-request": "7.4.0",
     "jotai": "3.0.1",
+    "libvlc-wasm": "0.2.0",
     "lucide-react": "1.55.0",
     "parse-torrent": "11.0.24",
     "react": "19.3.0",
@@ -84,5 +85,8 @@
   },
   "engines": {
     "bun": ">=1.4.3"
+  },
+  "patchedDependencies": {
+    "libvlc-wasm@0.2.0": "patches/libvlc-wasm@0.2.0.patch"
   }
 }
