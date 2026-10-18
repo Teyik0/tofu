@@ -1,0 +1,26 @@
+tests/player.test.ts
+  s_7b8290e25f3cd4::t_5dbe410d87bcd5 8-9,26,30,38,40-46,48
+tests/desktop-backend.test.ts
+  s_7b8290e25f3cd4::t_07937d266803df 197-198
+  s_7b8290e25f3cd4::t_950d6ddb5d5772 187-196,199-200
+src/api/modules/torrents/index.ts
+  s_7b8290e25f3cd4::t_8546afa22de584 204-216
+  s_7b8290e25f3cd4::t_64b7f8f387dd5b 176-177,203
+  s_7b8290e25f3cd4::t_dd08f9d1002b33 202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e7eded8a2b4fedb01510351a531152a8b0b674e",
+  "prompts": {},
+  "sessions": {
+    "s_7b8290e25f3cd4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1505f-1dca-77d2-85b3-aec6c73b9e20",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
