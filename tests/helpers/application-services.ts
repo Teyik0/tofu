@@ -21,6 +21,7 @@ export const {
   plugins,
   releaseAutomation,
   resources,
+  torrentFolders,
   updates,
 } = application;
 export const runtime = { current: platform };
@@ -29,7 +30,8 @@ export const databasePlugin = new Elysia({ name: "tofu-database-service" }).deco
 
 export const torrentServicePlugin = new Elysia({ name: "tofu-torrent-service" })
   .use(databasePlugin)
-  .decorate("torrents", engine);
+  .decorate("torrents", engine)
+  .decorate("torrentFolders", torrentFolders);
 
 export const pluginRegistryPlugin = new Elysia({ name: "tofu-plugin-registry-service" })
   .use(databasePlugin)

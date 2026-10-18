@@ -1,10 +1,12 @@
 import { pathToFileURL } from "node:url";
 import type { DesktopAppOptions } from "@teyik0/furin-electrobun/server";
+import { ElysiaStatus } from "elysia";
 import type { EnginePort } from "../../../types";
 import { setDefaultTorrentApp } from "./associations";
-import { openDesktopTorrent } from "./opening";
+import { TorrentOpenings } from "./opening";
 
 export const desktopRuntime = { engine: undefined as EnginePort | undefined };
+export const torrentOpenings = new TorrentOpenings();
 export const desktopHooks = {
   background: () => desktopRuntime.engine?.settings.runInBackground === true,
   menus: ({ desktop, identity }) => [
@@ -61,17 +63,28 @@ export const desktopHooks = {
   ],
   async onOpen({ event, desktop, identity }) {
     try {
-      const { engine } = await import("../torrents/plugin");
       if (event.type === "url" && ["tofu:", "tofu-dev:"].includes(new URL(event.url).protocol)) {
         desktop.window.open();
         const { anilist } = await import("../anilist/plugin");
         await anilist.receiveAuthorizationUrl(event.url);
         return;
       }
-      await openDesktopTorrent(event.type === "file" ? pathToFileURL(event.path).href : event.url, {
-        engine,
-        show: () => desktop.window.open(),
-      });
+      if (!desktopRuntime.engine) {
+        throw new Error("The torrent engine is not ready");
+      }
+      const opened = await torrentOpenings.stage(
+        event.type === "file" ? pathToFileURL(event.path).href : event.url,
+        desktopRuntime.engine
+      );
+      desktop.window.open();
+      if (opened instanceof ElysiaStatus) {
+        await desktop.dialogs.message({
+          detail: opened.response.detail,
+          message: "Unable to open link",
+          title: identity.name,
+          type: "error",
+        });
+      }
     } catch (error) {
       if (
         error instanceof Error &&

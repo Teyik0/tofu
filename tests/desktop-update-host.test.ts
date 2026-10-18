@@ -58,6 +58,24 @@ test
         message: "Unable to open link",
       });
       const id = context.seed.infoHash;
+      // The opened magnet link waits for the user to confirm the add dialog.
+      const controller = new AbortController();
+      const { data: openings } = await client.desktop.openings.get({
+        fetch: { signal: controller.signal },
+      });
+      let opened: string | undefined;
+      for await (const event of openings ?? []) {
+        opened = event.data.find((torrent) => torrent.infoHash === id)?.id;
+        if (opened) {
+          break;
+        }
+      }
+      controller.abort();
+      expectSuccess(
+        await client.desktop
+          .openings({ id: opened ?? "" })
+          .post({ destinationId: "default", paused: false })
+      );
       const state = async () => expectSuccess(await client.state.get()) as DashboardState;
       await waitFor(state, (value) =>
         value.torrents.some((torrent) => torrent.id === id && torrent.status === "seeding")

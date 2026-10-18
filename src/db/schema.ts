@@ -12,11 +12,19 @@ export const torrentRecords = sqliteTable("torrents", {
 });
 
 export const torrentDestinations = sqliteTable("destinations", {
+  autoAddTorrentFilesSince: integer(),
+  deleteTorrentFileAfterAdd: integer({ mode: "boolean" }),
   downloadPath: text().notNull(),
   icon: text().$type<Destination["icon"]>().notNull().default("folder"),
   id: text().primaryKey(),
   name: text().notNull(),
   pinned: integer({ mode: "boolean" }).notNull().default(false),
+});
+
+export const watchedTorrentFiles = sqliteTable("watched_files", {
+  changedAt: integer().notNull(),
+  infoHash: text(),
+  path: text().primaryKey(),
 });
 
 export const automationPlugins = sqliteTable("plugins", {

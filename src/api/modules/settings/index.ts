@@ -14,8 +14,15 @@ export const settingsPlugin = new Elysia({ name: "tofu-settings-api" })
     {
       body: settingsSchema,
     },
-    ({ torrents, body }) => torrents.updateSettings(body)
+    async ({ torrents, torrentFolders, body }) => {
+      const settings = await torrents.updateSettings(body);
+      // The default thread follows the download folder.
+      torrentFolders.sync();
+      return settings;
+    }
   )
-  .patch("/settings", { body: settingsPatchSchema }, ({ torrents, body }) =>
-    torrents.updateSettings(body)
-  );
+  .patch("/settings", { body: settingsPatchSchema }, async ({ torrents, torrentFolders, body }) => {
+    const settings = await torrents.updateSettings(body);
+    torrentFolders.sync();
+    return settings;
+  });

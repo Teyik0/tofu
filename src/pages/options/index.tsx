@@ -66,9 +66,10 @@ export const route = defineRoute()
                       Delete .torrent file after adding
                     </FieldLabel>
                     <FieldDescription id="delete-torrent-file-after-add-description">
-                      Permanently delete the original .torrent file after a successful import from
-                      your file manager. Downloaded content is kept. Browser uploads and
-                      drag-and-drop imports keep the original file.
+                      Permanently delete the original .torrent file after it is added from your file
+                      manager or a watched thread folder. Each thread can override this. Downloaded
+                      content is kept. Browser uploads and drag-and-drop imports keep the original
+                      file.
                     </FieldDescription>
                   </FieldContent>
                   <Switch

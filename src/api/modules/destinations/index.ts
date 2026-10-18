@@ -19,14 +19,22 @@ export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
     {
       body: createDestinationSchema,
     },
-    ({ torrents, body }) => torrents.saveDestination(null, body)
+    async ({ torrents, torrentFolders, body }) => {
+      const destination = await torrents.saveDestination(null, body);
+      torrentFolders.sync();
+      return destination;
+    }
   )
   .put(
     "/destinations/:id",
     {
       body: updateDestinationSchema,
     },
-    ({ torrents, params, body }) => torrents.saveDestination(params.id, body)
+    async ({ torrents, torrentFolders, params, body }) => {
+      const destination = await torrents.saveDestination(params.id, body);
+      torrentFolders.sync();
+      return destination;
+    }
   )
   .patch(
     "/destinations/:id",
@@ -35,13 +43,17 @@ export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
     },
     ({ torrents, params, body }) => torrents.updateDestinationPresentation(params.id, body)
   )
-  .delete("/destinations/:id", async ({ torrents, db, automation, anilist, params }) => {
-    const result = await torrents.removeDestination(params.id);
-    db.transaction((tx) => {
-      automation.reassignDestination(tx, result.removed);
-      anilist.reassignDestination(result.removed, tx);
-    });
-    automation.refreshState();
-    anilist.refreshState();
-    return result;
-  });
+  .delete(
+    "/destinations/:id",
+    async ({ torrents, torrentFolders, db, automation, anilist, params }) => {
+      const result = await torrents.removeDestination(params.id);
+      torrentFolders.sync();
+      db.transaction((tx) => {
+        automation.reassignDestination(tx, result.removed);
+        anilist.reassignDestination(result.removed, tx);
+      });
+      automation.refreshState();
+      anilist.refreshState();
+      return result;
+    }
+  );

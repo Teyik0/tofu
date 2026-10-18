@@ -7,6 +7,7 @@ import {
   destinationFormSchema,
   dropTorrentFormSchema,
   locateTorrentSchema,
+  openTorrentFormSchema,
   peerFormSchema,
   removeTorrentFormSchema,
   trackersFormSchema,
@@ -17,6 +18,7 @@ import { errorMessage } from "../lib/errors";
 import { playSoundCue } from "../lib/sound-cues";
 import type { DashboardState, Destination, DestinationInput, FormModalKind } from "../types";
 import { DestinationIconPicker } from "./destination-icon";
+import { bytes } from "./format";
 import { TorrentFileInput } from "./torrent-file-input";
 import { Alert, AlertDescription } from "./ui/alert";
 import {
@@ -178,6 +180,7 @@ export function DeleteDestinationModal({
 type ModalSchema =
   | typeof addTorrentFormSchema
   | typeof dropTorrentFormSchema
+  | typeof openTorrentFormSchema
   | typeof destinationFormSchema
   | typeof trackersFormSchema
   | typeof peerFormSchema
@@ -538,6 +541,108 @@ function AddTorrentModal({ modal, data, close, done }: OperationProps<"add">) {
   );
 }
 
+function OpenTorrentModal({ modal, data, close, done }: OperationProps<"open">) {
+  const { torrent } = modal;
+  const accept = useMutation(
+    (body: { destinationId: string; paused: boolean; trackers: string[] }) =>
+      api.desktop.openings({ id: torrent.id }).post(body)
+  );
+  const dismiss = useMutation(() => api.desktop.openings({ id: torrent.id }).delete());
+  const submission = useModalSubmission(done, close);
+  const form = useForm({
+    initialInput: {
+      destinationId:
+        data.destinations.find((item) => item.id === torrent.destinationId)?.id ?? "default",
+      paused: false,
+      trackers: "",
+    },
+    schema: openTorrentFormSchema,
+  });
+  const destinationField = useField(form, { path: ["destinationId"] });
+  const pausedField = useField(form, { path: ["paused"] });
+  const trackersField = useField(form, { path: ["trackers"] });
+  const busy = form.isSubmitting;
+  const destinationId = destinationField.input ?? "default";
+  const submit = submission.submit(async () => {
+    const result = await accept.mutateAsync({
+      destinationId,
+      paused: pausedField.input === true,
+      trackers: trackerLines(trackersField.input ?? ""),
+    });
+    if (!(result && "id" in result)) {
+      throw new Error("Unable to add the torrent");
+    }
+    playSoundCue("added");
+    return { destinationId, id: result.id };
+  });
+  const cancel = async () => {
+    close();
+    try {
+      await dismiss.mutateAsync();
+    } catch {
+      // The torrent was already added or dismissed from another window.
+    }
+  };
+  const details = [
+    torrent.length === null ? null : bytes(torrent.length),
+    torrent.fileCount === null
+      ? null
+      : `${torrent.fileCount} file${torrent.fileCount > 1 ? "s" : ""}`,
+  ].filter(Boolean);
+  return (
+    <ModalForm
+      className="torrent-add-form"
+      close={() => void cancel()}
+      description="Choose where to download this torrent."
+      error={submission.error}
+      form={form}
+      label="Download"
+      submit={submit}
+      title="Add a torrent"
+      variant="default"
+    >
+      <Field>
+        <FieldLabel>Torrent</FieldLabel>
+        <p className="break-all font-medium">{torrent.name}</p>
+        <FieldDescription>
+          {details.length ? details.join(" · ") : "Details appear once the metadata is received."}
+        </FieldDescription>
+      </Field>
+      <DestinationPicker
+        disabled={busy}
+        id="opened-torrent-destination"
+        onChange={destinationField.onChange}
+        options={data.destinations}
+        path={data.destinations.find((item) => item.id === destinationId)?.downloadPath}
+        value={destinationId}
+      />
+      <details className="torrent-add-options">
+        <summary>Additional trackers</summary>
+        <Field className="mt-3">
+          <FieldLabel htmlFor="opened-torrent-trackers">One URL per line</FieldLabel>
+          <Textarea
+            {...trackersField.props}
+            aria-invalid={Boolean(trackersField.errors)}
+            id="opened-torrent-trackers"
+            onChange={(event) => trackersField.onChange(event.target.value)}
+            rows={3}
+            value={trackersField.input ?? ""}
+          />
+        </Field>
+      </details>
+      <Field orientation="horizontal">
+        <Checkbox
+          checked={pausedField.input === true}
+          disabled={busy}
+          id="opened-torrent-paused"
+          onCheckedChange={(value) => pausedField.onChange(value === true)}
+        />
+        <FieldLabel htmlFor="opened-torrent-paused">Add paused</FieldLabel>
+      </Field>
+    </ModalForm>
+  );
+}
+
 function DropTorrentModal({ modal, data, close, done }: OperationProps<"drop">) {
   const upload = useMutation(api.torrents.file.post);
   const createDestination = useMutation(api.destinations.post);
@@ -632,8 +737,16 @@ function useDestinationForm({
   );
   const submission = useModalSubmission(done, close);
   const { destination } = modal;
+  let deleteTorrentFile: "inherit" | "always" | "never" = "inherit";
+  if (destination?.deleteTorrentFileAfterAdd === true) {
+    deleteTorrentFile = "always";
+  } else if (destination?.deleteTorrentFileAfterAdd === false) {
+    deleteTorrentFile = "never";
+  }
   const form = useForm({
     initialInput: {
+      autoAddTorrentFiles: destination ? destination.autoAddTorrentFilesSince !== null : false,
+      deleteTorrentFile,
       destinationIcon: destination?.icon ?? "folder",
       moveFiles: false,
       name: destination?.name ?? "",
@@ -647,6 +760,8 @@ function useDestinationForm({
   const icon = useField(form, { path: ["destinationIcon"] });
   const pinned = useField(form, { path: ["pinned"] });
   const move = useField(form, { path: ["moveFiles"] });
+  const autoAdd = useField(form, { path: ["autoAddTorrentFiles"] });
+  const deleteFile = useField(form, { path: ["deleteTorrentFile"] });
   const [deleting, setDeleting] = useState(false);
   const existing = destination
     ? data.torrents.filter((torrent) => torrent.destinationId === destination.id)
@@ -660,6 +775,11 @@ function useDestinationForm({
   const busy = form.isSubmitting;
   const submit = submission.submit(async () => {
     const body: DestinationInput = {
+      autoAddTorrentFiles: autoAdd.input === true,
+      deleteTorrentFileAfterAdd:
+        deleteFile.input === "inherit" || deleteFile.input === undefined
+          ? null
+          : deleteFile.input === "always",
       downloadPath: path.input ?? "",
       icon: icon.input ?? "folder",
       moveFiles: offerMove && move.input === true,
@@ -675,8 +795,10 @@ function useDestinationForm({
     return { destinationId: result.id, id: null };
   });
   return {
+    autoAdd,
     busy,
     checking,
+    deleteFile,
     deleting,
     destination,
     existing,
@@ -792,6 +914,7 @@ function DestinationModal({
           value={icon.input ?? "folder"}
         />
       </DestinationFields>
+      <DestinationTorrentFileOptions data={data} model={model} />
       <DestinationMoveOptions model={model} />
     </ModalForm>
   );
@@ -934,6 +1057,8 @@ export function Modal(props: ModalProps) {
       return <AddTorrentModal {...props} modal={props.modal} />;
     case "drop":
       return <DropTorrentModal {...props} modal={props.modal} />;
+    case "open":
+      return <OpenTorrentModal {...props} modal={props.modal} />;
     case "destination":
       return <DestinationModal {...props} modal={props.modal} />;
     case "trackers":
@@ -1018,6 +1143,69 @@ function LocateTorrentModal({ modal, data, close, done }: OperationProps<"locate
         </FieldDescription>
       </Field>
     </ModalForm>
+  );
+}
+
+function DestinationTorrentFileOptions({
+  data,
+  model,
+}: {
+  data: DashboardState;
+  model: ReturnType<typeof useDestinationForm>;
+}) {
+  const { autoAdd, deleteFile, busy } = model;
+  const global = data.settings.deleteTorrentFileAfterAdd ? "delete" : "keep";
+  const items = [
+    { label: `Use the global setting (${global})`, value: "inherit" },
+    { label: "Always delete", value: "always" },
+    { label: "Always keep", value: "never" },
+  ];
+  return (
+    <>
+      <Field orientation="horizontal">
+        <Checkbox
+          checked={autoAdd.input === true}
+          disabled={busy}
+          id="thread-auto-add"
+          onCheckedChange={(value) => autoAdd.onChange(value === true)}
+        />
+        <FieldContent>
+          <FieldLabel htmlFor="thread-auto-add">Add .torrent files from this folder</FieldLabel>
+          <FieldDescription>
+            New .torrent files saved in the download folder start downloading in this thread.
+          </FieldDescription>
+        </FieldContent>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="thread-delete-torrent-file">.torrent file after adding</FieldLabel>
+        <Select
+          disabled={busy}
+          items={items}
+          onValueChange={(next) => {
+            if (next === "inherit" || next === "always" || next === "never") {
+              deleteFile.onChange(next);
+            }
+          }}
+          value={deleteFile.input ?? "inherit"}
+        >
+          <SelectTrigger className="w-full" id="thread-delete-torrent-file">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              {items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <FieldDescription>
+          Applies to files opened from your file manager or added from this folder.
+        </FieldDescription>
+      </Field>
+    </>
   );
 }
 

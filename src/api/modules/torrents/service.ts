@@ -222,6 +222,8 @@ export class TorrentEngine {
     }
     if (!this.destinations.has("default")) {
       this.storeDestination({
+        autoAddTorrentFilesSince: null,
+        deleteTorrentFileAfterAdd: null,
         downloadPath: this.settings.downloadPath,
         icon: "folder",
         id: "default",
@@ -736,6 +738,8 @@ export class TorrentEngine {
         (destination) => destination.downloadPath === downloadPath
       ) ??
       this.storeDestination({
+        autoAddTorrentFilesSince: null,
+        deleteTorrentFileAfterAdd: null,
         downloadPath,
         icon: "folder",
         id: crypto.randomUUID(),
@@ -767,6 +771,37 @@ export class TorrentEngine {
     }
   }
 
+  /** Resolves how a thread handles .torrent files, keeping each folder watched by one thread. */
+  private torrentFileOptions(id: string | null, input: DestinationInput, downloadPath: string) {
+    const current = id ? this.destinations.get(id) : undefined;
+    let autoAddTorrentFilesSince = current?.autoAddTorrentFilesSince ?? null;
+    if (input.autoAddTorrentFiles !== undefined) {
+      autoAddTorrentFilesSince = input.autoAddTorrentFiles
+        ? (autoAddTorrentFilesSince ?? Date.now())
+        : null;
+    }
+    if (
+      autoAddTorrentFilesSince !== null &&
+      [...this.destinations.values()].some(
+        (other) =>
+          other.id !== id &&
+          other.autoAddTorrentFilesSince !== null &&
+          other.downloadPath === downloadPath
+      )
+    ) {
+      throw new (HTTPError.id("CONFLICT", 409))(
+        "Another thread already adds .torrent files from this folder"
+      );
+    }
+    return {
+      autoAddTorrentFilesSince,
+      deleteTorrentFileAfterAdd:
+        input.deleteTorrentFileAfterAdd === undefined
+          ? (current?.deleteTorrentFileAfterAdd ?? null)
+          : input.deleteTorrentFileAfterAdd,
+    };
+  }
+
   async saveDestination(id: string | null, input: DestinationInput) {
     const name = input.name.trim();
     if (!(name && isAbsolute(input.downloadPath))) {
@@ -779,9 +814,16 @@ export class TorrentEngine {
       throw new (HTTPError.id("CONFLICT", 409))("A move is already in progress for this tab");
     }
     const downloadPath = resolvePath(input.downloadPath);
+    const { autoAddTorrentFilesSince, deleteTorrentFileAfterAdd } = this.torrentFileOptions(
+      id,
+      input,
+      downloadPath
+    );
     if (id && input.moveFiles) {
       const previous = this.destinations.get(id);
       const destination: Destination = {
+        autoAddTorrentFilesSince,
+        deleteTorrentFileAfterAdd,
         downloadPath,
         icon: input.icon ?? previous?.icon ?? "folder",
         id,
@@ -806,6 +848,8 @@ export class TorrentEngine {
     }
     const previous = id ? this.destinations.get(id) : undefined;
     const destination = this.storeDestination({
+      autoAddTorrentFilesSince,
+      deleteTorrentFileAfterAdd,
       downloadPath,
       icon: input.icon ?? previous?.icon ?? "folder",
       id: id ?? crypto.randomUUID(),

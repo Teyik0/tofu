@@ -301,7 +301,15 @@ test("deleting the default tab hands its role to the next tab without moving rea
       await context.client.state.get({ query: { selected: id } })
     ) as DashboardState;
     expect(state.destinations).toEqual([
-      { downloadPath: series, icon: "tv", id: "default", name: "Series", pinned: true },
+      {
+        autoAddTorrentFilesSince: null,
+        deleteTorrentFileAfterAdd: null,
+        downloadPath: series,
+        icon: "tv",
+        id: "default",
+        name: "Series",
+        pinned: true,
+      },
     ]);
     expect(state.settings.downloadPath).toBe(series);
     expect(state.detail).toMatchObject({
@@ -607,6 +615,8 @@ test("editing a destination persists its identity and changes future adds withou
     ).api;
     const state = expectSuccess(await restartedClient.state.get({ query: { selected: id } }));
     expect(state.destinations.find((item) => item.id === destination.id)).toEqual({
+      autoAddTorrentFilesSince: null,
+      deleteTorrentFileAfterAdd: null,
       downloadPath: newPath,
       icon: "folder",
       id: destination.id,

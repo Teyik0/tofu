@@ -5,6 +5,7 @@ import { Provider, useAtomValue } from "jotai";
 import { type CSSProperties, useState } from "react";
 import { DestinationSidebar } from "../components/destination-sidebar";
 import { GlobalSearch } from "../components/global-search";
+import { OpenedTorrents } from "../components/opened-torrents";
 import { TofuStateSync } from "../components/tofu-state-sync";
 import { TorrentDrop } from "../components/torrent-drop";
 import { SidebarInset, SidebarProvider } from "../components/ui/sidebar";
@@ -53,6 +54,7 @@ export const route = defineRootRoute()
                   <>
                     <TorrentDrop activeDestination={activeDestination} />
                     <WorkspaceDialogs activeDestination={activeDestination} dashboard={dashboard} />
+                    {dashboard.session.mode === "desktop" ? <OpenedTorrents /> : null}
                     <GlobalSearch activeDestination={activeDestination} dashboard={dashboard} />
                   </>
                 )}

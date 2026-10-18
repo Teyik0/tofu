@@ -116,6 +116,10 @@ export const destinationIconNames = [
 export type DestinationIconName = (typeof destinationIconNames)[number];
 
 export interface Destination {
+  /** New .torrent files in the folder since this time are added automatically; null disables it. */
+  autoAddTorrentFilesSince: number | null;
+  /** Overrides the global setting for this thread; null follows the global setting. */
+  deleteTorrentFileAfterAdd: boolean | null;
   downloadPath: string;
   icon: DestinationIconName;
   id: string;
@@ -129,6 +133,8 @@ export interface DestinationPresentation {
 }
 
 export interface DestinationInput extends DestinationPresentation {
+  autoAddTorrentFiles?: boolean;
+  deleteTorrentFileAfterAdd?: boolean | null;
   downloadPath: string;
   moveFiles?: boolean;
   name: string;
@@ -648,6 +654,19 @@ export interface EngineChange {
   telemetryRevision: number;
 }
 
+/** A magnet link or .torrent file opened from the system, waiting for the user to add it. */
+export interface OpenedTorrent {
+  /** Thread whose folder contains the opened file, suggested as its destination. */
+  destinationId: string | null;
+  /** Set when the torrent is already in the library; it is shown instead of added again. */
+  existing: { destinationId: string } | null;
+  fileCount: number | null;
+  id: string;
+  infoHash: string;
+  length: number | null;
+  name: string;
+}
+
 export interface TorrentAddOptions {
   destinationId?: string;
   downloadPath?: string;
@@ -714,6 +733,7 @@ export type ModalKind =
 export type FormModalKind =
   | { type: "add"; destinationId: string }
   | { type: "drop"; files: File[] }
+  | { type: "open"; torrent: OpenedTorrent }
   | { type: "destination"; destination: Destination | null }
   | { type: "remove"; torrent: TorrentSummary }
   | { type: "trackers"; torrent: TorrentDetail }
