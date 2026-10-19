@@ -1,0 +1,25 @@
+src/components/updates.tsx
+  s_6d233bf7866450::t_d596713ebfc948 286-287,304-305,316,324-333,335-349
+  s_6d233bf7866450::t_21f7fcd4e27585 30-32,85-87,110-112
+  s_6d233bf7866450::t_6631da696fba46 224,284-285,302-303,334
+  s_6d233bf7866450::t_cb73e417345738 3,6,33,88,99,102-109,113-132,134,235-245,317-323
+  s_6d233bf7866450::t_0fac59d7006f3c 246,350-351
+src/styles.css
+  s_6d233bf7866450::t_12d73d1e61a5dc 2034-2067
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5795d143230ea2985dc1aa2c2ec1ea139273c104",
+  "prompts": {},
+  "sessions": {
+    "s_6d233bf7866450": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a150c2-802e-79b3-a404-1eba7f69461d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
