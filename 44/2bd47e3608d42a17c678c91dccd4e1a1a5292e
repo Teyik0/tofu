@@ -1,0 +1,19 @@
+tests/anilist/catalog-download.test.ts
+  s_aacc97cf129734::t_cde2833a95087e 59-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "442bd47e3608d42a17c678c91dccd4e1a1a5292e",
+  "prompts": {},
+  "sessions": {
+    "s_aacc97cf129734": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a150e0-4404-7b80-99d4-d9d2ba339233",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
