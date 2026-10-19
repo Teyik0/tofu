@@ -6,7 +6,7 @@
       "name": "tofu",
       "dependencies": {
         "@base-ui/react": "1.9.0",
-        "@elysia/eden": "2.0.0-beta.5",
+        "@elysia/eden": "2.0.0-exp.1",
         "@formisch/react": "1.1.0",
         "@teyik0/furin": "file:vendor/furin-pr163-118d85f.tgz",
         "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-a1c9c5d.tgz",
@@ -183,7 +183,7 @@
 
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.10.2", "", {}, "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="],
 
-    "@elysia/eden": ["@elysia/eden@2.0.0-beta.5", "", { "peerDependencies": { "elysia": ">= 2.0.0-beta.2" } }, "sha512-1vH0ihYwQasF/zUp5v0CtONP6Lcr+NBdXsjFopZRtsE7zUWq77QgdnDM6Gy/ysUWWca7gc+SsBTs5poBAxNvkw=="],
+    "@elysia/eden": ["@elysia/eden@2.0.0-exp.1", "", { "peerDependencies": { "elysia": ">= 2.0.0-exp.23" } }, "sha512-l6SB67Q3VoZMnLwjNULCg+friUCvbOs6bMqRW8ckWe0mLA6UmMF96b/GN2boy0M8UMOlusLUGkxOoKgcaPFjEA=="],
 
     "@elysia/static": ["@elysia/static@2.0.0-beta.2", "", { "peerDependencies": { "elysia": ">= 2.0.0-beta.1" } }, "sha512-uAUhcmBQAdPqp2Jc/veOUnzfc3UqTbOYnVsTyBerSGNC8XnNuPYzkzw2SomirC1PAv65XdgMHip0L6JcGsTgxg=="],
 

@@ -42,7 +42,7 @@
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
-    "@elysia/eden": "2.0.0-beta.5",
+    "@elysia/eden": "2.0.0-exp.1",
     "@formisch/react": "1.1.0",
     "@teyik0/furin": "file:vendor/furin-pr163-118d85f.tgz",
     "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-a1c9c5d.tgz",
