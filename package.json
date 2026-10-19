@@ -1,6 +1,6 @@
 {
   "name": "tofu",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "Torrent client powered by Bun, Furin, and Electrobun",
   "bugs": {
@@ -55,7 +55,7 @@
     "graphql-request": "7.4.0",
     "jotai": "3.0.1",
     "libvlc-wasm": "0.2.0",
-    "lucide-react": "1.55.0",
+    "lucide-react": "1.57.0",
     "parse-torrent": "11.0.24",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -79,7 +79,7 @@
     "drizzle-kit": "0.31.11",
     "electrobun": "2.0.2",
     "lefthook": "2.2.1",
-    "shadcn": "4.21.4",
+    "shadcn": "4.21.5",
     "typescript": "7.0.2",
     "ultracite": "7.12.4"
   },

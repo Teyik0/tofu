@@ -3,7 +3,11 @@ import type { Player, Track, VLC } from "libvlc-wasm";
 import { version } from "libvlc-wasm/package.json";
 import {
   ArrowLeftIcon,
+  CaptionsIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
   ExternalLinkIcon,
+  HeadphonesIcon,
   LoaderCircleIcon,
   MaximizeIcon,
   MinimizeIcon,
@@ -16,6 +20,15 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
 import { Button } from "./ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 // The engine is loaded at runtime from the server so its worker and WebAssembly files resolve
 // next to it.
@@ -47,6 +60,7 @@ type PlaybackState = "loading" | "playing" | "paused" | "ended" | "error";
 
 export function MediaPlayer({
   back,
+  complete,
   index,
   name,
   source,
@@ -54,6 +68,7 @@ export function MediaPlayer({
   unavailable,
 }: {
   back: string;
+  complete: boolean;
   index: number;
   name: string;
   source: string;
@@ -66,6 +81,13 @@ export function MediaPlayer({
   const [attempt, setAttempt] = useState(0);
   // VLC reports the input cache fill from 0 to 1.
   const [buffering, setBuffering] = useState(1);
+  const [showBuffering, setShowBuffering] = useState(false);
+  const [trackMenuOpen, setTrackMenuOpen] = useState(false);
+  const [seekFeedback, setSeekFeedback] = useState<{
+    seconds: number;
+    at: number;
+    sequence: number;
+  } | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
   const [state, setState] = useState<PlaybackState>(unavailable ? "error" : "loading");
   const [error, setError] = useState<string | null>(unavailable);
@@ -82,7 +104,7 @@ export function MediaPlayer({
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
   const openExternally = useMutation(api.torrents({ id: torrentId }).files({ index }).open.post);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry deliberately replaces the complete player and engine.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Cache policy is chosen when opening a source; finishing its download must not restart playback.
   useEffect(() => {
     const target = canvas.current;
     if (unavailable || !target) {
@@ -100,6 +122,8 @@ export function MediaPlayer({
     setIdle(false);
     setBuffering(1);
     setAudioBlocked(false);
+    setSeekFeedback(null);
+    setTrackMenuOpen(false);
     let disposed = false;
     let engine: VLC | null = null;
     let current: Player | null = null;
@@ -161,7 +185,8 @@ export function MediaPlayer({
         // the opening lines are not missed.
         await selected.open(new URL(source, window.location.href).href, {
           autoplay: false,
-          options: [":sub-track=0"],
+          // HTTP sources are mounted as lazy files by the engine, so file-caching applies.
+          options: complete ? [":sub-track=0", ":file-caching=100"] : [":sub-track=0"],
         });
         if (disposed) {
           return;
@@ -198,6 +223,25 @@ export function MediaPlayer({
     };
   }, [source, unavailable, attempt]);
 
+  const isBuffering = buffering < 1;
+  useEffect(() => {
+    if (!isBuffering) {
+      setShowBuffering(false);
+      return;
+    }
+    // Short cache refills after seeking should not flash a loading overlay.
+    const timer = setTimeout(() => setShowBuffering(true), 250);
+    return () => clearTimeout(timer);
+  }, [isBuffering]);
+
+  useEffect(() => {
+    if (!seekFeedback) {
+      return;
+    }
+    const timer = setTimeout(() => setSeekFeedback(null), 850);
+    return () => clearTimeout(timer);
+  }, [seekFeedback]);
+
   useEffect(() => {
     // The page renders on the server first, where full screen support is unknown.
     setFullscreenSupported(document.fullscreenEnabled);
@@ -207,12 +251,12 @@ export function MediaPlayer({
   }, []);
 
   useEffect(() => {
-    if (state !== "playing" || idle) {
+    if (state !== "playing" || idle || trackMenuOpen) {
       return;
     }
     const timer = setTimeout(() => setIdle(true), 2500);
     return () => clearTimeout(timer);
-  }, [idle, state]);
+  }, [idle, state, trackMenuOpen]);
 
   const toggle = async () => {
     if (!player) {
@@ -233,7 +277,20 @@ export function MediaPlayer({
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (!player || event.target instanceof HTMLSelectElement) {
+      if (
+        !player ||
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        (event.target instanceof Element &&
+          event.target.closest(
+            'input, select, textarea, [contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="listbox"], [role="option"], [role="menu"]'
+          )) ||
+        ((event.key === " " || event.key === "Enter") &&
+          event.target instanceof Element &&
+          event.target.closest("button"))
+      ) {
         return;
       }
       setIdle(false);
@@ -242,7 +299,26 @@ export function MediaPlayer({
         void toggle();
       } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
-        void player.seek(Math.max(player.currentTime + (event.key === "ArrowLeft" ? -10 : 10), 0));
+        const from = player.currentTime;
+        const target = Math.min(
+          Math.max(from + (event.key === "ArrowLeft" ? -10 : 10), 0),
+          duration || Number.POSITIVE_INFINITY
+        );
+        const seconds = Math.round(target - from);
+        if (seconds === 0) {
+          return;
+        }
+        const at = performance.now();
+        setSeekFeedback((previous) => ({
+          at,
+          seconds:
+            previous && at - previous.at < 850 && Math.sign(previous.seconds) === Math.sign(seconds)
+              ? previous.seconds + seconds
+              : seconds,
+          sequence: (previous?.sequence ?? 0) + 1,
+        }));
+        setScrub(null);
+        void player.seek(target);
       } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault();
         player.volume = Math.min(
@@ -268,11 +344,11 @@ export function MediaPlayer({
       await player.seek(scrub);
     }
   };
-  const controlsVisible = !idle || state !== "playing" || audioBlocked;
+  const controlsVisible = !idle || state !== "playing" || audioBlocked || trackMenuOpen;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex select-none flex-col bg-black text-white"
+      className="media-player fixed inset-0 z-50 flex select-none flex-col bg-black text-white"
       data-idle={!controlsVisible}
       onPointerMove={() => setIdle(false)}
       ref={shell}
@@ -285,6 +361,21 @@ export function MediaPlayer({
         onDoubleClick={() => void toggleFullscreen()}
         ref={canvas}
       />
+      <div aria-atomic="true" aria-live="polite" className="pointer-events-none absolute inset-0">
+        {seekFeedback ? (
+          <div
+            className="player-seek-feedback"
+            data-direction={seekFeedback.seconds < 0 ? "backward" : "forward"}
+            key={seekFeedback.sequence}
+          >
+            {seekFeedback.seconds < 0 ? <ChevronsLeftIcon /> : <ChevronsRightIcon />}
+            <span>
+              {seekFeedback.seconds > 0 ? "+" : "−"}
+              {Math.abs(seekFeedback.seconds)} s
+            </span>
+          </div>
+        ) : null}
+      </div>
       <div
         className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 bg-linear-to-b from-black/70 to-transparent p-4 transition-opacity"
         style={{ opacity: controlsVisible ? 1 : 0 }}
@@ -300,12 +391,19 @@ export function MediaPlayer({
         </Button>
         <h1 className="truncate font-medium text-sm">{name}</h1>
       </div>
-      {state === "loading" || audioBlocked || state === "error" || buffering < 1 ? (
+      {state === "loading" ||
+      audioBlocked ||
+      state === "error" ||
+      (isBuffering && showBuffering) ? (
         <div className="absolute inset-0 grid place-items-center p-6">
           {state === "loading" ? (
             <LoaderCircleIcon aria-label="Loading" className="size-10 animate-spin text-white/70" />
           ) : null}
-          {buffering < 1 && state !== "loading" && state !== "error" && !audioBlocked ? (
+          {isBuffering &&
+          showBuffering &&
+          state !== "loading" &&
+          state !== "error" &&
+          !audioBlocked ? (
             <div className="flex items-center gap-3 text-sm text-white/80" role="status">
               <LoaderCircleIcon className="size-5 animate-spin" />
               Buffering… {Math.round(buffering * 100)}%
@@ -411,37 +509,76 @@ export function MediaPlayer({
           </span>
           <div className="ml-auto flex items-center gap-2">
             {audioTracks.length > 1 ? (
-              <select
-                aria-label="Audio track"
-                className="h-8 max-w-56 rounded-md bg-white/10 px-2 text-xs"
-                onChange={(event) => void player?.selectTrack(event.target.value)}
-                value={audioTracks.find((track) => track.selected)?.id ?? ""}
+              <Select
+                items={audioTracks.map((track) => ({ label: trackLabel(track), value: track.id }))}
+                onOpenChange={setTrackMenuOpen}
+                onValueChange={(value) => {
+                  if (value !== null) {
+                    void player?.selectTrack(value);
+                  }
+                }}
+                value={audioTracks.find((track) => track.selected)?.id ?? null}
               >
-                {audioTracks.map((track) => (
-                  <option key={track.id} value={track.id}>
-                    {trackLabel(track)}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Audio track" className="max-w-56" size="sm">
+                  <HeadphonesIcon />
+                  <SelectValue className="truncate" placeholder="Audio track" />
+                </SelectTrigger>
+                <SelectContent
+                  align="end"
+                  alignItemWithTrigger={false}
+                  className="player-track-menu"
+                  container={shell}
+                  side="top"
+                  sideOffset={12}
+                >
+                  <SelectGroup>
+                    <SelectLabel>Audio track</SelectLabel>
+                    {audioTracks.map((track) => (
+                      <SelectItem key={track.id} value={track.id}>
+                        {trackLabel(track)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             ) : null}
             {textTracks.length > 0 ? (
-              <select
-                aria-label="Subtitles"
-                className="h-8 max-w-56 rounded-md bg-white/10 px-2 text-xs"
-                onChange={(event) =>
-                  void (event.target.value
-                    ? player?.selectTrack(event.target.value)
-                    : player?.disableTrack("text"))
-                }
+              <Select
+                items={[
+                  { label: "Subtitles off", value: "" },
+                  ...textTracks.map((track) => ({ label: trackLabel(track), value: track.id })),
+                ]}
+                onOpenChange={setTrackMenuOpen}
+                onValueChange={(value) => {
+                  if (value !== null) {
+                    void (value ? player?.selectTrack(value) : player?.disableTrack("text"));
+                  }
+                }}
                 value={textTracks.find((track) => track.selected)?.id ?? ""}
               >
-                <option value="">Subtitles off</option>
-                {textTracks.map((track) => (
-                  <option key={track.id} value={track.id}>
-                    {trackLabel(track)}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Subtitles" className="max-w-56" size="sm">
+                  <CaptionsIcon />
+                  <SelectValue className="truncate" />
+                </SelectTrigger>
+                <SelectContent
+                  align="end"
+                  alignItemWithTrigger={false}
+                  className="player-track-menu"
+                  container={shell}
+                  side="top"
+                  sideOffset={12}
+                >
+                  <SelectGroup>
+                    <SelectLabel>Subtitles</SelectLabel>
+                    <SelectItem value="">Subtitles off</SelectItem>
+                    {textTracks.map((track) => (
+                      <SelectItem key={track.id} value={track.id}>
+                        {trackLabel(track)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             ) : null}
             {fullscreenSupported ? (
               <Button
