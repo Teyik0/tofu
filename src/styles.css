@@ -2031,6 +2031,40 @@ h2 {
 .sidebar-update {
   display: flex;
 }
+.update-download-icon {
+  position: relative;
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--inbound);
+}
+.update-download-icon[data-sidebar="true"] {
+  width: 28px;
+  height: 28px;
+}
+.update-download-ring {
+  position: absolute;
+  inset: 0;
+}
+.update-download-ring circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+.update-download-track {
+  stroke: var(--progress-track);
+}
+.update-download-value {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s ease;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .update-download-icon[data-indeterminate="true"] .update-download-ring {
+    animation: spin 1s linear infinite;
+  }
+}
 [data-collapsible="icon"] .sidebar-actions,
 [data-collapsible="icon"] .sidebar-utilities {
   flex-direction: column;

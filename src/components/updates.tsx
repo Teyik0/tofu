@@ -1,7 +1,9 @@
 import { useMutation, useQuery } from "@teyik0/furin/client";
 import { DownloadIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { api } from "../lib/client";
+import { errorMessage } from "../lib/errors";
 import type { UpdateState } from "../types";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -25,6 +27,10 @@ function useUpdateAction(state: UpdateState | undefined) {
     run(async () => {
       if (state?.automatic) {
         await (state.status === "ready" ? install.mutateAsync() : prepare.mutateAsync());
+        const { error: refreshError } = await api.updates.get();
+        if (refreshError) {
+          throw refreshError;
+        }
         return;
       }
       const result = await openDownload.mutateAsync();
@@ -76,6 +82,10 @@ function useUpdateCheck() {
         const feedback = new Promise<void>((resolve) => setTimeout(resolve, 500));
         try {
           await mutation.mutateAsync();
+          const { error: refreshError } = await api.updates.get();
+          if (refreshError) {
+            throw refreshError;
+          }
         } finally {
           await feedback;
         }
@@ -86,10 +96,42 @@ function useUpdateCheck() {
 
 export function SidebarUpdateAction() {
   const controls = useUpdateControls();
+  const [progressError, setProgressError] = useState<string | null>(null);
   const { data, loadingError, check, download, checking, available, ready, updating, activate } =
     controls;
+  useEffect(() => {
+    if (!updating) {
+      return;
+    }
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const { error: refreshError } = await api.updates.get();
+        if (refreshError) {
+          throw refreshError;
+        }
+        if (active) {
+          setProgressError(null);
+        }
+      } catch (cause) {
+        if (active) {
+          setProgressError(errorMessage(cause, "Unable to load update progress"));
+        }
+      } finally {
+        if (active) {
+          timer = setTimeout(poll, 500);
+        }
+      }
+    };
+    timer = setTimeout(poll, 500);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [updating]);
   const label = sidebarLabel(controls);
-  const error = download.error ?? check.error ?? data?.error;
+  const error = download.error ?? check.error ?? data?.error ?? (updating ? progressError : null);
   return (
     <div className="sidebar-update">
       <Tooltip>
@@ -179,6 +221,7 @@ function useUpdateControls() {
   const available = data?.status === "available";
   const ready = data?.status === "ready";
   const updating = data?.status === "downloading" || data?.status === "restarting";
+  const downloading = data?.status === "downloading" || (download.busy && !ready && !updating);
   const activate = () => {
     if (!data || checking || download.busy || updating) {
       return;
@@ -189,7 +232,18 @@ function useUpdateControls() {
       check.check();
     }
   };
-  return { activate, available, check, checking, data, download, loadingError, ready, updating };
+  return {
+    activate,
+    available,
+    check,
+    checking,
+    data,
+    download,
+    downloading,
+    loadingError,
+    ready,
+    updating,
+  };
 }
 
 type UpdateControls = ReturnType<typeof useUpdateControls>;
@@ -227,8 +281,10 @@ function panelLabel({ data, checking, available, ready, download }: UpdateContro
 }
 
 function SidebarUpdateIcon({ controls }: { controls: UpdateControls }) {
-  const { download, updating, available, checking } = controls;
-  return download.busy || updating ? (
+  const { data, download, downloading, updating, available, checking } = controls;
+  return downloading ? (
+    <UpdateDownloadIcon progress={data?.status === "downloading" ? data.progress : null} sidebar />
+  ) : updating || download.busy ? (
     <LoaderCircleIcon className="motion-safe:animate-spin" />
   ) : available && !checking ? (
     <span className="relative flex">
@@ -243,8 +299,10 @@ function SidebarUpdateIcon({ controls }: { controls: UpdateControls }) {
   );
 }
 function PanelUpdateIcon({ controls }: { controls: UpdateControls }) {
-  const { download, updating, available, checking } = controls;
-  return updating || download.busy ? (
+  const { data, download, downloading, updating, available, checking } = controls;
+  return downloading ? (
+    <UpdateDownloadIcon progress={data?.status === "downloading" ? data.progress : null} />
+  ) : updating || download.busy ? (
     <LoaderCircleIcon className="motion-safe:animate-spin" data-icon="inline-start" />
   ) : available ? (
     <DownloadIcon data-icon="inline-start" />
@@ -253,5 +311,41 @@ function PanelUpdateIcon({ controls }: { controls: UpdateControls }) {
       className={checking ? "motion-safe:animate-spin" : undefined}
       data-icon="inline-start"
     />
+  );
+}
+
+function UpdateDownloadIcon({
+  progress,
+  sidebar = false,
+}: {
+  progress: number | null;
+  sidebar?: boolean;
+}) {
+  const value = progress === null ? null : Math.min(100, Math.max(0, progress));
+  return (
+    <span
+      aria-hidden="true"
+      className="update-download-icon"
+      data-icon="inline-start"
+      data-indeterminate={value === null}
+      data-sidebar={sidebar}
+    >
+      <span className="update-download-ring">
+        <svg aria-hidden="true" className="size-full" viewBox="0 0 32 32">
+          <circle className="update-download-track" cx="16" cy="16" r="14" />
+          <circle
+            className="update-download-value"
+            cx="16"
+            cy="16"
+            pathLength="100"
+            r="14"
+            strokeDasharray="100"
+            strokeDashoffset={100 - (value ?? 25)}
+            transform="rotate(-90 16 16)"
+          />
+        </svg>
+      </span>
+      <DownloadIcon />
+    </span>
   );
 }
