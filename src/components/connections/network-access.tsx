@@ -17,6 +17,14 @@ import {
 } from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "../ui/field";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
@@ -25,16 +33,23 @@ import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 
 const WHITESPACE = /\s+/;
 
-type Transport = ConnectionsState["config"]["transport"];
+type Exposure = keyof ConnectionsState["exposures"];
 type TailscaleStatus = NonNullable<
   Awaited<ReturnType<typeof api.connections.tailscale.check.post>>["data"]
 >;
 
-const transports: { label: string; value: Transport }[] = [
-  { label: "Local network", value: "lan" },
-  { label: "Tailscale", value: "tailscale" },
-  { label: "Custom HTTPS", value: "proxy" },
-];
+const exposureLabels: { [Key in Exposure]: string } = {
+  lan: "Local network",
+  proxy: "Custom HTTPS",
+  tailscale: "Tailscale",
+};
+
+const stateLabels: { [State in ConnectionsState["exposures"][Exposure]["state"]]: string } = {
+  failed: "Needs attention",
+  off: "Off",
+  ready: "On",
+  starting: "Starting",
+};
 
 const tailscaleGuidance: { [State in TailscaleStatus["state"]]: string } = {
   available: "Tailscale is ready. Apply to publish Tofu at this private HTTPS address.",
@@ -47,18 +62,10 @@ const tailscaleGuidance: { [State in TailscaleStatus["state"]]: string } = {
   "signed-out": "Open Tailscale on this computer and sign in, then check again.",
 };
 
-function Countdown({ deadline }: { deadline: number }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return <>{Math.max(0, Math.round((deadline - now) / 1000))} seconds</>;
-}
-
 /**
- * Remote access drafts use Apply. Embedded Tailscale's explicit Connect action runs its
- * enrollment and HTTPS consent flow, then enables the selected private transport.
+ * Local network, Tailscale and custom HTTPS are independent connections to the same server.
+ * Each is turned on or off separately with Apply. Embedded Tailscale's explicit Connect action
+ * runs its enrollment and HTTPS consent flow, then turns on Tailscale sharing.
  */
 export function NetworkAccess({
   state,
@@ -71,12 +78,15 @@ export function NetworkAccess({
 }) {
   const active = state.config;
   const { owner } = session.capabilities;
-  const [enabled, setEnabled] = useState(active.enabled);
-  const [transport, setTransport] = useState<Transport>(active.transport);
-  const [proxyOrigin, setProxyOrigin] = useState(active.proxyOrigin ?? "");
-  const [trustedProxies, setTrustedProxies] = useState(active.trustedProxies.join("\n"));
+  const [exposure, setExposure] = useState<Exposure>(
+    (["lan", "tailscale", "proxy"] as const).find((key) => active[key].enabled) ?? "lan"
+  );
+  const [enabled, setEnabled] = useState(active[exposure].enabled);
+  const [proxyOrigin, setProxyOrigin] = useState(active.proxy.origin ?? "");
+  const [trustedProxies, setTrustedProxies] = useState(active.proxy.trustedProxies.join("\n"));
+  const [lanPort, setLanPort] = useState(String(active.lan.port));
   const [tailscaleMode, setTailscaleMode] = useState<"embedded" | "system">(
-    active.tailscaleMode ?? (active.enabled ? "system" : "embedded")
+    active.tailscale.enabled ? active.tailscale.mode : "embedded"
   );
   const [embedded, setEmbedded] = useState<NonNullable<
     Awaited<ReturnType<typeof api.connections.tailscale.embedded.get>>["data"]
@@ -85,6 +95,10 @@ export function NetworkAccess({
   const [certificate, setCertificate] = useState<NonNullable<
     Awaited<ReturnType<typeof api.connections.certificate.get>>["data"]
   > | null>(null);
+  const [showingCertificate, setShowingCertificate] = useState(false);
+  const [certificateAction, setCertificateAction] = useState<"create" | "download" | "show" | null>(
+    null
+  );
   const [checking, setChecking] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const requestedApproval = useRef(false);
@@ -96,16 +110,45 @@ export function NetworkAccess({
     .split(WHITESPACE)
     .map((value) => value.trim())
     .filter(Boolean);
+  const label = exposureLabels[exposure];
+  const status = state.exposures[exposure];
   const dirty =
-    enabled !== active.enabled ||
+    enabled !== active[exposure].enabled ||
     (enabled &&
-      (transport !== active.transport ||
-        (transport === "tailscale" && tailscaleMode !== (active.tailscaleMode ?? "system")) ||
-        (transport === "proxy" &&
-          (proxyOrigin.trim() !== (active.proxyOrigin ?? "") ||
-            proxies.join() !== active.trustedProxies.join()))));
-  const pending = state.listening.pendingConfirmation;
-  const rebinds = enabled && transport === "lan";
+      ((exposure === "tailscale" &&
+        tailscaleMode !== (active.tailscale.enabled ? active.tailscale.mode : "system")) ||
+        (exposure === "proxy" &&
+          (proxyOrigin.trim() !== (active.proxy.origin ?? "") ||
+            proxies.join() !== active.proxy.trustedProxies.join())))) ||
+    (exposure === "lan" && lanPort !== String(active.lan.port));
+
+  useEffect(() => {
+    if (!owner) {
+      return;
+    }
+    let stopped = false;
+    const read = async () => {
+      try {
+        const { data, error: failure } = await api.connections.certificate.get();
+        if (stopped) {
+          return;
+        }
+        if (failure) {
+          setError(errorMessage(failure, "Unable to read the certificate"));
+          return;
+        }
+        setCertificate(data);
+      } catch (cause) {
+        if (!stopped) {
+          setError(errorMessage(cause, "Unable to read the certificate"));
+        }
+      }
+    };
+    void read();
+    return () => {
+      stopped = true;
+    };
+  }, [owner]);
 
   useEffect(() => {
     if (!connecting) {
@@ -153,12 +196,9 @@ export function NetworkAccess({
             if (activated.error) {
               setError(errorMessage(activated.error, "Unable to enable private HTTPS"));
             } else {
-              setNotice(
-                activated.data.restarting
-                  ? "Tofu is restarting its connections. Reconnect through the new address to confirm the configuration."
-                  : "Private HTTPS is ready. Pair a device to connect to Tofu."
-              );
+              setNotice("Private HTTPS is ready. Pair a device to connect to Tofu.");
               setEmbedded({ ...data, state: "ready" });
+              setEnabled(true);
               await onChanged();
             }
           } finally {
@@ -209,20 +249,23 @@ export function NetworkAccess({
     try {
       const { data, error: failure } = await api.connections.put({
         enabled,
-        proxyOrigin: transport === "proxy" ? proxyOrigin.trim() || null : undefined,
-        tailscaleMode,
-        transport,
-        trustedProxies: owner && transport === "proxy" ? proxies : undefined,
+        lanPort: exposure === "lan" ? Number(lanPort) : undefined,
+        proxyOrigin: exposure === "proxy" ? proxyOrigin.trim() || null : undefined,
+        tailscaleMode: exposure === "tailscale" ? tailscaleMode : undefined,
+        transport: exposure,
+        trustedProxies: owner && exposure === "proxy" ? proxies : undefined,
       });
       if (failure) {
-        setError(errorMessage(failure, "Unable to change remote access"));
+        setError(errorMessage(failure, `Unable to change ${label.toLowerCase()} sharing`));
         return;
       }
+      const shared =
+        data.config.lan.enabled || data.config.proxy.enabled || data.config.tailscale.enabled;
       setNotice(
-        data.restarting
-          ? `${session.server.name} is restarting its connections. Reconnect through the new address to confirm.`
-          : enabled
-            ? "Remote access is on."
+        enabled
+          ? `${label} sharing is on. Other connections are unchanged.`
+          : shared
+            ? `${label} sharing is off. Other connections are unchanged.`
             : "Remote access is off. Only this computer can connect."
       );
       await onChanged();
@@ -232,374 +275,466 @@ export function NetworkAccess({
     }
   };
 
-  const confirm = async () => {
-    const { error: failure } = await api.connections.confirm.post();
-    if (failure) {
-      setError(errorMessage(failure, "Unable to confirm the connection change"));
-      return;
-    }
-    setNotice("The new configuration is confirmed.");
-    await onChanged();
-  };
-
   return (
     <section aria-labelledby="network-access-title" className="connections-section">
       <div className="connections-section-title">
         <h3 id="network-access-title">Network access</h3>
-        <Badge variant={active.enabled ? "secondary" : "outline"}>
-          {active.enabled ? "Enabled" : "Off"}
+        <Badge variant={state.enabled ? "secondary" : "outline"}>
+          {state.enabled ? "Enabled" : "Off"}
         </Badge>
       </div>
-      {pending && !pending.local ? (
-        <Alert className="connections-pending">
-          <TriangleAlertIcon />
-          <AlertTitle>Confirm the new connection settings</AlertTitle>
-          <AlertDescription>
-            If this change is not confirmed from the new address within{" "}
-            <Countdown deadline={pending.deadline} />, Tofu restores the previous configuration.
-            <Button onClick={() => void confirm()} size="sm">
-              Keep this configuration
-            </Button>
-          </AlertDescription>
-        </Alert>
-      ) : null}
+      <p className="connections-description">
+        Turn on each connection separately; they can be used at the same time. Each address pairs
+        devices separately, and every device needs its own invitation.
+      </p>
+      <ToggleGroup
+        aria-label="Connection"
+        className="connections-transports"
+        disabled={busy || connecting || checking}
+        onValueChange={([value]) => {
+          if (value === "lan" || value === "tailscale" || value === "proxy") {
+            setExposure(value);
+            setEnabled(active[value].enabled);
+            setError(null);
+            setNotice(null);
+          }
+        }}
+        value={[exposure]}
+        variant="outline"
+      >
+        {(["lan", "tailscale", "proxy"] as const).map((key) => (
+          <ToggleGroupItem key={key} value={key}>
+            {exposureLabels[key]} · {stateLabels[state.exposures[key].state]}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
       <FieldGroup className="settings-group">
         <Field className="settings-row" orientation="horizontal">
           <FieldContent>
-            <FieldLabel htmlFor="remote-access">Allow remote connections</FieldLabel>
-            <FieldDescription id="remote-access-description">
-              {active.enabled
-                ? "Authorized devices can connect to this server."
-                : "Only this computer can connect."}
+            <FieldLabel htmlFor="exposure-enabled">Share over {label.toLowerCase()}</FieldLabel>
+            <FieldDescription id="exposure-enabled-description">
+              {status.state === "failed"
+                ? status.detail
+                : status.state === "starting"
+                  ? "Starting…"
+                  : active[exposure].enabled
+                    ? "Authorized devices can connect through this connection."
+                    : "Off. Other connections are not affected."}
             </FieldDescription>
           </FieldContent>
           <Switch
-            aria-describedby="remote-access-description"
+            aria-describedby="exposure-enabled-description"
             checked={enabled}
             disabled={busy || connecting || checking}
-            id="remote-access"
+            id="exposure-enabled"
             onCheckedChange={setEnabled}
           />
         </Field>
-        {enabled ? (
-          <div className="connections-setup">
-            <ToggleGroup
-              aria-label="Connection setup"
-              className="connections-transports"
-              disabled={busy || connecting || checking}
-              onValueChange={([value]) => {
-                if (value === "lan" || value === "tailscale" || value === "proxy") {
-                  setTransport(value);
-                }
-              }}
-              value={[transport]}
-              variant="outline"
-            >
-              {transports.map((item) => (
-                <ToggleGroupItem key={item.value} value={item.value}>
-                  {item.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-            {transport === "tailscale" ? (
-              <div className="connections-panel">
-                <ToggleGroup
-                  aria-label="Tailscale installation"
-                  className="connections-modes"
-                  disabled={busy || connecting || checking}
-                  onValueChange={(values) => {
-                    if (values[0] === "embedded" || values[0] === "system") {
-                      setTailscaleMode(values[0]);
-                    }
-                  }}
-                  value={[tailscaleMode]}
-                >
-                  <ToggleGroupItem value="embedded">Built into Tofu</ToggleGroupItem>
-                  <ToggleGroupItem value="system">Existing installation</ToggleGroupItem>
-                </ToggleGroup>
-                {tailscaleMode === "embedded" ? (
-                  <div className="connections-tailscale">
-                    <p className="connections-description">
-                      Connect Tofu itself to your private network. No separate Tailscale app is
-                      needed on this server. Other devices still need a route into your tailnet and
-                      a Tofu invitation. Connect starts sign-in and HTTPS authorization, then turns
-                      on private remote access automatically.
-                    </p>
-                    <div className="connections-actions">
-                      <Badge variant="outline">
-                        {embedded?.state === "Running"
-                          ? embedded.httpsEnabled
-                            ? "Connected · HTTPS available"
-                            : "Connected · HTTPS not enabled"
-                          : embedded?.state === "ready"
-                            ? "Private HTTPS is ready"
-                            : (embedded?.state ?? "Not checked")}
-                      </Badge>
-                      <Button
-                        disabled={busy || checking || connecting || !owner}
-                        onClick={async () => {
-                          setChecking(true);
-                          setError(null);
-                          try {
-                            const { data, error: failure } =
-                              await api.connections.tailscale.enroll.post();
-                            if (failure) {
-                              setError(errorMessage(failure, "Unable to start Tailscale"));
-                              return;
-                            }
-                            setEmbedded(data);
-                            requestedApproval.current = false;
-                            setNotice(null);
-                            setConnecting(true);
-                          } finally {
-                            setChecking(false);
+        <div className="connections-setup">
+          {exposure === "tailscale" ? (
+            <div className="connections-panel">
+              <ToggleGroup
+                aria-label="Tailscale installation"
+                className="connections-modes"
+                disabled={busy || connecting || checking}
+                onValueChange={(values) => {
+                  if (values[0] === "embedded" || values[0] === "system") {
+                    setTailscaleMode(values[0]);
+                  }
+                }}
+                value={[tailscaleMode]}
+              >
+                <ToggleGroupItem value="embedded">Built into Tofu</ToggleGroupItem>
+                <ToggleGroupItem value="system">Existing installation</ToggleGroupItem>
+              </ToggleGroup>
+              {tailscaleMode === "embedded" ? (
+                <div className="connections-tailscale">
+                  <p className="connections-description">
+                    Connect Tofu itself to your private network. No separate Tailscale app is needed
+                    on this server. Other devices still need a route into your tailnet and a Tofu
+                    invitation. Connect starts sign-in and HTTPS authorization, then turns on
+                    private remote access automatically.
+                  </p>
+                  <div className="connections-actions">
+                    <Badge variant="outline">
+                      {embedded?.state === "Running"
+                        ? embedded.httpsEnabled
+                          ? "Connected · HTTPS available"
+                          : "Connected · HTTPS not enabled"
+                        : embedded?.state === "ready"
+                          ? "Private HTTPS is ready"
+                          : (embedded?.state ?? "Not checked")}
+                    </Badge>
+                    <Button
+                      disabled={busy || checking || connecting || !owner}
+                      onClick={async () => {
+                        setChecking(true);
+                        setError(null);
+                        try {
+                          const { data, error: failure } =
+                            await api.connections.tailscale.enroll.post();
+                          if (failure) {
+                            setError(errorMessage(failure, "Unable to start Tailscale"));
+                            return;
                           }
-                        }}
-                        variant="outline"
-                      >
-                        {connecting ? "Connecting…" : "Connect Tofu to Tailscale"}
-                      </Button>
-                      {connecting ? (
-                        <Button
-                          disabled={busy}
-                          onClick={() => {
-                            setConnecting(false);
-                            setNotice("Setup paused. Click Connect to resume.");
-                          }}
-                          variant="ghost"
-                        >
-                          Cancel setup
-                        </Button>
-                      ) : null}
-                    </div>
+                          setEmbedded(data);
+                          requestedApproval.current = false;
+                          setNotice(null);
+                          setConnecting(true);
+                        } finally {
+                          setChecking(false);
+                        }
+                      }}
+                      variant="outline"
+                    >
+                      {connecting ? "Connecting…" : "Connect Tofu to Tailscale"}
+                    </Button>
                     {connecting ? (
-                      <p className="connections-muted" role="status">
-                        {busy
-                          ? "Enabling private HTTPS…"
-                          : embedded?.authUrl
-                            ? "Finish signing in to Tailscale. Tofu will continue automatically."
-                            : embedded?.httpsEnabled === false && embedded.state === "Running"
-                              ? "Authorize HTTPS below. Tofu will continue automatically."
-                              : "Waiting for Tailscale…"}
-                      </p>
-                    ) : null}
-                    {embedded?.authUrl &&
-                    URL.parse(embedded.authUrl)?.origin === "https://login.tailscale.com" ? (
-                      <a href={embedded.authUrl} rel="noopener noreferrer" target="_blank">
-                        Sign in to Tailscale
-                      </a>
-                    ) : null}
-                    {embedded?.origin ? (
-                      <code className="connections-address">{embedded.origin}</code>
-                    ) : null}
-                    {embedded?.state === "https-disabled" ||
-                    (embedded?.state === "Running" && embedded.httpsEnabled === false) ? (
-                      <Alert className="connections-callout">
-                        <TriangleAlertIcon />
-                        <AlertTitle>Enable HTTPS certificates in Tailscale</AlertTitle>
-                        <AlertDescription>
-                          {connecting
-                            ? "Approve HTTPS in Tailscale. Tofu checks automatically and enables private access after you approve."
-                            : "Click Connect to resume setup and activate private access after authorization."}{" "}
-                          If Tailscale shows DNS settings, enable MagicDNS and HTTPS Certificates
-                          there.
-                          <a
-                            href={
-                              embedded.approvalUrl &&
-                              [
-                                "https://login.tailscale.com",
-                                "https://console.tailscale.com",
-                              ].includes(URL.parse(embedded.approvalUrl)?.origin ?? "")
-                                ? embedded.approvalUrl
-                                : "https://console.tailscale.com/admin/dns"
-                            }
-                            rel="noopener noreferrer"
-                            target="_blank"
-                          >
-                            Authorize HTTPS in Tailscale
-                          </a>
-                        </AlertDescription>
-                      </Alert>
-                    ) : null}
-                    {owner ? null : (
-                      <p>Connect the Tailscale account on {session.server.name} itself.</p>
-                    )}
-                    <p className="connections-muted">
-                      Tailnet access and Tofu access are separate. Sharing with someone on another
-                      tailnet requires authorized node sharing or an access rule in Tailscale.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {tailscale === null && active.transport === "tailscale" && active.enabled ? (
-                      <Alert className="connections-callout">
-                        <ShieldCheckIcon />
-                        <AlertTitle>Private HTTPS through Tailscale</AlertTitle>
-                        <AlertDescription>
-                          {active.tailscaleOrigin
-                            ? `Tofu serves ${active.tailscaleOrigin} on your tailnet.`
-                            : "Check Tailscale to confirm its address."}
-                        </AlertDescription>
-                      </Alert>
-                    ) : tailscale === null ? (
-                      <p className="connections-muted">
-                        Recommended. Not checked yet: Tofu has not looked at Tailscale on this
-                        computer.
-                      </p>
-                    ) : (
-                      <Alert
-                        className="connections-callout"
-                        variant={tailscale.state === "conflict" ? "destructive" : "default"}
-                      >
-                        {tailscale.state === "ready" ? <ShieldCheckIcon /> : <TriangleAlertIcon />}
-                        <AlertTitle>
-                          {
-                            {
-                              available: "Tailscale is ready to serve Tofu",
-                              conflict: "Another service uses this Tailscale address",
-                              "https-disabled": "Tailscale HTTPS is off",
-                              "not-installed": "Tailscale is not installed",
-                              ready: "Private HTTPS is ready",
-                              "signed-out": "Tailscale is signed out",
-                            }[tailscale.state]
-                          }
-                        </AlertTitle>
-                        <AlertDescription>
-                          {"detail" in tailscale ? `${tailscale.detail}. ` : ""}
-                          {tailscaleGuidance[tailscale.state]}
-                          {"origin" in tailscale ? (
-                            <code className="connections-address">{tailscale.origin}</code>
-                          ) : null}
-                        </AlertDescription>
-                      </Alert>
-                    )}
-
-                    <div className="connections-actions">
                       <Button
-                        disabled={checking || busy}
-                        onClick={() => void check()}
-                        size="sm"
-                        variant="outline"
+                        disabled={busy}
+                        onClick={() => {
+                          setConnecting(false);
+                          setNotice("Setup paused. Click Connect to resume.");
+                        }}
+                        variant="ghost"
                       >
-                        {checking ? "Checking…" : "Check Tailscale"}
+                        Cancel setup
                       </Button>
-                      <span className="connections-muted">
-                        Tailscale is a private network, not a sign-in: every device still needs an
-                        invitation. Tofu never turns on Funnel.
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : null}
-            {transport === "proxy" ? (
-              <div className="connections-panel">
-                <Field>
-                  <FieldLabel htmlFor="proxy-origin">HTTPS address</FieldLabel>
-                  <Input
-                    disabled={busy}
-                    id="proxy-origin"
-                    inputMode="url"
-                    onChange={(event) => setProxyOrigin(event.target.value)}
-                    placeholder="https://tofu.example.com"
-                    value={proxyOrigin}
-                  />
-                  <FieldDescription>
-                    Your reverse proxy terminates HTTPS and forwards to this server on this
-                    computer. It must pass cookies and Range requests and stream responses without
-                    buffering.
-                  </FieldDescription>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="trusted-proxies">Trusted proxy addresses</FieldLabel>
-                  <Textarea
-                    disabled={busy || !owner}
-                    id="trusted-proxies"
-                    onChange={(event) => setTrustedProxies(event.target.value)}
-                    placeholder="192.168.1.2"
-                    readOnly={!owner}
-                    value={trustedProxies}
-                  />
-                  <FieldDescription>
-                    {owner
-                      ? "Forwarded client addresses are honored only from these proxies. A proxy on this computer is always trusted."
-                      : `Change this on ${session.server.name} itself.`}
-                  </FieldDescription>
-                </Field>
-              </div>
-            ) : null}
-            {transport === "lan" ? (
-              <div className="connections-panel">
-                <Alert className="connections-callout">
-                  <ShieldCheckIcon />
-                  <AlertTitle>Tofu serves HTTPS directly</AlertTitle>
-                  <AlertDescription>
-                    Tofu creates a certificate authority for this server. Install it on each device
-                    before opening Tofu in a browser, including this computer: Tofu applies this
-                    setting only once its own window connects securely. Browsers cannot trust a
-                    private certificate automatically.
-                  </AlertDescription>
-                </Alert>
-                {owner ? (
+                    ) : null}
+                  </div>
+                  {connecting ? (
+                    <p className="connections-muted" role="status">
+                      {busy
+                        ? "Enabling private HTTPS…"
+                        : embedded?.authUrl
+                          ? "Finish signing in to Tailscale. Tofu will continue automatically."
+                          : embedded?.httpsEnabled === false && embedded.state === "Running"
+                            ? "Authorize HTTPS below. Tofu will continue automatically."
+                            : "Waiting for Tailscale…"}
+                    </p>
+                  ) : null}
+                  {embedded?.authUrl &&
+                  URL.parse(embedded.authUrl)?.origin === "https://login.tailscale.com" ? (
+                    <a href={embedded.authUrl} rel="noopener noreferrer" target="_blank">
+                      Sign in to Tailscale
+                    </a>
+                  ) : null}
+                  {embedded?.origin ? (
+                    <code className="connections-address">{embedded.origin}</code>
+                  ) : null}
+                  {embedded?.state === "https-disabled" ||
+                  (embedded?.state === "Running" && embedded.httpsEnabled === false) ? (
+                    <Alert className="connections-callout">
+                      <TriangleAlertIcon />
+                      <AlertTitle>Enable HTTPS certificates in Tailscale</AlertTitle>
+                      <AlertDescription>
+                        {connecting
+                          ? "Approve HTTPS in Tailscale. Tofu checks automatically and enables private access after you approve."
+                          : "Click Connect to resume setup and activate private access after authorization."}{" "}
+                        If Tailscale shows DNS settings, enable MagicDNS and HTTPS Certificates
+                        there.
+                        <a
+                          href={
+                            embedded.approvalUrl &&
+                            [
+                              "https://login.tailscale.com",
+                              "https://console.tailscale.com",
+                            ].includes(URL.parse(embedded.approvalUrl)?.origin ?? "")
+                              ? embedded.approvalUrl
+                              : "https://console.tailscale.com/admin/dns"
+                          }
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          Authorize HTTPS in Tailscale
+                        </a>
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  {owner ? null : (
+                    <p>Connect the Tailscale account on {session.server.name} itself.</p>
+                  )}
+                  <p className="connections-muted">
+                    Tailnet access and Tofu access are separate. Sharing with someone on another
+                    tailnet requires authorized node sharing or an access rule in Tailscale.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {tailscale === null && active.tailscale.enabled ? (
+                    <Alert className="connections-callout">
+                      <ShieldCheckIcon />
+                      <AlertTitle>Private HTTPS through Tailscale</AlertTitle>
+                      <AlertDescription>
+                        {active.tailscale.origin
+                          ? `Tofu serves ${active.tailscale.origin} on your tailnet.`
+                          : "Check Tailscale to confirm its address."}
+                      </AlertDescription>
+                    </Alert>
+                  ) : tailscale === null ? (
+                    <p className="connections-muted">
+                      Recommended. Not checked yet: Tofu has not looked at Tailscale on this
+                      computer.
+                    </p>
+                  ) : (
+                    <Alert
+                      className="connections-callout"
+                      variant={tailscale.state === "conflict" ? "destructive" : "default"}
+                    >
+                      {tailscale.state === "ready" ? <ShieldCheckIcon /> : <TriangleAlertIcon />}
+                      <AlertTitle>
+                        {
+                          {
+                            available: "Tailscale is ready to serve Tofu",
+                            conflict: "Another service uses this Tailscale address",
+                            "https-disabled": "Tailscale HTTPS is off",
+                            "not-installed": "Tailscale is not installed",
+                            ready: "Private HTTPS is ready",
+                            "signed-out": "Tailscale is signed out",
+                          }[tailscale.state]
+                        }
+                      </AlertTitle>
+                      <AlertDescription>
+                        {"detail" in tailscale ? `${tailscale.detail}. ` : ""}
+                        {tailscaleGuidance[tailscale.state]}
+                        {"origin" in tailscale ? (
+                          <code className="connections-address">{tailscale.origin}</code>
+                        ) : null}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   <div className="connections-actions">
                     <Button
-                      disabled={busy}
-                      onClick={async () => {
-                        const { error: failure } = await api.connections.certificate.post();
+                      disabled={checking || busy}
+                      onClick={() => void check()}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {checking ? "Checking…" : "Check Tailscale"}
+                    </Button>
+                    <span className="connections-muted">
+                      Tailscale is a private network, not a sign-in: every device still needs an
+                      invitation. Tofu never turns on Funnel.
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+          {exposure === "proxy" ? (
+            <div className="connections-panel">
+              <Field>
+                <FieldLabel htmlFor="proxy-origin">HTTPS address</FieldLabel>
+                <Input
+                  disabled={busy}
+                  id="proxy-origin"
+                  inputMode="url"
+                  onChange={(event) => setProxyOrigin(event.target.value)}
+                  placeholder="https://tofu.example.com"
+                  value={proxyOrigin}
+                />
+                <FieldDescription>
+                  Your reverse proxy terminates HTTPS and forwards to this server on this computer.
+                  It must pass cookies and Range requests and stream responses without buffering.
+                </FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="trusted-proxies">Trusted proxy addresses</FieldLabel>
+                <Textarea
+                  disabled={busy || !owner}
+                  id="trusted-proxies"
+                  onChange={(event) => setTrustedProxies(event.target.value)}
+                  placeholder="192.168.1.2"
+                  readOnly={!owner}
+                  value={trustedProxies}
+                />
+                <FieldDescription>
+                  {owner
+                    ? "Forwarded client addresses are honored only from these proxies. A proxy on this computer is always trusted."
+                    : `Change this on ${session.server.name} itself.`}
+                </FieldDescription>
+              </Field>
+            </div>
+          ) : null}
+          {exposure === "lan" ? (
+            <div className="connections-panel">
+              <Alert className="connections-callout">
+                <ShieldCheckIcon />
+                <AlertTitle>HTTPS on your local network, without Tailscale</AlertTitle>
+                <AlertDescription>
+                  Browsers on the same network open Tofu at a local HTTPS address. Tofu creates a
+                  private certificate authority (CA) for this server, and each device must trust it
+                  before its browser connects: browsers cannot trust a private certificate
+                  automatically. Installing a CA is a deliberate step on each device, and the steps
+                  differ by browser and system.
+                </AlertDescription>
+              </Alert>
+              <ol className="connections-description list-decimal pl-5">
+                <li>Create the local certificate on {session.server.name}.</li>
+                <li>
+                  Download the installation CA, install it as trusted on each device that will
+                  connect, and compare its SHA-256 fingerprint with the one shown here.
+                </li>
+                <li>Turn on local network sharing, then pair each browser with an invitation.</li>
+              </ol>
+              <Field>
+                <FieldLabel htmlFor="lan-port">Local network port</FieldLabel>
+                <Input
+                  disabled={busy}
+                  id="lan-port"
+                  inputMode="numeric"
+                  max={65_535}
+                  min={1}
+                  onChange={(event) => setLanPort(event.target.value)}
+                  type="number"
+                  value={lanPort}
+                />
+                <FieldDescription>
+                  Other devices use this HTTPS port. Tofu itself listens only on this computer, at
+                  port {state.listening.port}.
+                </FieldDescription>
+              </Field>
+              {owner ? (
+                <div className="connections-actions">
+                  <Button
+                    disabled={busy || certificateAction !== null || active.lan.enabled}
+                    onClick={async () => {
+                      setCertificateAction("create");
+                      setError(null);
+                      setNotice(null);
+                      try {
+                        const { data, error: failure } = await api.connections.certificate.post();
                         if (failure) {
                           setError(errorMessage(failure, "Unable to create the certificate"));
                           return;
                         }
-                        const status = await api.connections.certificate.get();
-                        if (status.error) {
-                          setError(errorMessage(status.error, "Unable to check host trust"));
+                        setCertificate({ certificate: data });
+                        setNotice(
+                          "Local certificate created. Download the installation CA to trust it on your other devices."
+                        );
+                        setShowingCertificate(true);
+                      } catch (cause) {
+                        setError(errorMessage(cause, "Unable to create the certificate"));
+                      } finally {
+                        setCertificateAction(null);
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    {certificateAction === "create"
+                      ? "Creating…"
+                      : certificate?.certificate
+                        ? "Renew local certificate"
+                        : "Create local certificate"}
+                  </Button>
+                  <Button
+                    disabled={busy || certificateAction !== null || !certificate?.certificate}
+                    onClick={async () => {
+                      setCertificateAction("download");
+                      setError(null);
+                      setNotice(null);
+                      try {
+                        if (session.capabilities.hostNative) {
+                          const { data, error: failure } =
+                            await api.connections.certificate.download.post();
+                          if (failure) {
+                            setError(errorMessage(failure, "Unable to save the installation CA"));
+                            return;
+                          }
+                          if (data.path) {
+                            setNotice(`Installation CA saved to ${data.path}`);
+                          }
                           return;
                         }
-                        setCertificate(status.data);
-                      }}
-                      variant="outline"
-                    >
-                      Create local certificate
-                    </Button>
-                    <a download href="/api/connections/certificate/download">
-                      Download installation CA
-                    </a>
-                    <Button
-                      onClick={async () => {
+                        const { data, error: failure } =
+                          await api.connections.certificate.download.get();
+                        if (failure) {
+                          setError(errorMessage(failure, "Unable to download the installation CA"));
+                          return;
+                        }
+                        const url = URL.createObjectURL(
+                          new Blob([data], { type: "application/x-pem-file" })
+                        );
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = "Tofu-CA.pem";
+                        document.body.append(link);
+                        link.click();
+                        link.remove();
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        setNotice("Installation CA download started.");
+                      } catch (cause) {
+                        setError(errorMessage(cause, "Unable to download the installation CA"));
+                      } finally {
+                        setCertificateAction(null);
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    {certificateAction === "download" ? "Saving…" : "Download installation CA"}
+                  </Button>
+                  <Button
+                    disabled={busy || certificateAction !== null}
+                    onClick={async () => {
+                      setCertificateAction("show");
+                      setError(null);
+                      try {
                         const { data, error: failure } = await api.connections.certificate.get();
                         if (failure) {
-                          setError(errorMessage(failure, "Unable to check host trust"));
+                          setError(errorMessage(failure, "Unable to read the certificate"));
                           return;
                         }
                         setCertificate(data);
-                      }}
-                      variant="outline"
-                    >
-                      Check host trust
-                    </Button>
-                  </div>
-                ) : (
-                  <p>Prepare certificates on {session.server.name} itself.</p>
-                )}
-                {certificate?.certificate ? (
-                  <p className="connections-muted">
-                    CA SHA-256: <code>{certificate.certificate.fingerprint}</code>
-                    <br />
-                    {certificate.trust.trusted ? "Host trust verified." : certificate.trust.detail}{" "}
-                    Leaf expires {new Date(certificate.certificate.expiresAt).toLocaleDateString()}.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+                        setShowingCertificate(true);
+                      } catch (cause) {
+                        setError(errorMessage(cause, "Unable to read the certificate"));
+                      } finally {
+                        setCertificateAction(null);
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    {certificateAction === "show" ? "Loading…" : "Show certificate"}
+                  </Button>
+                </div>
+              ) : (
+                <p>Prepare certificates on {session.server.name} itself.</p>
+              )}
+              {owner && active.lan.enabled ? (
+                <p className="connections-muted">
+                  Turn off local network sharing before renewing the certificate.
+                </p>
+              ) : null}
+              {certificate ? (
+                <p className="connections-muted">
+                  {certificate.certificate ? (
+                    <>
+                      CA SHA-256: <code>{certificate.certificate.fingerprint}</code>
+                      <br />
+                      Covers {certificate.certificate.names}. Expires{" "}
+                      {new Date(certificate.certificate.expiresAt).toLocaleDateString()}.
+                    </>
+                  ) : (
+                    "No local certificate yet."
+                  )}
+                </p>
+              ) : null}
+              <p className="connections-muted">
+                Devices on guest or isolated Wi-Fi may not reach this computer. Only addresses the
+                certificate covers are offered; renew it after this computer's address or name
+                changes.
+              </p>
+            </div>
+          ) : null}
+        </div>
       </FieldGroup>
-      {dirty && !(owner && enabled && transport === "tailscale" && tailscaleMode === "embedded") ? (
+      {dirty && !(owner && enabled && exposure === "tailscale" && tailscaleMode === "embedded") ? (
         <div className="connections-actions">
           <Button disabled={busy} onClick={() => setConfirming(true)}>
-            Apply configuration
+            Apply
           </Button>
-          <span className="connections-muted">Unsaved configuration</span>
+          <span className="connections-muted">Unsaved {label.toLowerCase()} settings</span>
         </div>
       ) : null}
       {error ? (
@@ -613,18 +748,49 @@ export function NetworkAccess({
           {notice}
         </p>
       ) : null}
+      <Dialog onOpenChange={setShowingCertificate} open={showingCertificate}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Local network certificate</DialogTitle>
+            <DialogDescription>
+              Compare this CA fingerprint with the certificate you install on each device.
+            </DialogDescription>
+          </DialogHeader>
+          {certificate?.certificate ? (
+            <dl className="wrap-anywhere flex flex-col gap-3">
+              <div>
+                <dt>CA SHA-256</dt>
+                <dd>
+                  <code>{certificate.certificate.fingerprint}</code>
+                </dd>
+              </div>
+              <div>
+                <dt>Server certificate expires</dt>
+                <dd>{new Date(certificate.certificate.expiresAt).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Covered names and addresses</dt>
+                <dd>{certificate.certificate.names}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p>No local certificate yet. Create one on this server first.</p>
+          )}
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
       <AlertDialog onOpenChange={setConfirming} open={confirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {enabled ? `Change access to ${session.server.name}?` : "Turn off remote access?"}
+              {enabled
+                ? `Change ${label.toLowerCase()} sharing?`
+                : `Turn off ${label.toLowerCase()} sharing?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {enabled
-                ? rebinds
-                  ? `${session.server.name} restarts its connections. If this change is not confirmed from the new address within 90 seconds, Tofu restores the previous configuration.`
-                  : "Authorized devices connect through the new address. Downloads keep running."
-                : "Other devices disconnect. Downloads, files and saved devices are kept."}
+                ? "Authorized devices connect through this address. Other connections and downloads keep running."
+                : "Devices using this address disconnect. Other connections, downloads, files and saved devices are kept."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { constants, existsSync, readFileSync } from "node:fs";
+import { copyFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
@@ -7,7 +9,7 @@ import { instance } from "../../lib/database-plugin";
 import { runtime } from "../../lib/runtime";
 import { cookieName } from "../access/admission";
 import { accessPlugin } from "../access/plugin";
-import { hostTrust, localCertificate, prepareCertificate } from "./certificates";
+import { localCertificate, prepareCertificate } from "./certificates";
 import { connectionsUpdateSchema } from "./model";
 import { connections, embeddedTailscale } from "./plugin";
 import { checkTailscale } from "./tailscale";
@@ -18,39 +20,74 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
   .use(furinSync(sync))
   .guard({ administration: true, idempotent: false })
   .get("/connections", ({ access }) => {
-    const config = connections.config();
     const identity = access.identity();
     return {
-      addresses: config.enabled && config.transport === "lan" ? connections.lanOrigins(config) : [],
-      config,
+      /** Local network HTTPS origins the ingress serves now; each is covered by the certificate. */
+      addresses: connections.lanOrigins(),
+      config: connections.config(),
+      enabled: connections.policy().enabled,
+      exposures: connections.exposures(embeddedTailscale.running()),
       listening: connections.listening(),
       server: { id: identity.serverId, name: identity.name },
     };
   })
-  .get("/connections/certificate", { owner: true }, async () => ({
+  .get("/connections/certificate", { owner: true }, () => ({
     certificate: localCertificate(),
-    trust: await hostTrust(),
   }))
-  .post("/connections/certificate", { owner: true }, () => {
-    const config = connections.config();
-    if (config.enabled && config.transport === "lan") {
-      return problem(409, {
-        detail: "Turn off local network sharing before renewing its certificate",
-      });
+  .post("/connections/certificate", { owner: true }, async () => {
+    const turn = connections.reserve();
+    try {
+      await turn.previous;
+      const config = connections.config();
+      if (config.lan.enabled) {
+        return problem(409, {
+          detail: "Turn off local network sharing before renewing its certificate",
+        });
+      }
+      return await prepareCertificate(config.lan.hostnames);
+    } finally {
+      turn.release();
     }
-    return prepareCertificate(config.lanHostnames);
   })
-  .get("/connections/certificate/download", { owner: true }, () => {
+  .get("/connections/certificate/download", { owner: true }, ({ set }) => {
     if (!localCertificate()) {
       return problem(404, { detail: "Create the local network certificate first" });
     }
-    return new Response(readFileSync(join(instance.dataDir, "tls/ca.pem")), {
-      headers: {
-        "cache-control": "private, no-store",
-        "content-disposition": 'attachment; filename="Tofu-CA.pem"',
-        "content-type": "application/x-pem-file",
-      },
+    set.headers["cache-control"] = "private, no-store";
+    set.headers["content-disposition"] = 'attachment; filename="Tofu-CA.pem"';
+    set.headers["content-type"] = "application/x-pem-file";
+    return readFileSync(join(instance.dataDir, "tls/ca.pem"), "utf8");
+  })
+  .post("/connections/certificate/download", { owner: true }, async () => {
+    if (runtime.current.kind !== "desktop") {
+      return problem(409, { detail: "Use the browser download to save the installation CA" });
+    }
+    if (!localCertificate()) {
+      return problem(404, { detail: "Create the local network certificate first" });
+    }
+    const folder = await runtime.current.desktop.dialogs.selectDirectory({
+      startingFolder: join(homedir(), "Downloads"),
     });
+    if (!folder) {
+      return { path: null };
+    }
+    const path = join(folder, "Tofu-CA.pem");
+    try {
+      if (existsSync(path)) {
+        // Repeated exports of this installation's public CA reuse the existing file.
+        if (!readFileSync(path).equals(readFileSync(join(instance.dataDir, "tls/ca.pem")))) {
+          return problem(409, {
+            detail: "A different Tofu-CA.pem already exists in this folder. Choose another folder",
+          });
+        }
+      } else {
+        await copyFile(join(instance.dataDir, "tls/ca.pem"), path, constants.COPYFILE_EXCL);
+      }
+    } catch {
+      return problem(503, { detail: "The installation CA could not be saved in this folder" });
+    }
+    runtime.current.desktop.shell.showItemInFolder(path);
+    return { path };
   })
   .post("/connections/tailscale/enroll", { owner: true }, async ({ access }) => {
     const status = await embeddedTailscale.request({
@@ -60,10 +97,19 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
     return status;
   })
   .post("/connections/tailscale/logout", { owner: true }, async () => {
-    if (connections.config().enabled && connections.config().transport === "tailscale") {
-      return problem(409, { detail: "Turn off remote access before signing out of Tailscale" });
+    const turn = connections.reserve();
+    try {
+      await turn.previous;
+      const { tailscale } = connections.config();
+      if (tailscale.enabled && tailscale.mode === "embedded") {
+        return problem(409, {
+          detail: "Turn off Tailscale sharing before signing out of Tailscale",
+        });
+      }
+      return await embeddedTailscale.request({ method: "logout" });
+    } finally {
+      turn.release();
     }
-    return await embeddedTailscale.request({ method: "logout" });
   })
   .post("/connections/tailscale/https", { owner: true }, () =>
     embeddedTailscale.request({ method: "authorize-https" })
@@ -72,12 +118,18 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
     embeddedTailscale.request({ method: "status" })
   )
   .post("/connections/tailscale/check", async () => {
-    const config = connections.config();
-    const status = await checkTailscale(connections.servicePort(config));
-    if (status.state === "ready" && config.tailscaleOrigin !== status.origin) {
-      connections.save({ ...config, tailscaleOrigin: status.origin });
+    const turn = connections.reserve();
+    try {
+      await turn.previous;
+      const config = connections.config();
+      const status = await checkTailscale(connections.servicePort());
+      if (status.state === "ready" && config.tailscale.origin !== status.origin) {
+        connections.save({ ...config, tailscale: { ...config.tailscale, origin: status.origin } });
+      }
+      return status;
+    } finally {
+      turn.release();
     }
-    return status;
   })
   .put(
     "/connections",
@@ -87,18 +139,18 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
       if (updated instanceof ElysiaStatus) {
         return updated;
       }
-      const { applied, previous } = updated;
-      if (!applied.config.enabled) {
+      const { config, previous } = updated;
+      // Streams opened through an exposure that was turned off end; devices reconnect through
+      // the exposures that remain.
+      if (!config[body.transport].enabled && previous[body.transport].enabled) {
         access.disconnectRemoteReaders();
       }
+      const shared = config.lan.enabled || config.proxy.enabled || config.tailscale.enabled;
+      const wasShared =
+        previous.lan.enabled || previous.proxy.enabled || previous.tailscale.enabled;
       // A headless owner on loopback loses implicit access once others may connect; keep this
       // browser signed in as an administrator device instead of locking it out.
-      if (
-        caller.kind === "owner" &&
-        runtime.current.kind === "server" &&
-        applied.config.enabled &&
-        !previous.enabled
-      ) {
+      if (caller.kind === "owner" && runtime.current.kind === "server" && shared && !wasShared) {
         const device = access.adoptOwnerBrowser();
         const secure = caller.origin.startsWith("https:");
         cookie[cookieName(access.identity().serverId, secure)]?.set({
@@ -110,8 +162,6 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
           value: device.token,
         });
       }
-      return applied;
+      return { config };
     }
-  )
-  // Sent through the new address within 90 seconds; otherwise the previous configuration returns.
-  .post("/connections/confirm", () => connections.confirm());
+  );

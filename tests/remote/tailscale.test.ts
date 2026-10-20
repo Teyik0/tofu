@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
@@ -7,41 +7,7 @@ import type { Api } from "../../src/api";
 import { resolveInstanceConfig } from "../../src/api/lib/instance";
 import { expectSuccess } from "../helpers/problem";
 import { launchServer } from "../helpers/server-process";
-
-/** A fake Tailscale CLI at its command-line boundary; it records every invocation. */
-async function fakeTailscale(directory: string, serve: object) {
-  const state = join(directory, "tailscale-state.json");
-  const cli = join(directory, "tailscale");
-  await Bun.write(state, JSON.stringify({ calls: [], serve }));
-  await Bun.write(
-    cli,
-    `#!/usr/bin/env bun
-const path = ${JSON.stringify(state)};
-const state = await Bun.file(path).json();
-const args = process.argv.slice(2);
-state.calls.push(args.join(" "));
-if (args[0] === "status") {
-  console.log(JSON.stringify({ BackendState: "Running", CertDomains: ["home.tail-test.ts.net"], Self: { DNSName: "home.tail-test.ts.net." } }));
-} else if (args[0] === "serve" && args[1] === "status") {
-  console.log(JSON.stringify(state.serve));
-} else if (args[0] === "serve" && args.includes("off")) {
-  state.serve = {};
-} else if (args[0] === "serve" && args[1] === "--bg") {
-  state.serve = { TCP: { 443: { HTTPS: true } }, Web: { "home.tail-test.ts.net:443": { Handlers: { "/": { Proxy: args[3] } } } } };
-}
-await Bun.write(path, JSON.stringify(state));
-`
-  );
-  await chmod(cli, 0o755);
-  return {
-    cli,
-    async configure(configuration: object) {
-      const current = await Bun.file(state).json();
-      await Bun.write(state, JSON.stringify({ ...current, serve: configuration }));
-    },
-    read: async () => (await Bun.file(state).json()) as { calls: string[]; serve: object },
-  };
-}
+import { fakeTailscale } from "../helpers/tailscale";
 
 test("Tofu creates and removes only its exact Tailscale Serve mapping and never touches Funnel", async () => {
   const directory = await mkdtemp(join(tmpdir(), "tofu-tailscale-"));
@@ -78,7 +44,7 @@ test("Tofu creates and removes only its exact Tailscale Serve mapping and never 
         origin: url,
       },
     }).api;
-    expect(expectSuccess(await admin.connections.get()).config.tailscaleOrigin).toBe(
+    expect(expectSuccess(await admin.connections.get()).config.tailscale.origin).toBe(
       "https://home.tail-test.ts.net"
     );
     // Turning remote access off removes the mapping Tofu created, and nothing else.
@@ -173,7 +139,7 @@ test("an identical pre-existing Serve mapping is usable but never becomes Tofu-o
         origin: url,
       },
     }).api;
-    expect(expectSuccess(await admin.connections.get()).config.tailscaleServeOwned).toBe(false);
+    expect(expectSuccess(await admin.connections.get()).config.tailscale.serveOwned).toBe(false);
     expectSuccess(await admin.connections.put({ enabled: false, transport: "tailscale" }));
     expect((await tailscale.read()).serve).toEqual(existing);
     expect((await tailscale.read()).calls.every((call) => call.includes("status"))).toBe(true);

@@ -1,9 +1,12 @@
-// Tofu's private tsnet host. Control is available only over inherited process pipes.
+// Tofu's native network companion: the private tsnet host and the local network HTTPS ingress.
+// Control is available only over inherited process pipes.
 package main
 
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,17 +31,22 @@ type command struct {
 	ID       string `json:"id"`
 	Method   string `json:"method"`
 	Hostname string `json:"hostname"`
-	Port     int    `json:"port"`
+	// Loopback port of the Tofu application listener; the only forwarding target.
+	Port int `json:"port"`
+	// Public local network HTTPS port and the names or addresses it answers for.
+	LANPort int      `json:"lanPort"`
+	Hosts   []string `json:"hosts"`
 }
 
 type result struct {
-	ApprovalURL  string `json:"approvalUrl,omitempty"`
-	ID           string `json:"id"`
-	State        string `json:"state"`
-	Origin       string `json:"origin,omitempty"`
-	AuthURL      string `json:"authUrl,omitempty"`
-	Error        string `json:"error,omitempty"`
-	HTTPSEnabled bool   `json:"httpsEnabled"`
+	ApprovalURL  string   `json:"approvalUrl,omitempty"`
+	ID           string   `json:"id"`
+	State        string   `json:"state"`
+	Origin       string   `json:"origin,omitempty"`
+	AuthURL      string   `json:"authUrl,omitempty"`
+	Error        string   `json:"error,omitempty"`
+	HTTPSEnabled bool     `json:"httpsEnabled"`
+	Hosts        []string `json:"hosts,omitempty"`
 }
 
 // Only a fixed loopback backend is reachable. Caller-supplied forwarding headers are discarded.
@@ -66,6 +74,107 @@ func inboundProxy(port int, origin string) http.Handler {
 	}
 }
 
+// The browser-facing host of a local network name or address: lowercase names, canonical IP
+// text and no port for HTTPS's default port, as browsers send it in Host.
+func canonicalHost(name, port string) string {
+	if ip := net.ParseIP(name); ip != nil {
+		name = ip.String()
+	} else {
+		name = strings.ToLower(name)
+	}
+	if port != "443" {
+		return net.JoinHostPort(name, port)
+	}
+	if strings.Contains(name, ":") {
+		return "[" + name + "]"
+	}
+	return name
+}
+
+// openLAN serves HTTPS on every interface with the installation certificate. Only requests whose
+// Host is a name or address covered by that certificate reach the loopback application; loopback
+// names stay with the application's own listener. It is independent of any tsnet node.
+func openLAN(dir string, port, lanPort int, names []string) (*http.Server, []string, error) {
+	if !filepath.IsAbs(dir) {
+		return nil, nil, errors.New("The local network certificate directory is unavailable")
+	}
+	if port < 1 || port > 65535 || lanPort < 1 || lanPort > 65535 || port == lanPort {
+		return nil, nil, errors.New("Choose a local network port different from Tofu's own port")
+	}
+	pair, err := tls.LoadX509KeyPair(filepath.Join(dir, "server.pem"), filepath.Join(dir, "server-key.pem"))
+	if err != nil {
+		return nil, nil, errors.New("Create the local network certificate on the server first")
+	}
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil {
+		return nil, nil, errors.New("The local network certificate is unreadable. Renew it on the server")
+	}
+	if now := time.Now(); now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
+		return nil, nil, errors.New("The local network certificate is expired or not yet valid. Renew it on the server")
+	}
+	public := strconv.Itoa(lanPort)
+	routes := map[string]http.Handler{}
+	hosts := []string{}
+	for _, name := range names {
+		ip := net.ParseIP(name)
+		if len(routes) >= 32 || strings.EqualFold(name, "localhost") || (ip != nil && ip.IsLoopback()) || leaf.VerifyHostname(name) != nil {
+			continue
+		}
+		host := canonicalHost(name, public)
+		if routes[host] == nil {
+			routes[host] = inboundProxy(port, "https://"+host)
+			hosts = append(hosts, host)
+		}
+	}
+	if len(hosts) == 0 {
+		return nil, nil, errors.New("The local network certificate covers none of this server's names or addresses. Renew it on the server")
+	}
+	// Bind IPv4 and IPv6 separately: a dual-stack socket can succeed while another program holds
+	// the IPv4 port, which would silently send IPv4 clients to that program.
+	busy := fmt.Errorf("Port %d is already in use on this computer. Choose another local network port", lanPort)
+	listeners := []net.Listener{}
+	ipv4, err := net.Listen("tcp4", "0.0.0.0:"+public)
+	if err != nil {
+		return nil, nil, busy
+	}
+	listeners = append(listeners, ipv4)
+	ipv6, err := net.Listen("tcp6", "[::]:"+public)
+	if errors.Is(err, syscall.EADDRINUSE) {
+		ipv4.Close()
+		return nil, nil, busy
+	}
+	if err == nil {
+		listeners = append(listeners, ipv6)
+	}
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			name, requested, err := net.SplitHostPort(r.Host)
+			if err != nil {
+				name, requested = strings.TrimSuffix(strings.TrimPrefix(r.Host, "["), "]"), "443"
+			}
+			route := routes[canonicalHost(name, requested)]
+			if route == nil || requested != public {
+				http.Error(w, "This is not a Tofu local network address.", http.StatusMisdirectedRequest)
+				return
+			}
+			route.ServeHTTP(w, r)
+		}),
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    32768,
+		ErrorLog:          log.New(io.Discard, "", 0),
+		TLSConfig:         &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12},
+	}
+	for _, listener := range listeners {
+		go func() {
+			if err := server.ServeTLS(listener, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				listener.Close()
+			}
+		}()
+	}
+	return server, hosts, nil
+}
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "certificates" {
 		if err := certificates(); err != nil {
@@ -87,10 +196,19 @@ func main() {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	tlsDir := os.Getenv("TOFU_TLS_STATE_DIR")
 	var node *tsnet.Server
 	var listener net.Listener
 	var server *http.Server
+	var lan *http.Server
 	origin := ""
+	servePort := 0
+	closeLAN := func() {
+		if lan != nil {
+			lan.Close()
+			lan = nil
+		}
+	}
 	closeListener := func() {
 		if server != nil {
 			server.Close()
@@ -103,6 +221,7 @@ func main() {
 		origin = ""
 	}
 	defer func() {
+		closeLAN()
 		closeListener()
 		if node != nil {
 			node.Close()
@@ -182,6 +301,10 @@ func main() {
 						answer.State = "https-disabled"
 						break
 					}
+					// A restarted application may listen on another port; never keep a stale target.
+					if listener != nil && servePort != cmd.Port {
+						closeListener()
+					}
 					if listener == nil {
 						listener, err = node.ListenTLS("tcp", ":443")
 						if err != nil {
@@ -189,6 +312,7 @@ func main() {
 							break
 						}
 						origin = answer.Origin
+						servePort = cmd.Port
 						server = &http.Server{Handler: inboundProxy(cmd.Port, origin), ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 32768}
 						active := server
 						incoming := listener
@@ -204,7 +328,21 @@ func main() {
 				answer.State = "ready"
 				answer.Origin = origin
 			}
+		case "lan-open":
+			// Replacing the listener releases its port first; the caller restores the previous one on failure.
+			closeLAN()
+			opened, hosts, err := openLAN(tlsDir, cmd.Port, cmd.LANPort, cmd.Hosts)
+			if err != nil {
+				answer.Error = err.Error()
+				break
+			}
+			lan = opened
+			answer.Hosts = hosts
+			answer.State = "ready"
+		case "lan-close":
+			closeLAN()
 		case "stop":
+			// Stops only the private network; the local network ingress is independent.
 			closeListener()
 			if node != nil {
 				node.Close()

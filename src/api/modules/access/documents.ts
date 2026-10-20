@@ -53,9 +53,32 @@ const pairScript = `
 const body = document.body;
 const scheme = body.dataset.scheme;
 const fragment = new URLSearchParams(location.hash.slice(1));
-const secret = fragment.get("i") || undefined;
-// The invitation stays in memory only; remove it from the address bar and history.
+// Remove the invitation from the address bar and history before anything else can fail.
 if (location.hash) history.replaceState(null, "", location.pathname);
+// Session storage keeps a pending invitation for a short time, so reloading this page or coming
+// back to it still uses the scanned link instead of asking for the code. Only a reload or a
+// back navigation restores it; opening the library, pairing or a refusal discards it.
+// Storage can be unavailable; pairing then works from memory only.
+function forget() {
+  try {
+    sessionStorage.removeItem("tofu-invitation");
+  } catch {}
+}
+function remember(value, until) {
+  try {
+    sessionStorage.setItem("tofu-invitation", JSON.stringify({ secret: value, until }));
+  } catch {}
+}
+let stored = null;
+try {
+  stored = JSON.parse(sessionStorage.getItem("tofu-invitation") || "null");
+} catch {}
+const restorable = ["reload", "back_forward"].includes(performance.getEntriesByType("navigation")[0]?.type);
+const restored = restorable && typeof stored?.secret === "string" && stored.until > Date.now();
+const secret = fragment.get("i") || (restored ? stored.secret : undefined);
+let until = restored && stored.secret === secret ? stored.until : Date.now() + 15 * 60000;
+if (secret) remember(secret, until);
+else forget();
 const $ = (id) => document.getElementById(id);
 const nonce = (() => {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -65,6 +88,8 @@ const agent = navigator.userAgent;
 const browser = /Edg\\//.test(agent) ? "Edge" : /Firefox\\//.test(agent) ? "Firefox" : /Chrome\\//.test(agent) ? "Chrome" : /Safari\\//.test(agent) ? "Safari" : "Browser";
 const system = /iPhone/.test(agent) ? "iPhone" : /iPad/.test(agent) ? "iPad" : /Android/.test(agent) ? "Android" : /Mac OS X/.test(agent) ? "Mac" : /Windows/.test(agent) ? "Windows" : /Linux/.test(agent) ? "Linux" : "this device";
 $("label").value = browser + " on " + system;
+// The Tofu app exists only on desktop systems; a phone cannot open the handoff link.
+$("open-app").hidden = /iPhone|iPad|Android/.test(agent);
 const roles = {
   playback: ["Playback access", ["Browse the library and play videos", "Save progress in your own profile"], ["No downloads, deletion or server settings"]],
   management: ["Management access", ["Browse the library and play videos", "Add, pause and resume downloads"], ["No server settings or device management"]],
@@ -107,8 +132,10 @@ async function preview() {
     return;
   }
   try {
-    const { ok, result } = await send({ secret, nonce, label: "preview", kind: "browser", preview: true });
+    const { ok, status, result } = await send({ secret, nonce, label: "preview", kind: "browser", preview: true });
     if (!ok) {
+      // A used, expired or unknown invitation never becomes valid again.
+      if (status === 401 || status === 410) forget();
       showError(result.detail || "This invitation cannot be used.");
       $("continue").disabled = true;
       $("open-app").disabled = true;
@@ -118,6 +145,8 @@ async function preview() {
     $("server-name").textContent = result.server.name;
     $("intro").textContent = "You've been invited to connect to " + result.server.name + ".";
     $("role").textContent = title;
+    until = Math.min(until, result.expiresAt);
+    remember(secret, until);
     const minutes = Math.max(1, Math.round((result.expiresAt - Date.now()) / 60000));
     $("expiry").textContent = "Expires in " + minutes + " min";
     const items = [...allowed, ...(result.canDeleteFiles ? ["Delete downloaded files"] : [])];
@@ -139,11 +168,13 @@ $("form").addEventListener("submit", async (event) => {
   if (!secret && !code) return showError("Enter the invitation code.");
   busy(true);
   try {
-    const { ok, result } = await send({ secret, code: secret ? undefined : code, nonce, label, kind: "browser" });
+    const { ok, status, result } = await send({ secret, code: secret ? undefined : code, nonce, label, kind: "browser" });
     if (!ok) {
+      if (status === 401 || status === 410) forget();
       busy(false);
       return showError(result.detail || "This invitation cannot be used.");
     }
+    forget();
     $("status").textContent = "Connected to " + result.server.name + ". Opening the library…";
     location.replace("/");
   } catch {

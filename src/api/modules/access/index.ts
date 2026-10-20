@@ -16,7 +16,7 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
     set.headers["cache-control"] = "private, no-store";
     return access.sessionView(caller, {
       native: runtime.current.kind === "desktop",
-      remoteAccess: connections.config().enabled,
+      remoteAccess: connections.policy().enabled,
     });
   })
   .post(

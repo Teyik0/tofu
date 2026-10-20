@@ -6,6 +6,7 @@ import type { Api } from "../src/api";
 import type { LibraryState } from "../src/types";
 import { readLogRecords } from "./helpers/logs";
 import { expectSuccess } from "./helpers/problem";
+import { freePort } from "./helpers/remote";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
 test.each(["desktop", "web"])(
@@ -285,11 +286,41 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
         transport: "proxy",
       })
     );
-    expect(sharing.restarting).toBe(false);
+    // Sharing keeps the desktop listener: the window stays on loopback HTTP at the same port.
+    expect(sharing.config.port).toBe(Number(new URL(host.url).port));
     expect(expectSuccess(await host.client.state.get()).torrents[0]?.id).toBe(id);
     expect((await host.page("/options/connections")).status).toBe(200);
+    // Local network HTTPS is served by the native companion. The window keeps its loopback HTTP
+    // listener, and after a restart the ingress opens again toward the new listener port.
+    const lanPort = freePort();
+    const lanName = "desktop.home.arpa";
+    expectSuccess(
+      await host.client.connections.put({
+        enabled: false,
+        lanHostnames: [lanName],
+        lanPort,
+        transport: "lan",
+      })
+    );
+    expectSuccess(await host.client.connections.certificate.post());
+    expectSuccess(await host.client.connections.put({ enabled: true, transport: "lan" }));
+    const ca = await Bun.file(join(dataDir, "tls/ca.pem")).text();
+    const lanDescriptor = () =>
+      treaty<Api>(`https://127.0.0.1:${lanPort}`, {
+        fetch: { tls: { ca, serverName: lanName } } as RequestInit,
+        headers: { host: `${lanName}:${lanPort}` },
+      })[".well-known"].tofu.get();
+    expectSuccess(await lanDescriptor());
+    await host.stop();
+    host = await launch();
+    expect(new URL(host.url).protocol).toBe("http:");
+    expect(expectSuccess(await host.client.connections.get()).listening.port).toBe(
+      Number(new URL(host.url).port)
+    );
+    expectSuccess(await lanDescriptor());
+    expect(expectSuccess(await host.client.connections.get()).exposures.lan.state).toBe("ready");
   } finally {
     await host?.stop();
     await context.close();
   }
-}, 30_000);
+}, 60_000);

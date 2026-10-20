@@ -82,7 +82,10 @@ the review decisions below win. Implementation progress and proof evidence are t
   partition cookie. It never enters a WebView. If the secret store is unavailable the user may
   keep a memory-only connection until Tofu quits; secrets are never stored in plain text.
 - Invitations: default Playback, 10-minute expiry, single device. Link secret is 128-bit,
-  carried in the URL fragment and removed from history. Manual code: 10 Crockford base32
+  carried in the URL fragment and removed from history. Until it is redeemed or refused, the
+  `/pair` tab keeps it in session storage for at most 15 minutes (never past the invitation's
+  expiry) and restores it only on a reload or back navigation, so a scanned link survives a
+  reloaded tab; opening the library discards it. Manual code: 10 Crockford base32
   characters. Five failed attempts burn an invitation; a global failed-code token bucket limits
   guessing. Per-peer limits use forwarded addresses only from configured trusted proxies.
 - Response loss: the client sends a 128-bit redemption nonce. Repeating the same secret and
@@ -130,29 +133,48 @@ the review decisions below win. Implementation progress and proof evidence are t
 
 ## Network exposure
 
-- Remote access persists a stable port (default 3030 development, 3031 release; conflicts are
-  reported, never silently changed).
+- The application always listens on loopback HTTP at a stable port (default 3030 development,
+  3031 release; headless `TOFU_PORT`; conflicts are reported, never silently changed). The
+  host window, server rendering (direct in-process Eden) and every exposure use it.
+- **Exposures are independent.** Local network, Tailscale and custom proxy can be enabled at the
+  same time and each is turned on or off alone (`PUT /api/connections` names one exposure in
+  `transport`). All serve the same library, identity and grants. Each browser-facing origin pairs
+  separately; one-time invitations stay one-time across origins. No automatic address fallback,
+  PWA launcher, session handoff between origins or broadened CORS.
 - **Tailscale** (recommended) and **custom HTTPS proxy** terminate TLS outside Tofu and forward
   to the loopback HTTP listener. No host certificate trust, no rebind, no bootstrap change.
-  Tofu changes only the exact Tailscale Serve mapping it created, never Funnel, and on
-  conflict reports and does nothing. States: Not checked → Not installed / Signed out / HTTPS
-  not enabled / Configuration conflict / Ready.
+  Tofu changes only the exact Tailscale Serve mapping it created
+  (`https://<node>:443/ → http://127.0.0.1:<port>`), never Funnel, and on conflict reports and
+  does nothing. States: Not checked → Not installed / Signed out / HTTPS not enabled /
+  Configuration conflict / Ready.
 - **Embedded Tailscale setup**: the local owner's Connect action starts enrollment and
   explicitly authorizes private sharing once prerequisites are met. Sign-in and HTTPS consent
   use official Tailscale pages; a bounded, cancellable status loop resumes activation without
   separate Check / Apply clicks. Cancelling or leaving the page prevents subsequent status
   reads from initiating activation. Device invitations remain a separate authorization.
+  Restarts reuse the enrolled device name (`tofu-<server id prefix>`).
 - **Custom proxy**: canonical HTTPS origin plus trusted immediate proxy peers. Forwarded
   headers are honored only from those peers.
-- **Local network (LAN-direct)**: TLS on the single listener bound to all interfaces,
-  including loopback. Tofu generates an installation CA and a leaf certificate whose SAN covers
-  the `.local` name, selected IPs, `127.0.0.1`, `::1` and `localhost`. Every device, including
-  the host itself, must trust the CA. Activation is refused until the host's own window can
-  connect. No desktop certificate pinning in v1.
-- Applying an exposure change that rebinds the listener restarts the backend, then waits up to
-  90 seconds for confirmation through the new route (`POST /api/connections/config/confirm`);
-  otherwise the previous configuration is restored. A pending journal survives crashes and is
-  reverted at boot. Local-window applies confirm automatically after readiness.
+- **Local network**: the existing native companion terminates TLS on all interfaces at a public
+  port distinct from the application port (default 3443 release, 3442 development) and forwards
+  to the loopback listener. It needs no tsnet node and never enrolls Tailscale. Tofu generates
+  an installation CA and a leaf certificate whose SAN covers the `.local` name, configured
+  names and the addresses present at creation. Offered and accepted hosts are the current names
+  and addresses the leaf covers, excluding loopback and link-local; any other `Host`, including
+  a different or malformed port, receives `421`. Caller forwarding headers are discarded and
+  rebuilt from the connection and the validated host. Only connecting devices trust the CA; the
+  host window stays on loopback HTTP. Bonjour advertises the public port. No certificate pinning.
+- Changes to exposures are serialized. Each is prepared, journaled, activated, then saved; a
+  failed activation restores the previous forwarding. At boot an interrupted change never
+  widens access: each exposure stays enabled only if both the last good and the journaled
+  configuration enabled it, and a possibly created Serve mapping is removed when it is still
+  exactly Tofu's. Startup records the listener port, opens every enabled exposure, and only then
+  reports ready or opens the window; a failure prevents opening and releases started resources.
+- Earlier exclusive configurations migrate at first start: the active transport becomes the one
+  enabled exposure and the others keep their settings, disabled. A desktop host keeps a shared
+  LAN port and moves its private listener; a headless host keeps `TOFU_PORT` and moves the LAN
+  port to the default (logged). Earlier unconfirmed journals revert to the last good
+  configuration.
 - Recovery CLI (`bun scripts/tofu-admin.ts`) works with the instance stopped (exclusive data
   directory lease): create an owner-issued invitation, revoke devices, disable remote access.
 

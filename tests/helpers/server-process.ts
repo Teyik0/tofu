@@ -1,7 +1,13 @@
 import { join } from "node:path";
 import type { InstanceConfig } from "../../src/types";
 import { waitFor } from "./torrent";
-export function launchServer(config: InstanceConfig, watchEntry?: string, trustedCA?: string) {
+export function launchServer(
+  config: InstanceConfig,
+  watchEntry?: string,
+  trustedCA?: string,
+  /** Extra environment for this process, such as a native component or `PATH`. */
+  environment: Record<string, string> = {}
+) {
   const command = watchEntry ? ["--watch", "--no-clear-screen", watchEntry] : ["src/server.ts"];
   const shutdownPath = join(config.dataDir, `test-shutdown-${crypto.randomUUID()}`);
   let applicationPid: number | undefined;
@@ -21,6 +27,7 @@ export function launchServer(config: InstanceConfig, watchEntry?: string, truste
         TOFU_TAILSCALE_CLI:
           process.env.TOFU_TAILSCALE_CLI ?? join(config.dataDir, "tailscale-not-installed"),
         TOFU_TEST_SHUTDOWN: process.platform === "win32" ? shutdownPath : undefined,
+        ...environment,
       },
       ipc(message) {
         if (typeof message === "number") {

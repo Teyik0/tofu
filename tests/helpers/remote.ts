@@ -82,3 +82,19 @@ export function sessionCookie(response: Response) {
 export function redemptionNonce() {
   return Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url");
 }
+
+/** A TCP port that was free a moment ago, for listeners that need a fixed public port. */
+export function freePort() {
+  const probe = Bun.listen({
+    hostname: "0.0.0.0",
+    port: 0,
+    socket: {
+      data() {
+        // Holds the port; nothing is read.
+      },
+    },
+  });
+  const { port } = probe;
+  probe.stop(true);
+  return port;
+}

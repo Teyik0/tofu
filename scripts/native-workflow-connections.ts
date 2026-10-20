@@ -71,7 +71,7 @@ export async function connectionsWorkflow(config: { reportUrl: string }) {
       "Cancelling setup leaves sharing off after HTTPS approval",
       !approved.error &&
         approved.data.httpsEnabled === true &&
-        !(paused.error || paused.data.config.enabled)
+        !(paused.error || paused.data.config.tailscale.enabled)
     );
     nativeClick("Connect Tofu to Tailscale");
     await wait(() => document.body.innerText.includes("Private HTTPS is ready. Pair a device"));
@@ -79,9 +79,9 @@ export async function connectionsWorkflow(config: { reportUrl: string }) {
     check(
       "Connect enables private access automatically after HTTPS authorization",
       !sharing.error &&
-        sharing.data.config.enabled &&
-        sharing.data.config.tailscaleMode === "embedded" &&
-        sharing.data.config.tailscaleOrigin === "https://tofu.tail-test.ts.net"
+        sharing.data.config.tailscale.enabled &&
+        sharing.data.config.tailscale.mode === "embedded" &&
+        sharing.data.config.tailscale.origin === "https://tofu.tail-test.ts.net"
     );
     nativeClick("Add a server");
     await wait(() => document.querySelector("#desktop-address") !== null);

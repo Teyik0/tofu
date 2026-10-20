@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { Server as Tracker } from "bittorrent-tracker";
 import { ElysiaStatus } from "elysia";
-import { fromCrossJSON, toCrossJSONAsync } from "seroval";
 import WebTorrent, { type Torrent } from "webtorrent";
 import { openDatabase } from "../src/api/lib/db";
 import { acquireInstance, resolveInstanceConfig } from "../src/api/lib/instance";
@@ -20,11 +19,6 @@ import { TorrentEngine } from "../src/api/modules/torrents/service";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { InstanceProfile } from "../src/types";
 import { embeddedTailscaleFixture } from "../tests/helpers/embedded-tailscale";
-
-interface AniListLoaderFixture {
-  __furinQueries?: { url: string; data: unknown; local?: boolean; identity?: unknown }[];
-  initialAniList: import("../src/types").AniListState;
-}
 
 const root = join(import.meta.dir, "..");
 const desktopTarget = hostDesktopTarget();
@@ -136,32 +130,6 @@ const collector = Bun.serve({
           "access-control-allow-origin": "*",
         },
       });
-    }
-    if (new URL(request.url).pathname === "/anilist-loader") {
-      const fixture = (await request.json()) as {
-        payload:
-          | Awaited<ReturnType<typeof toCrossJSONAsync>>
-          | ["__furin_json_v1__", AniListLoaderFixture];
-        anilist: import("../src/types").AniListState;
-      };
-      const data = Array.isArray(fixture.payload)
-        ? fixture.payload[1]
-        : fromCrossJSON<AniListLoaderFixture>(fixture.payload, {});
-      data.initialAniList = fixture.anilist;
-      // Furin's query bindings must use the same fixture as the rendered loader snapshot.
-      for (const query of data.__furinQueries ?? []) {
-        if (new URL(query.url).pathname === "/api/anilist") {
-          query.data = fixture.anilist;
-          query.local = false;
-          query.identity = undefined;
-        }
-      }
-      return Response.json(
-        Array.isArray(fixture.payload) ? ["__furin_json_v1__", data] : await toCrossJSONAsync(data),
-        {
-          headers: { "access-control-allow-origin": "*" },
-        }
-      );
     }
     if (new URL(request.url).pathname === "/search-feed") {
       const searchMagnet = `${secondarySeed.magnetURI}&x.pe=127.0.0.1:${seedClient.torrentPort}`;

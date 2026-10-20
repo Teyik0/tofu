@@ -4,19 +4,19 @@ import type { ConnectionsState } from "../../pages/options/connections";
 import { ActionTooltip } from "../action-tooltip";
 import { Button } from "../ui/button";
 
-/** Addresses through which other devices reach this server; loopback is never offered. */
+/**
+ * Addresses through which other devices reach this server, for every exposure that is on.
+ * Loopback is never offered. Each address is a separate browser origin that pairs separately.
+ */
 export function serverAddresses(state: ConnectionsState) {
-  const { config } = state;
-  if (!config.enabled) {
-    return [];
-  }
-  if (config.transport === "tailscale" && config.tailscaleOrigin) {
-    return [{ label: "Tailscale HTTPS", url: config.tailscaleOrigin }];
-  }
-  if (config.transport === "proxy" && config.proxyOrigin) {
-    return [{ label: "Custom HTTPS", url: config.proxyOrigin }];
-  }
-  return state.addresses.map((url) => ({ label: "Local network HTTPS", url }));
+  const { lan, proxy, tailscale } = state.config;
+  return [
+    ...(lan.enabled ? state.addresses.map((url) => ({ label: "Local network HTTPS", url })) : []),
+    ...(tailscale.enabled && tailscale.origin
+      ? [{ label: "Tailscale HTTPS", url: tailscale.origin }]
+      : []),
+    ...(proxy.enabled && proxy.origin ? [{ label: "Custom HTTPS", url: proxy.origin }] : []),
+  ];
 }
 
 export function ServerAddresses({ state }: { state: ConnectionsState }) {
@@ -29,7 +29,7 @@ export function ServerAddresses({ state }: { state: ConnectionsState }) {
   return (
     <section aria-labelledby="server-address-title" className="connections-section">
       <div className="connections-section-title">
-        <h3 id="server-address-title">Server address</h3>
+        <h3 id="server-address-title">Server addresses</h3>
       </div>
       <div className="settings-group">
         {addresses.map((address) => (
@@ -43,7 +43,9 @@ export function ServerAddresses({ state }: { state: ConnectionsState }) {
                   ? "Copied."
                   : clipboardFailed
                     ? "Clipboard unavailable. Select and copy the address above."
-                    : "Reachability depends on the connecting device. Not verified on other devices yet."}
+                    : address.label === "Local network HTTPS"
+                      ? "Works on devices on this network that trust this server's certificate authority."
+                      : "Reachability depends on the connecting device. Not verified on other devices yet."}
               </p>
             </div>
             <ActionTooltip>

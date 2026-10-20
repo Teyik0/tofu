@@ -31,12 +31,10 @@ try {
     const connections = new ConnectionsService({
       dataDir: config.dataDir,
       db,
+      defaultLanPort: config.profile === "dev" ? 3442 : 3443,
       defaultPort: config.profile === "dev" ? 3030 : 3031,
       fixedPort: null,
       now: Date.now,
-      restart() {
-        /* Recovery writes configuration while the server is stopped. */
-      },
     });
     const access = new AccessService({
       db,
@@ -91,11 +89,10 @@ try {
           .where(eq(serverIdentity.key, "server"))
           .run();
       });
+      const current = connections.config();
       connections.save({
-        ...connections.config(),
-        enabled: false,
-        tailscaleOrigin: null,
-        tailscaleServeOwned: false,
+        ...current,
+        tailscale: { ...current.tailscale, origin: null, serveOwned: false },
       });
       await Promise.all(
         ["tailscale", "tls", "native"].map((folder) =>

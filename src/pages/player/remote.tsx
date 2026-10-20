@@ -73,14 +73,6 @@ function RemotePlayer({
         }
         return data;
       }}
-      revokeSource={async (playbackId) => {
-        const { error: failure } = await api["linked-libraries"]({ id: link })[
-          "revoke-playback"
-        ].post({ playbackId });
-        if (failure) {
-          throw failure;
-        }
-      }}
       serverName={source.server.name}
       source={source.url}
       torrentId={torrent}

@@ -8,14 +8,21 @@ export interface EmbeddedStatus {
   approvalUrl?: string;
   authUrl?: string;
   error?: string;
+  /** Browser-facing hosts the local network ingress accepts. */
+  hosts?: string[];
   httpsEnabled?: boolean;
   origin?: string;
   state: string;
 }
 
-/** A single parent-owned tsnet process. Inherited stdin/stdout are its only control channel. */
+/**
+ * The single parent-owned native network companion: the embedded tsnet node and the local
+ * network HTTPS ingress, which are independent of each other. Inherited stdin/stdout are its
+ * only control channel.
+ */
 export class EmbeddedTailscale {
   private readonly directory: string;
+  private readonly certificates: string;
   private child: ReturnType<typeof Bun.spawn<"pipe", "pipe", "ignore">> | null = null;
   private readonly pending = new Map<
     string,
@@ -23,8 +30,14 @@ export class EmbeddedTailscale {
   >();
   private startup: Promise<void> | null = null;
 
-  constructor(directory: string) {
+  constructor(directory: string, certificates: string) {
     this.directory = directory;
+    this.certificates = certificates;
+  }
+
+  /** Whether the companion process is running now. */
+  running() {
+    return this.child !== null;
   }
 
   available() {
@@ -46,7 +59,11 @@ export class EmbeddedTailscale {
     await mkdir(this.directory, { mode: 0o700, recursive: true });
     await chmod(this.directory, 0o700);
     const child = Bun.spawn([binary], {
-      env: { ...process.env, TOFU_TSNET_STATE_DIR: this.directory },
+      env: {
+        ...process.env,
+        TOFU_TLS_STATE_DIR: this.certificates,
+        TOFU_TSNET_STATE_DIR: this.directory,
+      },
       stderr: "ignore",
       stdin: "pipe",
       stdout: "pipe",
@@ -91,13 +108,23 @@ export class EmbeddedTailscale {
   }
 
   async request(command: {
-    method: "start" | "status" | "serve" | "stop" | "logout" | "authorize-https";
+    method:
+      | "start"
+      | "status"
+      | "serve"
+      | "stop"
+      | "logout"
+      | "authorize-https"
+      | "lan-open"
+      | "lan-close";
     hostname?: string;
+    hosts?: string[];
+    lanPort?: number;
     port?: number;
   }) {
     if (!this.available()) {
       return problem(503, {
-        detail: "The embedded Tailscale component is missing. Rebuild or reinstall Tofu",
+        detail: "The native network component is missing. Rebuild or reinstall Tofu",
       });
     }
     // Reserve startup and the response slot before any asynchronous work.

@@ -4607,17 +4607,48 @@ h2 {
     grid-template-rows: auto minmax(0, 1fr);
   }
   .settings-navigation {
-    overflow: visible;
-    gap: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    overflow: hidden;
+    padding: 12px 16px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
+  .settings-brand {
+    padding: 0;
+  }
   .settings-navigation nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: 4px;
+  }
+  .settings-nav-item {
+    min-height: 44px;
+    padding-inline: 12px;
   }
   .settings-footer {
+    grid-column: 2;
+    grid-row: 1;
     margin-top: 0;
+  }
+  .settings-footer [data-slot="button"] {
+    min-height: 44px;
+  }
+  .settings-topbar {
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-block: 12px;
+  }
+  .settings-content {
+    padding-bottom: max(32px, env(safe-area-inset-bottom));
   }
 }
 
@@ -4949,6 +4980,7 @@ h2 {
   --accent-foreground: oklch(0.98 0 0);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.85 0 0);
+  height: 100dvh;
 }
 .media-player [data-slot="select-trigger"] {
   background: var(--accent);
@@ -4956,6 +4988,48 @@ h2 {
 }
 .media-player [data-slot="select-value"] {
   display: block;
+}
+.player-header {
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-left: max(16px, env(safe-area-inset-left));
+}
+.player-controls {
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(16px, env(safe-area-inset-left));
+}
+.player-controls input[type="range"] {
+  min-width: 0;
+  min-height: 32px;
+  touch-action: pan-y;
+}
+@media (max-width: 760px) {
+  .player-toolbar {
+    flex-wrap: wrap;
+  }
+  .player-volume {
+    display: none;
+  }
+  .player-time {
+    margin-left: auto;
+  }
+  .player-track-controls {
+    width: 100%;
+    margin-left: 0;
+  }
+  .player-track-controls [data-slot="select-trigger"] {
+    flex: 1;
+    max-width: 14rem;
+  }
+  .player-track-controls > [data-slot="button"]:first-of-type {
+    margin-left: auto;
+  }
+  .media-player [data-slot="button"],
+  .media-player [data-slot="select-trigger"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 .player-track-menu[data-slot="select-content"] {
   width: max-content;

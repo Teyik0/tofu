@@ -184,30 +184,6 @@ export async function libraryWorkflow(config: { reportUrl: string }) {
       finished.resolve();
     }
   };
-  const navigationFixture = async (
-    input: RequestInfo | URL,
-    init: RequestInit | undefined
-  ): Promise<Response | null> => {
-    const url = fixtureUrl(input);
-    if (url.searchParams.get("_furin") !== "data") {
-      return null;
-    }
-    if (url.pathname === "/plugins") {
-      return delayedPluginNavigation(input, init);
-    }
-    if (url.pathname !== "/anilist") {
-      return null;
-    }
-    const response = await nativeFetch(input, init);
-    const patched = await nativeFetch(`${config.reportUrl}/anilist-loader`, {
-      body: JSON.stringify({ anilist: sample, payload: await response.json() }),
-      method: "POST",
-    });
-    return new Response(`${await patched.text()}\n`, {
-      headers: response.headers,
-      status: response.status,
-    });
-  };
   const fixtureFetch: typeof window.fetch = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = fixtureUrl(input);
@@ -224,9 +200,8 @@ export async function libraryWorkflow(config: { reportUrl: string }) {
         downloads += 1;
         return Response.json({});
       }
-      const navigationResponse = await navigationFixture(input, init);
-      if (navigationResponse) {
-        return navigationResponse;
+      if (path === "/plugins" && url.searchParams.get("_furin") === "data") {
+        return delayedPluginNavigation(input, init);
       }
       if (path === "/api/anilist" && (!init?.method || init.method === "GET")) {
         return Response.json(sample);

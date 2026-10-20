@@ -43,7 +43,7 @@ test("embedded enrollment reports missing HTTPS and applying succeeds after tail
     expect(refused.error?.value).toMatchObject({
       detail: expect.stringContaining("DNS → HTTPS Certificates → Enable HTTPS"),
     });
-    expect(expectSuccess(await owner.connections.get()).config.enabled).toBe(false);
+    expect(expectSuccess(await owner.connections.get()).config.tailscale.enabled).toBe(false);
     await Bun.write(fixture.configuration, JSON.stringify({ httpsEnabled: true }));
     expect(expectSuccess(await owner.connections.tailscale.embedded.get()).httpsEnabled).toBe(true);
     const applied = await owner.connections.put({
@@ -59,8 +59,12 @@ test("embedded enrollment reports missing HTTPS and applying succeeds after tail
       },
     }).api;
     const active = expectSuccess(await admin.connections.get());
-    expect(active.config.enabled).toBe(true);
-    expect(active.config.tailscaleOrigin).toBe("https://tofu.tail-test.ts.net");
+    expect(active.config.tailscale).toMatchObject({
+      enabled: true,
+      mode: "embedded",
+      origin: "https://tofu.tail-test.ts.net",
+    });
+    expect(active.exposures.tailscale.state).toBe("ready");
     expectSuccess(
       await admin.connections.put({
         enabled: false,

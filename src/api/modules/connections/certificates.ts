@@ -11,6 +11,10 @@ const LOCAL_HOST_SUFFIX = /\.local$/i;
 
 const directory = join(instance.dataDir, "tls");
 
+/**
+ * The local network certificate. Only connecting devices need to trust its installation CA: the
+ * native companion terminates HTTPS and the host's own window stays on loopback HTTP.
+ */
 export function localCertificate() {
   const path = join(directory, "server.pem");
   if (!existsSync(path)) {
@@ -56,21 +60,4 @@ export async function prepareCertificate(names: string[]) {
     return problem(503, { detail: "The local network certificate could not be created" });
   }
   return localCertificate();
-}
-
-/** Native OS trust is required; a CA supplied to Bun's TLS client would not prove WebView trust. */
-export function hostTrust() {
-  if (!instance.desktop) {
-    return {
-      detail: "Headless hosts do not open a local WebView",
-      required: false as const,
-      trusted: true,
-    };
-  }
-  return {
-    detail:
-      "Direct LAN HTTPS is blocked by the pinned SDK's native window cookie defect. Use embedded Tailscale or a custom HTTPS proxy with the local HTTP window until the SDK is fixed",
-    required: true as const,
-    trusted: false,
-  };
 }

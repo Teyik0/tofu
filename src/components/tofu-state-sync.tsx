@@ -140,6 +140,15 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
   }, [selected, setConnection, setDashboard, setSession]);
 
   useEffect(() => {
+    // A pending invitation kept by /pair for reloads is never needed once the library opens.
+    try {
+      window.sessionStorage.removeItem("tofu-invitation");
+    } catch {
+      // Storage is unavailable, so the pairing page kept nothing.
+    }
+  }, []);
+
+  useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 

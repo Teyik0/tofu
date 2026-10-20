@@ -75,7 +75,7 @@ Delete-files is displayed explicitly in grant summary and destructive confirmati
 
 Invitation result: endpoint selector; QR (real generated code in production); copy link; copy code for manual desktop entry; absolute expiry with relative countdown; Revoke invitation. Raw invitation is shown only at creation, not reread from hashed storage. Closing the dialog retains metadata but cannot reveal the original secret again: generate a replacement. Used/expired/revoked links remain auditable metadata if retained, with disabled copy/reuse. QR alternate accessible text is label + readable address, not hidden secret duplication.
 
-QR goes to an HTTPS /pair link with credential in fragment. Minimal page reads it once, removes it from history, retains it only in memory. Offer 'Continue in browser' and explicit 'Open in Tofu' before atomic consumption. The browser must not automatically spend the token before desktop handoff. Choosing desktop hands a short-lived invitation to the allowlisted app protocol (tofu or tofu-dev), never a durable bearer. User can paste a fresh link if app launch fails after consumption. Avoid third-party resources/analytics on this page. Display server/address and intended grant; let device label be edited before Continue.
+QR goes to an HTTPS /pair link with credential in fragment. Minimal page reads it once, removes it from history, retains it only in memory (amended: see specification.md, session storage restores it on reload for at most 15 minutes). Offer 'Continue in browser' and explicit 'Open in Tofu' before atomic consumption. The browser must not automatically spend the token before desktop handoff. Choosing desktop hands a short-lived invitation to the allowlisted app protocol (tofu or tofu-dev), never a durable bearer. User can paste a fresh link if app launch fails after consumption. Avoid third-party resources/analytics on this page. Display server/address and intended grant; let device label be edited before Continue.
 
 Authorized devices rows: user-chosen label (not trusted proof), client type, effective role/grants, last active timestamp, session expiry, active streams count, 'This session' marker. Detail drawer: rename session, change grants/profile, revoke. Revoke confirmation names host and device and states playback stops immediately. The initiating UI updates from the confirmed server result; an offline request is not marked successful. 'Revoke all other devices' protects current admin by default. Explicit 'Revoke all remote access' also revokes invitations/current remote sessions and explains local recovery. Non-admin sees only own session and can sign out.
 
@@ -166,8 +166,13 @@ The user approved the visual direction. The following are semantic corrections o
 - §6: Tailscale is the recommended transport. Selecting it shows "Not checked" until a check runs; never an unearned green state.
   Local network (Tofu serves HTTPS directly) requires certificate trust on every device INCLUDING this computer; activation is
   refused until this computer's own window can connect. Desktop certificate pinning is not available in v1.
+  (Amended 2026-10-20, see specification.md "Network exposure": the native companion serves local network HTTPS on its own
+  port while this computer's window stays on loopback HTTP, so only connecting devices trust the CA. Local network,
+  Tailscale and Custom HTTPS are independent switches with per-connection state instead of one exclusive choice.)
 - §6 Apply: describe a brief restart and confirm-or-revert ("If this change is not confirmed from the new address within
   90 seconds, Tofu restores the previous configuration"). Show a countdown after a remote apply.
+  (Amended 2026-10-20: no connection change restarts or rebinds the listener anymore; Apply changes one connection,
+  restores its previous forwarding on failure, and leaves the others running. There is no confirmation countdown.)
 - Owner-only settings (storage roots, absolute host paths, watched folders, certificate files, trusted proxies) are visible to
   remote Administration as read-only with "Change this on <server> itself".
 - §3D: /pair and /signed-out are minimal standalone documents outside the library app; signing out lands on "You're signed out",

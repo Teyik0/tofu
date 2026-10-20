@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { version as tofuVersion } from "../../package.json";
+import { CanvasVideoFullscreen } from "../lib/canvas-video-fullscreen";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
 import { sessionAtom } from "../state/workspace";
@@ -72,7 +73,6 @@ export function MediaPlayer({
   remoteEpisode,
   initialGrant,
   retrySource,
-  revokeSource,
   serverName,
   source,
   torrentId,
@@ -86,7 +86,6 @@ export function MediaPlayer({
   remoteEpisode?: { mediaId: number; episode: number };
   initialGrant?: { id: string; expiresAt: number; url: string };
   retrySource?: () => Promise<{ id: string; expiresAt: number; url: string }>;
-  revokeSource?: (id: string) => Promise<void>;
   serverName?: string;
   source: string;
   torrentId: string;
@@ -141,7 +140,10 @@ export function MediaPlayer({
   const [linkNotice, setLinkNotice] = useState<string | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const shell = useRef<HTMLDivElement>(null);
+  const pointerType = useRef("mouse");
   const audio = useRef<AudioContext | null>(null);
+  const audioOutput = useRef<GainNode | null>(null);
+  const nativeFullscreen = useRef<CanvasVideoFullscreen | null>(null);
   const activePlayer = useRef<Player | null>(null);
   const pendingCommand = useRef<symbol | null>(null);
   const engineMessages = useRef<string[]>([]);
@@ -170,7 +172,7 @@ export function MediaPlayer({
   // Without a user gesture, WebKit keeps audio suspended and VLC's audio clock stops playback.
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [fullscreenNotice, setFullscreenNotice] = useState<string | null>(null);
   const openExternally = useMutation(api.torrents({ id: torrentId }).files({ index }).open.post);
 
   const reportFailure = async (
@@ -228,9 +230,31 @@ export function MediaPlayer({
     let engine: VLC | null = null;
     let current: Player | null = null;
     const subscriptions: (() => void)[] = [];
+    // Web Audio defaults to ambient on iOS, which obeys the phone's silent switch.
+    // A movie must use the media channel, just like a native video element.
+    const { audioSession } = navigator as Navigator & { audioSession?: { type: string } };
+    const previousAudioType = audioSession?.type;
+    if (audioSession) {
+      audioSession.type = "playback";
+    }
     // Each attempt owns its context and releases it when the player is replaced.
     const context = new AudioContext({ latencyHint: "interactive" });
     audio.current = context;
+    const nativeVideo = document.createElement("video") as HTMLVideoElement & {
+      webkitEnterFullscreen?: () => void;
+    };
+    const fullscreenContainer = shell.current as HTMLDivElement & {
+      webkitRequestFullscreen?: unknown;
+    };
+    const output =
+      nativeVideo.webkitEnterFullscreen &&
+      typeof target.captureStream === "function" &&
+      !document.fullscreenEnabled &&
+      !fullscreenContainer.webkitRequestFullscreen
+        ? context.createGain()
+        : undefined;
+    output?.connect(context.destination);
+    audioOutput.current = output ?? null;
     const audioChanged = () => setAudioBlocked(context.state !== "running");
     context.addEventListener("statechange", audioChanged);
     const start = async () => {
@@ -273,7 +297,11 @@ export function MediaPlayer({
             }
           })
         );
-        current = await engine.createPlayer({ audioContext: context, canvas: target });
+        current = await engine.createPlayer({
+          audioContext: context,
+          audioDestination: output,
+          canvas: target,
+        });
         if (disposed) {
           await current.destroy();
           await engine.destroy();
@@ -393,12 +421,18 @@ export function MediaPlayer({
     void start();
     return () => {
       disposed = true;
+      nativeFullscreen.current?.destroy();
+      nativeFullscreen.current = null;
+      audioOutput.current = null;
       activePlayer.current = null;
       pendingCommand.current = null;
       for (const unsubscribe of subscriptions) {
         unsubscribe();
       }
       context.removeEventListener("statechange", audioChanged);
+      if (audioSession?.type === "playback" && previousAudioType) {
+        audioSession.type = previousAudioType;
+      }
       // The engine owns its players and bounds their shutdown before terminating its worker.
       void engine?.destroy();
       void context.close();
@@ -460,12 +494,86 @@ export function MediaPlayer({
   }, [seekFeedback]);
 
   useEffect(() => {
-    // The page renders on the server first, where full screen support is unknown.
-    setFullscreenSupported(document.fullscreenEnabled);
-    const changed = () => setFullscreen(document.fullscreenElement !== null);
+    const fullscreenDocument = document as Document & { webkitFullscreenElement?: Element };
+    const changed = () => {
+      setFullscreen(
+        (document.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement) ===
+          shell.current || !!nativeFullscreen.current?.video.webkitDisplayingFullscreen
+      );
+      setIdle(false);
+    };
     document.addEventListener("fullscreenchange", changed);
-    return () => document.removeEventListener("fullscreenchange", changed);
+    document.addEventListener("webkitfullscreenchange", changed);
+    return () => {
+      document.removeEventListener("fullscreenchange", changed);
+      document.removeEventListener("webkitfullscreenchange", changed);
+    };
   }, []);
+
+  useEffect(() => {
+    const target = canvas.current;
+    const context = audio.current;
+    const output = audioOutput.current;
+    const video = document.createElement("video") as HTMLVideoElement & {
+      webkitEnterFullscreen?: () => void;
+    };
+    if (
+      !(
+        player &&
+        target &&
+        context &&
+        output &&
+        video.webkitEnterFullscreen &&
+        target.captureStream
+      )
+    ) {
+      return;
+    }
+    const container = shell.current as HTMLDivElement & { webkitRequestFullscreen?: unknown };
+    if (document.fullscreenEnabled || container.webkitRequestFullscreen) {
+      return;
+    }
+    let bridge: CanvasVideoFullscreen | null = null;
+    const prepare = async () => {
+      try {
+        bridge = new CanvasVideoFullscreen(
+          target,
+          player,
+          context,
+          output,
+          (active) => {
+            setFullscreen(active);
+            setIdle(false);
+          },
+          (cause) => {
+            setFullscreenNotice(errorMessage(cause, "Unable to control full screen playback."));
+            setIdle(false);
+          }
+        );
+        nativeFullscreen.current = bridge;
+        await bridge.prepare();
+      } catch (cause) {
+        if (nativeFullscreen.current !== bridge) {
+          return;
+        }
+        setFullscreenNotice(errorMessage(cause, "Unable to prepare full screen video."));
+      }
+    };
+    void prepare();
+    return () => {
+      if (nativeFullscreen.current === bridge) {
+        nativeFullscreen.current = null;
+        bridge?.destroy();
+      }
+    };
+  }, [player]);
+
+  useEffect(() => {
+    if (state === "error") {
+      nativeFullscreen.current?.destroy();
+      nativeFullscreen.current = null;
+    }
+  }, [state]);
 
   useEffect(() => {
     if (state !== "playing" || idle || trackMenuOpen) {
@@ -482,7 +590,7 @@ export function MediaPlayer({
     const selected = player;
     const command = Symbol("playback-command");
     pendingCommand.current = command;
-    const pause = selected.state === "playing" && !audioBlocked;
+    const pause = selected.state === "playing" && audio.current?.state === "running";
     const expectedState = pause ? "paused" : "playing";
     const changed = Promise.withResolvers<void>();
     const unsubscribe = selected.on("statechange", (next) => {
@@ -532,9 +640,38 @@ export function MediaPlayer({
     }
   };
   const toggleFullscreen = async () => {
-    await (document.fullscreenElement
-      ? document.exitFullscreen()
-      : shell.current?.requestFullscreen());
+    setIdle(false);
+    setFullscreenNotice(null);
+    const target = shell.current as
+      | (HTMLDivElement & {
+          webkitRequestFullscreen?: () => Promise<void> | void;
+        })
+      | null;
+    const fullscreenDocument = document as Document & {
+      webkitFullscreenElement?: Element;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (fullscreenDocument.webkitFullscreenElement) {
+        await fullscreenDocument.webkitExitFullscreen?.();
+      } else if (target?.requestFullscreen && document.fullscreenEnabled) {
+        await target.requestFullscreen();
+      } else if (target?.webkitRequestFullscreen) {
+        await target.webkitRequestFullscreen();
+      } else if (nativeFullscreen.current) {
+        if (fullscreen) {
+          nativeFullscreen.current.exit();
+        } else if (!(await nativeFullscreen.current.enter())) {
+          setFullscreenNotice("Full screen video is getting ready. Tap full screen again.");
+        }
+      } else {
+        setFullscreenNotice("Full screen is unavailable in this browser.");
+      }
+    } catch (cause) {
+      setFullscreenNotice(errorMessage(cause, "Unable to enter full screen. Try again."));
+    }
   };
 
   useEffect(() => {
@@ -640,27 +777,45 @@ export function MediaPlayer({
         new URL(grant?.url ?? playbackSource, window.location.href).href
       );
       setLinkNotice(
-        `Temporary playback link copied. Anyone with it can play this file until ${grant ? new Date(grant.expiresAt).toLocaleString() : "it expires"}. Revoking it stops further bytes.`
+        `Temporary playback link copied. Anyone with it can play this file until ${grant ? new Date(grant.expiresAt).toLocaleString() : "it expires"}.`
       );
     } catch (cause) {
       setLinkNotice(errorMessage(cause, "Unable to copy the playback link"));
     }
   };
-  const controlsVisible = !idle || state !== "playing" || audioBlocked || trackMenuOpen;
+  const controlsVisible =
+    !idle || state !== "playing" || audioBlocked || trackMenuOpen || !!fullscreenNotice;
 
   return (
     <div
       className="media-player fixed inset-0 z-50 flex select-none flex-col bg-black text-white"
       data-idle={!controlsVisible}
-      onPointerMove={() => setIdle(false)}
+      onPointerMove={(event) => {
+        if (event.pointerType === "mouse") {
+          setIdle(false);
+        }
+      }}
       ref={shell}
       style={{ cursor: controlsVisible ? "default" : "none" }}
     >
       <canvas
         aria-label={name}
         className="absolute inset-0 size-full"
-        onClick={() => void toggle()}
-        onDoubleClick={() => void toggleFullscreen()}
+        onClick={() => {
+          if (pointerType.current === "touch" || pointerType.current === "pen") {
+            setIdle((value) => !value);
+          } else {
+            void toggle();
+          }
+        }}
+        onDoubleClick={() => {
+          if (pointerType.current === "mouse") {
+            void toggleFullscreen();
+          }
+        }}
+        onPointerDown={(event) => {
+          pointerType.current = event.pointerType;
+        }}
         ref={canvas}
       />
       <div aria-atomic="true" aria-live="polite" className="pointer-events-none absolute inset-0">
@@ -679,7 +834,8 @@ export function MediaPlayer({
         ) : null}
       </div>
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 bg-linear-to-b from-black/70 to-transparent p-4 transition-opacity"
+        className="player-header pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 bg-linear-to-b from-black/70 to-transparent p-4 transition-opacity"
+        inert={!controlsVisible}
         style={{ opacity: controlsVisible ? 1 : 0 }}
       >
         <Button
@@ -789,38 +945,14 @@ export function MediaPlayer({
           role="status"
         >
           <p>{linkNotice}</p>
-          {temporaryLink ? (
-            <Button
-              onClick={async () => {
-                try {
-                  if (revokeSource) {
-                    await revokeSource(temporaryLink.id);
-                  } else {
-                    const { error: failure } = await api["media-links"]({
-                      id: temporaryLink.id,
-                    }).delete();
-                    if (failure) {
-                      throw failure;
-                    }
-                  }
-                } catch (cause) {
-                  setLinkNotice(errorMessage(cause, "Unable to revoke this link"));
-                  return;
-                }
-                setTemporaryLink(null);
-                setLinkNotice("Playback link revoked.");
-              }}
-            >
-              Revoke playback link
-            </Button>
-          ) : null}
           <Button onClick={() => setLinkNotice(null)} variant="secondary">
             Close
           </Button>
         </div>
       ) : null}
       <div
-        className="absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-linear-to-t from-black/80 to-transparent px-4 pt-10 pb-3 transition-opacity"
+        className="player-controls absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-linear-to-t from-black/80 to-transparent px-4 pt-10 pb-3 transition-opacity"
+        inert={!(controlsVisible && player)}
         style={{ opacity: controlsVisible && player ? 1 : 0 }}
       >
         <input
@@ -837,7 +969,7 @@ export function MediaPlayer({
           type="range"
           value={Math.min(position, duration || 0)}
         />
-        <div className="flex items-center gap-2 text-sm">
+        <div className="player-toolbar flex items-center gap-2 text-sm">
           <Button
             aria-label={state === "playing" ? "Pause" : "Play"}
             className="text-white hover:bg-white/15 hover:text-white"
@@ -864,7 +996,7 @@ export function MediaPlayer({
           </Button>
           <input
             aria-label="Volume"
-            className="w-24 accent-white"
+            className="player-volume w-24 accent-white"
             disabled={!player}
             max={1}
             min={0}
@@ -877,10 +1009,10 @@ export function MediaPlayer({
             type="range"
             value={muted ? 0 : Math.min(volume, 1)}
           />
-          <span className="font-mono text-white/80 text-xs tabular-nums">
+          <span className="player-time shrink-0 whitespace-nowrap font-mono text-white/80 text-xs tabular-nums">
             {clock(position)} / {clock(duration)}
           </span>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="player-track-controls ml-auto flex min-w-0 items-center gap-2">
             {audioTracks.length > 1 ? (
               <Select
                 items={audioTracks.map((track) => ({ label: trackLabel(track), value: track.id }))}
@@ -893,7 +1025,7 @@ export function MediaPlayer({
                 }}
                 value={audioTracks.find((track) => track.selected)?.id ?? null}
               >
-                <SelectTrigger aria-label="Audio track" className="max-w-56" size="sm">
+                <SelectTrigger aria-label="Audio track" className="min-w-0 max-w-56" size="sm">
                   <HeadphonesIcon />
                   <SelectValue className="truncate" placeholder="Audio track" />
                 </SelectTrigger>
@@ -931,7 +1063,7 @@ export function MediaPlayer({
                 }}
                 value={textTracks.find((track) => track.selected)?.id ?? ""}
               >
-                <SelectTrigger aria-label="Subtitles" className="max-w-56" size="sm">
+                <SelectTrigger aria-label="Subtitles" className="min-w-0 max-w-56" size="sm">
                   <CaptionsIcon />
                   <SelectValue className="truncate" />
                 </SelectTrigger>
@@ -968,19 +1100,23 @@ export function MediaPlayer({
             >
               <ExternalLinkIcon />
             </Button>
-            {fullscreenSupported ? (
-              <Button
-                aria-label={fullscreen ? "Exit full screen" : "Full screen"}
-                className="text-white hover:bg-white/15 hover:text-white"
-                onClick={() => void toggleFullscreen()}
-                size="icon"
-                variant="ghost"
-              >
-                {fullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
-              </Button>
-            ) : null}
+            <Button
+              aria-label={fullscreen ? "Exit full screen" : "Full screen"}
+              aria-pressed={fullscreen}
+              className="text-white hover:bg-white/15 hover:text-white"
+              onClick={() => void toggleFullscreen()}
+              size="icon"
+              variant="ghost"
+            >
+              {fullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
+            </Button>
           </div>
         </div>
+        {fullscreenNotice ? (
+          <p className="text-sm text-white/80" role="status">
+            {fullscreenNotice}
+          </p>
+        ) : null}
       </div>
     </div>
   );

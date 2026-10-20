@@ -8,45 +8,13 @@ import { writeServerInfo } from "./server-info";
 
 export async function onReady({ backend }: ReadyContext) {
   const { engine } = await import("../modules/torrents/plugin");
-  const { connections, restoreEmbeddedTransport } = await import("../modules/connections/plugin");
-  const origin = new URL(backend.origin);
-  connections.ready({
-    hostname: connections.listenOptions().hostname,
-    port: Number(origin.port),
-    tls: origin.protocol === "https:",
-  });
-  const restored = await restoreEmbeddedTransport(Number(origin.port));
-  if (restored instanceof ElysiaStatus) {
-    throw new Error(restored.response.detail);
-  }
-  const config = connections.config();
-  const discoveryCLI = process.platform === "darwin" ? Bun.which("dns-sd") : null;
-  if (
-    process.env.TOFU_DISCOVERY !== "0" &&
-    config.enabled &&
-    config.transport === "lan" &&
-    discoveryCLI
-  ) {
-    const identity = (await import("../modules/access/plugin")).access.identity();
-    const advertisement = Bun.spawn(
-      [
-        discoveryCLI,
-        "-R",
-        identity.name,
-        "_tofu._tcp",
-        "local",
-        String(origin.port),
-        `serverId=${identity.serverId}`,
-        "protocol=1",
-      ],
-      { stderr: "ignore", stdout: "ignore" }
-    );
-    resources.defer(async () => {
-      if (advertisement.exitCode === null) {
-        advertisement.kill();
-      }
-      await advertisement.exited;
-    });
+  const { activateExposures, connections } = await import("../modules/connections/plugin");
+  // The application port is known now. Exposures forward to it and must be open before Tofu
+  // reports ready or opens its window; a failure prevents opening and releases resources.
+  connections.listened(Number(new URL(backend.origin).port));
+  const activated = await activateExposures();
+  if (activated instanceof ElysiaStatus) {
+    throw new Error(activated.response.detail);
   }
   await writeServerInfo(instance, engine, backend.origin, backend.cookie);
 }

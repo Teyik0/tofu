@@ -1,10 +1,9 @@
 import { furin } from "@teyik0/furin";
-import { ElysiaStatus } from "elysia";
 import { apiPlugin } from "./api";
 import { instance } from "./api/lib/database-plugin";
 import { recordLog } from "./api/lib/diagnostics";
 import { onShutdown } from "./api/lib/lifecycle";
-import { connections, restoreEmbeddedTransport } from "./api/modules/connections/plugin";
+import { connections } from "./api/modules/connections/plugin";
 import { sync } from "./sync";
 
 try {
@@ -28,17 +27,9 @@ try {
 export async function startServer() {
   try {
     await apiPlugin.modules;
-    const listener = connections.listenOptions();
-    apiPlugin.listen({ ...listener, port: instance.port });
-    connections.ready({
-      hostname: listener.hostname,
-      port: apiPlugin.server?.port ?? instance.port,
-      tls: !!listener.tls,
-    });
-    const restored = await restoreEmbeddedTransport(apiPlugin.server?.port ?? instance.port);
-    if (restored instanceof ElysiaStatus) {
-      throw new Error(restored.response.detail);
-    }
+    // The application always listens on loopback HTTP at TOFU_PORT. desktopApp's ready hook
+    // records the port and opens the exposures before the listener serves requests.
+    apiPlugin.listen(connections.listenOptions());
     const shutdown = async () => {
       await apiPlugin.stop(true);
       process.exit(process.exitCode ?? 0);

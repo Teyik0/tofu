@@ -13,8 +13,9 @@ when the owner starts enrollment or enables a previously enrolled transport. It
 never starts a system daemon, modifies routes, installs a VPN, or calls Funnel.
 
 Control uses inherited stdin/stdout pipes, not a control HTTP port. Each bounded JSON
-message has a request ID. Only start, status, serve, stop and logout are implemented;
-there is no arbitrary URL fetch, dial, shell command or local target input. The only
+message has a request ID. Only start, status, serve, authorize-https, stop, logout,
+lan-open and lan-close are implemented; there is no arbitrary URL fetch, dial, shell
+command or local target input. The only
 forwarding target is the existing Tofu listener on `127.0.0.1:<port>`. EOF and process
 shutdown close tsnet and its listeners. Its independent node identity lives in a
 0700 directory in this installation's private data directory. It must not be copied
@@ -65,9 +66,28 @@ Packaged macOS testing found that Electrobun 2.0.2 ignores `httpOnly` in its coo
 The upstream source at `e424efbc8af0315e565811fcef0920d3b757e3fc` confirms the omission in
 `package/src/native/macos/nativeWrapper.mm:sessionSetCookie`. Both the native remote manager
 and Furin TLS host read installed flags back and refuse opening when protections are lost.
-Native LAN HTTPS is disabled for this pinned SDK. The proposed upstream patch is in
+A native window on HTTPS stays disabled for this pinned SDK. The proposed upstream patch is in
 `vendor/patches/`; it has not been compiled into a replacement SDK. This gate also applies
-to clients with a system Tailscale route.
+to clients with a system Tailscale route. Local network HTTPS hosting does not depend on it:
+the companion terminates that TLS and the host window stays on loopback HTTP (see below).
+
+## Local network ingress in the same companion
+
+User decision, 2026-10-20: household browsers reach the host over local network HTTPS without
+Tailscale, alongside the owner's Tailscale address. The existing companion gains two commands,
+`lan-open` and `lan-close`; no other process is added. They work without a tsnet node: a
+local-network-only host starts the companion but never enrolls or connects Tailscale, and
+`stop`/`logout` leave the local network ingress running.
+
+`lan-open` receives only the loopback application port, a distinct public port and the
+candidate names. It loads `server.pem`/`server-key.pem` from the installation's TLS directory
+(inherited `TOFU_TLS_STATE_DIR`), refuses an invalid or expired leaf, keeps only names the leaf
+verifies (never `localhost` or loopback addresses), and binds IPv4 and IPv6 separately so a
+program already holding the IPv4 port is reported instead of shadowed. Requests whose `Host` is
+not one of those names on the public port receive `421`. Accepted requests use the same
+streaming reverse proxy as tsnet: caller `Forwarded` and `X-Forwarded-*` headers are discarded
+and rebuilt from the connection and the canonical validated host. `serve` now rebuilds the
+tsnet listener when the application port changes instead of keeping a stale target.
 
 ## Alternatives inspected
 

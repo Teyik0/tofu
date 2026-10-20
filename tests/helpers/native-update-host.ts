@@ -9,6 +9,7 @@ export async function launchNativeUpdateHost(options: {
   downloadPath: string;
   handoff: "success" | "reported" | "throw" | "cancelled";
   magnet: string;
+  directorySelectionFile?: string;
 }) {
   const root = join(import.meta.dir, "../..");
   const bundle = join(options.directory, "native-bundle");
@@ -42,8 +43,15 @@ export async function launchNativeUpdateHost(options: {
           ApplicationMenu: { setApplicationMenu() {}, on() {} },
           Utils: {
             paths: { appData: process.env.TOFU_DATA_DIR },
-            openExternal: () => true, openPath: () => true, showItemInFolder() {},
-            openFileDialog: async () => [],
+            openExternal: () => true, openPath: () => true,
+            showItemInFolder(path) {
+              if (process.env.TEST_NATIVE_DIRECTORY_SELECTION) {
+                return Bun.write(process.env.TEST_NATIVE_DIRECTORY_SELECTION + ".revealed", path);
+              }
+            },
+            openFileDialog: async () => process.env.TEST_NATIVE_DIRECTORY_SELECTION
+              ? await Bun.file(process.env.TEST_NATIVE_DIRECTORY_SELECTION).json()
+              : [],
             showMessageBox: async (message) => {
               await Bun.write(process.env.TEST_NATIVE_ERROR, JSON.stringify(message));
               return { response: 0 };
@@ -144,12 +152,14 @@ export async function launchNativeUpdateHost(options: {
       FURIN_DESKTOP_DEV: undefined,
       TEST_HANDOFF: options.handoff,
       TEST_INSTALL_RESULT: join(options.directory, "install-result.json"),
+      TEST_NATIVE_DIRECTORY_SELECTION: options.directorySelectionFile,
       TEST_NATIVE_ERROR: join(options.directory, "native-error.json"),
       TEST_NATIVE_MAGNET: options.magnet,
       TEST_QUIT_APPROVAL: join(options.directory, "quit-approval.json"),
       TOFU_DATA_DIR: options.dataDir,
       TOFU_DOWNLOAD_DIR: options.downloadPath,
       TOFU_MODE: "desktop",
+      TOFU_PORT: "0",
       TOFU_PROFILE: "dev",
     },
     ipc(message) {
@@ -164,9 +174,10 @@ export async function launchNativeUpdateHost(options: {
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
-  void child.exited.then((code) =>
-    ready.reject(new Error(`The native launcher exited before readiness (code ${code})`))
-  );
+  void (async () => {
+    const code = await child.exited;
+    ready.reject(new Error(`The native launcher exited before readiness (code ${code})`));
+  })();
   return {
     child,
     events,

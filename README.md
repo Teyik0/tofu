@@ -57,6 +57,12 @@ bun run desktop
 
 Run `bun run dev` to open the native app and a browser against the same authenticated backend. Bun's Furin preload manages the desktop supervisor. For browser-only development, run `bun run dev:web` and open **http://127.0.0.1:3030**.
 
+Frontend CSS and React changes use HMR in the existing window. Backend changes restart
+its native host after releasing application resources; unsaved UI state is not preserved
+across those restarts. `bun run desktop` launches a compiled package without HMR.
+Stop it before starting `bun run dev`, since both normally use the same development profile.
+Known development failures and their reproductions are recorded in the [HMR investigation](docs/hmr-investigation.md).
+
 Want to try a real local transfer? Keep `bun run demo` running while Tofu is open.
 
 ## 🧩 Plugins

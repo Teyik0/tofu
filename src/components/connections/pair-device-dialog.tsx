@@ -162,7 +162,7 @@ export function PairDeviceDialog({
           <DialogTitle>{invitation ? "Invitation ready" : "Pair a device"}</DialogTitle>
           <DialogDescription>
             {invitation
-              ? `Open this link or scan the code on the device you want to connect to ${session.server.name}. It works once.`
+              ? `Open this link or scan the code on the device you want to connect to ${session.server.name}. It works once, at the address it was opened with.`
               : `Create a one-time invitation for ${session.server.name}.`}
           </DialogDescription>
         </DialogHeader>
@@ -181,7 +181,10 @@ export function PairDeviceDialog({
                 className="w-full"
                 disabled={false}
                 onValueChange={setAddress}
-                options={addresses.map((item) => ({ label: item.url, value: item.url }))}
+                options={addresses.map((item) => ({
+                  label: `${item.label} · ${item.url}`,
+                  value: item.url,
+                }))}
                 value={address}
               />
             ) : null}
