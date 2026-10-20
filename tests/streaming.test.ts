@@ -59,16 +59,29 @@ test.each(["direct", "worker"])(
     expect(detail.progress).toBeLessThan(1);
     expect(detail.files[0]?.priority).toBe("skip");
 
-    // A player without Range still receives a bounded partial response, including tail priority.
-    const first = await stream.get();
-    expect(first.status).toBe(206);
-    expect(new Headers(first.headers).get("content-length")).toBe(String(4 * mib));
-    expect(new Headers(first.headers).get("content-range")).toBe(
-      `bytes 0-${4 * mib - 1}/${16 * mib}`
+    // Eden buffers binary responses; inspect the raw HTTP body to verify incremental no-Range delivery.
+    const controller = new AbortController();
+    const first = await fetch(
+      `http://127.0.0.1:${server.port}/api/torrents/${id}/files/0/stream/episode.bin`,
+      { signal: controller.signal }
     );
-    expect(new Uint8Array(first.data as unknown as ArrayBuffer)).toEqual(
-      new Uint8Array(context.bytes.subarray(0, 4 * mib))
+    expect(first.status).toBe(200);
+    expect(first.headers.get("content-range")).toBeNull();
+    const reader = first.body?.getReader();
+    if (!reader) {
+      throw new Error("Missing incremental response body");
+    }
+    const chunk = await reader.read();
+    expect(chunk.value?.length).toBeGreaterThan(0);
+    expect(chunk.value).toEqual(
+      new Uint8Array(context.bytes.subarray(0, chunk.value?.length ?? 0))
     );
+    controller.abort();
+    try {
+      await reader.cancel();
+    } catch {
+      /* Aborting an HTTP reader may reject cancellation. */
+    }
     expect(expectSuccess(await client.torrents({ id }).get()).progress).toBeLessThan(1);
     expect((await client.torrents({ id }).files({ index: "0" }).content.get()).status).toBe(409);
   },

@@ -1,35 +1,40 @@
-# Furin PR #163 packages
+# Furin packages and Remote Servers integration
 
-Tofu pins these archives from [Furin PR #163](https://github.com/Teyik0/furin/pull/163):
+Both active packages retain the principal checkout's upstream baseline,
+[Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
+`3a83c0dacaa1b94c951c639c13c3abfa0c77c14e`.
 
-| Archive | Upstream commit | Package version | SHA-256 |
-| --- | --- | --- | --- |
-| `furin-pr163-118d85f.tgz` | `118d85f2d766fc4a21a55b84b8508e70783076fa` | `@teyik0/furin@0.7.0-alpha.5` | `bc9d8eb226be8b6c0af5480c5970a214c00cc684188b486797b29b36033c124e` |
-| `furin-electrobun-pr163-a1c9c5d.tgz` | `a1c9c5dc8e7cb652925418c98be06f5fa09ee0b2` | `@teyik0/furin-electrobun@0.1.0` | `c366f5006205e0d1285d2e10157a1b6b03268ac9b3d465b1d8af676429dbac21` |
+| Active archive | Local source patch | SHA-256 |
+| --- | --- | --- |
+| `furin-remote-native-3a83c0d.tgz` | `patches/0004-aot-process-resource-isolation.patch` | `f06e611b5b1e634404d1737438e10b30b82daa62dd483151e2fc727e54af35c9` |
+| `furin-electrobun-remote-native-3a83c0d.tgz` | `patches/0003-remote-servers-on-3a83c0d.patch` | `47599dec578936e43a7ed83dd4ba698ab35283a45229daefc2e0378449033c15` |
 
-The core archive comes from the immutable published preview at
-`https://pkg.pr.new/Teyik0/furin/@teyik0/furin@118d85f2d766fc4a21a55b84b8508e70783076fa`.
-The core package is unchanged between that commit and the current Electrobun
-commit, so this upgrade retains the existing core archive.
+The core patch evaluates Elysia AOT in a child process and waits for its exit before
+prerendering. An application can own native file locks and database handles during
+compilation; terminating a JavaScript worker does not reliably close these process-owned
+resources. Process isolation releases them at the OS boundary. Existing AOT named-plugin,
+unnamed-plugin rejection and registration tests pass with this change.
 
-The Electrobun archive is built from an isolated checkout of its exact upstream
-commit using the package's `build.ts`, then packed with `bun pm pack` under Bun
-1.4.3. Packing resolves the workspace catalog references to published semver
-ranges. Its source matches upstream; no local guard patch is applied. Both
-archives include their MIT license.
+The desktop patch ports Remote Servers network admission, TLS listener configuration and
+the client-only manager onto the newer upstream lifecycle and diagnostics. It preserves
+startup deadlines and error reporting. Tofu still uses a single `apiPlugin` listener;
+network requests authenticate before dispatch, while the protected isomorphic Eden client
+keeps direct in-process server dispatch. No client transport workaround is introduced.
 
-Tofu mounts `desktopApp()` on its single Elysia application, exported as
-`apiPlugin` and used directly by the protected isomorphic Eden client. The
-upstream SDK distinguishes trusted in-process dispatch from requests arriving
-through Bun's HTTP listener. Network session and origin checks remain enforced;
-startup, update pause, and shutdown affect both transports.
+## Rebuilding
 
-The standard native host owns windows, tray, native events, and update handoff.
-The runtime data-directory policy in `furin.config.ts` preserves `Tofu` and
-`Tofu-dev` and resolves `TOFU_DATA_DIR` at launch. Failed update handoff restarts
-the process after releasing the native and application instance leases. Native
-smoke injection is opt-in through `FURIN_NATIVE_TEST_SCRIPT`.
+Use an isolated Furin checkout at the exact upstream commit above. Install dependencies
+with Bun 1.4.3, apply patches 0003 and 0004 from the repository root, and run each package's
+`build.ts`, core first. Pack each package with `bun pm pack` from its package directory
+and copy the resulting archives to the names above. Packing resolves workspace catalog
+references to published ranges. Archives contain their upstream MIT licenses.
 
-The prior provisional guard patch and its archive have been removed. The
-upstream change requires no `allowInProcessRequests` option and no changes to
-`src/lib/client.ts`.
+The unpatched `*-pr163-3a83c0d.tgz` archives are retained as upstream references. Patches
+0001/0002 and `furin-electrobun-remote-native-v5.tgz` document the previous Remote Servers
+baseline; they are not active dependencies. Historical implementation notes reference
+those earlier pins and are superseded by this integration.
+
+The Electrobun 2.0.2 cookie proposal in `patches/electrobun-2.0.2-macos-cookie.patch`
+remains a separate SDK change. Rebuilding Furin does not fix that native SDK binary:
+Tofu continues to refuse remote views when HttpOnly and other cookie flags cannot be
+verified. Per-session embedded client routing also remains a separate platform gate.

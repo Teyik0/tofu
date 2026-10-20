@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
-import type { AniListReleases, DashboardState } from "../../src/types";
+import type { AniListReleases, LibraryState } from "../../src/types";
 import { createTestApi } from "../helpers/application";
 import { expectSuccess } from "../helpers/problem";
 import { openTestServices } from "../helpers/services";
@@ -55,7 +55,7 @@ test("catalog anime can find and download episodes without joining a personal li
     });
     expect(added.status).toBe(200);
     const dashboard = await waitFor(
-      async () => expectSuccess(await client.state.get()) as DashboardState,
+      async () => expectSuccess(await client.state.get()) as LibraryState,
       // Received bytes can reach 100% before verification and disk writes finish.
       (snapshot) =>
         snapshot.torrents.some(

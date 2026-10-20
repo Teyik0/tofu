@@ -3,10 +3,9 @@ import { t } from "elysia";
 import { App } from "../components/app";
 import { api } from "../lib/client";
 import { selectedTorrentId } from "../lib/navigation";
-import { route as root } from "./root";
 
-export const route = defineRoute()
-  .config({ layout: root, mode: "ssr", query: t.Object({ torrent: t.Optional(t.String()) }) })
+export const route = defineRoute("/")
+  .config({ mode: "ssr", query: t.Object({ torrent: t.Optional(t.String()) }) })
   .loader(async ({ dashboard, query }) => {
     const state = await dashboard;
     const selectedId = selectedTorrentId(state.torrents, null, query.torrent);
@@ -15,7 +14,6 @@ export const route = defineRoute()
     }
     const { data, error } = await api.torrents({ id: selectedId }).get();
     if (error) {
-      // The torrent can be removed after the dashboard snapshot; the live stream catches up.
       if (error.status === 404) {
         return { detail: null };
       }

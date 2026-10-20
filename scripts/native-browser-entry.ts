@@ -1,12 +1,14 @@
 import { catalogWorkflow } from "../tests/anilist/native/catalog";
 import { libraryWorkflow } from "../tests/anilist/native/library";
 import { globalSearchWorkflow } from "./native-global-search";
+import { connectionsWorkflow } from "./native-workflow-connections";
 import { nativeWorkflow } from "./native-workflow-main";
 import { pluginsWorkflow } from "./native-workflow-plugins";
 
 const workflows = {
   anilist: libraryWorkflow,
   "anilist-catalog": catalogWorkflow,
+  connections: connectionsWorkflow,
   "global-search": globalSearchWorkflow,
   main: nativeWorkflow,
   plugins: pluginsWorkflow,

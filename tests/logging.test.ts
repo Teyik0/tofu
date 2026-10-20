@@ -43,13 +43,14 @@ test("application logs preserve worker storage errors, redact credentials and su
     const { id } = expectSuccess(
       await client.torrents.post({ paused: false, source: context.magnet })
     );
-    const completed = await waitFor(
+    await waitFor(
       async () => expectSuccess(await client.torrents({ id }).get()),
       (detail) => detail.status === "seeding"
     );
+    const { savePath } = expectSuccess(await client.torrents({ id }).host.get());
     expectSuccess(await client.torrents({ id }).pause.post({}));
-    await rename(completed.savePath, join(context.directory, "original-storage"));
-    await mkdir(completed.savePath);
+    await rename(savePath, join(context.directory, "original-storage"));
+    await mkdir(savePath);
     const failed = await client.torrents({ id }).repair.post({});
     expect(failed.status).toBe(409);
     const failure = await client.torrents.post({

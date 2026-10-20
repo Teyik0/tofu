@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { DashboardState } from "../src/types";
+import type { LibraryState } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
@@ -10,10 +10,8 @@ test("pause stops network traffic and resume preserves the verified file bytes",
     const { id }: { id: string } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
-    const state = () =>
-      context.client.state
-        .get({ query: { selected: id } })
-        .then((response) => expectSuccess(response) as DashboardState);
+    const state = async () =>
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
     await waitFor(state, (value) => (value.detail?.received ?? 0) > 0);
     const paused = await context.client.torrents({ id }).pause.post({});
     expect(paused.status).toBe(200);

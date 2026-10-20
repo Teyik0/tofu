@@ -1,8 +1,7 @@
 import { defineRoute } from "@teyik0/furin";
 import { getRouteApi } from "@teyik0/furin/client";
-import { startTransition } from "react";
+import { useAtom } from "jotai";
 import { OptionSelect } from "../../components/option-select";
-import { Alert, AlertDescription } from "../../components/ui/alert";
 import {
   Field,
   FieldContent,
@@ -12,9 +11,8 @@ import {
   FieldLegend,
   FieldSet,
 } from "../../components/ui/field";
-import { useSettingsAction } from "../../hooks/use-settings-action";
+import { themeAtom, themeStorageKey } from "../../state/workspace";
 import type { ThemePreference } from "../../types";
-import { route as options } from "./_route";
 
 const themeOptions = [
   { label: "System (default)", value: "system" },
@@ -22,14 +20,14 @@ const themeOptions = [
   { label: "Dark", value: "dark" },
 ] satisfies { label: string; value: ThemePreference }[];
 
-export const route = defineRoute()
-  .config({ layout: options, mode: "ssr" })
+export const route = defineRoute("/options/appearance")
+  .config({ mode: "ssr" })
   .head(() => ({ meta: [{ title: "Appearance settings — Tofu" }] }))
   .page(() => {
     const { dashboard } = getRouteApi("/options/appearance").useLoaderData();
-    const { busy, dispatchAction, error } = useSettingsAction();
+    const [theme, setTheme] = useAtom(themeAtom);
     return (
-      <div aria-busy={busy}>
+      <div>
         <FieldSet>
           <FieldLegend>Interface</FieldLegend>
           <FieldGroup className="settings-group">
@@ -37,28 +35,25 @@ export const route = defineRoute()
               <FieldContent>
                 <FieldLabel htmlFor="appearance-theme">Appearance</FieldLabel>
                 <FieldDescription id="appearance-description">
-                  Choose a theme. System follows your device’s appearance automatically.
+                  Applies to this device for {dashboard.server.name}. System follows your device’s
+                  appearance automatically.
                 </FieldDescription>
               </FieldContent>
               <OptionSelect
                 ariaDescribedBy="appearance-description"
                 className="settings-select"
-                disabled={busy}
+                disabled={false}
                 id="appearance-theme"
-                onValueChange={(theme) =>
-                  startTransition(() => dispatchAction({ settings: { theme }, type: "update" }))
-                }
+                onValueChange={(next) => {
+                  window.localStorage.setItem(themeStorageKey(dashboard.server.id), next);
+                  setTheme(next);
+                }}
                 options={themeOptions}
-                value={dashboard.settings.theme}
+                value={theme}
               />
             </Field>
           </FieldGroup>
         </FieldSet>
-        {error !== null && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
       </div>
     );
   });

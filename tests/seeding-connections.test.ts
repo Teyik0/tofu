@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebTorrent, { type Torrent } from "webtorrent";
-import type { DashboardState, Settings } from "../src/types";
+import type { LibraryState, Settings } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { settingsFixture } from "./helpers/settings";
 import { fixture, network, torrentBytes, waitFor } from "./helpers/torrent";
@@ -47,11 +47,9 @@ test("incoming-only seeding still downloads outgoing and uploads verified bytes 
     const added = await context.client.torrents.post({ paused: false, source: context.magnet });
     expect(added.status).toBe(200);
     const { id }: { id: string } = expectSuccess(added);
-    const read = () =>
-      context.client.state
-        .get({ query: { selected: id } })
-        .then((response) => expectSuccess(response) as DashboardState);
-    const completed = await waitFor(read, (state) => state.detail?.status === "seeding");
+    const read = async () =>
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
+    await waitFor(read, (state) => state.detail?.status === "seeding");
     const received = await context.client.torrents({ id }).files({ index: "0" }).content.get();
     expect(Bun.SHA256.hash(torrentBytes(received), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
@@ -64,7 +62,8 @@ test("incoming-only seeding still downloads outgoing and uploads verified bytes 
         resolve
       );
     });
-    expect(download.addPeer(`127.0.0.1:${completed.session.port}`)).toBe(true);
+    const host = expectSuccess(await context.client.host.get());
+    expect(download.addPeer(`127.0.0.1:${host.session.port}`)).toBe(true);
     await waitFor(
       async () => download.done,
       (done) => done
@@ -76,11 +75,10 @@ test("incoming-only seeding still downloads outgoing and uploads verified bytes 
     expect(
       Bun.SHA256.hash(await Bun.file(join(download.path, file.path)).arrayBuffer(), "hex")
     ).toBe(Bun.SHA256.hash(context.bytes, "hex"));
-    const uploaded = await waitFor(
-      read,
-      (state) => (state.detail?.uploaded ?? 0) >= context.bytes.length
-    );
-    expect(uploaded.settings).toMatchObject({ seedingConnectionMode: "incoming-only" });
+    await waitFor(read, (state) => (state.detail?.uploaded ?? 0) >= context.bytes.length);
+    expect(expectSuccess(await context.client.host.get()).settings).toMatchObject({
+      seedingConnectionMode: "incoming-only",
+    });
   } finally {
     await new Promise<void>((resolve) => leecher.destroy(() => resolve()));
     await context.close();
@@ -94,10 +92,8 @@ test("completed torrents reject manual outgoing peers in incoming-only mode and 
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     await waitFor(
-      () =>
-        context.client.state
-          .get({ query: { selected: id } })
-          .then((response) => expectSuccess(response) as DashboardState),
+      async () =>
+        expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState,
       (state) => state.detail?.status === "seeding"
     );
     const download = await new Promise<Torrent>((resolve, reject) => {

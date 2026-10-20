@@ -1,9 +1,7 @@
 import { join } from "node:path";
-import { treaty } from "@elysia/eden";
-import type { Api } from "../../src/api";
 import type { InstanceConfig } from "../../src/types";
 import { waitFor } from "./torrent";
-export function launchServer(config: InstanceConfig, watchEntry?: string) {
+export function launchServer(config: InstanceConfig, watchEntry?: string, trustedCA?: string) {
   const command = watchEntry ? ["--watch", "--no-clear-screen", watchEntry] : ["src/server.ts"];
   const shutdownPath = join(config.dataDir, `test-shutdown-${crypto.randomUUID()}`);
   let applicationPid: number | undefined;
@@ -14,10 +12,14 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
       env: {
         ...process.env,
         TOFU_DATA_DIR: config.dataDir,
+        TOFU_DISCOVERY: "0",
         TOFU_DOWNLOAD_DIR: config.downloadPath,
         TOFU_MODE: "server",
         TOFU_PORT: String(config.port),
         TOFU_PROFILE: config.profile,
+        // Never inspect or change the developer's real Tailscale configuration.
+        TOFU_TAILSCALE_CLI:
+          process.env.TOFU_TAILSCALE_CLI ?? join(config.dataDir, "tailscale-not-installed"),
         TOFU_TEST_SHUTDOWN: process.platform === "win32" ? shutdownPath : undefined,
       },
       ipc(message) {
@@ -41,6 +43,7 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
     output,
     async ready() {
       const address = await waitFor(
+        // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Readiness reports process failures and validates the actual HTTP or TLS listener together.
         async () => {
           if (child.exitCode !== null) {
             throw new Error(await output);
@@ -53,7 +56,18 @@ export function launchServer(config: InstanceConfig, watchEntry?: string) {
           if (!watchEntry && pid !== applicationPid) {
             return null;
           }
-          return (await treaty<Api>(url).api.health.get()).response?.ok ? url : null;
+          const target = new URL(url);
+          if (target.hostname === "0.0.0.0" || target.hostname === "[::]") {
+            target.hostname = "127.0.0.1";
+          }
+          const { origin } = target;
+          return (
+            await fetch(`${origin}/.well-known/tofu`, {
+              tls: trustedCA ? { ca: trustedCA } : undefined,
+            })
+          ).ok
+            ? origin
+            : null;
         },
         (url) => url !== null,
         // Watch mode also compiles Furin's development graph before opening the listener.

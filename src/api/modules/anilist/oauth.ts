@@ -1,6 +1,7 @@
-import { HTTPError, problem } from "elysia";
+import { ElysiaStatus, problem } from "elysia";
 
 interface AuthorizationAttempt {
+  deviceId?: string;
   processing: boolean;
   redirect: URL;
   state: string;
@@ -67,10 +68,11 @@ export class AniListAuthorization {
   private server: ReturnType<typeof Bun.serve> | null = null;
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private attempt: AuthorizationAttempt | null = null;
-  private readonly complete: (token: string, current: () => boolean) => Promise<void>;
+  /** Stores the token and loads the account; a returned problem means the connection failed. */
+  private readonly complete: (token: string, current: () => boolean) => Promise<unknown>;
   error: string | null = null;
 
-  constructor(complete: (token: string, current: () => boolean) => Promise<void>) {
+  constructor(complete: (token: string, current: () => boolean) => Promise<unknown>) {
     this.complete = complete;
   }
 
@@ -78,11 +80,11 @@ export class AniListAuthorization {
     return this.attempt !== null;
   }
 
-  connect(clientId: string, redirectUri: string) {
+  connect(clientId: string, redirectUri: string, deviceId?: string) {
     this.close();
     this.error = null;
     const redirect = new URL(redirectUri);
-    const attempt = { processing: false, redirect, state: crypto.randomUUID() };
+    const attempt = { deviceId, processing: false, redirect, state: crypto.randomUUID() };
     this.attempt = attempt;
     try {
       if (redirect.protocol === "http:") {
@@ -93,12 +95,11 @@ export class AniListAuthorization {
           port: Number(redirect.port),
         });
       }
-    } catch (cause) {
+    } catch {
       this.attempt = null;
-      throw new (HTTPError.id("CONFLICT", 409))(
-        `AniList connection needs local port ${redirect.port}. Close the app using that port and try again.`,
-        { cause }
-      );
+      return problem(409, {
+        detail: `AniList connection needs local port ${redirect.port}. Close the app using that port and try again.`,
+      });
     }
     this.timeout = setTimeout(() => {
       if (this.pending) {
@@ -115,11 +116,12 @@ export class AniListAuthorization {
     return { url: url.href };
   }
 
-  async receiveUrl(input: string) {
+  async receiveUrl(input: string, deviceId?: string) {
     const { attempt } = this;
     const url = URL.parse(input);
     if (
       !(url && attempt && ["tofu:", "tofu-dev:"].includes(url.protocol)) ||
+      attempt.deviceId !== deviceId ||
       url.protocol !== attempt.redirect.protocol ||
       url.hostname !== "oauth" ||
       url.pathname !== "/anilist" ||
@@ -128,9 +130,9 @@ export class AniListAuthorization {
       url.port ||
       url.search
     ) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))(
-        "Invalid or expired OAuth callback. Restart the connection from Tofu."
-      );
+      return problem(400, {
+        detail: "Invalid or expired OAuth callback. Restart the connection from Tofu.",
+      });
     }
     const fragment = new URLSearchParams(url.hash.slice(1));
     const response = await this.accept(
@@ -143,7 +145,9 @@ export class AniListAuthorization {
     );
     if (!response.ok) {
       const result = (await response.json()) as { detail: string };
-      throw new (HTTPError.id("ANILIST_AUTHORIZATION_ERROR", response.status))(result.detail);
+      return response.status === 400
+        ? problem(400, { detail: result.detail })
+        : problem(502, { detail: result.detail });
     }
   }
 
@@ -164,7 +168,12 @@ export class AniListAuthorization {
     ) {
       return callbackProblem("Invalid callback origin", 403);
     }
-    const body: unknown = await request.json().catch(() => null);
+    let body: unknown = null;
+    try {
+      body = await request.json();
+    } catch {
+      /* The callback validates a missing body below. */
+    }
     return this.accept(body, attempt);
   }
 
@@ -197,10 +206,7 @@ export class AniListAuthorization {
       return callbackProblem("Missing AniList access token", 400);
     }
     attempt.processing = true;
-    try {
-      await this.complete(body.access_token, () => this.attempt === attempt);
-      return Response.json({ connected: true }, { headers });
-    } catch {
+    const failed = () => {
       if (this.attempt === attempt) {
         this.error =
           "Unable to connect or load your AniList account. Return to Tofu and try again.";
@@ -209,6 +215,15 @@ export class AniListAuthorization {
         "Unable to connect or load your AniList account. Return to Tofu and try again.",
         502
       );
+    };
+    try {
+      const completed = await this.complete(body.access_token, () => this.attempt === attempt);
+      if (completed instanceof ElysiaStatus) {
+        return failed();
+      }
+      return Response.json({ connected: true }, { headers });
+    } catch {
+      return failed();
     } finally {
       if (this.attempt === attempt) {
         this.attempt = null;

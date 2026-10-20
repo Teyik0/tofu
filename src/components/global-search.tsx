@@ -3,7 +3,7 @@ import { useAtom, useSetAtom } from "jotai";
 import { HistoryIcon, SearchIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { globalSearchOpenAtom } from "../state/workspace";
-import type { DashboardState } from "../types";
+import type { LiveState } from "../types";
 import {
   GlobalSearchResults,
   GlobalSearchReview,
@@ -39,7 +39,7 @@ export function GlobalSearch({
   dashboard,
   activeDestination,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   activeDestination: string | null;
 }) {
   const [open, setOpen] = useAtom(globalSearchOpenAtom);
@@ -99,7 +99,7 @@ function SearchContent({
   close,
   inputRef,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   activeDestination: string | null;
   close: () => void;
   inputRef: React.RefObject<HTMLInputElement | null>;

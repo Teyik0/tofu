@@ -6,7 +6,7 @@ import { treaty } from "@elysia/eden";
 import { databaseMigrationsPlugin } from "../scripts/database-migrations";
 import { defaultConnectionPolicy } from "../src/api/modules/torrents/connections";
 import { WorkerTorrentEngine } from "../src/api/modules/torrents/worker-client";
-import type { DashboardState, TorrentDetail } from "../src/types";
+import type { LibraryState, LibraryTorrentDetail } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectProblem, expectSuccess } from "./helpers/problem";
 import { fixture, network, torrentBytes, waitFor } from "./helpers/torrent";
@@ -57,7 +57,7 @@ test.each(["source", "bundle", "host"])(
       const { id } = expectSuccess(added) as { id: string };
       await waitFor(
         async () =>
-          expectSuccess(await client.state.get({ query: { selected: id } })) as DashboardState,
+          expectSuccess(await client.state.get({ query: { selected: id } })) as LibraryState,
         (state) => state.detail?.status === "seeding"
       );
       const file = await client.torrents({ id }).files({ index: "0" }).content.get();
@@ -92,7 +92,8 @@ test("isolated engine lifecycle preserves files and public errors across restart
     expect((await client.torrents.post({ paused: false, source: "invalid" })).status).toBe(400);
     const added = await client.torrents.post({ paused: false, source: context.magnet });
     const { id } = expectSuccess(added) as { id: string };
-    const detail = async () => expectSuccess(await client.torrents({ id }).get()) as TorrentDetail;
+    const detail = async () =>
+      expectSuccess(await client.torrents({ id }).get()) as LibraryTorrentDetail;
     await waitFor(detail, (value) => value.status === "seeding");
     expect((await client.torrents({ id }).pause.post({})).status).toBe(200);
     expect((await client.torrents({ id }).trackers.put({ urls: [] })).status).toBe(200);

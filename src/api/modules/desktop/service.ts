@@ -21,7 +21,16 @@ export const desktopHooks = {
                 onSelect: async () => {
                   try {
                     const { instance } = await import("../../lib/database-plugin");
-                    await setDefaultTorrentApp(instance.profile, desktop);
+                    const defaults = await setDefaultTorrentApp(instance.profile, desktop);
+                    if (defaults instanceof ElysiaStatus) {
+                      await desktop.dialogs.message({
+                        detail: defaults.response.detail,
+                        message: "Unable to change default torrent app",
+                        title: identity.name,
+                        type: "error",
+                      });
+                      return;
+                    }
                     await desktop.dialogs.message({
                       detail: "Tofu will open .torrent files and magnet links.",
                       message: "Tofu is your default torrent app",

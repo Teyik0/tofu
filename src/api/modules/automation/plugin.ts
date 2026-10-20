@@ -19,8 +19,13 @@ export const releaseAutomationPlugin = new Elysia({ name: "tofu-release-automati
   .use(discoveryServicePlugin)
   .decorate("releaseAutomation", releaseAutomation);
 resources.defer(releaseAutomation.close.bind(releaseAutomation));
-releaseAutomationPlugin.setup(() => {
-  void releaseAutomation.start().catch((error: unknown) => {
-    recordLog({ component: "automation", error, level: "error", operation: "start" });
-  });
+releaseAutomationPlugin.onStart(() => {
+  const start = async () => {
+    try {
+      await releaseAutomation.start();
+    } catch (error) {
+      recordLog({ component: "automation", error, level: "error", operation: "start" });
+    }
+  };
+  void start();
 });

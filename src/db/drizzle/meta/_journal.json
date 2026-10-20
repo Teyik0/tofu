@@ -15,6 +15,20 @@
       "when": 1792328265526,
       "tag": "0001_thread_torrent_files",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792393327896,
+      "tag": "0002_remote_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792395414811,
+      "tag": "0003_playback_sequences",
+      "breakpoints": true
     }
   ]
 }

@@ -1,11 +1,13 @@
 import { useMutation } from "@teyik0/furin/client";
 import { cn } from "cn";
+import { useAtomValue } from "jotai";
 import { ExternalLinkIcon, HeartIcon } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import type { useAniListEditor } from "../../hooks/use-anilist-editor";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import { api } from "../../lib/client";
-import type { AniListEntry, AniListMedia, DashboardState } from "../../types";
+import { sessionAtom } from "../../state/workspace";
+import type { AniListEntry, AniListMedia } from "../../types";
 import { ActionTooltip } from "../action-tooltip";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button, buttonVariants } from "../ui/button";
@@ -13,18 +15,18 @@ import { DialogDescription, DialogTitle } from "../ui/dialog";
 import { AniListCover } from "./cover";
 export function EpisodeHeader({
   entry,
-  dashboard,
   authenticated,
   model,
   available,
 }: {
   entry: AniListMedia | AniListEntry;
-  dashboard: DashboardState;
   authenticated: boolean;
   available: number | null;
   model: ReturnType<typeof useAniListEditor>;
 }) {
   const { editor, setEditor, loading: editorLoading } = model;
+  // The host opens AniList itself only for its own window; elsewhere the link opens here.
+  const hostNative = useAtomValue(sessionAtom)?.capabilities.hostNative === true;
   const openAnime = useMutation(api.anilist.open.post);
   const setFavourite = useMutation((enabled: boolean) =>
     api.anilist.entries({ mediaId: entry.mediaId }).favourite.put({ enabled })
@@ -106,7 +108,7 @@ export function EpisodeHeader({
                 )}
                 href={entry.siteUrl}
                 onClick={(event) => {
-                  if (dashboard.session.mode !== "desktop") {
+                  if (!hostNative) {
                     return;
                   }
                   event.preventDefault();

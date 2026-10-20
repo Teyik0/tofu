@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Torrent } from "webtorrent";
-import type { DashboardState } from "../src/types";
+import type { LibraryState } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
@@ -24,10 +24,12 @@ test("skipping a file preserves the shared pieces needed by the preceding select
     expect(
       (await context.client.torrents({ id }).files({ index: "1" }).put({ priority: "skip" })).status
     ).toBe(200);
-    await context.client.torrents({ id }).resume.post({});
-    await context.client
-      .torrents({ id })
-      .peers.post({ peer: `127.0.0.1:${context.seeder.torrentPort}` });
+    expectSuccess(await context.client.torrents({ id }).resume.post({}));
+    expectSuccess(
+      await context.client
+        .torrents({ id })
+        .peers.post({ peer: `127.0.0.1:${context.seeder.torrentPort}` })
+    );
     const detail = await waitFor(
       async () => expectSuccess(await context.client.torrents({ id }).get()),
       (value) => value.status === "seeding"
@@ -46,12 +48,13 @@ test("file access returns a useful error when downloaded data has disappeared", 
     const { id } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
-    const detail = await waitFor(
+    await waitFor(
       async () => expectSuccess(await context.client.torrents({ id }).get()),
       (value) => value.status === "seeding"
     );
+    const { savePath } = expectSuccess(await context.client.torrents({ id }).host.get());
     await context.client.torrents({ id }).pause.post({});
-    await rm(join(detail.savePath, "source.bin"));
+    await rm(join(savePath, "source.bin"));
     await Promise.all(
       ["availability", "content"].map(async (endpoint) => {
         const response = await context.client
@@ -77,20 +80,20 @@ test("a .torrent upload can skip and prioritize a file, and bandwidth settings a
     });
     expect(added.status).toBe(200);
     const { id }: { id: string } = expectSuccess(added);
-    const read = () =>
-      context.client.state
-        .get({ query: { selected: id } })
-        .then((response) => expectSuccess(response) as DashboardState);
+    const read = async () =>
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
     expect((await read()).detail?.files).toHaveLength(1);
     const skip = await context.client
       .torrents({ id })
       .files({ index: "0" })
       .put({ priority: "skip" });
     expect(skip.status).toBe(200);
-    await context.client.torrents({ id }).resume.post({});
-    await context.client
-      .torrents({ id })
-      .peers.post({ peer: `127.0.0.1:${context.seeder.torrentPort}` });
+    expectSuccess(await context.client.torrents({ id }).resume.post({}));
+    expectSuccess(
+      await context.client
+        .torrents({ id })
+        .peers.post({ peer: `127.0.0.1:${context.seeder.torrentPort}` })
+    );
     await waitFor(read, (state) => (state.detail?.peers ?? 0) > 0);
     await Bun.sleep(150);
     expect((await read()).detail?.downloaded).toBe(0);
@@ -101,9 +104,13 @@ test("a .torrent upload can skip and prioritize a file, and bandwidth settings a
     expect(high.status).toBe(200);
     const complete = await waitFor(read, (state) => state.detail?.status === "seeding");
     expect(complete.detail?.files[0]?.priority).toBe("high");
-    const setting = { ...(await read()).settings, downloadLimit: 1_048_576, uploadLimit: 524_288 };
+    const setting = {
+      ...expectSuccess(await context.client.host.get()).settings,
+      downloadLimit: 1_048_576,
+      uploadLimit: 524_288,
+    };
     expect((await context.client.settings.put(setting)).status).toBe(200);
-    expect((await read()).settings).toEqual(setting);
+    expect(expectSuccess(await context.client.host.get()).settings).toEqual(setting);
   } finally {
     await context.close();
   }

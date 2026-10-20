@@ -213,7 +213,7 @@ export function UpdatesPanel({ disabled }: { disabled: boolean }) {
 }
 
 function useUpdateControls() {
-  const { data: live, error: loadingError } = useQuery(api.updates.get);
+  const { data: live, error: loadingError } = useQuery(api.updates.get.live());
   const data = live && "status" in live ? live : undefined;
   const check = useUpdateCheck();
   const download = useUpdateAction(data);

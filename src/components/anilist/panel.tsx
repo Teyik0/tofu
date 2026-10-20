@@ -1,11 +1,13 @@
 import { Form, getDeepError, useField, useForm } from "@formisch/react";
 import { useMutation, useQuery } from "@teyik0/furin/client";
+import { useAtomValue } from "jotai";
 import { ExternalLinkIcon, PauseIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { pick } from "valibot";
 import { aniListConfigurationSchema } from "../../api/modules/anilist/model";
 import { useAuthorizationPolling } from "../../hooks/use-authorization-polling";
 import { api } from "../../lib/client";
+import { sessionAtom } from "../../state/workspace";
 import type {
   AniListState,
   AutomationPreferences,
@@ -44,6 +46,9 @@ function AniListConnection({
   busy: boolean;
   afterMutation?: () => Promise<void>;
 }) {
+  const session = useAtomValue(sessionAtom);
+  const canAuthorize =
+    session?.capabilities.hostNative === true || session?.caller.deviceKind === "desktop";
   const connect = useMutation(api.anilist.connect.post);
   const openAuthorization = useMutation(api.anilist.open.post);
   const cancelAuthorization = useMutation(api.anilist.connect.delete);
@@ -71,12 +76,13 @@ function AniListConnection({
         </Badge>
       </div>
       <p className="automation-caption">
-        Sign in to AniList in your browser and authorize Tofu. Your account and lists will connect
-        automatically.
+        {canAuthorize
+          ? "Sign in to AniList in your browser and authorize Tofu. Your account and lists will connect automatically."
+          : "Connect AniList from this server's own Tofu desktop window or a paired Tofu desktop app. In this browser, you can use an existing connection or follow a public account name."}
       </p>
       <div className="automation-form-actions">
         <Button
-          disabled={busy || state.authorizationPending}
+          disabled={busy || state.authorizationPending || !canAuthorize}
           onClick={() =>
             action(async () => {
               setAuthorizationUrl(null);
@@ -87,9 +93,11 @@ function AniListConnection({
               const { url } = authorization;
               setAuthorizationUrl(url);
               await (afterMutation ?? reload)();
-              const result = await openAuthorization.mutateAsync({ url });
-              if (result && "url" in result) {
-                setAuthorizationUrl(result.url);
+              if (session?.capabilities.hostNative) {
+                const result = await openAuthorization.mutateAsync({ url });
+                if (result && "url" in result) {
+                  setAuthorizationUrl(result.url);
+                }
               }
             })
           }
@@ -398,7 +406,7 @@ type QueriedAniListPanelProps = Omit<AniListPanelProps, "state" | "reload" | "af
 
 // The automation modal can open on routes whose loaders do not include AniList.
 export const QueriedAniListPanel = ({ reloadPlugins, ...props }: QueriedAniListPanelProps) => {
-  const { data: live } = useQuery(api.anilist.get);
+  const { data: live } = useQuery(api.anilist.get.live());
   const [refreshed, setRefreshed] = useState<{
     source: typeof live;
     state: AniListState;

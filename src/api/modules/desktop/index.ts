@@ -1,9 +1,12 @@
 import { on } from "node:events";
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia, problem, sse } from "elysia";
+import { Elysia, ElysiaStatus, problem, sse } from "elysia";
+import { nativeControl } from "../../../native/control";
+import { nativeServerActionSchema } from "../../../native/model";
 import { sync } from "../../../sync";
 import { instance, logs } from "../../lib/database-plugin";
 import { runtime } from "../../lib/runtime";
+import { accessPlugin } from "../access/plugin";
 import { acceptOpenedTorrentSchema } from "../torrents/model";
 import { torrentServicePlugin } from "../torrents/plugin";
 import { updatesServicePlugin } from "../updates/plugin";
@@ -13,9 +16,27 @@ import { torrentOpenings } from "./service";
 export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   .use(torrentServicePlugin)
   .use(updatesServicePlugin)
+  .use(accessPlugin)
   .use(furinSync(sync))
-  .guard({ sync: false })
+  // Host paths, native windows, dialogs and file openings belong to the host's own window.
+  .guard({ idempotent: false, owner: true })
   .get("/instance", () => instance)
+  .get("/desktop/servers", () => {
+    if (runtime.current.kind !== "desktop" || !nativeControl.tofuNativeServers) {
+      return problem(409, { detail: "Desktop servers are managed in the native Tofu app" });
+    }
+    return nativeControl.tofuNativeServers.read();
+  })
+  .post("/desktop/servers", { body: nativeServerActionSchema }, async ({ body }) => {
+    if (runtime.current.kind !== "desktop" || !nativeControl.tofuNativeServers) {
+      return problem(409, { detail: "Desktop servers are managed in the native Tofu app" });
+    }
+    const result = await nativeControl.tofuNativeServers.run(body);
+    if (!result.ok) {
+      return problem(409, { detail: result.detail });
+    }
+    return result.state;
+  })
   .post("/desktop/logs/open", async () => {
     if (runtime.current.kind !== "desktop") {
       return problem(409, { detail: "The logs folder is on the machine hosting Tofu" });
@@ -69,15 +90,20 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
     if (runtime.current.kind !== "desktop") {
       return problem(409, { detail: "The folder is on the machine hosting Tofu" });
     }
-    return {
-      opened: runtime.current.desktop.shell.openPath((await torrents.detail(params.id)).savePath),
-    };
+    const detail = await torrents.detail(params.id);
+    if (detail instanceof ElysiaStatus) {
+      return detail;
+    }
+    return { opened: runtime.current.desktop.shell.openPath(detail.savePath) };
   })
   .post("/torrents/:id/files/:index/open", async ({ torrents, params }) => {
     if (runtime.current.kind !== "desktop") {
       return problem(409, { detail: "The file is on the machine hosting Tofu" });
     }
     const file = await torrents.file(params.id, Number(params.index));
+    if (file instanceof ElysiaStatus) {
+      return file;
+    }
     return { opened: runtime.current.desktop.shell.openPath(file.path) };
   })
   .get("/desktop", () => {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import type { DashboardState } from "../src/types";
+import type { LibraryState } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
@@ -11,7 +11,7 @@ test("verification reports conflicts for file access, another verification and d
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
     const read = async () =>
-      expectSuccess(await context.client.state.get({ query: { selected: id } })) as DashboardState;
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
     await waitFor(read, (state) => state.detail?.status === "seeding");
     await context.client.torrents({ id }).pause.post({});
     const checking = context.client.torrents({ id }).verify.post({});
@@ -44,13 +44,12 @@ test("force verification detects damaged data while paused and explicit repair e
     const { id }: { id: string } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
-    const read = () =>
-      context.client.state
-        .get({ query: { selected: id } })
-        .then((response) => expectSuccess(response) as DashboardState);
-    const completed = await waitFor(read, (state) => state.detail?.status === "seeding");
+    const read = async () =>
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
+    await waitFor(read, (state) => state.detail?.status === "seeding");
+    const { savePath } = expectSuccess(await context.client.torrents({ id }).host.get());
     await context.client.torrents({ id }).pause.post({});
-    await Bun.write(join(completed.detail?.savePath ?? "", "source.bin"), new Uint8Array(65_536));
+    await Bun.write(join(savePath, "source.bin"), new Uint8Array(65_536));
     expect((await context.client.torrents({ id }).verify.post({})).status).toBe(200);
     const checked = await read();
     expect(checked.detail?.status).toBe("paused");

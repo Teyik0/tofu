@@ -1,23 +1,20 @@
 import { isAbsolute, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
-import { HTTPError } from "elysia";
+import { ElysiaStatus, problem } from "elysia";
 import { anilistState } from "../../../db/schema";
 import type {
   AniListCatalog,
   AniListCatalogFilters,
   AniListCatalogOptions,
   AniListClient,
-  AniListEditor,
   AniListEntry,
   AniListListUpdate,
   AniListMedia,
-  AniListReleases,
   AniListState,
   AniListStatus,
   AniListSubscription,
   AniListThreadProposal,
   AutomationDraft,
-  Destination,
   EnginePort,
   FeedRelease,
 } from "../../../types";
@@ -36,7 +33,7 @@ import type { PluginsService } from "../plugins/service";
 import { catalogMedia, catalogVariables } from "./catalog";
 import { editorState, validateEntryUpdate } from "./editor";
 import type { LibraryQuery } from "./graphql/generated";
-import { createAniListSdk } from "./graphql/transport";
+import { AniListUnavailable, createAniListSdk } from "./graphql/transport";
 import { AniListAuthorization } from "./oauth";
 import {
   animeEpisodeOffset,
@@ -146,17 +143,17 @@ export class AniListService {
   private connectedUser: string | null = null;
   private account: { id: number; name: string } | null = null;
   private cache: AniListCache | null = null;
-  private listFlight: { key: string; promise: Promise<AniListState> } | null = null;
+  private listFlight: { key: string; promise: Promise<AniListState | ListFailure> } | null = null;
   private refreshError: string | null = null;
   private retryAt = 0;
   private readonly selections = new Map<string, boolean>();
   private readonly watched = new Map<string, number[]>();
   private readonly animeRules = new Map<string, string>();
-  private readonly episodeRuns = new Map<number, Promise<unknown>>();
+  private readonly episodeRuns = new Map<number, Promise<void>>();
   private listRevision = 0;
   private readonly subscriptions = new Map<string, AniListSubscription>();
   private readonly runs = new Map<string, Promise<AniListState>>();
-  private readonly destinationRuns = new Map<string, Promise<Destination>>();
+  private readonly destinationRuns = new Map<string, ReturnType<EnginePort["saveDestination"]>>();
   private readonly requests = new Set<AbortController>();
   private readonly lifecycle: { closed: boolean; started: boolean } = {
     closed: false,
@@ -205,6 +202,12 @@ export class AniListService {
         { anime: { aliases: entry.aliases, titles: interpretation.titles } },
         interpretation.questions
       );
+      if (result instanceof ElysiaStatus) {
+        return {
+          ...fallback,
+          warning: "Jev search interpretation unavailable; searching with local title matching.",
+        };
+      }
       if (!result) {
         return fallback;
       }
@@ -226,8 +229,11 @@ export class AniListService {
       };
     }
   }
-  async releases(mediaId: number): Promise<AniListReleases> {
+  async releases(mediaId: number) {
     const original = await this.media(mediaId);
+    if (original instanceof ElysiaStatus) {
+      return original;
+    }
     const library = this.snapshot().entries;
     const plan = await this.animeSearch(original);
     const { entry, titles } = plan;
@@ -355,6 +361,7 @@ export class AniListService {
     const { clientSecret, ...config } = this.config;
     return {
       ...config,
+      accountId: this.account?.id ?? null,
       authenticated: Boolean(this.options.plugins.plugin("anilist").apiKey),
       authorizationError: this.authorization.error,
       authorizationPending: this.authorization.pending || this.oauthState !== null,
@@ -421,9 +428,9 @@ export class AniListService {
         redirect.search ||
         redirect.hash)
     ) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))(
-        "The OAuth callback must be a local HTTP URL with an explicit port"
-      );
+      return problem(400, {
+        detail: "The OAuth callback must be a local HTTP URL with an explicit port",
+      });
     }
     this.stopCallback();
     this.config = {
@@ -435,24 +442,25 @@ export class AniListService {
     this.writeState("config", JSON.stringify(this.config));
     return this.snapshot();
   }
-  connect(): { url: string } {
+  connect(deviceId?: string) {
     if (this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("AniList unavailable");
+      return problem(409, { detail: "AniList unavailable" });
     }
     if (
       !this.config.clientId ||
       (this.config.clientId === "9037" && this.config.redirectUri === "tofu-dev://oauth/anilist")
     ) {
-      throw new (HTTPError.id("CONFLICT", 409))(
-        "This development build needs its own AniList client. Set TOFU_ANILIST_CLIENT_ID and rebuild Tofu Dev."
-      );
+      return problem(409, {
+        detail:
+          "This development build needs its own AniList client. Set TOFU_ANILIST_CLIENT_ID and rebuild Tofu Dev.",
+      });
     }
     if (this.config.clientId === "9037" || !this.config.clientSecret) {
       this.stopCallback();
-      return this.authorization.connect(this.config.clientId, this.config.redirectUri);
+      return this.authorization.connect(this.config.clientId, this.config.redirectUri, deviceId);
     }
     if (!(this.config.clientId && this.config.clientSecret)) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Add your AniList OAuth client ID and secret");
+      return problem(400, { detail: "Add your AniList OAuth client ID and secret" });
     }
     this.stopCallback();
     const config = { ...this.config };
@@ -528,12 +536,12 @@ export class AniListService {
         hostname: "127.0.0.1",
         port: Number(redirect.port),
       });
-    } catch (cause) {
+    } catch {
       this.oauthState = null;
-      throw new (HTTPError.id("CONFLICT", 409))(
-        "The OAuth callback port is busy. Choose the same available port in Tofu and your AniList client.",
-        { cause }
-      );
+      return problem(409, {
+        detail:
+          "The OAuth callback port is busy. Choose the same available port in Tofu and your AniList client.",
+      });
     }
     this.callbackTimeout = setTimeout(() => this.stopCallback(), 600_000);
     this.callbackTimeout.unref();
@@ -554,14 +562,11 @@ export class AniListService {
     }
     this.oauthState = null;
   }
-  async media(mediaId: number): Promise<AniListMedia> {
-    if (this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("AniList service closed");
-    }
-    const entry = this.entries.find((item) => item.mediaId === mediaId);
-    if (entry) {
-      return entry;
-    }
+  /**
+   * Runs AniList requests under one controller that closing the service aborts, with a 15-second
+   * deadline. Provider failures are returned as a typed 502; `run` may return its own problems.
+   */
+  private async provider<Result>(run: (signal: AbortSignal) => Promise<Result>) {
     const controller = new AbortController();
     this.requests.add(controller);
     const timeout = setTimeout(
@@ -569,109 +574,122 @@ export class AniListService {
       15_000
     );
     try {
-      const { Media } = await this.sdk.Anime(
-        { mediaId },
-        { accessToken: "", signal: controller.signal }
-      );
-      if (!Media || Media.id !== mediaId) {
-        throw new (HTTPError.id("NOT_FOUND", 404))("Anime not found on AniList");
+      return await run(controller.signal);
+    } catch (error) {
+      if (error instanceof AniListUnavailable) {
+        return problem(502, { detail: error.message });
       }
-      return catalogMedia(Media);
+      throw error;
     } finally {
       clearTimeout(timeout);
       this.requests.delete(controller);
     }
   }
-  async catalog(filters: AniListCatalogFilters): Promise<AniListCatalog> {
+  async media(mediaId: number) {
+    if (this.lifecycle.closed) {
+      return problem(409, { detail: "AniList service closed" });
+    }
+    const entry = this.entries.find((item) => item.mediaId === mediaId);
+    if (entry) {
+      return entry as AniListMedia;
+    }
+    return await this.provider(async (signal) => {
+      const { Media } = await this.sdk.Anime({ mediaId }, { accessToken: "", signal });
+      if (!Media || Media.id !== mediaId) {
+        return problem(404, { detail: "Anime not found on AniList" });
+      }
+      return catalogMedia(Media);
+    });
+  }
+  async catalog(filters: AniListCatalogFilters) {
     const variables = catalogVariables(filters);
-    const controller = new AbortController();
-    this.requests.add(controller);
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-      15_000
-    );
-    try {
-      const { Page: page } = await this.sdk.Catalog(variables, {
-        accessToken: "",
-        signal: controller.signal,
-      });
+    if (variables instanceof ElysiaStatus) {
+      return variables;
+    }
+    return await this.provider(async (signal) => {
+      const { Page: page } = await this.sdk.Catalog(variables, { accessToken: "", signal });
       if (
         !page?.pageInfo ||
         page.pageInfo.currentPage === null ||
         page.pageInfo.hasNextPage === null ||
         !page.media
       ) {
-        throw new (HTTPError.id("BAD_GATEWAY", 502))("Invalid AniList catalog");
+        return problem(502, { detail: "Invalid AniList catalog" });
       }
       return {
         hasNextPage: page.pageInfo.hasNextPage,
         media: page.media.flatMap((media) => (media ? [catalogMedia(media)] : [])),
         page: page.pageInfo.currentPage,
-      };
-    } finally {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
-    }
+      } satisfies AniListCatalog;
+    });
   }
   private catalogOptionsCache: AniListCatalogOptions | null = null;
+  /**
+   * Runs an account request. `stale()` reports a returned 409 once the service closed, AniList was
+   * disabled or the account changed; callbacks check it after each provider write.
+   */
   private async authenticatedRequest<Result>(
-    run: (accessToken: string, signal: AbortSignal, assertCurrent: () => void) => Promise<Result>
-  ): Promise<Result> {
+    run: (
+      accessToken: string,
+      signal: AbortSignal,
+      stale: () => ReturnType<AniListService["staleAccount"]>
+    ) => Promise<Result>
+  ) {
     this.checkCacheIdentity();
     if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("AniList plugin disabled");
+      return problem(409, { detail: "AniList plugin disabled" });
     }
     const accessToken = this.options.plugins.plugin("anilist").apiKey;
     if (!accessToken) {
-      throw new (HTTPError.id("CONFLICT", 409))(
-        "Connect your AniList account to edit your list or favourites"
-      );
+      return problem(409, {
+        detail: "Connect your AniList account to edit your list or favourites",
+      });
     }
     const key = this.cacheKey();
-    const controller = new AbortController();
-    this.requests.add(controller);
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-      15_000
-    );
-    const assertCurrent = () => {
-      if (
-        this.lifecycle.closed ||
-        !this.options.plugins.plugin("anilist").enabled ||
-        key !== this.cacheKey()
-      ) {
-        throw new (HTTPError.id("CONFLICT", 409))(
-          "AniList account changed; reopen the anime editor"
-        );
-      }
-    };
-    try {
-      const result = await run(accessToken, controller.signal, assertCurrent);
-      assertCurrent();
-      return result;
-    } finally {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
-    }
+    const stale = () => this.staleAccount(key);
+    return await this.provider(async (signal) => {
+      const result = await run(accessToken, signal, stale);
+      return stale() ?? result;
+    });
+  }
+  private staleAccount(key: string) {
+    return this.lifecycle.closed ||
+      !this.options.plugins.plugin("anilist").enabled ||
+      key !== this.cacheKey()
+      ? problem(409, { detail: "AniList account changed; reopen the anime editor" })
+      : null;
   }
   private async readEditor(mediaId: number, accessToken: string, signal: AbortSignal) {
     const result = await this.sdk.Editor({ mediaId }, { accessToken, signal });
     if (!result.Viewer?.id || (this.account && result.Viewer.id !== this.account.id)) {
-      throw new (HTTPError.id("CONFLICT", 409))("Reload your AniList list after changing accounts");
+      return problem(409, { detail: "Reload your AniList list after changing accounts" });
     }
-    return { editor: editorState(result, mediaId), result };
+    const editor = editorState(result, mediaId);
+    if (editor instanceof ElysiaStatus) {
+      return editor;
+    }
+    return { editor, result };
   }
-  editor(mediaId: number): Promise<AniListEditor> {
-    return this.authenticatedRequest(
-      async (accessToken, signal) => (await this.readEditor(mediaId, accessToken, signal)).editor
-    );
+  editor(mediaId: number) {
+    return this.authenticatedRequest(async (accessToken, signal) => {
+      const read = await this.readEditor(mediaId, accessToken, signal);
+      return read instanceof ElysiaStatus ? read : read.editor;
+    });
   }
-  saveEntry(mediaId: number, body: AniListListUpdate): Promise<AniListState> {
+  saveEntry(mediaId: number, body: AniListListUpdate) {
     return this.mutateMedia(mediaId, () =>
-      this.authenticatedRequest(async (accessToken, signal, assertCurrent) => {
-        const { editor, result } = await this.readEditor(mediaId, accessToken, signal);
-        assertCurrent();
-        validateEntryUpdate(body, editor, result.Media?.episodes ?? null);
+      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Each provider write is followed by its own account check and returned failure.
+      this.authenticatedRequest(async (accessToken, signal, stale) => {
+        const read = await this.readEditor(mediaId, accessToken, signal);
+        if (read instanceof ElysiaStatus) {
+          return read;
+        }
+        const { editor, result } = read;
+        const invalid =
+          stale() ?? validateEntryUpdate(body, editor, result.Media?.episodes ?? null);
+        if (invalid) {
+          return invalid;
+        }
         const { SaveMediaListEntry: saved } = await this.sdk.SaveEntry(
           {
             ...body,
@@ -680,7 +698,10 @@ export class AniListService {
           },
           { accessToken, signal }
         );
-        assertCurrent();
+        const changed = stale();
+        if (changed) {
+          return changed;
+        }
         if (
           !(
             saved?.media &&
@@ -689,13 +710,13 @@ export class AniListService {
             saved.progress !== null
           )
         ) {
-          throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList did not save the list entry");
+          return problem(502, { detail: "AniList did not save the list entry" });
         }
         const found = new Map<number, AniListEntry>();
         collectEntries({ hasNextChunk: false, lists: [{ entries: [saved] }] }, found);
         const entry = found.get(mediaId);
         if (!entry) {
-          throw new (HTTPError.id("BAD_GATEWAY", 502))("Invalid AniList list entry");
+          return problem(502, { detail: "Invalid AniList list entry" });
         }
         this.entries = [...this.entries.filter((item) => item.mediaId !== mediaId), entry];
         if (body.progress !== undefined) {
@@ -707,10 +728,13 @@ export class AniListService {
         this.persistEditedList();
         const rule = this.animeRule(mediaId);
         if (rule) {
-          await this.options.releaseAutomation.save(rule.id, {
+          const ruleSaved = await this.options.releaseAutomation.save(rule.id, {
             ...rule,
             afterEpisode: entry.progress,
           });
+          if (ruleSaved instanceof ElysiaStatus) {
+            return ruleSaved;
+          }
         }
         return this.snapshot();
       })
@@ -727,45 +751,67 @@ export class AniListService {
       this.persist(subscription);
     }
   }
-  favourite(mediaId: number, enabled: boolean): Promise<{ isFavourite: boolean }> {
+  favourite(mediaId: number, enabled: boolean) {
     return this.mutateMedia(mediaId, () =>
-      this.authenticatedRequest(async (accessToken, signal, assertCurrent) => {
-        const { editor } = await this.readEditor(mediaId, accessToken, signal);
-        assertCurrent();
+      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Each provider write is followed by its own account check and returned failure.
+      this.authenticatedRequest(async (accessToken, signal, stale) => {
+        const read = await this.readEditor(mediaId, accessToken, signal);
+        if (read instanceof ElysiaStatus) {
+          return read;
+        }
+        const { editor } = read;
+        const changed = stale();
+        if (changed) {
+          return changed;
+        }
         if (editor.isFavourite === null) {
-          throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList favourite state unavailable");
+          return problem(502, { detail: "AniList favourite state unavailable" });
         }
         if (editor.isFavourite === enabled) {
           return { isFavourite: enabled };
         }
         if (editor.isFavouriteBlocked) {
-          throw new (HTTPError.id("CONFLICT", 409))(
-            "AniList does not allow favouriting this anime"
-          );
+          return problem(409, { detail: "AniList does not allow favouriting this anime" });
         }
         await this.sdk.ToggleAnimeFavourite({ mediaId }, { accessToken, signal });
-        assertCurrent();
+        const toggled = stale();
+        if (toggled) {
+          return toggled;
+        }
         const updated = await this.readEditor(mediaId, accessToken, signal);
+        if (updated instanceof ElysiaStatus) {
+          return updated;
+        }
         if (updated.editor.isFavourite !== enabled) {
-          throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList did not update the favourite");
+          return problem(502, { detail: "AniList did not update the favourite" });
         }
         return { isFavourite: enabled };
       })
     );
   }
-  deleteEntry(mediaId: number): Promise<AniListState> {
+  deleteEntry(mediaId: number) {
     return this.mutateMedia(mediaId, () =>
-      this.authenticatedRequest(async (accessToken, signal, assertCurrent) => {
-        const { editor } = await this.readEditor(mediaId, accessToken, signal);
-        assertCurrent();
+      this.authenticatedRequest(async (accessToken, signal, stale) => {
+        const read = await this.readEditor(mediaId, accessToken, signal);
+        if (read instanceof ElysiaStatus) {
+          return read;
+        }
+        const { editor } = read;
+        const changed = stale();
+        if (changed) {
+          return changed;
+        }
         if (editor.entry) {
           const { DeleteMediaListEntry } = await this.sdk.DeleteEntry(
             { id: editor.entry.id },
             { accessToken, signal }
           );
-          assertCurrent();
+          const deleted = stale();
+          if (deleted) {
+            return deleted;
+          }
           if (DeleteMediaListEntry?.deleted !== true) {
-            throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList did not delete the list entry");
+            return problem(502, { detail: "AniList did not delete the list entry" });
           }
         }
         const rule = this.animeRule(mediaId);
@@ -781,21 +827,12 @@ export class AniListService {
       })
     );
   }
-  async catalogOptions(): Promise<AniListCatalogOptions> {
+  async catalogOptions() {
     if (this.catalogOptionsCache) {
       return this.catalogOptionsCache;
     }
-    const controller = new AbortController();
-    this.requests.add(controller);
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-      15_000
-    );
-    try {
-      const result = await this.sdk.CatalogOptions(
-        {},
-        { accessToken: "", signal: controller.signal }
-      );
+    return await this.provider(async (signal) => {
+      const result = await this.sdk.CatalogOptions({}, { accessToken: "", signal });
       this.catalogOptionsCache = {
         genres: (result.GenreCollection ?? [])
           .filter((genre): genre is string => genre !== null)
@@ -814,39 +851,31 @@ export class AniListService {
           .toSorted((a, b) => a.name.localeCompare(b.name, "en-US")),
       };
       return this.catalogOptionsCache;
-    } finally {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
-    }
+    });
   }
   private async authorize(token: string, current: () => boolean) {
-    const controller = new AbortController();
-    this.requests.add(controller);
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-      15_000
-    );
-    try {
-      const { Viewer: identity } = await this.sdk.Viewer(
-        {},
-        { accessToken: token, signal: controller.signal }
-      );
-      if (!(identity?.id && identity.name && current()) || this.lifecycle.closed) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("AniList authorization expired");
-      }
-      this.options.plugins.configure("anilist", { apiKey: token, enabled: true });
-      this.entries = [];
-      this.account = identity;
-      this.writeState("profile", JSON.stringify(identity));
-      this.connectedUser = identity.name;
-      await this.list();
-    } finally {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
+    const identity = await this.provider(async (signal) => {
+      const { Viewer } = await this.sdk.Viewer({}, { accessToken: token, signal });
+      return Viewer;
+    });
+    if (identity instanceof ElysiaStatus) {
+      return identity;
     }
+    if (!(identity?.id && identity.name && current()) || this.lifecycle.closed) {
+      return problem(400, { detail: "AniList authorization expired" });
+    }
+    this.options.plugins.configure("anilist", { apiKey: token, enabled: true });
+    this.entries = [];
+    this.account = { id: identity.id, name: identity.name };
+    this.writeState("profile", JSON.stringify(this.account));
+    this.connectedUser = identity.name;
+    return await this.list();
   }
-  async receiveAuthorizationUrl(input: string) {
-    await this.authorization.receiveUrl(input);
+  async receiveAuthorizationUrl(input: string, deviceId?: string) {
+    const received = await this.authorization.receiveUrl(input, deviceId);
+    if (received instanceof ElysiaStatus) {
+      return received;
+    }
     return this.snapshot();
   }
 
@@ -864,60 +893,62 @@ export class AniListService {
       (!this.cache || this.options.now() - this.cache.updatedAt >= 5 * 60_000)
     );
   }
-  refresh(): Promise<AniListState> {
+  refresh() {
     return this.needsRefresh() ? this.list() : Promise.resolve(this.snapshot());
   }
-  list(): Promise<AniListState> {
+  /** Loads the account's list once per account at a time; failures are recorded and returned. */
+  list(): Promise<AniListState | ListFailure> {
     this.checkCacheIdentity();
     const key = this.cacheKey();
     if (this.listFlight?.key === key) {
       return this.listFlight.promise;
     }
     this.refreshError = null;
-    const promise = this.loadList(key, this.options.plugins.plugin("anilist").apiKey)
-      .catch((error: unknown) => {
+    const reservation = Promise.withResolvers<AniListState | ListFailure>();
+    this.listFlight = { key, promise: reservation.promise };
+    const load = async () => {
+      try {
+        const failed = await this.loadList(key, this.options.plugins.plugin("anilist").apiKey);
+        if (failed instanceof ElysiaStatus) {
+          if (key === this.cacheKey() && !this.lifecycle.closed) {
+            this.refreshError = failed.response.detail;
+            this.retryAt = this.options.now() + 30_000;
+          }
+          reservation.resolve(failed);
+          return;
+        }
+        reservation.resolve(this.snapshot());
+      } catch (error) {
         if (key === this.cacheKey() && !this.lifecycle.closed) {
           this.refreshError = error instanceof Error ? error.message : "Unable to refresh AniList";
           this.retryAt = this.options.now() + 30_000;
         }
-        throw error;
-      })
-      .finally(() => {
-        if (this.listFlight?.promise === promise) {
+        reservation.reject(error);
+      } finally {
+        if (this.listFlight?.promise === reservation.promise) {
           this.listFlight = null;
         }
-      })
-      .then(() => this.snapshot());
-    this.listFlight = { key, promise };
-    return promise;
+      }
+    };
+    void load();
+    return reservation.promise;
   }
-  private async loadList(key: string, token: string): Promise<void> {
+  private async loadList(key: string, token: string) {
     const revision = this.listRevision;
     if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("AniList plugin disabled");
+      return problem(409, { detail: "AniList plugin disabled" });
     }
     if (!(this.options.plugins.plugin("anilist").apiKey || this.config.userName)) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))(
-        "Connect AniList or enter your public account name"
-      );
+      return problem(400, { detail: "Connect AniList or enter your public account name" });
     }
-    const controller = new AbortController();
-    this.requests.add(controller);
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-      15_000
-    );
-    try {
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Paging, identity and staleness checks belong to one list snapshot.
+    return await this.provider(async (signal) => {
       const identity = token
-        ? (await this.sdk.Viewer({}, { accessToken: token, signal: controller.signal })).Viewer
-        : (
-            await this.sdk.User(
-              { name: this.config.userName },
-              { accessToken: token, signal: controller.signal }
-            )
-          ).User;
+        ? (await this.sdk.Viewer({}, { accessToken: token, signal })).Viewer
+        : (await this.sdk.User({ name: this.config.userName }, { accessToken: token, signal }))
+            .User;
       if (!identity?.id) {
-        throw new (HTTPError.id("NOT_FOUND", 404))("AniList account not found");
+        return problem(404, { detail: "AniList account not found" });
       }
       const found = new Map<number, AniListEntry>();
       let more = true;
@@ -925,29 +956,29 @@ export class AniListService {
         // biome-ignore lint/performance/noAwaitInLoops: AniList chunks are sequential and must stop when hasNextChunk is false.
         const response = await this.sdk.Library(
           { chunk, userId: identity.id },
-          { accessToken: token, signal: controller.signal }
+          { accessToken: token, signal }
         );
         const collection = response.MediaListCollection;
         if (
           !(collection && Array.isArray(collection.lists)) ||
           typeof collection.hasNextChunk !== "boolean"
         ) {
-          throw new (HTTPError.id("BAD_GATEWAY", 502))("Invalid AniList list");
+          return problem(502, { detail: "Invalid AniList list" });
         }
         more = collection.hasNextChunk;
         collectEntries(collection, found);
       }
       if (more) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("AniList list too large for a full sync");
+        return problem(400, { detail: "AniList list too large for a full sync" });
       }
       if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
-        throw new (HTTPError.id("CONFLICT", 409))("AniList plugin disabled");
+        return problem(409, { detail: "AniList plugin disabled" });
       }
       if (key !== this.cacheKey()) {
-        throw new (HTTPError.id("CONFLICT", 409))("The AniList account changed during refresh");
+        return problem(409, { detail: "The AniList account changed during refresh" });
       }
       if (revision !== this.listRevision) {
-        return;
+        return null;
       }
       this.entries = [...found.values()];
       this.account = identity;
@@ -957,10 +988,8 @@ export class AniListService {
       this.writeState("list-cache", JSON.stringify(this.cache));
       this.retryAt = 0;
       this.refreshError = null;
-    } finally {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
-    }
+      return null;
+    });
   }
   private accepted(mediaId: number) {
     return (
@@ -970,11 +999,11 @@ export class AniListService {
   }
   entry(mediaId: number) {
     if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("AniList plugin disabled");
+      return problem(409, { detail: "AniList plugin disabled" });
     }
     const entry = this.entries.find((item) => item.mediaId === mediaId);
     if (!(entry && this.account)) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Load this anime from your AniList list first");
+      return problem(404, { detail: "Load this anime from your AniList list first" });
     }
     return entry;
   }
@@ -995,9 +1024,12 @@ export class AniListService {
   }
   prepareAutomation(mediaId: number, draft: AutomationDraft) {
     const entry = this.entry(mediaId);
+    if (entry instanceof ElysiaStatus) {
+      return entry;
+    }
     const accountId = this.account?.id;
     if (accountId === undefined) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Load this anime from your AniList list first");
+      return problem(404, { detail: "Load this anime from your AniList list first" });
     }
     return {
       accountId,
@@ -1008,41 +1040,65 @@ export class AniListService {
   }
   writeAutomationLink(
     tx: DatabaseConnection,
-    input: ReturnType<AniListService["prepareAutomation"]>,
+    input: { accountId: number; key: string },
     ruleId: string
   ) {
     if (this.lifecycle.closed || this.account?.id !== input.accountId) {
-      throw new (HTTPError.id("CONFLICT", 409))("AniList account changed; reload your list");
+      return problem(409, { detail: "AniList account changed; reload your list" });
     }
     this.writeState(input.key, JSON.stringify(ruleId), tx);
+    return null;
   }
-  completeEpisode(mediaId: number, episode: number, completed: boolean): Promise<AniListState> {
-    return this.mutateMedia(mediaId, () => this.updateEpisode(mediaId, episode, completed));
+  completeEpisode(
+    mediaId: number,
+    episode: number,
+    completed: boolean,
+    expectedAccountId?: number
+  ) {
+    return this.mutateMedia(mediaId, () =>
+      this.updateEpisode(mediaId, episode, completed, expectedAccountId)
+    );
   }
   private async mutateMedia<Result>(mediaId: number, run: () => Promise<Result>): Promise<Result> {
-    const pending = this.episodeRuns.get(mediaId);
-    if (pending) {
-      await pending.catch(() => undefined);
-      return this.mutateMedia(mediaId, run);
-    }
-    const task = run();
-    this.episodeRuns.set(mediaId, task);
+    const previous = this.episodeRuns.get(mediaId);
+    const reservation = Promise.withResolvers<void>();
+    this.episodeRuns.set(mediaId, reservation.promise);
     try {
-      return await task;
+      try {
+        await previous;
+      } catch {
+        /* Earlier operations report their own failures. */
+      }
+      return await run();
     } finally {
-      this.episodeRuns.delete(mediaId);
+      if (this.episodeRuns.get(mediaId) === reservation.promise) {
+        this.episodeRuns.delete(mediaId);
+      }
+      reservation.resolve();
     }
   }
-  private async updateEpisode(mediaId: number, episode: number, completed: boolean) {
-    const entry = this.entry(mediaId);
+  private async updateEpisode(
+    mediaId: number,
+    episode: number,
+    completed: boolean,
+    expectedAccountId?: number
+  ) {
+    if (expectedAccountId !== undefined && this.account?.id !== expectedAccountId) {
+      return problem(409, { detail: "AniList account changed; reopen the player from your list" });
+    }
+    if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
+      return problem(409, { detail: "AniList plugin disabled" });
+    }
+    const entry = this.entries.find((item) => item.mediaId === mediaId);
+    if (!(entry && this.account)) {
+      return problem(404, { detail: "Load this anime from your AniList list first" });
+    }
     const accessToken = this.options.plugins.plugin("anilist").apiKey;
     if (!accessToken) {
-      throw new (HTTPError.id("CONFLICT", 409))(
-        "Connect your AniList account to sync episode progress"
-      );
+      return problem(409, { detail: "Connect your AniList account to sync episode progress" });
     }
     if (entry.episodes !== null && episode > entry.episodes) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Episode exceeds the anime episode count");
+      return problem(400, { detail: "Episode exceeds the anime episode count" });
     }
     const accountId = this.account?.id;
     const watched = new Set(this.completedEpisodes(entry));
@@ -1055,29 +1111,21 @@ export class AniListService {
     while (watched.has(progress + 1)) {
       progress += 1;
     }
-    const controller = new AbortController();
-    this.requests.add(controller);
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-      15_000
-    );
-    try {
-      const { Viewer } = await this.sdk.Viewer({}, { accessToken, signal: controller.signal });
+    return await this.provider(async (signal) => {
+      const { Viewer } = await this.sdk.Viewer({}, { accessToken, signal });
       if (
         Viewer?.id !== accountId ||
         this.options.plugins.plugin("anilist").apiKey !== accessToken
       ) {
-        throw new (HTTPError.id("CONFLICT", 409))(
-          "Reload your AniList list after changing accounts"
-        );
+        return problem(409, { detail: "Reload your AniList list after changing accounts" });
       }
       if (progress !== entry.progress) {
         const { SaveMediaListEntry } = await this.sdk.SaveProgress(
           { mediaId, progress },
-          { accessToken, signal: controller.signal }
+          { accessToken, signal }
         );
         if (SaveMediaListEntry?.progress !== progress) {
-          throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList did not save the episode progress");
+          return problem(502, { detail: "AniList did not save the episode progress" });
         }
       }
       if (
@@ -1085,9 +1133,9 @@ export class AniListService {
         !this.options.plugins.plugin("anilist").enabled ||
         this.account?.id !== accountId
       ) {
-        throw new (HTTPError.id("CONFLICT", 409))(
-          "AniList account changed during episode sync; reload the list"
-        );
+        return problem(409, {
+          detail: "AniList account changed during episode sync; reload the list",
+        });
       }
       const key = `watched:${accountId}:${mediaId}`;
       const episodes = [...watched].sort((a, b) => a - b);
@@ -1103,27 +1151,30 @@ export class AniListService {
       }
       const rule = this.animeRule(mediaId);
       if (rule) {
-        await this.options.releaseAutomation.save(rule.id, { ...rule, afterEpisode: progress });
+        const saved = await this.options.releaseAutomation.save(rule.id, {
+          ...rule,
+          afterEpisode: progress,
+        });
+        if (saved instanceof ElysiaStatus) {
+          return saved;
+        }
       }
       for (const subscription of this.subscriptions.values()) {
         subscription.nextSyncAt = this.options.now();
         this.persist(subscription);
       }
       return this.snapshot();
-    } finally {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
-    }
+    });
   }
-  previewThreads(basePath: string, statuses: AniListStatus[]): AniListThreadProposal[] {
+  previewThreads(basePath: string, statuses: AniListStatus[]) {
     if (!isAbsolute(basePath)) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Enter an absolute root folder path");
+      return problem(400, { detail: "Enter an absolute root folder path" });
     }
     const { destinations } = this.options.engine.snapshot(null, false);
     const trackedStatuses = new Set(statuses);
     return this.entries
       .filter((entry) => trackedStatuses.has(entry.status) && this.accepted(entry.mediaId))
-      .map((entry) => {
+      .map((entry): AniListThreadProposal => {
         const folder = animeFolder(entry);
         const collision = this.entries.some(
           (other) => other.mediaId !== entry.mediaId && animeFolder(other) === folder
@@ -1146,9 +1197,7 @@ export class AniListService {
       !this.account ||
       mediaIds.some((id) => !this.entries.some((entry) => entry.mediaId === id))
     ) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))(
-        "Load the AniList list before choosing its titles"
-      );
+      return problem(400, { detail: "Load the AniList list before choosing its titles" });
     }
     for (const mediaId of mediaIds) {
       this.writeState(`selection:${this.account.id}:${mediaId}`, JSON.stringify(enabled), tx);
@@ -1194,10 +1243,13 @@ export class AniListService {
   ) {
     const { destinations } = this.options.engine.snapshot(null, false);
     if (!destinations.some((destination) => destination.id === input.template.destinationId)) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+      return problem(400, { detail: "Unknown destination" });
     }
     if (input.organization?.mode === "per-anime") {
-      this.previewThreads(input.organization.basePath, input.statuses);
+      const preview = this.previewThreads(input.organization.basePath, input.statuses);
+      if (preview instanceof ElysiaStatus) {
+        return preview;
+      }
       const ids = new Set<number>();
       for (const override of input.organization.overrides) {
         if (
@@ -1207,9 +1259,7 @@ export class AniListService {
           (override.destinationId !== null &&
             !destinations.some((destination) => destination.id === override.destinationId))
         ) {
-          throw new (HTTPError.id("BAD_REQUEST", 400))(
-            "Check the proposed names, folders, and threads"
-          );
+          return problem(400, { detail: "Check the proposed names, folders, and threads" });
         }
         ids.add(override.mediaId);
       }
@@ -1226,33 +1276,39 @@ export class AniListService {
     this.writeState(subscription.id, JSON.stringify(subscription), tx);
     return subscription;
   }
-  private subscription(id: string) {
-    const subscription = this.subscriptions.get(id);
-    if (!subscription) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown AniList tracking");
-    }
-    return subscription;
-  }
-  async sync(id: string): Promise<AniListState> {
+  sync(id: string) {
     const pending = this.runs.get(id);
     if (pending) {
       return pending;
     }
-    const subscription = this.subscription(id);
-    const task = this.reconcile(subscription).catch(() => {
+    const subscription = this.subscriptions.get(id);
+    if (!subscription) {
+      return Promise.resolve(problem(404, { detail: "Unknown AniList tracking" }));
+    }
+    const reservation = Promise.withResolvers<AniListState>();
+    this.runs.set(id, reservation.promise);
+    const interrupted = () => {
       if (!this.lifecycle.closed && this.subscriptions.get(id) === subscription) {
         subscription.error = "AniList sync interrupted; retry or check the connection";
         subscription.nextSyncAt = this.options.now() + 60_000;
         this.persist(subscription);
       }
       return this.snapshot();
-    });
-    this.runs.set(id, task);
-    try {
-      return await task;
-    } finally {
-      this.runs.delete(id);
-    }
+    };
+    const reconcile = async () => {
+      try {
+        const reconciled = await this.reconcile(subscription);
+        reservation.resolve(reconciled instanceof ElysiaStatus ? interrupted() : reconciled);
+      } catch {
+        reservation.resolve(interrupted());
+      } finally {
+        if (this.runs.get(id) === reservation.promise) {
+          this.runs.delete(id);
+        }
+      }
+    };
+    void reconcile();
+    return reservation.promise;
   }
   private current(subscription: AniListSubscription) {
     return (
@@ -1267,13 +1323,14 @@ export class AniListService {
     if (organization?.mode !== "per-anime") {
       return subscription.template.destinationId;
     }
+    const preview = this.previewThreads(organization.basePath, subscription.statuses);
     const proposal =
       organization.overrides.find((item) => item.mediaId === entry.mediaId) ??
-      this.previewThreads(organization.basePath, subscription.statuses).find(
-        (item) => item.mediaId === entry.mediaId
-      );
+      (preview instanceof ElysiaStatus
+        ? undefined
+        : preview.find((item) => item.mediaId === entry.mediaId));
     if (!proposal) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Thread proposal not found");
+      return problem(400, { detail: "Thread proposal not found" });
     }
     if (proposal.destinationId !== null) {
       if (
@@ -1281,7 +1338,7 @@ export class AniListService {
           .snapshot(null, false)
           .destinations.some((destination) => destination.id === proposal.destinationId)
       ) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("The selected thread no longer exists");
+        return problem(400, { detail: "The selected thread no longer exists" });
       }
       return proposal.destinationId;
     }
@@ -1294,12 +1351,20 @@ export class AniListService {
     }
     const pending = this.destinationRuns.get(downloadPath);
     if (pending) {
-      return (await pending).id;
+      const destination = await pending;
+      if (destination instanceof ElysiaStatus) {
+        return destination;
+      }
+      return destination.id;
     }
     const task = this.options.engine.saveDestination(null, { downloadPath, name: proposal.name });
     this.destinationRuns.set(downloadPath, task);
     try {
-      return (await task).id;
+      const destination = await task;
+      if (destination instanceof ElysiaStatus) {
+        return destination;
+      }
+      return destination.id;
     } finally {
       this.destinationRuns.delete(downloadPath);
     }
@@ -1313,6 +1378,9 @@ export class AniListService {
     const overridden = this.animeRules.has(`anime-rule:${this.account?.id}:${entry.mediaId}`);
     const destinationId =
       previous?.destinationId ?? (await this.destinationId(subscription, entry));
+    if (destinationId instanceof ElysiaStatus) {
+      return destinationId;
+    }
     if (!(this.current(subscription) && this.accepted(entry.mediaId))) {
       return;
     }
@@ -1332,6 +1400,9 @@ export class AniListService {
       },
       { key: `anime-rule:${this.account?.id}:${entry.mediaId}`, ownerId: "tofu.anilist" }
     );
+    if (rule instanceof ElysiaStatus) {
+      return rule;
+    }
     if (binding) {
       binding.ruleId = rule.id;
       binding.active = true;
@@ -1343,7 +1414,8 @@ export class AniListService {
       return;
     }
     this.persist(subscription);
-    await this.options.releaseAutomation.run(rule.id);
+    const ran = await this.options.releaseAutomation.run(rule.id);
+    return ran instanceof ElysiaStatus ? ran : undefined;
   }
   private async reconcile(subscription: AniListSubscription) {
     if (
@@ -1352,13 +1424,17 @@ export class AniListService {
     ) {
       return this.snapshot();
     }
-    const { entries } = await this.list();
+    const listed = await this.list();
+    if (listed instanceof ElysiaStatus) {
+      return listed;
+    }
+    const { entries } = listed;
     if (!this.current(subscription)) {
       return this.snapshot();
     }
     if (subscription.userId !== undefined && subscription.userId !== this.account?.id) {
       this.pause(subscription);
-      throw new (HTTPError.id("CONFLICT", 409))("This tracking belongs to another AniList account");
+      return problem(409, { detail: "This tracking belongs to another AniList account" });
     }
     subscription.userId = this.account?.id;
     const trackedStatuses = new Set(subscription.statuses);
@@ -1374,7 +1450,10 @@ export class AniListService {
         break;
       }
       // biome-ignore lint/performance/noAwaitInLoops: preserve each title binding before running the next rule.
-      await this.follow(subscription, entry);
+      const followed = await this.follow(subscription, entry);
+      if (followed instanceof ElysiaStatus) {
+        return followed;
+      }
     }
     if (this.lifecycle.closed || this.subscriptions.get(subscription.id) !== subscription) {
       return this.snapshot();
@@ -1392,8 +1471,12 @@ export class AniListService {
     return this.snapshot();
   }
   writeToggle(tx: DatabaseConnection, id: string, enabled: boolean) {
+    const current = this.subscriptions.get(id);
+    if (!current) {
+      return problem(404, { detail: "Unknown AniList tracking" });
+    }
     const subscription = {
-      ...structuredClone(this.subscription(id)),
+      ...structuredClone(current),
       enabled,
       nextSyncAt: this.options.now(),
     };
@@ -1407,7 +1490,11 @@ export class AniListService {
     return { enabled, id };
   }
   deleteSubscription(tx: DatabaseConnection, id: string) {
-    for (const binding of this.subscription(id).bindings) {
+    const subscription = this.subscriptions.get(id);
+    if (!subscription) {
+      return problem(404, { detail: "Unknown AniList tracking" });
+    }
+    for (const binding of subscription.bindings) {
       this.options.automation.enableRule(binding.ruleId, false, tx);
     }
     tx.delete(anilistState).where(eq(anilistState.id, id)).run();
@@ -1439,9 +1526,14 @@ export class AniListService {
     } finally {
       if (!this.lifecycle.closed) {
         this.timer = setInterval(() => {
-          void this.tick(false).catch((error: unknown) => {
-            recordLog({ component: "anilist", error, level: "error", operation: "poll" });
-          });
+          const poll = async () => {
+            try {
+              await this.tick(false);
+            } catch (error) {
+              recordLog({ component: "anilist", error, level: "error", operation: "poll" });
+            }
+          };
+          void poll();
         }, 15_000);
         this.timer.unref();
       }
@@ -1479,3 +1571,5 @@ export class AniListService {
     ]);
   }
 }
+
+type ListFailure = Extract<Awaited<ReturnType<AniListService["loadList"]>>, { status: number }>;

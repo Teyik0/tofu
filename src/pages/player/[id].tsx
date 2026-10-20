@@ -2,11 +2,9 @@ import { defineRoute, notFound } from "@teyik0/furin";
 import { t } from "elysia";
 import { MediaPlayer } from "../../components/media-player";
 import { api } from "../../lib/client";
-import { route as root } from "../root";
 
-export const route = defineRoute()
+export const route = defineRoute("/player/[id]")
   .config({
-    layout: root,
     mode: "ssr",
     params: t.Object({ id: t.String() }),
     query: t.Object({ file: t.String() }),
@@ -32,6 +30,7 @@ export const route = defineRoute()
       back={`/thread/${torrent.destinationId}?torrent=${torrent.id}`}
       complete={file.progress === 1}
       index={file.index}
+      mediaKey={`${torrent.id}:${file.index}:${file.length}`}
       name={file.name}
       source={`/api/torrents/${torrent.id}/files/${file.index}/stream/${encodeURIComponent(file.name)}`}
       torrentId={torrent.id}

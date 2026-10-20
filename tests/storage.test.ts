@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { chmod, mkdir, rename, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { Torrent } from "webtorrent";
-import type { DashboardState } from "../src/types";
+import type { LibraryState } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
@@ -215,10 +215,11 @@ test("relocation keeps a multifile torrent intact on failure and moves only its 
         source: `${seed.magnetURI}&x.pe=127.0.0.1:${context.seeder.torrentPort}`,
       })
     ) as { id: string };
-    const completed = await waitFor(
+    await waitFor(
       async () => expectSuccess(await context.client.torrents({ id }).get()),
       (detail) => detail.status === "seeding"
     );
+    const completed = expectSuccess(await context.client.torrents({ id }).host.get());
     await context.client.torrents({ id }).pause.post({});
     const originalPath = completed.savePath;
     const newPath = join(context.directory, "moved-collection");
@@ -234,10 +235,12 @@ test("relocation keeps a multifile torrent intact on failure and moves only its 
     expect((await move()).status).toBe(404);
     expect(await Bun.file(first).exists()).toBe(true);
     expect(await Bun.file(join(newPath, "collection/first.bin")).exists()).toBe(false);
-    expect(expectSuccess(await context.client.torrents({ id }).get()).savePath).toBe(originalPath);
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(
+      originalPath
+    );
     await Bun.write(second, context.bytes);
     expect((await move()).status).toBe(200);
-    expect(expectSuccess(await context.client.torrents({ id }).get()).savePath).toBe(newPath);
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(newPath);
     expect(expectSuccess(await context.client.torrents({ id }).get()).status).toBe("paused");
     await Promise.all(
       completed.files.map(async (file) => {
@@ -277,20 +280,19 @@ test("a multifile torrent keeps its declared folders and deletion preserves unre
     await context.client
       .torrents({ id })
       .peers.post({ peer: `127.0.0.1:${context.seeder.torrentPort}` });
-    const state = await waitFor(
+    await waitFor(
       async () =>
-        expectSuccess(
-          await context.client.state.get({ query: { selected: id } })
-        ) as DashboardState,
+        expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState,
       (value) => value.detail?.status === "seeding"
     );
+    const host = expectSuccess(await context.client.torrents({ id }).host.get());
     const destination = join(context.directory, "downloads");
-    expect(state.detail?.savePath).toBe(destination); // create-torrent declares files in readdir order, which is unordered on ext4.
-    expect(state.detail?.files.map((file) => file.path).toSorted()).toEqual([
+    expect(host.savePath).toBe(destination); // create-torrent declares files in readdir order, which is unordered on ext4.
+    expect(host.files.map((file) => file.path).toSorted()).toEqual([
       "collection/first.bin",
       "collection/nested/second.bin",
     ]);
-    const paths = state.detail?.files.map((file) => join(destination, file.path)) ?? [];
+    const paths = host.files.map((file) => join(destination, file.path));
     for (const path of paths) {
       // biome-ignore lint/performance/noAwaitInLoops: inspect every file downloaded by the real pair.
       expect(Bun.SHA256.hash(await Bun.file(path).arrayBuffer(), "hex")).toBe(

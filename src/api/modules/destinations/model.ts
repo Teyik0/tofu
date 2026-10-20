@@ -34,3 +34,17 @@ export const destinationPresentationSchema = object({
   icon: optional(picklist(destinationIconNames)),
   pinned: optional(boolean()),
 });
+
+/** A thread placed beneath an owner-created storage root, by root ID and relative folder. */
+export const destinationWithinRootSchema = object({
+  folder: pipe(string(), maxLength(1024)),
+  id: optional(string()),
+  moveFiles: optional(boolean()),
+  name: pipe(string(), minLength(1), maxLength(80)),
+  rootId: string(),
+});
+
+export const storageRootSchema = object({
+  name: pipe(string(), minLength(1), maxLength(80)),
+  path: pipe(string(), minLength(1), maxLength(4096)),
+});

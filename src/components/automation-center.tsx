@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { api } from "../lib/client";
-import type { AutomationSection, DashboardState } from "../types";
+import type { AutomationSection, LiveState } from "../types";
 import { AniListIcon } from "./anilist/icon";
 import { AutomationDiscovery } from "./automation-discovery";
 import { isPending } from "./automation-inbox";
@@ -34,12 +34,12 @@ export function AutomationCenter({
   section,
   close,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   destinationId: string;
   section: AutomationSection;
   close: () => void;
 }) {
-  const { data: live, error: loadingError } = useQuery(api.automation.get);
+  const { data: live, error: loadingError } = useQuery(api.automation.get.live());
   const state = live && "plugins" in live ? live : null;
   const [tab, setTab] = useState<AutomationSection>(() => section);
   const [target, setTarget] = useState(() => destinationId);

@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { version } from "libvlc-wasm/package.json";
+import { readLogRecords } from "./helpers/logs";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, waitFor } from "./helpers/torrent";
 
@@ -72,4 +74,38 @@ test("the player streams completed files by range and serves its engine in isola
   // Only the player is cross-origin isolated, so the library can still show remote images.
   const state = await context.api.handle(new Request("http://localhost/api/state"));
   expect(state.headers.get("cross-origin-embedder-policy")).toBeNull();
+
+  const diagnostic = {
+    audioState: "interrupted",
+    buffering: 1,
+    engineMessages: ["Audio output stopped; token=private-playback-token"],
+    fileIndex: 0,
+    message: "The player stopped responding. Retry to reconnect.",
+    operation: "play" as const,
+    playbackState: "paused",
+    time: 123,
+    torrentId: id,
+  };
+  expectSuccess(await context.client.player.diagnostics.post(diagnostic));
+  await context.api.application.logs.flush();
+  const logs = await readLogRecords(join(context.api.application.logs.directory, "app.jsonl"));
+  expect(logs).toContainEqual(
+    expect.objectContaining({
+      component: "player",
+      context: expect.objectContaining({
+        audioState: "interrupted",
+        engineMessages: ["Audio output stopped; token=[redacted]"],
+        engineVersion: version,
+        playbackState: "paused",
+        time: 123,
+        torrentId: id,
+      }),
+      error: { message: diagnostic.message },
+      operation: "play",
+    })
+  );
+  expect(JSON.stringify(logs)).not.toContain("private-playback-token");
+  expect((await context.client.player.diagnostics.post({ ...diagnostic, time: -1 })).status).toBe(
+    422
+  );
 }, 30_000);

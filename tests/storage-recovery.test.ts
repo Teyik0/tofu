@@ -1,13 +1,98 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdir, rename, rm, symlink, truncate } from "node:fs/promises";
+import { chmod, mkdir, rename, rm, stat, symlink, truncate } from "node:fs/promises";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Torrent, TorrentOptions } from "webtorrent";
 import { WorkerTorrentEngine } from "../src/api/modules/torrents/worker-client";
-import type { TorrentDetail } from "../src/types";
+import type { LibraryTorrentDetail } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectDefined, expectSuccess } from "./helpers/problem";
+import { changeStoredStorageDevice } from "./helpers/storage";
 import { fixture, network, waitFor } from "./helpers/torrent";
+
+test.each(["active", "blocked", "paused", "reconnected", "corrupt"])(
+  "automatic storage recovery verifies data after a device change (%s)",
+  async (mode) => {
+    const context = await fixture(128 * 1024, []);
+    const options = {
+      dataDir: join(context.directory, "worker-state"),
+      downloadPath: join(context.directory, "worker-downloads"),
+      network,
+    };
+    let engine = await WorkerTorrentEngine.open(options);
+    let api = await createTestApi(() => engine, context.sync.options);
+    let client = treaty(api).api;
+    try {
+      const { id } = expectSuccess(
+        await client.torrents.post({ paused: false, source: context.magnet })
+      );
+      const completed = structuredClone(
+        await waitFor(
+          async () => expectSuccess(await client.torrents({ id }).get()),
+          (detail) => detail.status === "seeding"
+        )
+      );
+      if (mode === "paused") {
+        expectSuccess(await client.torrents({ id }).pause.post({}));
+      }
+      await engine.close();
+      const path = join(options.downloadPath, "source.bin");
+      let mtimeMs: number | undefined;
+      if (mode === "corrupt") {
+        await Bun.write(path, Buffer.alloc(context.bytes.length));
+        // Preserve a matching stored timestamp to exercise piece hashes, not just file stats.
+        ({ mtimeMs } = await stat(path));
+      }
+      await changeStoredStorageDevice(options.dataDir, id, {
+        blocked: mode !== "active",
+        mtimeMs,
+      });
+      const disconnected = join(context.directory, "disconnected");
+      if (mode === "reconnected") {
+        await rename(options.downloadPath, disconnected);
+      }
+      engine = await WorkerTorrentEngine.open(options);
+      api = await createTestApi(() => engine, context.sync.options);
+      client = treaty(api).api;
+      if (mode === "reconnected") {
+        expect(expectSuccess(await client.torrents({ id }).get()).storageIssue?.kind).toBe(
+          "storage-unavailable"
+        );
+        await rename(disconnected, options.downloadPath);
+      }
+      let expectedStatus = mode === "paused" ? "paused" : "seeding";
+      if (mode === "corrupt") {
+        expectedStatus = "error";
+      }
+      const recovered = await waitFor(
+        async () => expectSuccess(await client.torrents({ id }).get()),
+        (detail) => detail.status === expectedStatus
+      );
+      expect(recovered.received - completed.received).toBeLessThan(completed.pieceLength);
+      if (mode === "corrupt") {
+        expect(recovered.status).toBe("error");
+        expect(recovered.storageIssue?.kind).toBe("modified-files");
+        expect(await Bun.file(path).bytes()).toEqual(new Uint8Array(context.bytes.length));
+      } else {
+        expect(recovered.status).toBe(mode === "paused" ? "paused" : "seeding");
+        expect(recovered.storageIssue).toBeNull();
+        expect(recovered.progress).toBe(1);
+        expect(await Bun.file(path).bytes()).toEqual(new Uint8Array(context.bytes));
+        await engine.close();
+        engine = await WorkerTorrentEngine.open(options);
+        api = await createTestApi(() => engine, context.sync.options);
+        client = treaty(api).api;
+        const persisted = expectSuccess(await client.torrents({ id }).get());
+        expect(persisted.storageIssue).toBeNull();
+        expect(persisted.received - completed.received).toBeLessThan(completed.pieceLength);
+      }
+    } finally {
+      await engine.close();
+      await context.close();
+    }
+  },
+  30_000
+);
 
 test.skipIf(process.platform === "win32")(
   "an inaccessible root alias retains its physical file reservation",
@@ -83,10 +168,11 @@ test.skipIf(process.platform === "win32")(
       const { id } = expectSuccess(
         await context.client.torrents.post({ paused: false, source: other.magnet })
       );
-      const completed = await waitFor(
+      await waitFor(
         async () => expectSuccess(await context.client.torrents({ id }).get()),
         (detail) => detail.status === "seeding"
       );
+      const completed = expectSuccess(await context.client.torrents({ id }).host.get());
       await chmod(protectedPath, 0o000);
       await waitFor(
         async () => expectSuccess(await context.client.torrents({ id: protectedTorrent.id }).get()),
@@ -127,18 +213,18 @@ test("concurrent location cannot claim files already being located by another to
         source: other.magnet,
       })
     );
-    const firstCompleted = structuredClone(
-      await waitFor(
-        async () => expectSuccess(await context.client.torrents({ id: first.id }).get()),
-        (detail) => detail.status === "seeding"
-      )
+    await waitFor(
+      async () => expectSuccess(await context.client.torrents({ id: first.id }).get()),
+      (detail) => detail.status === "seeding"
     );
-    const completed = structuredClone(
-      await waitFor(
-        async () => expectSuccess(await context.client.torrents({ id: second.id }).get()),
-        (detail) => detail.status === "seeding"
-      )
+    await waitFor(
+      async () => expectSuccess(await context.client.torrents({ id: second.id }).get()),
+      (detail) => detail.status === "seeding"
     );
+    const firstCompleted = expectSuccess(
+      await context.client.torrents({ id: first.id }).host.get()
+    );
+    const completed = expectSuccess(await context.client.torrents({ id: second.id }).host.get());
     const target = join(context.directory, "located");
     await Bun.write(join(target, "source.bin"), context.bytes);
     const responses = await Promise.all([
@@ -147,9 +233,9 @@ test("concurrent location cannot claim files already being located by another to
     ]);
     expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
     const rejected = responses[0]?.status === 409 ? firstCompleted : completed;
-    expect(expectSuccess(await context.client.torrents({ id: rejected.id }).get()).savePath).toBe(
-      rejected.savePath
-    );
+    expect(
+      expectSuccess(await context.client.torrents({ id: rejected.id }).host.get()).savePath
+    ).toBe(rejected.savePath);
     await waitFor(
       async () => expectSuccess(await context.client.torrents({ id: rejected.id }).get()),
       (detail) => detail.status === "seeding"
@@ -171,13 +257,16 @@ test("deleting a completed file stops sharing and requires explicit recovery", a
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
-    const completed = await waitFor(read, (detail) => detail.status === "seeding");
-    const path = join(completed.savePath, "source.bin");
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
+    await waitFor(read, (detail) => detail.status === "seeding");
+    const { savePath } = expectSuccess(await context.client.torrents({ id }).host.get());
+    const path = join(savePath, "source.bin");
     await rm(path);
     const blocked = await waitFor(read, (detail) => detail.status === "error");
     expect(blocked.storageIssue?.kind).toBe("missing-files");
-    expect(blocked.storageIssue?.paths).toEqual(["source.bin"]);
+    expect(
+      expectSuccess(await context.client.torrents({ id }).host.get()).storageIssue?.paths
+    ).toEqual(["source.bin"]);
     expect(blocked.downloadSpeed).toBe(0);
     expect(blocked.uploadSpeed).toBe(0);
     expect(blocked.peers).toBe(0);
@@ -197,9 +286,10 @@ test("repair refuses oversized files without clearing the problem or deleting ex
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
-    const completed = await waitFor(read, (detail) => detail.status === "seeding");
-    const path = join(completed.savePath, "source.bin");
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
+    await waitFor(read, (detail) => detail.status === "seeding");
+    const { savePath } = expectSuccess(await context.client.torrents({ id }).host.get());
+    const path = join(savePath, "source.bin");
     const expanded = Buffer.concat([context.bytes, Buffer.from("Keep this extra data")]);
     await Bun.write(path, expanded);
     const blocked = await waitFor(read, (detail) => detail.storageIssue !== null);
@@ -222,7 +312,7 @@ test.skipIf(process.platform === "win32")(
         await context.client.torrents.post({ paused: false, source: context.magnet })
       );
       const read = async () =>
-        expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
+        expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
       const completed = await waitFor(read, (detail) => detail.status === "seeding");
       await chmod(path, 0o000);
       const blocked = await waitFor(read, (detail) => detail.storageIssue !== null);
@@ -263,7 +353,7 @@ test("multifile repair preserves intact files and ignores skipped and empty file
         paused: "true",
       })
     );
-    const skipped = expectSuccess(await context.client.torrents({ id }).get()).files.find(
+    const skipped = expectSuccess(await context.client.torrents({ id }).host.get()).files.find(
       (file) => file.path === "collection/skip.bin"
     );
     expect(skipped).toBeDefined();
@@ -280,20 +370,23 @@ test("multifile repair preserves intact files and ignores skipped and empty file
         .peers.post({ peer: `127.0.0.1:${context.seeder.torrentPort}` })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
     const completed = await waitFor(read, (detail) =>
       detail.files.filter((file) => file.priority !== "skip").every((file) => file.progress === 1)
     );
-    const first = join(completed.savePath, "collection/first.bin");
-    const missing = join(completed.savePath, "collection/missing.bin");
-    const unrelated = join(completed.savePath, "collection/notes.txt");
+    const host = expectSuccess(await context.client.torrents({ id }).host.get());
+    const first = join(host.savePath, "collection/first.bin");
+    const missing = join(host.savePath, "collection/missing.bin");
+    const unrelated = join(host.savePath, "collection/notes.txt");
     await Bun.write(unrelated, "Keep this file");
     await Bun.sleep(1200);
     expect((await read()).storageIssue).toBeNull();
-    expect(await Bun.file(join(completed.savePath, "collection/skip.bin")).exists()).toBe(false);
+    expect(await Bun.file(join(host.savePath, "collection/skip.bin")).exists()).toBe(false);
     await rm(missing);
-    const blocked = await waitFor(read, (detail) => detail.storageIssue !== null);
-    expect(blocked.storageIssue?.paths).toEqual(["collection/missing.bin"]);
+    await waitFor(read, (detail) => detail.storageIssue !== null);
+    expect(
+      expectSuccess(await context.client.torrents({ id }).host.get()).storageIssue?.paths
+    ).toEqual(["collection/missing.bin"]);
     expect(Bun.SHA256.hash(await Bun.file(first).arrayBuffer(), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
     );
@@ -308,15 +401,15 @@ test("multifile repair preserves intact files and ignores skipped and empty file
       Bun.SHA256.hash(context.bytes, "hex")
     );
     expect(await Bun.file(unrelated).text()).toBe("Keep this file");
-    expect(await Bun.file(join(completed.savePath, "collection/skip.bin")).exists()).toBe(false);
+    expect(await Bun.file(join(host.savePath, "collection/skip.bin")).exists()).toBe(false);
     await truncate(first, 0);
     await rm(missing);
-    const firstIndex = completed.files.find((file) => file.path === "collection/first.bin")?.index;
+    const firstIndex = host.files.find((file) => file.path === "collection/first.bin")?.index;
     expectDefined(firstIndex);
     expect(
       (await context.client.torrents({ id }).files({ index: firstIndex }).content.get()).status
     ).toBe(404);
-    const mixed = await read();
+    const mixed = expectSuccess(await context.client.torrents({ id }).host.get());
     expect(mixed.storageIssue?.paths.toSorted()).toEqual([
       "collection/first.bin",
       "collection/missing.bin",
@@ -332,11 +425,11 @@ test("adding into unavailable storage never recreates a missing destination, eve
     const { id } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
-    const completed = await waitFor(
+    await waitFor(
       async () => expectSuccess(await context.client.torrents({ id }).get()),
       (detail) => detail.status === "seeding"
     );
-    const path = completed.savePath;
+    const path = expectSuccess(await context.client.torrents({ id }).host.get()).savePath;
     if (process.platform === "win32") {
       // Windows cannot rename a directory while WebTorrent holds its files open.
       expectSuccess(await context.client.torrents({ id }).pause.post({}));
@@ -371,7 +464,7 @@ test("buffered blocks before the first piece is written are healthy across pause
       })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
     await waitFor(read, (detail) => detail.received > 0);
     await Bun.sleep(1200);
     expect((await read()).storageIssue).toBeNull();
@@ -400,9 +493,10 @@ test("verification immediately after deletion does not silently repair the downl
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
-    const completed = await waitFor(read, (detail) => detail.status === "seeding");
-    const path = join(completed.savePath, "source.bin");
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
+    await waitFor(read, (detail) => detail.status === "seeding");
+    const completedHost = expectSuccess(await context.client.torrents({ id }).host.get());
+    const path = join(completedHost.savePath, "source.bin");
     await rm(path);
     expect((await context.client.torrents({ id }).verify.post({})).status).toBe(200);
     await Bun.sleep(1200);
@@ -430,7 +524,8 @@ test.each(["missing-file", "missing-root", "replaced-root"])(
       const { id } = expectSuccess(
         await client.torrents.post({ paused: false, source: context.magnet })
       ) as { id: string };
-      const read = async () => expectSuccess(await client.torrents({ id }).get()) as TorrentDetail;
+      const read = async () =>
+        expectSuccess(await client.torrents({ id }).get()) as LibraryTorrentDetail;
       await waitFor(read, (detail) => detail.status === "seeding");
       await engine.close();
       if (mode === "missing-file") {
@@ -486,13 +581,14 @@ test("locating moved files verifies and reuses them without moving or downloadin
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
     const completed = await waitFor(read, (detail) => detail.status === "seeding");
+    const completedHost = expectSuccess(await context.client.torrents({ id }).host.get());
     const target = join(context.directory, "relocated");
     if (process.platform === "win32") {
       expectSuccess(await context.client.torrents({ id }).pause.post({}));
     }
-    await rename(completed.savePath, target);
+    await rename(completedHost.savePath, target);
     if (process.platform === "win32") {
       expect((await context.client.torrents({ id }).resume.post({})).status).toBe(409);
     }
@@ -505,9 +601,9 @@ test("locating moved files verifies and reuses them without moving or downloadin
     await waitFor(read, (detail) => detail.status === "seeding");
     const located = await read();
     expect(located.storageIssue).toBeNull();
-    expect(located.savePath).toBe(target);
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(target);
     expect(located.received - completed.received).toBeLessThan(completed.pieceLength);
-    expect(await Bun.file(join(completed.savePath, "source.bin")).exists()).toBe(false);
+    expect(await Bun.file(join(completedHost.savePath, "source.bin")).exists()).toBe(false);
     expect(Bun.SHA256.hash(await Bun.file(join(target, "source.bin")).arrayBuffer(), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
     );
@@ -522,10 +618,11 @@ test("same-size external changes require verification before sharing resumes", a
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
-    const completed = await waitFor(read, (detail) => detail.status === "seeding");
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
+    await waitFor(read, (detail) => detail.status === "seeding");
+    const completedHost = expectSuccess(await context.client.torrents({ id }).host.get());
     await Bun.sleep(1200);
-    const path = join(completed.savePath, "source.bin");
+    const path = join(completedHost.savePath, "source.bin");
     await Bun.write(path, new Uint8Array(context.bytes.length));
     const blocked = await waitFor(read, (detail) => detail.status === "error");
     expect(blocked.storageIssue?.kind).toBe("modified-files");
@@ -549,12 +646,10 @@ test("deleting a file during a real transfer stops writing until explicit repair
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
-    const downloading = await waitFor(
-      read,
-      (detail) => (detail.downloaded ?? 0) > 0 && detail.progress !== 1
-    );
-    const path = join(downloading.savePath, "source.bin");
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
+    await waitFor(read, (detail) => (detail.downloaded ?? 0) > 0 && detail.progress !== 1);
+    const downloadingHost = expectSuccess(await context.client.torrents({ id }).host.get());
+    const path = join(downloadingHost.savePath, "source.bin");
     // Received blocks can be buffered before the first asynchronous disk write completes.
     await waitFor(
       () => Bun.file(path).exists(),
@@ -584,21 +679,22 @@ test("an unavailable destination is never recreated and retry waits for the orig
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
     const completed = await waitFor(read, (detail) => detail.status === "seeding");
+    const completedHost = expectSuccess(await context.client.torrents({ id }).host.get());
     const disconnected = join(context.directory, "disconnected");
     if (process.platform === "win32") {
       expectSuccess(await context.client.torrents({ id }).pause.post({}));
     }
-    await rename(completed.savePath, disconnected);
+    await rename(completedHost.savePath, disconnected);
     if (process.platform === "win32") {
       expect((await context.client.torrents({ id }).resume.post({})).status).toBe(409);
     }
     const blocked = await waitFor(read, (detail) => detail.storageIssue !== null);
     expect(blocked.storageIssue?.kind).toBe("storage-unavailable");
     expect((await context.client.torrents({ id }).repair.post({})).status).toBe(409);
-    expect(await Bun.file(join(completed.savePath, "source.bin")).exists()).toBe(false);
-    await rename(disconnected, completed.savePath);
+    expect(await Bun.file(join(completedHost.savePath, "source.bin")).exists()).toBe(false);
+    await rename(disconnected, completedHost.savePath);
     expect((await context.client.torrents({ id }).repair.post({})).status).toBe(200);
     if (process.platform === "win32") {
       expectSuccess(await context.client.torrents({ id }).resume.post({}));
@@ -606,7 +702,10 @@ test("an unavailable destination is never recreated and retry waits for the orig
     await waitFor(read, (detail) => detail.status === "seeding");
     expect((await read()).received - completed.received).toBeLessThan(completed.pieceLength);
     expect(
-      Bun.SHA256.hash(await Bun.file(join(completed.savePath, "source.bin")).arrayBuffer(), "hex")
+      Bun.SHA256.hash(
+        await Bun.file(join(completedHost.savePath, "source.bin")).arrayBuffer(),
+        "hex"
+      )
     ).toBe(Bun.SHA256.hash(context.bytes, "hex"));
   } finally {
     await context.close();
@@ -619,10 +718,11 @@ test("truncated completed data is blocked before file access and repair respects
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
-    const completed = await waitFor(read, (detail) => detail.status === "seeding");
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
+    await waitFor(read, (detail) => detail.status === "seeding");
+    const completedHost = expectSuccess(await context.client.torrents({ id }).host.get());
     expectSuccess(await context.client.torrents({ id }).pause.post({}));
-    const path = join(completed.savePath, "source.bin");
+    const path = join(completedHost.savePath, "source.bin");
     await truncate(path, 0);
     const response = await context.client.torrents({ id }).files({ index: "0" }).content.get();
     expect(response.status).toBe(409);
@@ -649,9 +749,10 @@ test("explicit repair verifies remaining data and downloads missing bytes from a
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
     const read = async () =>
-      expectSuccess(await context.client.torrents({ id }).get()) as TorrentDetail;
-    const completed = await waitFor(read, (detail) => detail.status === "seeding");
-    const path = join(completed.savePath, "source.bin");
+      expectSuccess(await context.client.torrents({ id }).get()) as LibraryTorrentDetail;
+    await waitFor(read, (detail) => detail.status === "seeding");
+    const completedHost = expectSuccess(await context.client.torrents({ id }).host.get());
+    const path = join(completedHost.savePath, "source.bin");
     await rm(path);
     await waitFor(read, (detail) => detail.storageIssue !== null);
     const repaired = await context.client.torrents({ id }).repair.post({});

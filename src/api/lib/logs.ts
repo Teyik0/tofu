@@ -45,33 +45,40 @@ export class ApplicationLogs {
       return;
     }
     this.queuedBytes += bytes;
-    this.pending = this.pending
-      .then(async () => {
+    const previous = this.pending;
+    // Reserve the write's place in the queue before waiting for earlier writes.
+    this.pending = (async () => {
+      await previous;
+      try {
         if (this.bytes + bytes > this.maxBytes) {
-          await rm(`${this.path}.3`, { force: true });
-          for (let index = 2; index >= 0; index -= 1) {
-            const source = index === 0 ? this.path : `${this.path}.${index}`;
-            try {
-              // biome-ignore lint/performance/noAwaitInLoops: rotate archives from oldest to newest.
-              await rename(source, `${this.path}.${index + 1}`);
-            } catch (error) {
-              if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
-                throw error;
-              }
-            }
-          }
-          this.bytes = 0;
+          await this.rotate();
         }
         await appendFile(this.path, line, { mode: 0o600 });
         this.bytes += bytes;
-      })
-      .catch(() => {
+      } catch {
         // A full or disconnected disk must not stop transfers or cause recursive logging.
         process.stderr.write("Tofu could not write its application logs.\n");
-      })
-      .finally(() => {
+      } finally {
         this.queuedBytes -= bytes;
-      });
+      }
+    })();
+  }
+
+  /** Shifts archives from oldest to newest and starts an empty log. */
+  private async rotate() {
+    await rm(`${this.path}.3`, { force: true });
+    for (let index = 2; index >= 0; index -= 1) {
+      const source = index === 0 ? this.path : `${this.path}.${index}`;
+      try {
+        // biome-ignore lint/performance/noAwaitInLoops: rotate archives from oldest to newest.
+        await rename(source, `${this.path}.${index + 1}`);
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+          throw error;
+        }
+      }
+    }
+    this.bytes = 0;
   }
 
   async flush() {

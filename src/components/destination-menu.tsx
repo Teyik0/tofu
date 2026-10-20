@@ -15,7 +15,28 @@ import {
   ContextMenuTrigger,
 } from "./ui/context-menu";
 
+/** Thread actions for administrators; other viewers get the plain thread link. */
 export function DestinationMenu({
+  children,
+  destination,
+  open,
+  deletable,
+}: {
+  children: ReactElement;
+  destination: Destination | undefined;
+  open: (modal: ModalKind) => void;
+  deletable: boolean;
+}) {
+  return destination ? (
+    <DestinationContextMenu deletable={deletable} destination={destination} open={open}>
+      {children}
+    </DestinationContextMenu>
+  ) : (
+    children
+  );
+}
+
+function DestinationContextMenu({
   children,
   destination,
   open,

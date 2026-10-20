@@ -7,7 +7,6 @@ import type {
   AniListSubscription,
   AutomationDraft,
   AutomationState,
-  DashboardState,
   Destination,
 } from "../../src/types";
 import { threadFixture } from "../helpers/anilist/threads";
@@ -89,9 +88,7 @@ test("AniList creates linked Nyaa rules in per-anime threads with overrides and 
     const onePiece = state.automations.find((rule) => rule.title === "One Piece");
     expect(onePiece).toBeDefined();
     expect(onePiece?.destinationId).not.toBe("default");
-    const { destinations } = expectSuccess(await context.client.state.get()) as {
-      destinations: Destination[];
-    };
+    const { destinations } = expectSuccess(await context.client.host.get());
     expect(
       destinations.find((destination) => destination.id === onePiece?.destinationId)
     ).toMatchObject({ downloadPath: customPath, name: "OP" });
@@ -109,7 +106,8 @@ test("AniList creates linked Nyaa rules in per-anime threads with overrides and 
       (value) => value.detail?.status === "seeding"
     );
     expect(
-      expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).get()).savePath
+      expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).host.get())
+        .savePath
     ).toBe(customPath);
     const tested = expectSuccess(await context.client.plugins({ id: "anilist" }).test.post({}));
     expect(tested.automations).toHaveLength(2);
@@ -133,10 +131,7 @@ test("AniList creates linked Nyaa rules in per-anime threads with overrides and 
     expect(again.automations.find((rule) => rule.id === onePiece?.id)?.destinationId).toBe(
       onePiece?.destinationId
     );
-    expect(
-      (expectSuccess(await context.client.state.get()) as { destinations: Destination[] })
-        .destinations
-    ).toHaveLength(3);
+    expect(expectSuccess(await context.client.host.get()).destinations).toHaveLength(3);
     expect(
       new Uint8Array(
         torrentBytes(
@@ -151,9 +146,7 @@ test("AniList creates linked Nyaa rules in per-anime threads with overrides and 
     await context.client.anilist.subscriptions({ id: subscription.id }).sync.post({});
     const followed = expectSuccess(await context.client.automation.get()) as AutomationState;
     const later = followed.automations.find((rule) => rule.title === "Unselected");
-    const updated = expectSuccess(await context.client.state.get()) as {
-      destinations: Destination[];
-    };
+    const updated = expectSuccess(await context.client.host.get());
     expect(
       updated.destinations.find((destination) => destination.id === later?.destinationId)
     ).toMatchObject({ downloadPath: join(basePath, "unselected"), name: "Unselected" });
@@ -252,9 +245,9 @@ test("deleting the default tab keeps the next tab's rules and subscriptions on t
     expect(synced.subscriptions[0]?.template.destinationId).toBe("default");
     const state = expectSuccess(await context.client.automation.get()) as AutomationState;
     expect(state.automations.map((rule) => rule.destinationId)).toEqual(["default"]);
-    expect(
-      (expectSuccess(await context.client.state.get()) as DashboardState).destinations
-    ).toEqual([{ ...destination, id: "default" }]);
+    expect(expectSuccess(await context.client.host.get()).destinations).toEqual([
+      { ...destination, id: "default" },
+    ]);
   } finally {
     await context.close();
   }

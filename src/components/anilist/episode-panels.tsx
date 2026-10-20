@@ -1,11 +1,12 @@
 import { useMutation } from "@teyik0/furin/client";
 import { LoaderCircleIcon, RefreshCwIcon, SettingsIcon, ZapIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { useAniListEditor } from "../../hooks/use-anilist-editor";
 import type { useAniListReleases } from "../../hooks/use-anilist-releases";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import { useAutomationDraftForm } from "../../hooks/use-automation-draft-form";
 import { api } from "../../lib/client";
+import { errorMessage } from "../../lib/errors";
 import { useRefresh } from "../../lib/navigation";
 import type {
   AsyncAction as Action,
@@ -14,7 +15,7 @@ import type {
   AutomationDraft,
   AutomationRule,
   AutomationState,
-  DashboardState,
+  LiveState,
 } from "../../types";
 import { request } from "../api";
 import { RuleFields } from "../automation-fields";
@@ -27,6 +28,8 @@ import { Skeleton } from "../ui/skeleton";
 import { TabsContent } from "../ui/tabs";
 import { EpisodeRow } from "./episode-row";
 import { AniListEditorUnavailable, AniListListEditor } from "./list-editor";
+
+const PART_NUMBER = /\bpart\s*(\d+)/i;
 
 type EditorModel = ReturnType<typeof useAniListEditor>;
 type ReleasesModel = ReturnType<typeof useAniListReleases>;
@@ -89,7 +92,7 @@ export function EpisodeDownloadsPanel({
   model,
 }: {
   entry: AniListMedia | AniListEntry;
-  dashboard: DashboardState;
+  dashboard: LiveState;
   automation: AutomationState;
   destinationId: string;
   setDestinationId: (value: string) => void;
@@ -97,8 +100,66 @@ export function EpisodeDownloadsPanel({
 }) {
   const { busy, error, action } = useAsyncAction("Unable to update this anime");
   const { result, loading, reload, releaseStatus, numbered, packs, episodes } = model;
+  const [remote, setRemote] = useState<
+    NonNullable<
+      Awaited<ReturnType<(typeof api)["linked-libraries"]["availability"]["post"]>>["data"]
+    >
+  >([]);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+  const [remoteAttempt, setRemoteAttempt] = useState(0);
+  const queryKey = JSON.stringify({
+    episodes,
+    infoHashes:
+      result?.releases.flatMap((release) => (release.infoHash ? [release.infoHash] : [])) ?? [],
+    key: `${entry.mediaId}:${remoteAttempt}`,
+    ...("progress" in entry ? { mediaId: entry.mediaId } : {}),
+    part: Number(entry.title.match(PART_NUMBER)?.[1] ?? 1),
+    season: result?.search?.season ?? null,
+    titles: [entry.title, ...entry.aliases].slice(0, 12),
+  });
+  useEffect(() => {
+    let disposed = false;
+    let pending = false;
+    const controller = new AbortController();
+    const load = async () => {
+      if (pending) {
+        return;
+      }
+      pending = true;
+      try {
+        const { data, error: failure } = await api["linked-libraries"].availability.post(
+          JSON.parse(queryKey),
+          { fetch: { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]) } }
+        );
+        if (disposed) {
+          return;
+        }
+        if (failure) {
+          setRemoteError(
+            errorMessage(failure, "Remote libraries could not be checked. Try again shortly.")
+          );
+          return;
+        }
+        setRemote(data);
+        setRemoteError(null);
+      } catch {
+        if (!disposed) {
+          setRemoteError("Remote libraries could not be checked. Try again shortly.");
+        }
+      } finally {
+        pending = false;
+      }
+    };
+    void load();
+    const timer = setInterval(() => void load(), 60_000);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [queryKey]);
   const listed = "progress" in entry;
-  const destinationOptions = dashboard.destinations.map((destination) => ({
+  const destinationOptions = (dashboard.host?.destinations ?? []).map((destination) => ({
     label: destination.name,
     value: destination.id,
   }));
@@ -125,7 +186,15 @@ export function EpisodeDownloadsPanel({
             value={destinationId}
           />
         </Field>
-        <Button disabled={busy || loading} onClick={reload} size="sm" variant="outline">
+        <Button
+          disabled={busy || loading}
+          onClick={() => {
+            reload();
+            setRemoteAttempt((value) => value + 1);
+          }}
+          size="sm"
+          variant="outline"
+        >
           <RefreshCwIcon
             className={loading ? "motion-safe:animate-spin" : undefined}
             data-icon="inline-start"
@@ -143,6 +212,21 @@ export function EpisodeDownloadsPanel({
           Finding releases…
         </p>
       ) : null}
+      {remoteError ? (
+        <p className="anime-sync-note" role="status">
+          {remoteError}
+        </p>
+      ) : null}
+      {remote
+        .filter((item) => !["available", "none"].includes(item.state))
+        .map((item) => (
+          <p className="anime-sync-note" key={item.link.id}>
+            {item.link.name}:{" "}
+            {item.state === "offline"
+              ? "Offline. Last known files may no longer be available."
+              : item.state}
+          </p>
+        ))}
       {hasSources ? null : (
         <Alert>
           <AlertDescription>
@@ -174,6 +258,7 @@ export function EpisodeDownloadsPanel({
               key={episode}
               releaseStatus={releaseStatus}
               releases={numbered.get(episode) ?? []}
+              remote={remote}
               torrents={dashboard.torrents}
             />
           ))}
@@ -187,6 +272,7 @@ export function EpisodeDownloadsPanel({
               key={`${release.sourceId}:${release.id}`}
               releaseStatus={releaseStatus}
               releases={[release]}
+              remote={remote}
               torrents={dashboard.torrents}
             />
           ))}
@@ -220,7 +306,7 @@ export function EpisodeAutomationPanel({
   reload,
 }: {
   entry: AniListMedia | AniListEntry;
-  dashboard: DashboardState;
+  dashboard: LiveState;
   rule: AutomationRule | undefined;
   destinationId: string;
   setDestinationId: (value: string) => void;
@@ -245,7 +331,7 @@ export function EpisodeAutomationPanel({
     run(task);
   };
   const listed = "progress" in entry;
-  const destinationOptions = dashboard.destinations.map((destination) => ({
+  const destinationOptions = (dashboard.host?.destinations ?? []).map((destination) => ({
     label: destination.name,
     value: destination.id,
   }));

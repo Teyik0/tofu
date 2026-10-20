@@ -1,4 +1,4 @@
-import { Elysia } from "elysia";
+import { Elysia, ElysiaStatus } from "elysia";
 import { version } from "../../../../package.json";
 import { databasePlugin, db, instance, logs } from "../../lib/database-plugin";
 import { resources } from "../../lib/runtime";
@@ -15,7 +15,11 @@ export const engine = await WorkerTorrentEngine.open(
 );
 resources.defer(engine.close.bind(engine));
 engine.mode = instance.desktop ? "desktop" : "server";
-await engine.assertReady();
+const ready = await engine.assertReady();
+if (ready instanceof ElysiaStatus) {
+  await resources.disposeAsync();
+  throw new Error(ready.response.detail);
+}
 export const torrentFolders = new TorrentFolders({ dataDir: instance.dataDir, db, engine });
 resources.defer(torrentFolders.close.bind(torrentFolders));
 

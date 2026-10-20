@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../src/api";
-import type { DashboardState, ServerInfo } from "../src/types";
+import type { LibraryState, ServerInfo } from "../src/types";
 import { launchNativeUpdateHost } from "./helpers/native-update-host";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
@@ -76,12 +76,15 @@ test
           .openings({ id: opened ?? "" })
           .post({ destinationId: "default", paused: false })
       );
-      const state = async () => expectSuccess(await client.state.get()) as DashboardState;
+      const state = async () => expectSuccess(await client.state.get()) as LibraryState;
       await waitFor(state, (value) =>
         value.torrents.some((torrent) => torrent.id === id && torrent.status === "seeding")
       );
       expectSuccess(
-        await client.settings.put({ ...(await state()).settings, runInBackground: true })
+        await client.settings.put({
+          ...expectSuccess(await client.host.get()).settings,
+          runInBackground: true,
+        })
       );
       expect((await client.desktop.background.post({})).status).toBe(200);
       await waitFor(

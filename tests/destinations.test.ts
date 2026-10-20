@@ -5,7 +5,7 @@ import { treaty } from "@elysia/eden";
 import { sql } from "drizzle-orm";
 import { createDatabase } from "../src/api/lib/db";
 import { TorrentEngine } from "../src/api/modules/torrents/service";
-import type { DashboardState, Destination } from "../src/types";
+import type { Destination, LibraryState } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, network, torrentBytes, waitFor } from "./helpers/torrent";
@@ -32,9 +32,7 @@ test("pinned threads retain their selected icon after restart without changing d
     ) as { id: string };
     await waitFor(
       async () =>
-        expectSuccess(
-          await context.client.state.get({ query: { selected: id } })
-        ) as DashboardState,
+        expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState,
       (snapshot) => snapshot.detail?.status === "seeding"
     );
     await context.engine.close();
@@ -46,12 +44,14 @@ test("pinned threads retain their selected icon after restart without changing d
     const restored = restarted;
     const api = await createTestApi(() => restored, context.sync.options);
     const client = treaty(api).api;
-    const state = await waitFor(
+    await waitFor(
       async () =>
-        expectSuccess(await client.state.get({ query: { selected: id } })) as DashboardState,
+        expectSuccess(await client.state.get({ query: { selected: id } })) as LibraryState,
       (snapshot) => snapshot.detail?.status === "seeding"
     );
-    expect(state.destinations.find((item) => item.id === destination.id)).toEqual(destination);
+    expect(
+      expectSuccess(await client.host.get()).destinations.find((item) => item.id === destination.id)
+    ).toEqual(destination);
     const content = await client.torrents({ id }).files({ index: "0" }).content.get();
     expect(content.status).toBe(200);
     expect(Bun.SHA256.hash(torrentBytes(content), "hex")).toBe(
@@ -69,7 +69,7 @@ test("pinning and changing icons preserve live transfers and older clients retai
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
     const read = async () =>
-      expectSuccess(await context.client.state.get({ query: { selected: id } })) as DashboardState;
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
     await waitFor(read, (state) => state.detail?.status === "seeding");
     const updated = await context.client
       .destinations({ id: "default" })
@@ -118,9 +118,7 @@ test("default thread icons and pinning persist without changing names, folders o
     ) as { id: string };
     await waitFor(
       async () =>
-        expectSuccess(
-          await context.client.state.get({ query: { selected: id } })
-        ) as DashboardState,
+        expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState,
       (state) => state.detail?.status === "seeding"
     );
     await context.engine.close();
@@ -133,9 +131,11 @@ test("default thread icons and pinning persist without changing names, folders o
     const api = await createTestApi(() => restored, context.sync.options);
     const client = treaty(api).api;
     const read = async () =>
-      expectSuccess(await client.state.get({ query: { selected: id } })) as DashboardState;
-    const snapshot = await waitFor(read, (state) => state.detail?.status === "seeding");
-    expect(snapshot.destinations.find((item) => item.id === destination.id)).toEqual(destination);
+      expectSuccess(await client.state.get({ query: { selected: id } })) as LibraryState;
+    await waitFor(read, (state) => state.detail?.status === "seeding");
+    expect(
+      expectSuccess(await client.host.get()).destinations.find((item) => item.id === destination.id)
+    ).toEqual(destination);
     const response = await client.torrents({ id }).files({ index: "0" }).content.get();
     expect(response.status).toBe(200);
     expect(Bun.SHA256.hash(torrentBytes(response), "hex")).toBe(
@@ -169,13 +169,10 @@ test("deleting a tab preserves real transfers and files and persists their defau
     expect(response.status).toBe(200);
     const state = expectSuccess(
       await context.client.state.get({ query: { selected: id } })
-    ) as DashboardState;
+    ) as LibraryState;
     expect(state.destinations.some((item) => item.id === destination.id)).toBe(false);
-    expect(state.detail).toMatchObject({
-      destinationId: "default",
-      savePath: path,
-      status: "seeding",
-    });
+    expect(state.detail).toMatchObject({ destinationId: "default", status: "seeding" });
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(path);
     expect(
       new Uint8Array(
         torrentBytes(await context.client.torrents({ id }).files({ index: "0" }).content.get())
@@ -198,9 +195,9 @@ test("deleting a tab preserves real transfers and files and persists their defau
     ).toBe(false);
     expect(expectSuccess(await restartedClient.torrents({ id }).get())).toMatchObject({
       destinationId: "default",
-      savePath: path,
       status: "paused",
     });
+    expect(expectSuccess(await restartedClient.torrents({ id }).host.get()).savePath).toBe(path);
     expect(new Uint8Array(await Bun.file(join(path, "source.bin")).arrayBuffer())).toEqual(
       context.bytes
     );
@@ -249,19 +246,21 @@ test.each(["default", "saved"])(
         })
       ) as { id: string };
       const read = async () =>
-        expectSuccess(
-          await context.client.state.get({ query: { selected: id } })
-        ) as DashboardState;
-      const before = await waitFor(read, (state) => state.detail?.status === "seeding");
+        expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
+      await waitFor(read, (state) => state.detail?.status === "seeding");
+      const before = expectSuccess(await context.client.host.get());
       database.run(sql`CREATE TRIGGER reject_destination_delete BEFORE DELETE ON destinations
         BEGIN SELECT RAISE(ABORT, 'Destination deletion failed'); END`);
       const target = tab === "default" ? "default" : destination.id;
       const response = await context.client.destinations({ id: target }).delete({});
       expect(response.status).toBe(500);
-      const after = await read();
+      const after = expectSuccess(await context.client.host.get());
       expect(after.destinations).toEqual(before.destinations);
       expect(after.settings.downloadPath).toBe(before.settings.downloadPath);
-      expect(after.detail).toMatchObject({ destinationId: destination.id, status: "seeding" });
+      expect((await read()).detail).toMatchObject({
+        destinationId: destination.id,
+        status: "seeding",
+      });
       const content = await context.client.torrents({ id }).files({ index: "0" }).content.get();
       expect(new Uint8Array(torrentBytes(content))).toEqual(context.bytes);
       database.run(sql`DROP TRIGGER reject_destination_delete`);
@@ -299,8 +298,9 @@ test("deleting the default tab hands its role to the next tab without moving rea
     expect(expectSuccess(response)).toEqual({ ok: true, removed: destination.id });
     const state = expectSuccess(
       await context.client.state.get({ query: { selected: id } })
-    ) as DashboardState;
-    expect(state.destinations).toEqual([
+    ) as LibraryState;
+    const host = expectSuccess(await context.client.host.get());
+    expect(host.destinations).toEqual([
       {
         autoAddTorrentFilesSince: null,
         deleteTorrentFileAfterAdd: null,
@@ -311,12 +311,11 @@ test("deleting the default tab hands its role to the next tab without moving rea
         pinned: true,
       },
     ]);
-    expect(state.settings.downloadPath).toBe(series);
-    expect(state.detail).toMatchObject({
-      destinationId: "default",
-      savePath: downloads,
-      status: "seeding",
-    });
+    expect(host.settings.downloadPath).toBe(series);
+    expect(state.detail).toMatchObject({ destinationId: "default", status: "seeding" });
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(
+      downloads
+    );
     expect(
       new Uint8Array(
         torrentBytes(await context.client.torrents({ id }).files({ index: "0" }).content.get())
@@ -333,14 +332,14 @@ test("deleting the default tab hands its role to the next tab without moving rea
     const restartedClient = treaty(
       await createTestApi(() => restarted as TorrentEngine, context.sync.options)
     ).api;
-    expect(
-      expectSuccess(await restartedClient.state.get({ query: { selected: id } })).destinations
-    ).toEqual(state.destinations);
+    expect(expectSuccess(await restartedClient.host.get()).destinations).toEqual(host.destinations);
     expect(expectSuccess(await restartedClient.torrents({ id }).get())).toMatchObject({
       destinationId: "default",
-      savePath: downloads,
       status: "paused",
     });
+    expect(expectSuccess(await restartedClient.torrents({ id }).host.get()).savePath).toBe(
+      downloads
+    );
     expect(new Uint8Array(await Bun.file(join(downloads, "source.bin")).arrayBuffer())).toEqual(
       context.bytes
     );
@@ -357,8 +356,9 @@ test("moving a destination relocates downloaded bytes and preserves paused torre
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
     const read = async () =>
-      expectSuccess(await context.client.state.get({ query: { selected: id } })) as DashboardState;
-    const completed = await waitFor(read, (state) => state.detail?.status === "seeding");
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
+    await waitFor(read, (state) => state.detail?.status === "seeding");
+    const completed = expectSuccess(await context.client.torrents({ id }).host.get());
     await context.client.torrents({ id }).pause.post({});
     await context.client.torrents({ id }).files({ index: "0" }).put({ priority: "high" });
     const newPath = join(context.directory, "moved");
@@ -372,12 +372,10 @@ test("moving a destination relocates downloaded bytes and preserves paused torre
     expect(response.status).toBe(200);
     expect(expectSuccess(response)).toMatchObject({ icon: "music", pinned: true });
     const moved = (await read()).detail;
-    expect(moved?.savePath).toBe(newPath);
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(newPath);
     expect(moved?.status).toBe("paused");
     expect(moved?.files[0]?.priority).toBe("high");
-    expect(await Bun.file(join(completed.detail?.savePath ?? "", "source.bin")).exists()).toBe(
-      false
-    );
+    expect(await Bun.file(join(completed.savePath, "source.bin")).exists()).toBe(false);
     const content = await context.client.torrents({ id }).files({ index: "0" }).content.get();
     expect(content.status).toBe(200);
     expect(Bun.SHA256.hash(torrentBytes(content), "hex")).toBe(
@@ -392,7 +390,7 @@ test("moving a destination relocates downloaded bytes and preserves paused torre
     const restartedClient = treaty(
       await createTestApi(() => restarted as TorrentEngine, context.sync.options)
     ).api;
-    expect(expectSuccess(await restartedClient.torrents({ id }).get()).savePath).toBe(newPath);
+    expect(expectSuccess(await restartedClient.torrents({ id }).host.get()).savePath).toBe(newPath);
     expect(expectSuccess(await restartedClient.torrents({ id }).get()).status).toBe("paused");
     expect(expectSuccess(await restartedClient.state.get()).destinations[0]).toMatchObject({
       icon: "music",
@@ -414,10 +412,11 @@ test("a missing downloaded file refuses relocation and keeps the original destin
     const { id } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
-    const completed = await waitFor(
+    await waitFor(
       async () => expectSuccess(await context.client.torrents({ id }).get()),
       (detail) => detail.status === "seeding"
     );
+    const completed = expectSuccess(await context.client.torrents({ id }).host.get());
     await context.client.torrents({ id }).pause.post({});
     await rm(join(completed.savePath, "source.bin"));
     const response = await context.client
@@ -428,8 +427,12 @@ test("a missing downloaded file refuses relocation and keeps the original destin
       detail: expect.stringContaining("is no longer present"),
     });
     const state = expectSuccess(await context.client.state.get({ query: { selected: id } }));
-    expect(state.detail?.savePath).toBe(completed.savePath);
-    expect(state.destinations[0]?.downloadPath).toBe(completed.savePath);
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(
+      completed.savePath
+    );
+    expect(expectSuccess(await context.client.host.get()).destinations[0]?.downloadPath).toBe(
+      completed.savePath
+    );
     expect(state.detail?.status).toBe("paused");
   } finally {
     await context.close();
@@ -441,11 +444,11 @@ test("a destination collision preserves existing files and running downloads", a
     const { id } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
-    const completed = await waitFor(
+    await waitFor(
       async () => expectSuccess(await context.client.torrents({ id }).get()),
       (detail) => detail.status === "seeding"
     );
-    const originalPath = completed.savePath;
+    const originalPath = expectSuccess(await context.client.torrents({ id }).host.get()).savePath;
     const newPath = join(context.directory, "occupied");
     await Bun.write(join(newPath, "source.bin"), "Do not overwrite");
     const response = await context.client
@@ -455,7 +458,9 @@ test("a destination collision preserves existing files and running downloads", a
     expect(response.error?.value).toMatchObject({
       detail: expect.stringContaining("already exists"),
     });
-    expect(expectSuccess(await context.client.torrents({ id }).get()).savePath).toBe(originalPath);
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(
+      originalPath
+    );
     expect(await Bun.file(join(newPath, "source.bin")).text()).toBe("Do not overwrite");
     expect(
       Bun.SHA256.hash(await Bun.file(join(originalPath, "source.bin")).arrayBuffer(), "hex")
@@ -471,16 +476,19 @@ test("a destination collision preserves existing files and running downloads", a
 test("moving the default folder from preferences resumes a partial transfer in its new location", async () => {
   const context = await fixture(1024 * 1024, []);
   try {
-    const { settings } = expectSuccess(await context.client.state.get());
+    const { settings } = expectSuccess(await context.client.host.get());
     await context.client.settings.put({ ...settings, downloadLimit: 32_768 });
     const { id } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
     const read = async () =>
-      expectSuccess(await context.client.state.get({ query: { selected: id } })) as DashboardState;
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
     await waitFor(read, (state) => (state.detail?.downloaded ?? 0) > 0);
     const before = await read();
     expect(before.detail?.progress).toBeLessThan(1);
+    const { savePath: previousPath } = expectSuccess(
+      await context.client.torrents({ id }).host.get()
+    );
     const newPath = join(context.directory, "partial");
     const response = await context.client.settings.put({
       ...settings,
@@ -489,15 +497,16 @@ test("moving the default folder from preferences resumes a partial transfer in i
       moveFiles: true,
     });
     expect(response.status).toBe(200);
-    const completed = await waitFor(read, (state) => state.detail?.status === "seeding");
-    expect(completed.detail?.savePath).toBe(newPath);
-    expect(completed.settings.downloadPath).toBe(newPath);
-    expect(completed.settings).not.toHaveProperty("moveFiles");
+    await waitFor(read, (state) => state.detail?.status === "seeding");
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(newPath);
+    const host = expectSuccess(await context.client.host.get());
+    expect(host.settings.downloadPath).toBe(newPath);
+    expect(host.settings).not.toHaveProperty("moveFiles");
     const content = await context.client.torrents({ id }).files({ index: "0" }).content.get();
     expect(Bun.SHA256.hash(torrentBytes(content), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
     );
-    expect(await Bun.file(join(before.detail?.savePath ?? "", "source.bin")).exists()).toBe(false);
+    expect(await Bun.file(join(previousPath, "source.bin")).exists()).toBe(false);
   } finally {
     await context.close();
   }
@@ -525,12 +534,10 @@ test("distinct destination tabs may share a folder and an add uses its chosen ta
     const { id } = expectSuccess(response) as { id: string };
     const state = await waitFor(
       async () =>
-        expectSuccess(
-          await context.client.state.get({ query: { selected: id } })
-        ) as DashboardState,
+        expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState,
       (value) => value.detail?.status === "seeding"
     );
-    expect(state.detail?.savePath).toBe(path);
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(path);
     expect(Bun.SHA256.hash(await Bun.file(join(path, "source.bin")).arrayBuffer(), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
     );
@@ -589,7 +596,7 @@ test("editing a destination persists its identity and changes future adds withou
       .destinations({ id: destination.id })
       .put({ downloadPath: newPath, name: "Anime" });
     expect(response.status).toBe(200);
-    expect(expectSuccess(await context.client.torrents({ id }).get()).savePath).toBe(path);
+    expect(expectSuccess(await context.client.torrents({ id }).host.get()).savePath).toBe(path);
     const { id: newId } = expectSuccess(
       await context.client.torrents.post({
         destinationId: destination.id,
@@ -601,7 +608,7 @@ test("editing a destination persists its identity and changes future adds withou
       async () => expectSuccess(await context.client.state.get({ query: { selected: newId } })),
       (value) => value.detail?.status === "seeding"
     );
-    expect(expectSuccess(await context.client.torrents({ id: newId }).get()).savePath).toBe(
+    expect(expectSuccess(await context.client.torrents({ id: newId }).host.get()).savePath).toBe(
       newPath
     );
     await context.engine.close();
@@ -614,7 +621,8 @@ test("editing a destination persists its identity and changes future adds withou
       await createTestApi(() => restarted as TorrentEngine, context.sync.options)
     ).api;
     const state = expectSuccess(await restartedClient.state.get({ query: { selected: id } }));
-    expect(state.destinations.find((item) => item.id === destination.id)).toEqual({
+    const host = expectSuccess(await restartedClient.host.get());
+    expect(host.destinations.find((item) => item.id === destination.id)).toEqual({
       autoAddTorrentFilesSince: null,
       deleteTorrentFileAfterAdd: null,
       downloadPath: newPath,
@@ -624,7 +632,7 @@ test("editing a destination persists its identity and changes future adds withou
       pinned: false,
     });
     expect(state.detail?.destinationId).toBe(destination.id);
-    expect(state.detail?.savePath).toBe(path);
+    expect(expectSuccess(await restartedClient.torrents({ id }).host.get()).savePath).toBe(path);
     expect(Bun.SHA256.hash(await Bun.file(join(path, "source.bin")).arrayBuffer(), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
     );
@@ -643,7 +651,7 @@ test("torrents with overlapping files do not overwrite an existing download", as
       await context.client.torrents.post({ paused: false, source: context.magnet })
     ) as { id: string };
     const read = async (id: string) =>
-      expectSuccess(await client.state.get({ query: { selected: id } })) as DashboardState;
+      expectSuccess(await client.state.get({ query: { selected: id } })) as LibraryState;
     await waitFor(
       () => read(first.id),
       (state) => state.detail?.status === "seeding"

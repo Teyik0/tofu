@@ -3,16 +3,16 @@ import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../src/api";
 import { resolveInstanceConfig } from "../src/api/lib/instance";
-import type { DashboardState } from "../src/types";
+import type { LiveState } from "../src/types";
 import { openTestDatabase } from "./helpers/database";
 import { expectSuccess } from "./helpers/problem";
 import { launchServer } from "./helpers/server-process";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
 async function collect(
-  stream: AsyncIterable<{ data: DashboardState }>,
+  stream: AsyncIterable<{ data: LiveState }>,
   signal: AbortSignal,
-  snapshots: DashboardState[]
+  snapshots: LiveState[]
 ) {
   try {
     for await (const event of stream) {
@@ -72,8 +72,8 @@ test("live streams publish worker snapshots with the selected detail without syn
   const second = expectSuccess(
     await client.live.get({ fetch: { signal: secondAbort.signal }, query: { selected: id } })
   );
-  const firstSnapshots: DashboardState[] = [];
-  const secondSnapshots: DashboardState[] = [];
+  const firstSnapshots: LiveState[] = [];
+  const secondSnapshots: LiveState[] = [];
   const firstReading = collect(first, firstAbort.signal, firstSnapshots);
   const secondReading = collect(second, secondAbort.signal, secondSnapshots);
   await waitFor(

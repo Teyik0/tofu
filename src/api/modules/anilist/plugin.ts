@@ -34,14 +34,19 @@ export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
   .use(releaseAutomationPlugin)
   .decorate("anilist", anilist);
 resources.defer(anilist.close.bind(anilist));
-anilistServicePlugin.setup(() => {
-  void anilist.start().catch((error: unknown) => {
-    recordLog({
-      component: "anilist",
-      dataDir: instance.dataDir,
-      error,
-      level: "error",
-      operation: "start",
-    });
-  });
+anilistServicePlugin.onStart(() => {
+  const start = async () => {
+    try {
+      await anilist.start();
+    } catch (error) {
+      recordLog({
+        component: "anilist",
+        dataDir: instance.dataDir,
+        error,
+        level: "error",
+        operation: "start",
+      });
+    }
+  };
+  void start();
 });

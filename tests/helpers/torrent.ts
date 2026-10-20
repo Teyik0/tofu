@@ -1,5 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: poll observable network state sequentially
 import { randomBytes } from "node:crypto";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,6 +50,9 @@ export async function fixture(length: number, trackers: string[], filename?: str
     seeder.on("error", reject);
     seeder.seed(source, { announce: trackers }, resolve);
   });
+  if (!seeder.listening) {
+    await once(seeder, "listening");
+  }
   const engine = await TorrentEngine.open({
     dataDir: join(directory, "state"),
     downloadPath: join(directory, "downloads"),

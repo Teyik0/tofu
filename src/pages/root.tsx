@@ -13,7 +13,7 @@ import { TooltipProvider } from "../components/ui/tooltip";
 import { WorkspaceDialogs } from "../components/workspace-dialogs";
 import { api } from "../lib/client";
 import { destinationFromPath, isPreferencesPath } from "../lib/navigation";
-import { createTofuStore, dashboardAtom } from "../state/workspace";
+import { createTofuStore, dashboardAtom, sessionAtom } from "../state/workspace";
 
 export const route = defineRootRoute()
   .config({ mode: "ssr" })
@@ -26,10 +26,15 @@ export const route = defineRootRoute()
   })
   .layout(({ children, dashboard: loaded, path }) => {
     const [store] = useState(() => createTofuStore(loaded));
-    const dashboard = useAtomValue(dashboardAtom, { store }) ?? loaded;
+    const dashboard = useAtomValue(dashboardAtom, { store }) ?? {
+      ...loaded,
+      detailHost: null,
+      host: null,
+    };
+    const capabilities = useAtomValue(sessionAtom, { store })?.capabilities;
     const activeDestination = destinationFromPath(path);
     return (
-      <html data-theme={dashboard.settings.theme} lang="en">
+      <html data-theme={dashboard.appearance.theme} lang="en">
         <head>
           <link href="/favicon.ico" rel="icon" sizes="16x16 32x32 48x48" />
           <link href="/public/icon.png" rel="icon" sizes="256x256" type="image/png" />
@@ -54,7 +59,7 @@ export const route = defineRootRoute()
                   <>
                     <TorrentDrop activeDestination={activeDestination} />
                     <WorkspaceDialogs activeDestination={activeDestination} dashboard={dashboard} />
-                    {dashboard.session.mode === "desktop" ? <OpenedTorrents /> : null}
+                    {capabilities?.hostNative ? <OpenedTorrents /> : null}
                     <GlobalSearch activeDestination={activeDestination} dashboard={dashboard} />
                   </>
                 )}

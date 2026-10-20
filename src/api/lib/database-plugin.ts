@@ -9,12 +9,14 @@ import { resources } from "./runtime";
 export const instance = currentInstanceConfig();
 const lease = await acquireInstance(instance);
 resources.defer(lease.close.bind(lease));
-export const logs = await ApplicationLogs.open({ dataDir: instance.dataDir }).catch(
-  async (error: unknown) => {
+export const logs = await (async () => {
+  try {
+    return await ApplicationLogs.open({ dataDir: instance.dataDir });
+  } catch (error) {
     await resources.disposeAsync();
     throw error;
   }
-);
+})();
 resources.defer(logs.close.bind(logs));
 recordLog({
   component: "application",
@@ -27,13 +29,13 @@ recordLog({
   level: "info",
   operation: "startup",
 });
-export const db = await openDatabase(instance.dataDir)
-  .then((database) => {
+export const db = await (async () => {
+  try {
+    const database = await openDatabase(instance.dataDir);
     resources.defer(() => database.$client.close(true));
     assertDatabaseReady(database);
     return database;
-  })
-  .catch(async (error: unknown) => {
+  } catch (error) {
     recordLog({
       component: "database",
       dataDir: instance.dataDir,
@@ -43,5 +45,6 @@ export const db = await openDatabase(instance.dataDir)
     });
     await resources.disposeAsync();
     throw error;
-  });
+  }
+})();
 export const databasePlugin = new Elysia({ name: "tofu-database-service" }).decorate("db", db);

@@ -6,7 +6,7 @@ import { treaty } from "@elysia/eden";
 import WebTorrent, { type Torrent } from "webtorrent";
 import { defaultConnectionPolicy } from "../src/api/modules/torrents/connections";
 import { TorrentEngine } from "../src/api/modules/torrents/service";
-import type { ConnectionDiagnostics, DashboardState } from "../src/types";
+import type { ConnectionDiagnostics, LibraryState } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { openTestDatabase } from "./helpers/database";
 import { expectSuccess } from "./helpers/problem";
@@ -86,7 +86,7 @@ test("peer discovery bursts are paced while real bytes continue downloading", as
     expect(diagnostics.deferredByRate).toBeGreaterThan(0);
     await waitFor(
       async () =>
-        expectSuccess(await client.state.get({ query: { selected: id } })) as DashboardState,
+        expectSuccess(await client.state.get({ query: { selected: id } })) as LibraryState,
       (state) => state.detail?.status === "seeding",
       25_000
     );
@@ -173,7 +173,7 @@ test("repeated peer disconnects back off and pause cancels queued retries withou
     expect((await client.torrents({ id }).resume.post({})).status).toBe(200);
     await waitFor(
       async () =>
-        expectSuccess(await client.state.get({ query: { selected: id } })) as DashboardState,
+        expectSuccess(await client.state.get({ query: { selected: id } })) as LibraryState,
       (state) => state.detail?.status === "seeding",
       25_000
     );

@@ -1,0 +1,433 @@
+TOFU REMOTE SERVERS — OPUS 5.5 DESIGN / ARCHITECTURE REVIEW
+Reviewer: Opus 5.5 (review sub-agent). Date: 2026-10-19.
+Inputs: brief.txt, ui.txt, ui-prototype.html, architecture.txt (all in /tmp/tofu-remote-planning-20261019/).
+Evidence: Tofu main 325b548f8541c4adcf6b45c20a626107e86f0c4c, its AGENTS.md, and the INSTALLED pinned sources:
+  node_modules/@teyik0/furin (vendor/furin-pr163-118d85f.tgz), node_modules/@teyik0/furin-electrobun (vendor/furin-electrobun-pr163-a1c9c5d.tgz),
+  Electrobun SDK .cache/hutch/releases/electrobun/2.0.2/macos-arm64/api/sdks/main, Bun 1.4.3.
+No project source was modified. No agents spawned. No trust, Tailscale or native settings were touched.
+
+=====================================================================
+0. VERDICT
+=====================================================================
+APPROVE WITH REQUIRED CHANGES. The two proposals are serious, mostly consistent and correctly refuse the dangerous shortcuts
+(no client.ts edit, no ALS/cookie forwarding, no second app listener, no universal SPA, honest TLS). They are NOT yet
+implementation-ready: source verification found five hard blockers the artifacts either miss or get wrong, and one large
+framework change that should be removed rather than built.
+
+Hard blockers (must be reflected in the implementation brief before code starts):
+  H1  LAN-direct HTTPS on the single listener moves the HOST'S OWN desktop window to HTTPS; the pinned SDK has no TLS trust hook
+      and the existing HTTP bootstrap cookie flow breaks under schemeful same-site. Unaddressed in both artifacts.
+  H2  Remote Administration is currently equivalent to arbitrary file write as the host OS user (arbitrary destination roots +
+      torrent-controlled file names + host-opening endpoints). "Admin without delete-files" is meaningless until bounded.
+  H3  Putting grantVersion in the sync principal converts legitimate retries into re-executed side effects after a grant change.
+  H4  Any public Furin page (pairing, signed-out, anonymous 404/error) runs the single root loader and would hydrate the library
+      to anonymous visitors. Public surfaces must not be Furin pages.
+  H5  Cookies ignore ports: two Tofu servers on one hostname (NAS with two instances, 127.0.0.1 SSH tunnels, same LAN IP) overwrite
+      each other's "__Host-tofu" cookie. Cookie name must be server-scoped.
+
+Required simplification (replaces the riskiest P0 framework work):
+  S1  Drop the proposed Furin authorizePage(routeId) hook. Make every Furin loader viewer-invariant at the Playback floor and make
+      privileged API endpoints reject in-process dispatch. One authentication gate in the existing network dispatch wrapper then
+      covers documents, /_furin/data, deferred frames, 404/error roots and hydration with no route-policy table to drift.
+
+Everything else below is a refinement or a proof gate. Scope of v1 is NOT reduced; two items get honest platform-bounded
+acceptance (AniList remote completion, LAN-direct on Linux desktop hosts) with explicit wording instead of silent omission.
+
+=====================================================================
+1. SOURCE VERIFICATION (claims checked against installed code)
+=====================================================================
+V1  furin-electrobun/src/server.ts:23-41 protectNetworkDispatch: in-process Eden = zero extra fetch args; listener dispatch =
+    rest[0] must equal app.server, else 403. CONFIRMED. This also means a second Bun.serve of apiPlugin is rejected by the
+    framework itself, so the "one listener" rule is mechanically enforced, not just a policy.
+V2  furin-electrobun/src/runtime.ts:85-160 startSessionBootstrap: a SECOND Bun.serve on http://127.0.0.1:0 that serves ONE thing,
+    a 303 + Set-Cookie (HttpOnly; SameSite=Strict; no Secure) to the app origin; it serves no application route. runtime.ts:328
+    forces app.listen({hostname:"127.0.0.1", port:0}). runtime.ts:55-64 guard requires sec-fetch-site "same-site" from the
+    bootstrap origin. CONFIRMED.
+V3  furin/src/server/router/plugin.ts:460-585 createDataEndpoint: matches logical path, builds syntheticRequest with headers but
+    WITHOUT the incoming signal (line ~535), runs root+route loaders. CONFIRMED (abort is not propagated).
+V4  furin/src/server/sync/mutation-handler.ts: "Keep reservation and replay after authorization" — beginMutation runs inside the
+    compiled route handler wrapper, i.e. AFTER route beforeHandle/resolve guards. CONFIRMED. Auth-before-replay is already the
+    pinned behavior for guards placed on the route plugins.
+V5  furin/src/server/sync/plugin.ts ~364 and ~199: principal() is evaluated for successful GET sync reads (query tags) and for
+    mutations; an EMPTY principal THROWS. stream.ts:161 returns 401 for empty principal on /changes, journal is cursor-only reset.
+    CONFIRMED. Consequence: in-process SSR reads of sync-tagged endpoints need a non-empty constant principal.
+V6  Electrobun SDK core/BrowserView.ts:40-70 accepts partition, sandbox, navigationRules, windowId, hostWebviewId, autoResize;
+    setNavigationRules() and will-navigate events exist. core/BrowserWindow.ts:247-280 creates its default BrowserView WITHOUT
+    partition (TODO comments). proc/native.ts:3285-3401 Session.fromPartition, cookies get/set/clear, clearStorageData.
+    No certificate / server-trust / TLS-error API anywhere in the SDK (grep: none). CONFIRMED.
+V7  src/api/modules/anilist/client.ts:9-10 redirectUri is tofu://oauth/anilist (release) / tofu-dev:// (dev), implicit grant,
+    token in fragment; oauth.ts:88 additionally starts a loopback Bun.serve for legacy http redirect URIs. CONFIRMED.
+V8  src/api/modules/plugins/index.ts:16-27 POST /plugins/:id/credentials/open calls the HOST shell when runtime.kind==="desktop".
+    Concrete instance of the "remote request triggers host-native action" bug class. CONFIRMED.
+V9  src/sync.ts principal is the constant "local". src/pages/root.tsx loader calls api.state.get for EVERY route and the layout
+    reads dashboard.settings.theme and dashboard.session.mode. 8 page loaders total; privileged loader reads today:
+    options/index.tsx (api.instance.get), plugins/_route.tsx (api.automation.get + api.instance.get),
+    options/preferences.tsx (api.automation.get). CONFIRMED — moving these to browser fetch is small.
+V10 standard-host.ts:583 already loads the backend with a dynamic options.load(); furin.config.ts notes the host has no backend
+    dependency tree. Client-only startup = not calling load() plus an entry graph that never statically imports src/api.
+    Feasible; the bundle-graph proof gate stays.
+V11 Bun.secrets exists in bun-types for 1.4.3 but is documented experimental. The PACKAGED Electrobun 2.0.2 runtime's Bun build
+    was not verified here; treat as unproven (gate G7).
+
+=====================================================================
+2. PRIORITIZED FINDINGS
+=====================================================================
+
+--- H1 (BLOCKER) LAN-direct HTTPS breaks the host's own window; no TLS trust API -----------------------------------
+Facts: one Bun.serve cannot speak HTTP and HTTPS on one port; V1 makes a second app listener impossible; V6 shows no way for
+a webview to accept a private CA except OS trust. In LAN-direct mode the sole listener terminates TLS, so the host's local
+window must load https://127.0.0.1:<port> (or localhost). Then: (a) the host OS must trust the installation CA
+(macOS keychain trust prompt, Windows Root-store prompt, Linux system store requiring root and WebKitGTK/GnuTLS specifics);
+(b) the existing bootstrap 303 from http://127.0.0.1:X to https://127.0.0.1:Y is cross-site under schemeful same-site
+(Chromium/WebView2), so the SameSite=Strict cookie is not sent on that navigation and the guard's "same-site" bootstrap
+check (runtime.ts:55-64) fails. architecture.txt §4 only says "Prefer HTTPS even for local workspace"; it is mandatory and
+its consequences are unplanned. Also, desktop CLIENTS connecting to a LAN-direct host cannot pin the host CA (no SDK hook):
+they need OS trust exactly like browsers. ui.txt §6 leaves "desktop pinning" open — resolved: not available in v1.
+Required:
+  1. Tailscale and Custom-proxy transports keep Tofu's listener on loopback HTTP (Serve/proxy terminate TLS and forward to
+     http://127.0.0.1:<stable port>). They need NO host CA trust, NO bootstrap change, NO listener rebind. Make Tailscale the
+     recommended transport in the UI (prototype already leads with it).
+  2. LAN-direct mode = TLS on the single listener bound to the chosen interface(s) INCLUDING loopback; leaf SAN covers the
+     .local name, selected IPs, 127.0.0.1, ::1 and localhost. Enabling LAN-direct on a desktop host includes an explicit
+     "Trust on this computer" step (the same guided CA install shown for other devices). Validation refuses to activate
+     LAN-direct until the host's own webview handshake succeeds (probe from the native process through the same trust store).
+  3. In TLS mode the local window gets its desktop cookie by native Session.fromPartition(localPartition).cookies.set(...)
+     before navigation (no listener, no public endpoint). Proof gate G3 must show host-only/Secure/SameSite semantics on all
+     three webviews. Only if that fails: TLS bootstrap on the same certificate as an explicitly approved framework exception
+     (see §8 user decision U1). HTTP mode keeps today's bootstrap unchanged.
+  4. Sharing requires a persisted, configured port (default 3030, conflict detection, never silently changed); runtime.ts:328's
+     forced port 0 becomes a host listen configuration input. Tailscale Serve config references this port.
+  5. Linux desktop host + LAN-direct is published as "requires administrator trust installation"; if WebKitGTK proof fails,
+     LAN-direct is offered on Linux only for headless hosts, and the matrix says so.
+
+--- H2 (BLOCKER) Remote Administration is unbounded host file write -----------------------------------------------
+Facts: Admin can create/edit destination roots at arbitrary host paths (architecture addendum: "create/edit approved
+destination roots"); any Manage+ device can add a torrent whose metainfo chooses file names; a torrent landing in
+~/Library/LaunchAgents or over existing files is code execution or silent destruction as the Tofu OS user. Watched folders
+(watched_files table) and custom certificate/key file paths are further host-path inputs. V8 shows host-native side effects
+from a remote request. The delete-files capability is therefore theater for Admin today.
+Required:
+  1. Introduce HOST STORAGE ROOTS: a host-local-only list (editable only from the local window with local-window authority or
+     the recovery CLI). Remote Admin can create/rename destinations only beneath a storage root, chosen by root ID + relative
+     subpath, canonicalized with realpath and symlink checks at creation and at every write/open. Arbitrary absolute host
+     paths, watched-folder paths, certificate/key paths and proxy trust lists are local-authority-only settings.
+  2. Torrent add/move never overwrites or verifies-into files not owned by an indexed torrent record: on name collision with a
+     foreign file, refuse with typed 409 (or write into a fresh subfolder) — applies to Manage and Admin. This closes the
+     "delete by overwrite" path the addendum only mentions for moves.
+  3. Every route that triggers host OS behavior (/plugins/:id/credentials/open, desktop module reveal/open/pickers, external
+     player open, update install, notifications) requires local-window authority, never runtime.kind. Remote callers receive the
+     URL/data to act on their own device.
+  4. With 1-3 in place, Admin-without-delete-files is a real boundary; keep it.
+
+--- H3 (BLOCKER) grantVersion inside the sync principal ---------------------------------------------------------------
+architecture.txt §7 sets principal = serverId:deviceId:authorizationVersion. Idempotency keys are scoped by principal, so a
+client that retries an ambiguous mutation (same Idempotency-Key) after any grant change (even an UPGRADE, or a profile change
+that bumps the version) misses the reservation and executes the side effect twice — exactly the duplicate the brief forbids.
+The stated motivation (prevent replay under old permissions) is already met by V4: replay happens after route guards.
+Required: principal = "device:<deviceId>" for authenticated network requests; "local-window" for local-window authority;
+"shared" for in-process dispatch (non-empty, V5). Browser private caches are reset on authorizationVersion change from
+/api/session, not through the principal. Never return the unauthenticated default "local".
+
+--- H4 (BLOCKER) Public pages under the single Furin root leak the library ---------------------------------------------
+Furin has one root route; root.tsx's loader runs for every document and /_furin/data request including not-found and error
+rendering. Under the planned design in-process Eden returns the viewer-safe dashboard WITHOUT knowing who asked, so a
+public /pair page, a signed-out page or an anonymous 404 would hydrate the safe library DTO to anyone who can reach the port.
+ui.txt §3D defers this to "framework solution"; architecture §3.2 relies on route-policy evaluation.
+Required: there are NO public Furin pages. The network admission gate (S1) rejects every unauthenticated request except an
+exact allowlist: GET /.well-known/tofu, GET /pair, GET /signed-out, POST /api/auth/pair, the minimal static assets those two
+documents need, and local-window bootstrap mechanics. /pair and /signed-out are served by a const Elysia plugin as small
+self-contained documents (bundled script emitted at build, strict CSP with hash, no third-party resources, Referrer-Policy
+no-referrer, Cache-Control no-store). Unauthenticated document navigations to any other path get a 302 to /signed-out;
+unauthenticated data/API/SSE/media get typed 401 problem bodies with no root rendering.
+
+--- H5 (HIGH) Cookie collisions across ports ---------------------------------------------------------------------------
+Cookies are scoped by host, not port. "__Host-tofu" set by https://nas.local:3030 is sent to and overwritten by
+https://nas.local:3031; with SSH-tunnel routes several servers share 127.0.0.1. Required: browser session cookie name
+"__Host-tofu-<first 16 hex of serverId>"; server reads only its own name; logout clears only its own; the identity check on
+/api/session also verifies serverId so a mismatched cookie never authenticates against another server's database (it would
+fail the hash lookup anyway, but the UX must not loop). Native remote windows remain isolated by partition (serverId+deviceId).
+
+--- S1 (REQUIRED SIMPLIFICATION) Replace route-level page authorization with viewer-invariant SSR ----------------------
+architecture.txt §3.1-B/§3.2 adds a framework authorizePage(context, resolved) hook that must fire after matching and before
+root/parent/leaf loaders, ISR/cache reads, deferred creation and not-found/error roots, for both document and data transports,
+and must carry the original request. That is the single riskiest P0 item (several Furin dispatch paths, AOT/JIT parity, drift
+between a routeId policy table and real routes). It is unnecessary:
+  - Invariant A: every Furin loader may only call endpoints whose in-process response is allowed for the LOWEST authenticated
+    role (Playback). Root loader -> safe dashboard DTO; detail/player loaders -> safe DTOs.
+  - Invariant B: privileged API endpoints (settings, instance, automation, devices, connections config, AniList account/editor,
+    destinations admin, logs/diagnostics) REJECT in-process dispatch with a typed 403. A loader that accidentally calls one fails
+    for everyone at SSR time and is caught immediately by the essential leak test — fail-closed by construction.
+  - Privileged panels (options/index instance block, plugins/_route, options/preferences automation, AniList account) fetch in
+    the browser through the unchanged shared client after /api/session confirms capability. These are the only three loader
+    reads to move (V9).
+  - In-process dispatch is READ-ONLY: any non-GET/HEAD in-process request is rejected. Tofu has no server actions that need it.
+With A+B, the only framework change for authorization is a dispatch-kind marker plus one admission gate in the existing
+desktopApp wrapper (which already sees every listener request with its Server argument). It covers documents, /_furin/data,
+deferred frames, 404/error roots and __furinQueries automatically, because whatever they contain is Playback-safe and the
+viewer is authenticated. Page "access denied" for lower roles becomes a client-rendered state on the page shell.
+Keep from the architecture: private,no-store on every authenticated response; disable ISR/SSG/PPR for Tofu pages; safe DTO
+projections (explicit allowlist processing, not spreading); in-flight abort registry.
+Framework surface that remains (furin-electrobun, small and testable):
+  dispatchKind(request): "network" | "in-process" exported from a framework WeakSet populated in the wrapper before next().
+  admission hook option on desktopApp: (request, {peerAddress, server}) => undefined | Response, run for network dispatch only,
+  BEFORE the 503 availability check's next() and before Furin/Elysia routing; replaces the hard restrictWebToLoopback rejection
+  when sharing is enabled. Requests created later by frameworks (Furin synthetic data request) inherit nothing — and need
+  nothing, because admission already happened on the original network request.
+Furin core change still recommended but NOT a blocker: pass ctx.request.signal into the synthetic data Request (V3) so client
+disconnect cancels deferred work. Server-initiated revocation of an in-flight SSR/deferred response is not required for
+confidentiality under Invariant A (the content is Playback-safe and the device was authorized when the request started);
+long-lived streams (SSE, media, range waits) MUST abort on revocation — those are Tofu-owned and can be.
+
+--- R1 (HIGH) Local-window authority must not depend on loopback peer or Host --------------------------------------------
+With Tailscale Serve or a local reverse proxy, remote requests arrive from 127.0.0.1. With LAN-direct on 0.0.0.0, Host:127.0.0.1
+is attacker-controlled. Local-window authority = constant-time match of the in-memory desktop cookie secret (as today) AND
+dispatchKind network AND (peer address loopback AND Host loopback) as defense-in-depth. Neither peer nor Host alone ever grants
+anything. The desktop cookie is installed only into the local window's partition. Remote "Admin" never obtains it.
+Keep the existing loopback bootstrap listener in HTTP mode: it is a framework-internal cookie-setting endpoint that serves no
+application route, binds loopback only, and is LESS exposed than the proposed /connect/local#grant redemption route, which
+would live on the same listener that is now reachable from the LAN/tailnet. AGENTS.md forbids adding a listener for application
+or client transport; it does not require deleting this pre-existing mechanism. Removing it is an optional cleanup once G3
+proves native cookie installation everywhere, not v1 work. Reject the architecture's same-listener public bootstrap route.
+
+--- R2 (HIGH) Remote exposure changes: confirm-or-revert, not "tested replacement" ---------------------------------------
+Only LAN-direct changes (enable/disable, port, interfaces, certificate) rebind the listener; Tailscale/proxy changes do not (H1).
+Rebind = orderly backend stop + start through the host's existing restart path (native-restart.ts) for desktop hosts, and
+in-process app.stop(true) + listen for headless only if gate G9 proves Elysia re-listen on the same instance with the guard
+intact; otherwise headless requires a supervisor (documented exit code). Apply protocol: persist pending config with a journal,
+restart, mark "pending confirmation"; the initiating client must call POST /api/connections/config/confirm through the NEW
+active route within 90 s, else the server restores last-good and restarts again; boot with a pending entry and no confirmation
+restores last-good. Local-window applies auto-confirm after readiness. No second public listener, no zero-downtime claim.
+
+--- R3 (HIGH) Rate limiting behind proxies ---------------------------------------------------------------------------------
+Behind Serve/proxy every peer is loopback, so per-peer limits either lock everyone out or (if keyed on XFF) are spoofable by
+local processes. Primary limits are per pairing grant (max 5 failed code attempts, then the grant is burned) and per short
+code namespace (global token bucket on failed code lookups, e.g. 30/min with exponential back-off); per-peer limits use the
+forwarded client address ONLY when the immediate peer is a configured trusted proxy. Codes: 10 Crockford base32 characters
+(50 bits) with per-grant burn is sufficient; QR/link secret 128-bit.
+
+--- R4 (MEDIUM) Session model is more complex than needed -----------------------------------------------------------------
+Drop access/refresh rotation for v1. Browser: one opaque HttpOnly Secure SameSite=Strict cookie, DB-hashed, checked on every
+request, sliding idle expiry 30 days (lastSeen bump at most once per 10 min), optional absolute expiry (default 365 days,
+admin-editable, visible). No rotation => no concurrent-tab rotation races, no family-revocation false positives. Native: one
+durable device token in the OS secret store, used only by the native process to mint 60-second single-use window grants that
+the native process converts into the partition's cookie (Session API) — the durable token never enters a webview.
+Revocation = DB flag + abort registry; downgrade = grantVersion bump + abort of capability-dependent streams.
+
+--- R5 (MEDIUM) Pairing response loss: decided ------------------------------------------------------------------------------
+Client generates a 128-bit redemption nonce and sends it with the pairing secret. The device row stores hash(nonce) and the
+consumption time. A retry with the same pairing secret + same nonce within 120 s re-issues a fresh session token for the SAME
+device (invalidating the previous token) — no new device, no sealed result storage. Any other retry: typed 410 "This
+invitation was already used. Ask for a new one." Browser-vs-desktop choice happens before any request (prototype is correct).
+
+--- R6 (MEDIUM) Playback progress concurrency -------------------------------------------------------------------------------
+Architecture's (playbackSessionId, sequence, revision) is right; make it concrete: each player mount creates a playbackSessionId;
+PUT carries {position, duration, playbackSessionId, seq}; server accepts if seq > lastSeq for that playbackSessionId, and among
+different sessions last-writer-wins by server receive time (explicit seek-backwards therefore wins). Scope key
+(serverId implicit, profileId, mediaKey = infohash + file index + file length). No max(position).
+
+--- R7 (MEDIUM) Streams, cancellation and external player ---------------------------------------------------------------------
+Architecture §9 is correct (cancellable chunked streams for no-Range and /content, admission budgets, 416, suffix ranges, HEAD
+starts no torrent wait). Additions: (a) every media response registers with the device's AbortController in the same
+synchronous section that validates the session (reserve before first await, per AGENTS); (b) file identity checked at open
+(fstat inode/size vs index) and the open descriptor used for all chunks — no re-resolution by path per chunk; (c) external
+player grant = opaque token in the PATH (not query) of /media/x/<token>/<filename>, TTL default 6 h, scoped to one file,
+Range-capable, revocable, bound to issuing device (revoking the device revokes its grants), Referrer-Policy no-referrer;
+copy in UI says "Anyone with this link can play this file until <time>". (d) Documentation and UI say revocation stops
+further bytes, never recalls delivered bytes.
+
+--- R8 (MEDIUM) AniList — honest v1 acceptance ------------------------------------------------------------------------------
+V7: the provider redirect is the custom scheme tofu://oauth/anilist with an implicit-grant fragment. Supported v1 flows:
+  (1) host local window (today's flow); (2) any paired Tofu DESKTOP client with Admin: host creates a pending attempt bound to
+  {deviceId, state, 10-min expiry}; the authorize URL opens on the client device; the client OS delivers tofu://oauth/anilist#…
+  to the client's native manager, which matches state against its pending attempts per server and POSTs the callback fragment
+  to that server with its device credential; host verifies state+device and stores the token host-side. The fragment never
+  touches a remote webview. (3) browser-only remote Admin: UI says "Finish connecting AniList in the Tofu app or on Home Mac";
+  a "paste the address you were sent to" fallback is offered as best effort (mobile browsers often hide the failed scheme URL),
+  not advertised as supported. Registering an https redirect is a later option requiring a new provider client registration.
+  Guests: playback never writes AniList; account/editor endpoints are Admin and reject in-process dispatch (S1-B). The existing
+  legacy loopback Bun.serve callback (oauth.ts:88) must not be extended to remote use.
+
+--- R9 (MEDIUM) Role matrix — decided (resolves ui.txt §7 "REVIEW DECISION") ------------------------------------------------
+Authorities: OWNER = local window on the host or recovery CLI (not a device, cannot be revoked remotely, holds everything).
+Device grants: role in {Playback, Management, Administration} + independent flag canDeleteFiles (allowed with Management or
+Administration, default off). Issuer rule: an invitation or grant edit may only produce grants that are a subset of the issuer's
+effective grants (role rank and canDeleteFiles). An Administration device may edit/revoke only devices whose grants are a subset
+of its own; it can never edit itself upward. Owner-only (local authority): storage roots, absolute host paths, watched folders,
+certificate/key files, trusted proxy peers, host-native actions. Administration: server settings, integrations (AniList/c411/jev
+credentials), automation rules, destinations beneath storage roots, invitations/devices, exposure changes via confirm-or-revert.
+Management: add (magnet/upload) into an existing destination ID, pause/resume/priority/reorder, remove torrent entry keeping
+files, move between existing destinations only with collision refusal; pausing an existing automation is NOT included in v1.
+Delete-files (with Management or Administration): remove-with-files, destination removal with content, destructive automation
+options. Playback: safe reads, streaming, own profile/preferences, own logout, own external-player grants.
+UI must show canDeleteFiles in every grant summary and disable (with reason) options the issuer does not hold.
+
+--- R10 (MEDIUM) Connection runtime and route switching -----------------------------------------------------------------------
+Agree with architecture §7-8. Concrete rules: native supervisor per saved server; route probing only on open/failure/network
+change; never move a healthy playing window to a "faster" route; route change = new partition cookie via fresh window grant for
+the new origin, page reload at the same path, player resumes from last saved position. Browser tabs never fail over across
+origins; they show "Home Mac is reachable at another address" with a link only if that address was learned from an
+authenticated descriptor. Public descriptor serverId is a consistency check after TLS validation, never authentication.
+Replace tofu-state-sync.tsx's fixed 1 s reconnect with the classified driver (offline / auth / revoked / certificate /
+incompatible / busy).
+
+--- R11 (MEDIUM) Remote window composition: decided -------------------------------------------------------------------------
+Use the PUBLIC main-process API: BrowserWindow loads a trusted packaged views:// strip (server name, state, picker button,
+Servers button), and the main process attaches new BrowserView({windowId, partition:"persist:srv-<serverId>-<deviceId>",
+sandbox:true, url, navigationRules:[allow only the selected origin], autoResize}) beneath it. This needs no <electrobun-webview>
+container RPC and no SDK fork. Fallback if layering/focus/fullscreen fails a platform proof: pinned upstream BrowserWindow
+partition pass-through. Partition purge on Forget via Session.fromPartition().clearStorageData("all") + cookies clear.
+
+--- R12 (LOW-MEDIUM) Secure storage --------------------------------------------------------------------------------------------
+Bun.secrets with service "app.tofu.torrents.servers" (dev: ".dev"), name "<serverId>/<deviceId>", persist:"local". On
+unavailable/locked keyring: typed native error, UI "Keep this connection until Tofu quits" (memory only) or "Try again"; never
+plaintext. Gate G7 must run on the packaged runtime of each platform; if any platform lacks it, that platform ships with the
+memory-only mode documented and the release matrix says so.
+
+--- R13 (LOW) UI corrections applied to the prototype (see §9) and further implementation UI requirements ----------------------
+Required in implementation (not all prototyped): manager row states for certificate changed / identity changed / incompatible
+version / restarting connections / pending-confirmation; unsaved-form guard when switching servers; "Owner (this computer)" row
+in Authorized devices instead of a revocable "This Tofu" device; Tailscale "Not checked" before any green state; LAN-direct
+host-trust step; confirm-or-revert countdown after remote apply; 44px targets (the "Revoke other devices" 10px link must become
+a real button); live region announces only confirmed state changes; capability skeleton on every page with privileged actions;
+Playback users never see buttons they cannot use; signed-out page instead of re-showing the pairing page.
+
+=====================================================================
+3. ANSWERS TO THE REVIEW FOCUS POINTS
+=====================================================================
+1 SSR authorization. Adopt viewer-invariant SSR (S1) instead of route-level page authorization. Protection argument:
+  network admission authenticates every request before Furin routing; every Furin output (documents, /_furin/data frames,
+  deferred chunks, 404/error roots, __furinQueries hydration) is built only from Playback-safe in-process reads (Invariant A)
+  because privileged endpoints refuse in-process dispatch (Invariant B); device-personal data is browser-only via the unchanged
+  client. Permission changes: Playback-safe content needs no recall; private browser caches are cleared on authorizationVersion
+  change; long-lived streams abort. Protected Eden is never bypassed or altered. Identity: device + grantVersion stays for
+  authorization and cache reset, NOT for idempotency (H3). Keep cursor-only reset; add durable operation receipts for worker
+  side effects as architecture §7 says — that part is not overengineering (V4 persists after effect; crash window is real).
+2 Native. Manager entry with no static import of src/api (bundle-graph proof); remote content in a main-process partitioned
+  sandboxed BrowserView (R11); no generic RPC; partition purge; Bun.secrets gated (R12). BrowserWindow partition is NOT used.
+3 Bootstrap listener. Keep it for HTTP mode (R1); do not remove it as v1 work; TLS mode uses native cookie installation (H1).
+4 Roles. R9 is the decision; prototype corrected.
+5 HTTPS/rebind/Tailscale/proxy/descriptor/pairing/cookies. H1, R2, R3, R5, H5, R10. Tailscale: Tofu owns only one Serve
+  mapping it created (store the exact mapping it wrote; on disable remove only an identical mapping; on conflict report and do
+  nothing); never Funnel; tailnet reachability is not authentication.
+6 Media. R7.
+7 UX. R13 plus §9 changes.
+8 AniList. R8.
+
+=====================================================================
+4. EXACT REQUIRED CHANGES TO THE DESIGN (implementation brief must use these)
+=====================================================================
+C1  architecture §3.1-B, §3.2: replace authorizePage hook with Invariants A/B + dispatchKind + desktopApp admission option (S1).
+C2  architecture §4 bootstrap bullet: keep loopback bootstrap in HTTP mode; native Session cookie install in TLS mode; delete the
+    /connect/local#grant public route proposal (R1, H1).
+C3  architecture §7: principal = device:<id> | local-window | shared (H3).
+C4  architecture §8: transports split — Tailscale/proxy over loopback HTTP with stable port; LAN-direct TLS with host trust step;
+    confirm-or-revert apply (H1, R2).
+C5  architecture §5/§9 + addendum: storage roots, owner-only settings, collision refusal, host-native action routes (H2, R9).
+C6  architecture §6: R3 limits, R4 sessions, R5 response-loss policy, H5 cookie name.
+C7  architecture §9 AniList: R8 flows.
+C8  ui.txt §6-7, §9: Tailscale recommended; LAN host trust; owner row; delete-files on Management and Administration bounded by
+    issuer; confirm-or-revert; AniList completion wording; public /pair and /signed-out are non-Furin documents.
+Appended "REVIEW RECONCILIATION" sections to ui.txt and architecture.txt point here so the implementation agent sees one truth.
+
+=====================================================================
+5. UNPROVEN RELEASE GATES (must pass on packaged builds; failing gates narrow the published matrix, never silently)
+=====================================================================
+G1  Provenance: reproduce vendor tarballs 118d85f / a1c9c5d from source commits; any framework change is a new pinned tarball
+    built from that exact base, not from /Users/teyik0/Documents/furin (different branch) or furin-tofu-electrobun (unproven).
+G2  Admission: dispatchKind + admission hook hold under JIT, AOT/compiled build, promoted responses disabled (nativeStaticResponse
+    false is already forced), HMR dev; in-process Eden still reaches routes; second listener still rejected.
+G3  Native cookie install into a partition: host-only, Secure, SameSite=Strict, HttpOnly honored on WKWebView, WebView2,
+    WebKitGTK; two servers same hostname different ports isolated; clearStorageData purges.
+G4  Host window over HTTPS with installation CA trusted (macOS, Windows, Linux) incl. crossOriginIsolated + libvlc worker.
+G5  Sandboxed partitioned BrowserView: no RPC reachable, navigationRules enforce origin, fullscreen video, keyboard focus,
+    resize, window close teardown; external links only via native validation.
+G6  Client-only entry: built bundle graph contains no src/api, database-plugin, torrent worker; starts with backend absent.
+G7  Bun.secrets on each packaged runtime, including locked/absent keyring behavior.
+G8  Remote browsers: Safari iOS, Chrome Android, desktop Chrome/Firefox/Safari — secure context, COOP/COEP, SharedArrayBuffer,
+    libvlc playback, Range seeking on an in-progress torrent.
+G9  Headless re-listen: app.stop(true) + listen on the same apiPlugin keeps guard identity (rest[0] === app.server) and sync;
+    else supervisor-required restart documented.
+G10 Tailscale: Serve mapping ownership/removal on macOS/Windows/Linux CLI versions in support range; Funnel never touched.
+G11 Leak suite (essential integration, real processes): as Playback over HTTPS — documents, /_furin/data for every route,
+    deferred frames, 404, error page, sync /changes, SSE, media metadata errors contain no settings/paths/peers/tokens;
+    anonymous gets nothing but the allowlist.
+G12 Revocation during active Range read, no-Range read and SSE closes within 1 s; downgrade mid-stream; replay after downgrade
+    denied; retry after upgrade replays (does not duplicate) — H3 regression.
+G13 Crash between worker effect and receipt: no duplicate add/remove after restart (operation receipts + reconciliation).
+G14 Confirm-or-revert: unconfirmed LAN apply reverts; crash during pending reverts at boot.
+
+=====================================================================
+6. REVISED EXECUTION SEQUENCE
+=====================================================================
+P0 Framework + native proof (isolated framework branches from proven provenance; no Tofu feature UI yet)
+   G1, then dispatchKind + admission option + synthetic-request signal; host listen config (hostname/port/TLS) with stable port;
+   manager-only entry (G6); partitioned sandboxed BrowserView window (G5) and native cookie install (G3); Bun.secrets probe (G7);
+   HTTPS host window probe (G4). Exit: tracer with two real hosts, Playback vs Admin, client-only manager, no client.ts diff,
+   no added app listener. If G3/G4/G5 fail on a platform, record the narrowed matrix before continuing.
+P1 Identity + safe reads (Tofu): migrations (server_identity, devices, sessions, pairing_grants, profiles, positions, storage
+   roots, receipts); safe DTOs; root/options/plugins loader changes (S1); admission + allowlist; non-Furin /pair and
+   /signed-out; pairing (R3, R5), sessions (R4), cookies (H5); role guards on every API plugin with literal 401/403 in Eden types;
+   privileged endpoints reject in-process; host-native routes require local-window authority (H2.3); migrate touched throwing
+   services/worker transport to returned problem/status unions and touched .then/.catch to async/await. Exit: G11.
+P2 Network lifecycle: Tailscale (owned Serve), custom proxy (trusted peers), LAN-direct TLS with CA, host trust step, discovery
+   hints, recovery CLI (socket/pipe or offline lease), confirm-or-revert (G9, G10, G14).
+P3 Native multi-server: catalog, supervisors, route rules (R10), forget/disconnect semantics, client-only startup choice,
+   magnet/.torrent target picker in client-only mode, AniList desktop completion (R8).
+P4 Media + actions: cancellable streams, budgets, progress (R6), external grants (R7), storage-root enforcement and collision
+   refusal (H2), receipts/reconciliation (G12, G13), owner-only settings UI.
+P5 Release: G8 matrix, packaging, docs (trust, pairing, revoke vs forget vs disconnect vs stop, backup restore vs clone,
+   proxies, AniList completion paths, LAN-direct host trust), measured costs, Tofu tscheck/lint/essential tests, Furin checks.
+User gate: the user approved the prototype's visual direction on 2026-10-19 (brief.txt update). The parent owns the implementation
+handoff; this reviewer launched nothing. The implementation must keep the approved visual language and include the semantic
+corrections in §9.
+
+=====================================================================
+7. OVERENGINEERING TRIMMED (explicitly not needed for v1)
+=====================================================================
+- Furin route-level page authorization hook and routeId policy table (S1).
+- Same-listener public local bootstrap route and mandatory removal of the existing bootstrap listener (R1).
+- Access/refresh token rotation, session families with rotation-replay detection (R4).
+- Sealed pairing result storage (R5).
+- grantVersion in idempotency identity (H3).
+- In-process listener rebind for Tailscale/proxy transports (they never rebind).
+- Server-initiated abort of in-flight SSR/deferred responses (Playback-safe by invariant); streams still abort.
+
+=====================================================================
+8. MATERIAL USER DECISIONS (only these; defaults chosen so work is not blocked)
+=====================================================================
+U1  If gate G3 fails on a platform (native cookie installation into a partition), the TLS-mode local window needs either a TLS
+    bootstrap on 127.0.0.1 (an existing-mechanism variant, not an application listener) or LAN-direct is unavailable on that
+    desktop platform (Tailscale/proxy still work). DEFAULT: mark LAN-direct unavailable on that desktop platform and ask the
+    user before adding any listener variant. No action needed now.
+U2  Remote exposure editing: DEFAULT is remote Administration may change transports via confirm-or-revert; storage roots,
+    host paths, certificate files and proxy trust stay owner-only. If the user prefers "exposure changes only on the host",
+    it is a pure restriction and can be applied without redesign.
+
+=====================================================================
+9. ARTIFACT CHANGE LOG
+=====================================================================
+ui-prototype.html (visual language unchanged; same classes, colors, layout):
+  1. Invitation dialog: "Allow deleting downloaded files" shown for Management AND Administration; note that you can grant only
+     permissions you hold.
+  2. Edit-access dialog: removed "(Management only)"; delete option explained as requiring Management or Administration and the
+     issuer's own permission.
+  3. Authorized devices: "This Tofu · Administration" replaced with "This computer · Owner on the host · cannot be revoked".
+  4. Tailscale selected but not applied shows "Not checked yet" + "Check Tailscale" instead of an unearned green ready state.
+  5. Local network setup and trust dialog state that this computer must trust the certificate too when Tofu serves HTTPS directly.
+  6. Apply dialog/toast describe restart + confirm-or-revert (previous configuration restored if not confirmed in 90 s).
+  7. "Revoke other devices" is a real ghost button (target size), and Sign out leads to a signed-out page, not the invitation page.
+  Validated with html_preview: 728px (12/12 smoke checks: owner row, delete grant admin/playback, edit access, LAN host trust,
+  confirm-or-revert, Tailscale not-checked/ready, signed-out page, every data-action has a handler, no horizontal overflow) and
+  390px (11/11: no overflow on all four screens plus signed-out, dialog fits, delete grant for Management). No console errors.
+  Not published (parent owns html_render). Pre-review copy kept at /tmp/tofu-proto-backup-pre-review.html.
+ui.txt, architecture.txt: appended "REVIEW RECONCILIATION (Opus 5.5)" sections; original text left intact for traceability.
+
+=====================================================================
+10. HIGH-SEVERITY ISSUES REMAINING AFTER THIS REVIEW
+=====================================================================
+- H1 depends on G3/G4 native proofs; until they pass, LAN-direct on desktop hosts is unproven (Tailscale/proxy unaffected).
+- H2 requires storage roots + collision refusal to be implemented before ANY remote Administration ships.
+- G1 provenance of the vendored tarballs is unproven; all framework work is blocked on it.
+- G7 Bun.secrets on packaged runtimes is unproven.
+- AniList remote completion is supported only via host window or paired Tofu desktop (R8) unless a new https redirect client is
+  registered — stated honestly, not a silent reduction.

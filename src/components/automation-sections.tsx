@@ -47,7 +47,7 @@ export function AutomationInboxSection({ state, dashboard, setTab }: AutomationP
       <AutomationInbox
         approve={(decision) => decide(decision, "approve")}
         busy={busy}
-        destinations={dashboard.destinations}
+        destinations={dashboard.host?.destinations ?? []}
         ignore={(decision) => decide(decision, "ignore")}
         openRules={() => setTab("rules")}
         state={state}
@@ -81,7 +81,7 @@ export function AutomationAniListSection({
         action={action}
         automations={state.automations}
         busy={busy}
-        destinations={dashboard.destinations}
+        destinations={dashboard.host?.destinations ?? []}
         key={target}
         openPreferences={() => setTab("preferences")}
         plugin={state.plugins.find((plugin) => plugin.id === "anilist")}

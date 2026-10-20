@@ -5,6 +5,7 @@ import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { Server as Tracker } from "bittorrent-tracker";
+import { ElysiaStatus } from "elysia";
 import { fromCrossJSON, toCrossJSONAsync } from "seroval";
 import WebTorrent, { type Torrent } from "webtorrent";
 import { openDatabase } from "../src/api/lib/db";
@@ -18,6 +19,7 @@ import { PluginsService, pluginEndpoints } from "../src/api/modules/plugins/serv
 import { TorrentEngine } from "../src/api/modules/torrents/service";
 import { desktopLauncher, hostDesktopTarget } from "../src/platform";
 import type { InstanceProfile } from "../src/types";
+import { embeddedTailscaleFixture } from "../tests/helpers/embedded-tailscale";
 
 interface AniListLoaderFixture {
   __furinQueries?: { url: string; data: unknown; local?: boolean; identity?: unknown }[];
@@ -213,6 +215,10 @@ const native = Bun.spawn([join(isolatedBundle, relative(bundle, launcher))], {
     TOFU_DOWNLOAD_DIR: join(folder, "downloads"),
     TOFU_MODE: "desktop",
     TOFU_PROFILE: nativeProfile,
+    TOFU_TSNET_BINARY:
+      workflowName === "connections"
+        ? (await embeddedTailscaleFixture(folder, true)).binary
+        : process.env.TOFU_TSNET_BINARY,
   },
   stderr: "pipe",
   stdout: "pipe",
@@ -412,5 +418,9 @@ async function seedSearchReleases(directory: string, sourceUrl: string, profile:
   resources.defer(() => discovery.close());
   plugins.configure("nyaa", { enabled: true });
   plugins.configure("tsundere", { enabled: true });
-  return (await discovery.discover("Second", ["nyaa"])).releases;
+  const discovered = await discovery.discover("Second", ["nyaa"]);
+  if (discovered instanceof ElysiaStatus) {
+    throw new Error(discovered.response.detail);
+  }
+  return discovered.releases;
 }

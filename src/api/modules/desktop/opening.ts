@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { unlink } from "node:fs/promises";
 import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { problem } from "elysia";
+import { ElysiaStatus, problem } from "elysia";
 import parseTorrent from "parse-torrent";
 import type { EnginePort, OpenedTorrent, TorrentAddOptions } from "../../../types";
 
@@ -87,6 +87,9 @@ export class TorrentOpenings extends EventEmitter<{ change: [] }> {
       return problem(404, { detail: "This torrent is no longer waiting to be added" });
     }
     const result = await engine.add(staged.source, options);
+    if (result instanceof ElysiaStatus) {
+      return result;
+    }
     this.staged.delete(id);
     this.emit("change");
     if (staged.sourcePath === null) {

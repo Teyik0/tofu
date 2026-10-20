@@ -189,13 +189,13 @@ export async function libraryWorkflow(config: { reportUrl: string }) {
     init: RequestInit | undefined
   ): Promise<Response | null> => {
     const url = fixtureUrl(input);
-    if (url.pathname !== "/_furin/data") {
+    if (url.searchParams.get("_furin") !== "data") {
       return null;
     }
-    if (url.searchParams.get("path") === "/plugins") {
+    if (url.pathname === "/plugins") {
       return delayedPluginNavigation(input, init);
     }
-    if (url.searchParams.get("path") !== "/anilist") {
+    if (url.pathname !== "/anilist") {
       return null;
     }
     const response = await nativeFetch(input, init);
@@ -380,8 +380,8 @@ export async function libraryWorkflow(config: { reportUrl: string }) {
     tab.click();
     await wait(() => !!document.querySelector("#anilist-base-path"));
     const state = (await (
-      await fetch("/api/state")
-    ).json()) as import("../../../src/types").DashboardState;
+      await fetch("/api/host")
+    ).json()) as import("../../../src/types").HostState;
     const rootInput = document.querySelector<HTMLInputElement>("#anilist-base-path")!;
     const organization = () => document.querySelector("#anilist-organization")?.textContent?.trim();
     check(
@@ -417,7 +417,7 @@ export async function libraryWorkflow(config: { reportUrl: string }) {
     );
     check(
       "No thread created during preparation",
-      ((await (await fetch("/api/state")).json()) as import("../../../src/types").DashboardState)
+      ((await (await fetch("/api/state")).json()) as import("../../../src/types").LibraryState)
         .destinations.length === 1
     );
     document.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!.click();

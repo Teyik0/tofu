@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import { TorrentEngine } from "../src/api/modules/torrents/service";
 import { WorkerTorrentEngine } from "../src/api/modules/torrents/worker-client";
-import type { DashboardState } from "../src/types";
+import type { LibraryState } from "../src/types";
 import { createTestApi } from "./helpers/application";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, network, torrentBytes, waitFor } from "./helpers/torrent";
@@ -53,11 +53,12 @@ test("a completed torrent resumes and uploads after its imported torrent file is
     expect(await Bun.file(source).exists()).toBe(false);
     const file = await client.torrents({ id }).files({ index: "0" }).content.get();
     expect(Bun.SHA256.hash(torrentBytes(file), "hex")).toBe(Bun.SHA256.hash(context.bytes, "hex"));
-    const state = expectSuccess(await client.state.get());
+    const host = expectSuccess(await client.host.get());
+    const { magnet } = expectSuccess(await client.torrents({ id }).host.get());
     expectSuccess(
       await context.client.torrents.post({
         paused: false,
-        source: `${restored.magnet}&x.pe=127.0.0.1:${state.session.port}`,
+        source: `${magnet}&x.pe=127.0.0.1:${host.session.port}`,
       })
     );
     await waitFor(
@@ -128,7 +129,7 @@ test("pausing immediately after an active restart preserves completed file progr
     expect(pause.status).toBe(200);
     const detail = expectSuccess(
       await client.torrents({ id }).get()
-    ) as import("../src/types").TorrentDetail;
+    ) as import("../src/types").LibraryTorrentDetail;
     expect(detail.status).toBe("paused");
     expect(detail.files[0]?.progress).toBe(1);
     expect(detail.files[0]?.downloaded).toBe(context.bytes.length);
@@ -176,10 +177,8 @@ test("a paused download survives restart with its files, trackers and traffic to
     const { id }: { id: string } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
-    const read = () =>
-      context.client.state
-        .get({ query: { selected: id } })
-        .then((response) => expectSuccess(response) as DashboardState);
+    const read = async () =>
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
     await waitFor(read, (state) => state.detail?.status === "seeding");
     await context.client.torrents({ id }).pause.post({});
     const before = await read();
@@ -191,7 +190,7 @@ test("a paused download survives restart with its files, trackers and traffic to
     });
     const app = await createTestApi(() => reopened as TorrentEngine, context.sync.options);
     const client = treaty(app).api;
-    const restored: DashboardState = expectSuccess(
+    const restored: LibraryState = expectSuccess(
       await client.state.get({ query: { selected: id } })
     );
     expect(restored.torrents).toHaveLength(1);
@@ -203,7 +202,7 @@ test("a paused download survives restart with its files, trackers and traffic to
     await client.torrents({ id }).resume.post({});
     await waitFor(
       async () =>
-        expectSuccess(await client.state.get({ query: { selected: id } })) as DashboardState,
+        expectSuccess(await client.state.get({ query: { selected: id } })) as LibraryState,
       (state) => state.detail?.status === "seeding"
     );
   } finally {

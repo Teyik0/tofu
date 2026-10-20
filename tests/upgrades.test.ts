@@ -78,14 +78,16 @@ test("failed upgrades keep the old files and a manually removed fallback is neve
       })
     ) as AutomationRule;
     await client.automations({ id: rule.id }).run.post({});
-    const state = await waitFor(
+    await waitFor(
       async () =>
         expectSuccess(
           await context.client.state.get({ query: { selected: context.seed.infoHash } })
         ),
       (snapshot) => snapshot.detail?.status === "seeding"
     );
-    const detail = state.detail!;
+    const detail = expectSuccess(
+      await context.client.torrents({ id: context.seed.infoHash }).host.get()
+    );
     const [oldFile] = detail.files;
     expectDefined(oldFile);
     const oldPath = join(detail.savePath, oldFile.path);
@@ -296,7 +298,7 @@ test.each([true, false])(
         (state) => state.detail?.status === "seeding"
       );
       const oldDetail = expectSuccess(
-        await fallback.client.torrents({ id: fallback.seed.infoHash }).get()
+        await fallback.client.torrents({ id: fallback.seed.infoHash }).host.get()
       );
       const [oldFile] = oldDetail.files;
       expectDefined(oldFile);
@@ -343,7 +345,7 @@ test.each([true, false])(
       ).toEqual([replacement.seed.infoHash]);
       expect(await Bun.file(oldPath).exists()).toBe(!deleteReplacedFiles);
       const newDetail = expectSuccess(
-        await fallback.client.torrents({ id: replacement.seed.infoHash }).get()
+        await fallback.client.torrents({ id: replacement.seed.infoHash }).host.get()
       );
       const [newFile] = newDetail.files;
       expectDefined(newFile);

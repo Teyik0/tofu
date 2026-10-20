@@ -5,6 +5,7 @@ import { furinSync } from "@teyik0/furin/sync";
 import { version } from "../../package.json";
 import { resolveInstanceConfig } from "../../src/api/lib/instance";
 import { ApplicationLogs } from "../../src/api/lib/logs";
+import { callers } from "../../src/api/modules/access/service";
 import { AniListService } from "../../src/api/modules/anilist/service";
 import { pluginEndpoints } from "../../src/api/modules/plugins/service";
 import { TorrentFolders } from "../../src/api/modules/torrents/folders";
@@ -183,6 +184,15 @@ export async function mountTestApplication(
   const { fixtureRoutes, fixtureSync: sync } = loaded;
   const api = fixtureRoutes
     .wrap((next) => (request, ...rest: unknown[]) => {
+      // Direct test calls act for the server owner, as if from its own window; listener
+      // requests are authenticated by the application's admission instead.
+      if (rest.length === 0) {
+        callers.set(request, {
+          kind: "owner",
+          origin: new URL(request.url).origin,
+          principal: "local-window",
+        });
+      }
       if (
         !(
           ["GET", "HEAD", "OPTIONS"].includes(request.method) ||

@@ -59,7 +59,7 @@ export function AutomationRules({
     run(task);
   };
   const now = useNow(30_000);
-  const destination = dashboard.destinations.find((item) => item.id === target);
+  const destination = (dashboard.host?.destinations ?? []).find((item) => item.id === target);
   const jev = state.plugins.find((item) => item.id === "jev");
   const rules = state.automations.filter((rule) => rule.destinationId === target);
   const pending = state.decisions.filter(isPending);

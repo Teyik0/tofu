@@ -1,7 +1,7 @@
 import { chmod, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { DesktopCapabilities } from "@teyik0/furin-electrobun/host";
-import { HTTPError } from "elysia";
+import { problem } from "elysia";
 import { desktopTarget, installerName } from "../../../platform";
 import type { UpdateState } from "../../../types";
 
@@ -176,21 +176,33 @@ export class UpdatesService {
     await chmod(temporary, 0o600);
     await rename(temporary, this.path);
   }
+  /** Runs after every earlier mutation; the queue slot is reserved before any await. */
   private serial<T>(action: () => Promise<T>): Promise<T> {
-    const next = this.mutations.then(action);
-    this.mutations = next.then(
-      () => undefined,
-      () => undefined
-    );
+    const previous = this.mutations;
+    const next = (async () => {
+      await previous;
+      return await action();
+    })();
+    this.mutations = (async () => {
+      try {
+        await next;
+      } catch {
+        // The caller of `next` observes its failure; the queue continues.
+      }
+    })();
     return next;
   }
   check(): Promise<UpdateState> {
     if (["downloading", "ready", "restarting"].includes(this.snapshotState.status)) {
       return Promise.resolve(this.snapshot());
     }
-    this.pending ??= this.serial(() => this.readLatest()).finally(() => {
-      this.pending = null;
-    });
+    this.pending ??= (async () => {
+      try {
+        return await this.serial(() => this.readLatest());
+      } finally {
+        this.pending = null;
+      }
+    })();
     return this.pending;
   }
   private github(path: string, accept: string) {
@@ -289,51 +301,55 @@ export class UpdatesService {
   prepare() {
     const { native } = this.options;
     if (!native) {
-      throw new (HTTPError.id("CONFLICT", 409))("In-app updates require the installed desktop app");
+      return problem(409, { detail: "In-app updates require the installed desktop app" });
     }
     if (this.snapshotState.status === "downloading" || this.snapshotState.status === "ready") {
       return this.snapshot();
     }
     if (this.pending || this.snapshotState.status !== "available") {
-      throw new (HTTPError.id("CONFLICT", 409))("Check for updates before downloading an update");
+      return problem(409, { detail: "Check for updates before downloading an update" });
     }
     Object.assign(this.snapshotState, { error: null, progress: null, status: "downloading" });
-    this.preparation = native
-      .download()
-      .then(() => {
+    // The download continues after this response; its outcome is published in the snapshot.
+    this.preparation = (async () => {
+      try {
+        await native.download();
         const info = native.snapshot();
         if (info.error || !info.updateReady || info.version !== this.snapshotState.latestVersion) {
-          throw new Error(info.error || "The update could not be prepared");
+          this.snapshotState.status = "available";
+          this.snapshotState.error = info.error || "The update could not be prepared";
+        } else {
+          this.snapshotState.status = "ready";
         }
-        this.snapshotState.status = "ready";
-        this.snapshotState.progress = null;
-      })
-      .catch((error: unknown) => {
+      } catch (error) {
         this.snapshotState.status = "available";
-        this.snapshotState.progress = null;
         this.snapshotState.error =
           error instanceof Error ? error.message : "Unable to prepare update";
-      })
-      .finally(() => {
+      } finally {
+        this.snapshotState.progress = null;
         this.preparation = null;
-      });
+      }
+    })();
     return this.snapshot();
   }
   install() {
     const { native } = this.options;
     if (!native || this.preparation || this.snapshotState.status !== "ready") {
-      throw new (HTTPError.id("CONFLICT", 409))("Download an update before restarting");
+      return problem(409, { detail: "Download an update before restarting" });
     }
     this.snapshotState.status = "restarting";
     this.snapshotState.error = null;
-    // Let the HTTP response and its synchronized state reach the WebView first.
-    this.restart = setTimeout(() => {
-      void native.install().catch((error: unknown) => {
+    const install = async () => {
+      try {
+        await native.install();
+      } catch (error) {
         this.snapshotState.status = native.snapshot().updateReady ? "ready" : "available";
         this.snapshotState.error =
           error instanceof Error ? error.message : "Unable to install update";
-      });
-    }, 250);
+      }
+    };
+    // Let the HTTP response and its synchronized state reach the WebView first.
+    this.restart = setTimeout(() => void install(), 250);
     return this.snapshot();
   }
   private compatibleInstaller(latest: Release, version: string) {
@@ -346,9 +362,7 @@ export class UpdatesService {
   }
   async download() {
     if (!(this.asset && this.snapshotState.status === "available")) {
-      throw new (HTTPError.id("CONFLICT", 409))(
-        "Check for updates before downloading the installer"
-      );
+      return problem(409, { detail: "Check for updates before downloading the installer" });
     }
     const { asset } = this;
     let response = await this.github(`/releases/assets/${asset.id}`, "application/octet-stream");
@@ -357,7 +371,7 @@ export class UpdatesService {
       this.snapshotState.downloadName = null;
       this.snapshotState.status = "error";
       this.snapshotState.error = "This release is no longer downloadable. Check for updates again.";
-      throw new (HTTPError.id("BAD_GATEWAY", 502))(this.snapshotState.error);
+      return problem(502, { detail: this.snapshotState.error });
     }
     if (response.status === 302) {
       const location = response.headers.get("location");
@@ -368,15 +382,13 @@ export class UpdatesService {
           target.hostname
         )
       ) {
-        throw new (HTTPError.id("BAD_GATEWAY", 502))("GitHub returned an invalid download URL");
+        return problem(502, { detail: "GitHub returned an invalid download URL" });
       }
       // The signed asset URL needs no GitHub credential; never forward stale headers there.
       response = await fetch(target, { redirect: "error", signal: AbortSignal.timeout(120_000) });
     }
     if (!response.ok) {
-      throw new (HTTPError.id("BAD_GATEWAY", 502))(
-        `Download unavailable (HTTP ${response.status})`
-      );
+      return problem(502, { detail: `Download unavailable (HTTP ${response.status})` });
     }
     return new Response(response.body, {
       headers: {

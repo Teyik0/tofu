@@ -149,7 +149,8 @@ test("AniList sync follows Watching and Planning in the chosen thread, skips wat
       .content.get();
     expect(new Uint8Array(torrentBytes(file))).toEqual(context.bytes);
     expect(
-      expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).get()).savePath
+      expectSuccess(await context.client.torrents({ id: context.seed.infoHash }).host.get())
+        .savePath
     ).toBe(join(context.directory, "anime"));
     await client.anilist.subscriptions({ id: subscription.id }).sync.post({});
     expect(

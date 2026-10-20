@@ -18,27 +18,28 @@ export function useAniListReleases(entry: AniListMedia | AniListEntry) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshing explicitly starts a new release search.
   useEffect(() => {
     const controller = new AbortController();
-    void request<AniListReleases>(
-      `/anilist/entries/${mediaId}/releases`,
-      "POST",
-      {},
-      controller.signal
-    )
-      .then((value) => {
+    const load = async () => {
+      try {
+        const value = await request<AniListReleases>(
+          `/anilist/entries/${mediaId}/releases`,
+          "POST",
+          {},
+          controller.signal
+        );
         if (!controller.signal.aborted) {
           setResult(value);
         }
-      })
-      .catch((cause) => {
+      } catch (cause) {
         if (!controller.signal.aborted) {
           setReleaseError(errorMessage(cause, "Unable to find releases"));
         }
-      })
-      .finally(() => {
+      } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
         }
-      });
+      }
+    };
+    void load();
     return () => {
       controller.abort();
     };

@@ -1,6 +1,6 @@
 import { Form } from "@formisch/react";
 import { ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
-import { pluginCredentialPages } from "../../api/modules/plugins/service";
+import { pluginCredentialPages } from "../../api/modules/plugins/model";
 import { Button, buttonVariants } from "../ui/button";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "../ui/field";
 import { Input } from "../ui/input";

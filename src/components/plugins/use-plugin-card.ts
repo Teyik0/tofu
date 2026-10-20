@@ -12,12 +12,6 @@ interface PluginFeedback {
   error: string | null;
   keyRequired: boolean;
 }
-const pluginPaths = [
-  "/plugins",
-  "/plugins/sources",
-  "/plugins/intelligence",
-  "/plugins/integrations",
-] as const;
 export interface PluginCardProps {
   desktop: boolean;
   form: PluginForm;
@@ -74,29 +68,8 @@ export function usePluginCard({ plugin, form }: Pick<PluginCardProps, "plugin" |
           await connect.mutateAsync(configuration);
           setNotice("API key verified and saved.");
         } else {
-          await configure.mutateAsync(configuration, {
-            optimistic(cache) {
-              for (const path of pluginPaths) {
-                cache.update(path, (data) => ({
-                  ...data,
-                  initialAutomation: {
-                    ...data.initialAutomation,
-                    plugins: data.initialAutomation.plugins.map((current) =>
-                      current.id === plugin.id
-                        ? {
-                            ...current,
-                            dailyLimit: configuration.dailyLimit ?? current.dailyLimit,
-                            enabled: configuration.enabled,
-                            error: null,
-                            hasApiKey: Boolean(configuration.apiKey?.trim()) || current.hasApiKey,
-                          }
-                        : current
-                    ),
-                  },
-                }));
-              }
-            },
-          });
+          // The server invalidates the plugins layout, which reloads the browser's plugin state.
+          await configure.mutateAsync(configuration);
         }
         confirmPluginConfiguration(form, {
           apiKey: configuration.apiKey,

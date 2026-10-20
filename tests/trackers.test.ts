@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Server } from "bittorrent-tracker";
-import type { DashboardState } from "../src/types";
+import type { LibraryState } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
 
@@ -40,29 +40,24 @@ test("trackers return real swarm statistics and can be reannounced, added and re
     const { id }: { id: string } = expectSuccess(
       await context.client.torrents.post({ paused: false, source: context.magnet })
     );
-    const read = () =>
-      context.client.state
-        .get({ query: { selected: id } })
-        .then((response) => expectSuccess(response) as DashboardState);
+    const read = async () =>
+      expectSuccess(await context.client.state.get({ query: { selected: id } })) as LibraryState;
+    const readHost = async () => expectSuccess(await context.client.torrents({ id }).host.get());
     await waitFor(read, (value) => value.detail?.status === "seeding");
-    const working = await waitFor(read, (value) => value.detail?.trackers[0]?.status === "working");
-    expect(working.detail?.trackers[0]?.seeds).toBeGreaterThanOrEqual(1);
+    const working = await waitFor(readHost, (value) => value.trackers[0]?.status === "working");
+    expect(working.trackers[0]?.seeds).toBeGreaterThanOrEqual(1);
     expect((await context.client.torrents({ id }).announce.post({})).status).toBe(200);
     await waitFor(
-      read,
-      (value) =>
-        (value.detail?.trackers[0]?.lastAnnounce ?? 0) >
-        (working.detail?.trackers[0]?.lastAnnounce ?? 0)
+      readHost,
+      (value) => (value.trackers[0]?.lastAnnounce ?? 0) > (working.trackers[0]?.lastAnnounce ?? 0)
     );
     const replace = await context.client.torrents({ id }).trackers.put({ urls: [second.url] });
     expect(replace.status).toBe(200);
     await waitFor(
-      read,
-      (value) =>
-        value.detail?.trackers[0]?.url === second.url &&
-        value.detail.trackers[0].status === "working" &&
-        value.detail.status === "seeding"
+      readHost,
+      (value) => value.trackers[0]?.url === second.url && value.trackers[0].status === "working"
     );
+    await waitFor(read, (value) => value.detail?.status === "seeding");
     const previousCalls = first.count();
     const secondCalls = second.count();
     await context.client.torrents({ id }).announce.post({});
@@ -71,9 +66,8 @@ test("trackers return real swarm statistics and can be reannounced, added and re
       (count) => count > secondCalls
     );
     expect(first.count()).toBe(previousCalls);
-    const result = await read();
-    expect(result.detail?.trackers).toHaveLength(1);
-    expect(result.detail?.progress).toBe(1);
+    expect((await readHost()).trackers).toHaveLength(1);
+    expect((await read()).detail?.progress).toBe(1);
     const file = await context.client.torrents({ id }).files({ index: "0" }).content.get();
     expect(Bun.SHA256.hash(torrentBytes(file), "hex")).toBe(Bun.SHA256.hash(context.bytes, "hex"));
   } finally {

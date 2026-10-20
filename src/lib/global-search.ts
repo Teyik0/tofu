@@ -1,8 +1,8 @@
-import type { FeedRelease, SearchReleaseGroup, TorrentSummary } from "../types";
+import type { FeedRelease, LibraryTorrent, SearchReleaseGroup } from "../types";
 
 const queryWords = /\s+/;
 
-export function searchTorrents(torrents: TorrentSummary[], query: string) {
+export function searchTorrents(torrents: LibraryTorrent[], query: string) {
   const words = query.trim().toLocaleLowerCase("en-US").split(queryWords);
   return torrents
     .filter((torrent) => {

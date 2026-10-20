@@ -26,3 +26,5 @@ await Bun.write(
     )
   )
 );
+
+await import("./build-tsnet");

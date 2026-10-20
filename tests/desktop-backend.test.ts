@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../src/api";
-import type { DashboardState } from "../src/types";
+import type { LibraryState } from "../src/types";
 import { readLogRecords } from "./helpers/logs";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
@@ -102,6 +102,7 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
         TOFU_DATA_DIR: dataDir,
         TOFU_DOWNLOAD_DIR: join(context.directory, "desktop-downloads"),
         TOFU_MODE: "server",
+        TOFU_PORT: "0",
         TOFU_PROFILE: "dev",
       },
       ipc() {
@@ -177,7 +178,7 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
       }
       return expectSuccess(
         await host.client.state.get({ query: { selected: id } })
-      ) as DashboardState;
+      ) as LibraryState;
     };
     await waitFor(state, (value) => value.detail?.status === "seeding");
     const bytes = torrentBytes(
@@ -190,7 +191,8 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
       .stream({ name: "source.bin" })
       .get({ headers: { range: "bytes=1000-1999" } });
     expect(range.status).toBe(206);
-    expect(new Headers(range.headers).get("content-length")).toBe("1000");
+    // Bun sends ReadableStream bodies chunked, preserving cancellation through the final byte.
+    expect(new Headers(range.headers).get("transfer-encoding")).toBe("chunked");
     expect(new Headers(range.headers).get("content-range")).toBe(
       `bytes 1000-1999/${context.bytes.length}`
     );
@@ -212,7 +214,7 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     const options = await host.page("/options");
     expect(options.status).toBe(200);
     const optionsHtml = await options.text();
-    expect(optionsHtml).toContain("Changes apply automatically.");
+    expect(optionsHtml).toContain("Loading general settings");
     expect(optionsHtml).not.toContain('id="settings-form"');
     expect(optionsHtml).toContain('aria-label="Settings sections"');
     expect(optionsHtml).toContain('href="/options/appearance"');
@@ -229,8 +231,9 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     const downloads = await host.page("/options/downloads");
     expect(downloads.status).toBe(200);
     const downloadsHtml = await downloads.text();
-    expect(downloadsHtml).toContain('id="destination-path"');
-    expect(downloadsHtml).toContain('id="limit-download"');
+    expect(downloadsHtml).toContain("Loading download settings");
+    expect(downloadsHtml).not.toContain('id="destination-path"');
+    expect(downloadsHtml).not.toContain('id="limit-download"');
     expect(downloadsHtml).not.toContain('id="appearance-theme"');
     const updates = await host.page("/options/updates");
     expect(updates.status).toBe(200);
@@ -245,29 +248,46 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     const sources = await host.page("/plugins/sources");
     expect(sources.status).toBe(200);
     const sourcesHtml = await sources.text();
-    expect(sourcesHtml).toContain('id="plugin-nyaa"');
+    expect(sourcesHtml).toContain("Loading plugins");
+    expect(sourcesHtml).not.toContain('id="plugin-nyaa"');
     expect(sourcesHtml).not.toContain('id="plugin-jev"');
     expect(sourcesHtml).not.toContain('id="plugin-anilist"');
     expect(sourcesHtml).not.toContain('data-slot="sidebar-container"');
     const intelligence = await host.page("/plugins/intelligence");
     expect(intelligence.status).toBe(200);
     const intelligenceHtml = await intelligence.text();
-    expect(intelligenceHtml).toContain('id="key-jev"');
+    expect(intelligenceHtml).toContain("Loading plugins");
+    expect(intelligenceHtml).not.toContain('id="key-jev"');
     expect(intelligenceHtml).not.toContain('id="plugin-nyaa"');
     const integrations = await host.page("/plugins/integrations");
     expect(integrations.status).toBe(200);
     const integrationsHtml = await integrations.text();
-    expect(integrationsHtml).toContain('id="plugin-anilist"');
+    expect(integrationsHtml).toContain("Loading plugins");
+    expect(integrationsHtml).not.toContain('id="plugin-anilist"');
     expect(integrationsHtml).not.toContain('id="plugin-jev"');
-    const navigation = await host.page("/_furin/data?path=/plugins/sources");
+    const navigation = await host.page("/plugins/sources?_furin=data");
     expect(navigation.status).toBe(200);
-    expect(await navigation.text()).not.toContain("__furinError");
+    const payload = await navigation.text();
+    expect(payload).not.toContain('"status":"error"');
+    expect(payload).not.toContain('"status":"notFound"');
     await host.client.torrents({ id }).pause.post({});
     await host.stop();
     host = await launch();
     const restored = await waitFor(state, (value) => value.detail?.status === "paused");
     expect(restored.detail?.id).toBe(id);
     expect((await treaty<Api>(host.url).api.state.get()).status).toBe(403);
+    const connection = expectSuccess(await host.client.connections.get());
+    expect(connection.config.port).toBe(Number(new URL(host.url).port));
+    const sharing = expectSuccess(
+      await host.client.connections.put({
+        enabled: true,
+        proxyOrigin: "https://fixture.invalid",
+        transport: "proxy",
+      })
+    );
+    expect(sharing.restarting).toBe(false);
+    expect(expectSuccess(await host.client.state.get()).torrents[0]?.id).toBe(id);
+    expect((await host.page("/options/connections")).status).toBe(200);
   } finally {
     await host?.stop();
     await context.close();

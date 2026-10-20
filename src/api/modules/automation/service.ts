@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { HTTPError } from "elysia";
+import { ElysiaStatus, problem } from "elysia";
 import { automationDecisions, automationPreferences, automationRules } from "../../../db/schema";
 import type {
   AutomationDecision,
@@ -143,10 +143,13 @@ export class AutomationService {
     }
     refreshRecords(this.decisions, this.db.select().from(automationDecisions).all());
   }
-  async interpret(query: string, destinationId: string): Promise<AutomationDraft> {
+  async interpret(query: string, destinationId: string) {
     const draft = interpretLocally(query, destinationId, this.preferences);
     const interpretation = interpretationQuestions(draft);
     const result = await this.options.jev.evaluate({ query }, interpretation.questions);
+    if (result instanceof ElysiaStatus) {
+      return result;
+    }
     if (!result) {
       return draft;
     }
@@ -182,6 +185,9 @@ export class AutomationService {
       { query: draft.query, release: safeReleaseState(release) },
       matchQuestions()
     );
+    if (answer instanceof ElysiaStatus) {
+      return answer;
+    }
     if (!answer) {
       const fallback = localMatch({ ...draft, matchMode: "exact" }, release);
       return { probability: null, reason: fallback, uncertain: false };
@@ -235,22 +241,21 @@ export class AutomationService {
       this.decisions.set(decision.id, decision);
     }
   }
-  private rule(id: string) {
-    const rule = this.rules.get(id);
-    if (!rule) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown automation");
-    }
-    return rule;
-  }
-
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Draft, ownership and baseline validation return their failures in order.
   async prepareRule(
     id: string | null,
     draft: AutomationDraft,
     baselineCandidates: AutomationCandidateInput[] = [],
     ownership?: RuleOwnership
   ) {
-    this.validateDraft(draft);
-    let previous = id ? this.rule(id) : null;
+    const invalid = this.validateDraft(draft);
+    if (invalid) {
+      return invalid;
+    }
+    let previous = id ? (this.rules.get(id) ?? null) : null;
+    if (id && !previous) {
+      return problem(404, { detail: "Unknown automation" });
+    }
     if (!previous && ownership) {
       previous =
         [...this.rules.values()].find(
@@ -263,7 +268,7 @@ export class AutomationService {
       ownership &&
       (previous.ownerId !== ownership.ownerId || (previous.key && previous.key !== ownership.key))
     ) {
-      throw new (HTTPError.id("CONFLICT", 409))("This rule belongs to another integration");
+      return problem(409, { detail: "This rule belongs to another integration" });
     }
     const rule: AutomationRule = {
       ...draft,
@@ -282,28 +287,35 @@ export class AutomationService {
     };
     const baseline =
       previous || draft.includeExisting ? [] : await this.prepareBaseline(rule, baselineCandidates);
+    if (baseline instanceof ElysiaStatus) {
+      return baseline;
+    }
     return { baseline, expectedRevision: previous?.revision ?? null, rule };
   }
   private validateDraft(draft: AutomationDraft) {
     if (draft.matchMode === "pattern") {
       if (draft.title.length > 256) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("Pattern too long");
+        return problem(400, { detail: "Pattern too long" });
       }
       try {
         new RegExp(draft.title, "iu").test("");
-      } catch (cause) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("Invalid pattern", { cause });
+      } catch {
+        return problem(400, { detail: "Invalid pattern" });
       }
     }
     if (!(draft.title.trim() && draft.sources.length)) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Enter a title and at least one source");
+      return problem(400, { detail: "Enter a title and at least one source" });
     }
+    return null;
   }
   private async prepareBaseline(rule: AutomationRule, candidates: AutomationCandidateInput[]) {
     const baseline: AutomationDecision[] = [];
     for (const { release, contentKey } of candidates) {
       // biome-ignore lint/performance/noAwaitInLoops: evaluate each baseline before opening the write transaction.
       const evaluation = await this.evaluate(rule, release);
+      if (evaluation instanceof ElysiaStatus) {
+        return evaluation;
+      }
       if (!(evaluation.reason || evaluation.uncertain)) {
         baseline.push({
           automationId: rule.id,
@@ -321,10 +333,8 @@ export class AutomationService {
     }
     return baseline;
   }
-  writeRule(
-    tx: DatabaseTransaction,
-    prepared: Awaited<ReturnType<AutomationService["prepareRule"]>>
-  ) {
+  /** Stores a prepared rule; inside Furin's mutation(), a returned problem rolls back. */
+  writeRule(tx: DatabaseTransaction, prepared: PreparedRule) {
     const stored = tx
       .select()
       .from(automationRules)
@@ -334,7 +344,7 @@ export class AutomationService {
       ? ((JSON.parse(stored.value) as Partial<AutomationRule>).revision ?? 0)
       : null;
     if (revision !== prepared.expectedRevision) {
-      throw new (HTTPError.id("CONFLICT", 409))("Automation changed; reload the rule");
+      return problem(409, { detail: "Automation changed; reload the rule" });
     }
     if (prepared.rule.ownerId && prepared.rule.key) {
       const conflict = tx
@@ -350,9 +360,7 @@ export class AutomationService {
           );
         });
       if (conflict) {
-        throw new (HTTPError.id("CONFLICT", 409))(
-          "This integration already owns a rule with that key"
-        );
+        return problem(409, { detail: "This integration already owns a rule with that key" });
       }
     }
     for (const decision of prepared.baseline) {
@@ -362,7 +370,9 @@ export class AutomationService {
     return prepared.rule;
   }
   deleteRule(tx: DatabaseConnection, id: string) {
-    this.rule(id);
+    if (!this.rules.has(id)) {
+      return problem(404, { detail: "Unknown automation" });
+    }
     for (const row of tx.select().from(automationDecisions).all()) {
       const decision = JSON.parse(row.value) as AutomationDecision;
       if (
@@ -378,11 +388,18 @@ export class AutomationService {
   }
 
   async prepareIngestion(input: IngestionInput) {
-    const rule = this.rule(input.ruleId);
-    if (!rule.enabled || rule.revision !== input.revision) {
-      throw new (HTTPError.id("CONFLICT", 409))("Automation changed; discard collected releases");
+    const rule = this.rules.get(input.ruleId);
+    if (!rule) {
+      return problem(404, { detail: "Unknown automation" });
     }
-    const { groups, evaluations } = await this.candidateGroups(rule, input);
+    if (!rule.enabled || rule.revision !== input.revision) {
+      return problem(409, { detail: "Automation changed; discard collected releases" });
+    }
+    const candidates = await this.candidateGroups(rule, input);
+    if (candidates instanceof ElysiaStatus) {
+      return candidates;
+    }
+    const { groups, evaluations } = candidates;
     const decisions: AutomationDecision[] = [];
     for (const [key, releases] of groups) {
       const decision = this.choose(rule, key, releases, evaluations);
@@ -392,10 +409,8 @@ export class AutomationService {
     }
     return { decisions, errors: input.errors, revision: input.revision, ruleId: rule.id };
   }
-  writeIngestion(
-    tx: DatabaseTransaction,
-    prepared: Awaited<ReturnType<AutomationService["prepareIngestion"]>>
-  ) {
+  /** Checks the rule before any write, so a returned conflict leaves the transaction empty. */
+  writeIngestion(tx: DatabaseTransaction, prepared: PreparedIngestion) {
     const ruleRow = tx
       .select()
       .from(automationRules)
@@ -403,7 +418,7 @@ export class AutomationService {
       .get();
     const rule = ruleRow ? ({ revision: 0, ...JSON.parse(ruleRow.value) } as AutomationRule) : null;
     if (!rule?.enabled || rule.revision !== prepared.revision) {
-      throw new (HTTPError.id("CONFLICT", 409))("Automation changed; discard prepared decisions");
+      return problem(409, { detail: "Automation changed; discard prepared decisions" });
     }
     for (const decision of prepared.decisions) {
       const row = tx
@@ -453,7 +468,7 @@ export class AutomationService {
       }
     }
     const groups = new Map<string, FeedRelease[]>();
-    const evaluations = new Map<string, Awaited<ReturnType<AutomationService["evaluate"]>>>();
+    const evaluations = new Map<string, Evaluation>();
     const handledHashes = new Set(
       [...this.decisions.values()]
         .filter((decision) => decision.status === "added")
@@ -476,6 +491,9 @@ export class AutomationService {
       }
       // biome-ignore lint/performance/noAwaitInLoops: charge the quota before evaluating each candidate; stop on provider failure.
       const evaluation = await this.evaluate(rule, release);
+      if (evaluation instanceof ElysiaStatus) {
+        return evaluation;
+      }
       if (evaluation.reason) {
         continue;
       }
@@ -490,7 +508,7 @@ export class AutomationService {
     rule: AutomationRule,
     key: string,
     releases: FeedRelease[],
-    evaluations: Map<string, Awaited<ReturnType<AutomationService["evaluate"]>>>
+    evaluations: Map<string, Evaluation>
   ) {
     const id = `${rule.id}:${key}`;
     const previous = this.decisions.get(id);
@@ -538,7 +556,7 @@ export class AutomationService {
   approve(id: string) {
     const decision = this.decisions.get(id);
     if (!decision) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown release");
+      return problem(404, { detail: "Unknown release" });
     }
     if (decision.status !== "added" && decision.status !== "ignored") {
       this.persistDecision({
@@ -592,9 +610,23 @@ export class AutomationService {
   ignoreDecision(tx: DatabaseConnection, id: string) {
     const decision = this.decisions.get(id);
     if (!decision) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown release");
+      return problem(404, { detail: "Unknown release" });
     }
     this.persistDecision({ ...decision, reason: "Ignored manually", status: "ignored" }, tx);
     return { ok: true };
   }
 }
+
+// Successful results, narrowed structurally because ElysiaStatus generics are invariant.
+type Evaluation = Extract<
+  Awaited<ReturnType<AutomationService["evaluate"]>>,
+  { uncertain: boolean }
+>;
+export type PreparedRule = Extract<
+  Awaited<ReturnType<AutomationService["prepareRule"]>>,
+  { rule: AutomationRule }
+>;
+type PreparedIngestion = Extract<
+  Awaited<ReturnType<AutomationService["prepareIngestion"]>>,
+  { decisions: AutomationDecision[] }
+>;

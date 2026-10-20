@@ -1,4 +1,4 @@
-import { HTTPError } from "elysia";
+import { ElysiaStatus, problem } from "elysia";
 import parseTorrent from "parse-torrent";
 import { automationReleases } from "../../../db/schema";
 import type {
@@ -176,7 +176,7 @@ interface DiscoveryOptions {
 export class DiscoveryService {
   private readonly lifecycle: { closed: boolean } = { closed: false };
   private readonly releases = new Map<string, FeedRelease>();
-  private readonly additions = new Map<string, Promise<{ id: string }>>();
+  private readonly additions = new Map<string, ReturnType<DiscoveryService["downloadRelease"]>>();
   private readonly db: TofuDatabase;
   private readonly options: DiscoveryOptions;
   constructor(db: TofuDatabase, options: DiscoveryOptions) {
@@ -203,7 +203,11 @@ export class DiscoveryService {
     await Promise.all(
       [...new Set(sources)].map(async (sourceId) => {
         try {
-          result.releases.push(...(await this.options.plugins.fetchSource(sourceId, query)));
+          const releases = await this.options.plugins.fetchSource(sourceId, query);
+          // A returned problem means the plugin service is closing: nothing to report.
+          if (!(releases instanceof ElysiaStatus)) {
+            result.releases.push(...releases);
+          }
         } catch (cause) {
           if (!this.options.plugins.plugin(sourceId).enabled || this.lifecycle.closed) {
             return;
@@ -228,7 +232,11 @@ export class DiscoveryService {
     return result;
   }
   async discover(query: string, sources: SourcePluginId[] | undefined) {
-    const selected: SourcePluginId[] = sources ?? this.options.plugins.sourceIds();
+    const known = this.options.plugins.sourceIds();
+    if (sources?.some((id) => !known.includes(id))) {
+      return problem(404, { detail: "Unknown plugin" });
+    }
+    const selected: SourcePluginId[] = sources ?? known;
     const active = [...new Set(selected)].filter((id) => this.options.plugins.plugin(id).enabled);
     const jev = this.options.plugins.plugin("jev");
     if (!(jev?.enabled && jev.apiKey)) {
@@ -252,17 +260,16 @@ export class DiscoveryService {
       return { errors: [], releases: [], search };
     }
     const interpretation = discoveryTitleQuestions(search.title);
-    let semantic = true;
-    try {
-      const result = await this.options.jev.evaluate({ query }, interpretation.questions);
-      const answer = result?.answers.title;
+    const interpreted = await this.options.jev.evaluate({ query }, interpretation.questions);
+    const semantic = !(interpreted instanceof ElysiaStatus);
+    if (semantic) {
+      const answer = interpreted?.answers.title;
       const title = interpretation.titles[Number(answer?.choice)];
       if (title && answer?.confidence !== undefined && answer.confidence >= 0.8) {
         search.title = title;
         search.aliases = [title];
       }
-    } catch {
-      semantic = false;
+    } else {
       search.warning = "Jev interpretation unavailable; searching with the entered title.";
     }
     await this.resolve(search, this.options.endpoints.anilist ?? "https://graphql.anilist.co");
@@ -305,35 +312,21 @@ export class DiscoveryService {
         return [];
       }
       const batch = releases.slice(offset, offset + 20);
-      try {
-        // biome-ignore lint/performance/noAwaitInLoops: bound model requests and respect the daily budget.
-        const result = await this.options.jev.evaluate(
-          {
-            query,
-            releases: batch.map(safeReleaseState),
-            search: {
-              aliases: search.aliases,
-              episode: search.episode,
-              season: search.season,
-              title: search.title,
-            },
+      // biome-ignore lint/performance/noAwaitInLoops: bound model requests and respect the daily budget.
+      const result = await this.options.jev.evaluate(
+        {
+          query,
+          releases: batch.map(safeReleaseState),
+          search: {
+            aliases: search.aliases,
+            episode: search.episode,
+            season: search.season,
+            title: search.title,
           },
-          discoveryMatchQuestions(batch)
-        );
-        if (!result) {
-          throw new Error("Jev disabled");
-        }
-        for (const [index, release] of batch.entries()) {
-          const probability = Math.min(
-            result.answers[`identity_${index}`]?.noul ?? 0,
-            result.answers[`requirements_${index}`]?.noul ?? 0
-          );
-          // A manual search can show plausible candidates; automated downloads retain their stricter threshold.
-          if (probability >= 0.5) {
-            ranked.push({ probability, release });
-          }
-        }
-      } catch {
+        },
+        discoveryMatchQuestions(batch)
+      );
+      if (!result || result instanceof ElysiaStatus) {
         search.warning = [
           search.warning,
           "Jev ranking unavailable; showing locally matched releases.",
@@ -347,6 +340,16 @@ export class DiscoveryService {
             .map((release) => ({ probability: 0, release }))
         );
         break;
+      }
+      for (const [index, release] of batch.entries()) {
+        const probability = Math.min(
+          result.answers[`identity_${index}`]?.noul ?? 0,
+          result.answers[`requirements_${index}`]?.noul ?? 0
+        );
+        // A manual search can show plausible candidates; automated downloads retain their stricter threshold.
+        if (probability >= 0.5) {
+          ranked.push({ probability, release });
+        }
       }
     }
     return ranked
@@ -365,7 +368,7 @@ export class DiscoveryService {
   ) {
     const release = this.releases.get(`${sourceId}:${id}`);
     if (!release) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Search for this release before adding it");
+      return problem(404, { detail: "Search for this release before adding it" });
     }
     const key = release.infoHash ?? `${sourceId}:${id}`;
     const pending = this.additions.get(key);
@@ -387,11 +390,15 @@ export class DiscoveryService {
     allowed: (() => boolean) | undefined
   ) {
     if (!this.options.plugins.plugin(release.sourceId).enabled || this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("Plugin disabled");
+      return problem(409, { detail: "Plugin disabled" });
     }
     let input: string | Uint8Array = release.downloadUrl;
     if (!input.startsWith("magnet:")) {
-      input = await this.options.plugins.downloadFile(release);
+      const file = await this.options.plugins.downloadFile(release);
+      if (file instanceof ElysiaStatus) {
+        return file;
+      }
+      input = file;
     }
     const parsed = await parseTorrent(input);
     if (parsed.infoHash && release.infoHash !== parsed.infoHash) {
@@ -399,10 +406,10 @@ export class DiscoveryService {
       this.storeRelease(release);
     }
     if (this.lifecycle.closed || !this.options.plugins.plugin(release.sourceId).enabled) {
-      throw new (HTTPError.id("CONFLICT", 409))("Plugin disabled");
+      return problem(409, { detail: "Plugin disabled" });
     }
     if (allowed && !allowed()) {
-      throw new (HTTPError.id("CONFLICT", 409))("Automation changed or release ignored");
+      return problem(409, { detail: "Automation changed or release ignored" });
     }
     const existing = this.options.engine
       .snapshot(null, false)

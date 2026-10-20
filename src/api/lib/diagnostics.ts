@@ -19,6 +19,9 @@ const sensitiveHeader = /\b(authorization|(?:set-)?cookie)\s*:\s*[^\r\n]*/gi;
 const urlCredentials = /(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi;
 const urlQuery = /([?&](?:[^\s=&#]*(?:token|key|secret|password|cookie)[^\s=&#]*)=)[^\s&#]*/gi;
 
+const mediaLinkPath = /\/media\/x\/[^/\s?#]+/g;
+const invitationFragment = /([#&]i=)[A-Za-z0-9_-]+/g;
+
 export function sanitizeLog(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
   if (depth > 6) {
     return "[truncated]";
@@ -29,6 +32,8 @@ export function sanitizeLog(value: unknown, seen = new WeakSet<object>(), depth 
       .replace(bearer, "Bearer [redacted]")
       .replace(urlCredentials, "$1[redacted]@")
       .replace(urlQuery, "$1[redacted]")
+      .replace(mediaLinkPath, "/media/x/[redacted]")
+      .replace(invitationFragment, "$1[redacted]")
       .replace(sensitiveValue, "$1[redacted]")
       .slice(0, 8192);
   }

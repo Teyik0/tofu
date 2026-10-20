@@ -1,4 +1,4 @@
-import { HTTPError } from "elysia";
+import { ElysiaStatus, problem } from "elysia";
 import type {
   AutomationDecision,
   AutomationDraft,
@@ -8,6 +8,7 @@ import type {
   EnginePort,
   FeedRelease,
 } from "../../../types";
+import type { DatabaseTransaction } from "../../lib/db";
 import { recordLog } from "../../lib/diagnostics";
 import { normalizeTitle } from "../../lib/title";
 import type { DiscoveryService } from "../discovery/service";
@@ -15,7 +16,7 @@ import { collectSourceQueries, uniqueReleases } from "../discovery/sources";
 import { publicRelease } from "../plugins/releases";
 import type { PluginsService } from "../plugins/service";
 import { compareReleases, contentKey } from "./rules";
-import type { AutomationService, RuleOwnership } from "./service";
+import type { AutomationService, PreparedRule, RuleOwnership } from "./service";
 
 export interface ReleaseAutomationOptions {
   automation: AutomationService;
@@ -72,10 +73,10 @@ export class ReleaseAutomationService {
   private rule(id: string) {
     const rule = this.options.automation.ruleSnapshot(id);
     if (!rule) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown automation");
+      return problem(404, { detail: "Unknown automation" });
     }
     if (rule.executorId && rule.executorId !== "tofu.releases") {
-      throw new (HTTPError.id("CONFLICT", 409))("This rule belongs to another executor");
+      return problem(409, { detail: "This rule belongs to another executor" });
     }
     return rule;
   }
@@ -106,10 +107,18 @@ export class ReleaseAutomationService {
     return { ...result, releases: uniqueReleases(result.releases) };
   }
 
+  /**
+   * Stops collecting queries once a release matches. An unavailable evaluator does not stop
+   * collection; the evaluation step that follows reports the same failure.
+   */
   private async hasAutomationMatch(draft: AutomationDraft, releases: FeedRelease[]) {
     for (const release of releases) {
       // biome-ignore lint/performance/noAwaitInLoops: stop evaluating once a primary match is accepted.
-      if (!(await this.options.automation.evaluate(draft, release)).reason) {
+      const evaluation = await this.options.automation.evaluate(draft, release);
+      if (evaluation instanceof ElysiaStatus) {
+        return false;
+      }
+      if (!evaluation.reason) {
         return true;
       }
     }
@@ -119,14 +128,14 @@ export class ReleaseAutomationService {
   async prepareRule(id: string | null, draft: AutomationDraft, ownership?: RuleOwnership) {
     const sources = new Set(this.options.plugins.sourceIds());
     if (draft.sources.some((source) => !sources.has(source))) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown release source");
+      return problem(400, { detail: "Unknown release source" });
     }
     if (
       !this.options.engine
         .snapshot(null, false)
         .destinations.some((destination) => destination.id === draft.destinationId)
     ) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+      return problem(400, { detail: "Unknown destination" });
     }
     let existing = id ? this.options.automation.ruleSnapshot(id) : undefined;
     if (!existing && ownership) {
@@ -139,7 +148,7 @@ export class ReleaseAutomationService {
     // Validate before performing an optional baseline search.
     const owned = ownership ? { ...ownership, executorId: "tofu.releases" } : undefined;
     const validated = await this.options.automation.prepareRule(id, draft, [], owned);
-    if (existing || draft.includeExisting) {
+    if (validated instanceof ElysiaStatus || existing || draft.includeExisting) {
       return validated;
     }
     const baseline = await this.automationDiscovery(draft);
@@ -150,29 +159,42 @@ export class ReleaseAutomationService {
       owned
     );
   }
+  /**
+   * Stores a prepared rule once its thread still exists. Every check precedes the writes, so a
+   * returned problem leaves the transaction empty (and Furin's mutation() rolls it back).
+   */
+  writeRule(tx: DatabaseTransaction, prepared: PreparedRule) {
+    if (
+      !this.options.engine
+        .snapshot(null, false)
+        .destinations.some((destination) => destination.id === prepared.rule.destinationId)
+    ) {
+      return problem(400, { detail: "Unknown destination" });
+    }
+    return this.options.automation.writeRule(tx, prepared);
+  }
   async save(id: string | null, draft: AutomationDraft, ownership?: RuleOwnership) {
     const prepared = await this.prepareRule(id, draft, ownership);
-    const result = this.options.automation.db.transaction((tx) => {
-      if (
-        !this.options.engine
-          .snapshot(null, false)
-          .destinations.some((destination) => destination.id === prepared.rule.destinationId)
-      ) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
-      }
-      return this.options.automation.writeRule(tx, prepared);
-    });
+    if (prepared instanceof ElysiaStatus) {
+      return prepared;
+    }
+    const result = this.options.automation.db.transaction((tx) => this.writeRule(tx, prepared));
     this.options.automation.refreshState();
     return result;
   }
   async preview(draft: AutomationDraft) {
     const result = await this.automationDiscovery(draft);
-    const evaluated = await Promise.all(
-      result.releases.map(async (release) => ({
-        release,
-        ...(await this.options.automation.evaluate(draft, release)),
-      }))
+    const evaluations = await Promise.all(
+      result.releases.map((release) => this.options.automation.evaluate(draft, release))
     );
+    const failed = evaluations.find((evaluation) => evaluation instanceof ElysiaStatus);
+    if (failed) {
+      return failed;
+    }
+    const evaluated = result.releases.map((release, index) => ({
+      release,
+      ...(evaluations[index] as Extract<(typeof evaluations)[number], { uncertain: boolean }>),
+    }));
     const candidates = evaluated.filter(
       (candidate) =>
         !candidate.reason && (candidate.probability === null || candidate.probability >= 0.75)
@@ -185,18 +207,30 @@ export class ReleaseAutomationService {
       releases: candidates.map((candidate) => publicRelease(candidate.release)),
     };
   }
-  async run(id: string): Promise<AutomationState> {
+  async run(id: string) {
     const existing = this.runs.get(id);
     if (existing) {
       return existing;
     }
     const rule = this.rule(id);
-    const task = this.execute(rule).catch(() => {
+    if (rule instanceof ElysiaStatus) {
+      return rule;
+    }
+    // Reserve the run before its first await so concurrent requests share it.
+    const task = (async () => {
+      try {
+        const executed = await this.execute(rule);
+        if (!(executed instanceof ElysiaStatus)) {
+          return executed;
+        }
+      } catch {
+        // Unexpected failures are recorded like rejected checks; the next tick retries.
+      }
       if (this.current(rule)) {
         this.options.automation.recordFailure(id, rule.revision);
       }
       return this.snapshot();
-    });
+    })();
     this.runs.set(id, task);
     try {
       return await task;
@@ -232,12 +266,18 @@ export class ReleaseAutomationService {
       ruleId: rule.id,
       torrentIds: this.options.engine.snapshot(null, false).torrents.map((torrent) => torrent.id),
     });
+    if (prepared instanceof ElysiaStatus) {
+      return prepared;
+    }
     if (!this.current(rule)) {
       return this.snapshot();
     }
-    this.options.automation.db.transaction((tx) =>
+    const written = this.options.automation.db.transaction((tx) =>
       this.options.automation.writeIngestion(tx, prepared)
     );
+    if (written instanceof ElysiaStatus) {
+      return written;
+    }
     this.options.automation.refreshState();
     // "adding" is the durable action journal: a crash leaves the decision retryable.
     for (const decision of this.options.automation.decisionRecords()) {
@@ -261,6 +301,7 @@ export class ReleaseAutomationService {
       this.replacements.delete(rule.id);
     }
   }
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep validation, state changes, and cleanup in the same lifecycle operation.
   private async finishReplacements(rule: AutomationRule) {
     for (const decision of this.options.automation.decisionRecords()) {
       if (
@@ -289,7 +330,15 @@ export class ReleaseAutomationService {
           torrents.some((torrent) => torrent.id === oldId)
         ) {
           // biome-ignore lint/performance/noAwaitInLoops: finish each persisted replacement before the next.
-          await this.options.engine.remove(oldId, rule.deleteReplacedFiles === true);
+          const removed = await this.options.engine.remove(
+            oldId,
+            rule.deleteReplacedFiles === true
+          );
+          if (removed instanceof ElysiaStatus) {
+            decision.status = "error";
+            decision.reason = removed.response.detail;
+            continue;
+          }
         }
         decision.supersedes = null;
         if (shared) {
@@ -362,14 +411,19 @@ export class ReleaseAutomationService {
                   current.release.sourceId === decision.release.sourceId
               )
         ));
-      decision.torrentId = torrent.id;
-      decision.status = "added";
-      if (existing) {
-        decision.reason = "Already in the library";
+      if (torrent instanceof ElysiaStatus) {
+        decision.status = "error";
+        decision.reason = torrent.response.detail;
       } else {
-        decision.reason = decision.supersedes
-          ? "Better version added · old version kept until the download completes"
-          : "Added to the thread folder";
+        decision.torrentId = torrent.id;
+        decision.status = "added";
+        if (existing) {
+          decision.reason = "Already in the library";
+        } else {
+          decision.reason = decision.supersedes
+            ? "Better version added · old version kept until the download completes"
+            : "Added to the thread folder";
+        }
       }
     } catch {
       if (decision.status === "ignored") {
@@ -389,10 +443,13 @@ export class ReleaseAutomationService {
     }
   }
   async approve(id: string) {
-    this.options.automation.approve(id);
+    const approved = this.options.automation.approve(id);
+    if (approved instanceof ElysiaStatus) {
+      return approved;
+    }
     const decision = this.options.automation.decisionRecords().find((item) => item.id === id);
     if (!decision) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown release");
+      return problem(404, { detail: "Unknown release" });
     }
     if (decision.status === "added" || decision.status === "ignored") {
       return this.snapshot();
@@ -401,7 +458,11 @@ export class ReleaseAutomationService {
     if (owner?.executorId && owner.executorId !== "tofu.releases") {
       return this.snapshot();
     }
-    await this.addDecision(decision, this.rule(decision.automationId));
+    const rule = this.rule(decision.automationId);
+    if (rule instanceof ElysiaStatus) {
+      return rule;
+    }
+    await this.addDecision(decision, rule);
     return this.snapshot();
   }
   async start() {
@@ -420,11 +481,14 @@ export class ReleaseAutomationService {
       );
     } finally {
       if (!this.lifecycle.closed) {
-        this.timer = setInterval(() => {
-          void this.tick().catch((error: unknown) => {
+        const poll = async () => {
+          try {
+            await this.tick();
+          } catch (error) {
             recordLog({ component: "automation", error, level: "error", operation: "poll" });
-          });
-        }, 15_000);
+          }
+        };
+        this.timer = setInterval(() => void poll(), 15_000);
         this.timer.unref();
       }
     }

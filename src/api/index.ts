@@ -9,12 +9,21 @@ import { resources, runtime } from "./lib/runtime";
 import { desktopHooks, desktopRuntime } from "./modules/desktop/service";
 
 const routeModules = [
+  import("./modules/access"),
+  import("./modules/access/documents"),
+  import("./modules/access/plugin"),
+  import("./modules/connections/plugin"),
+  import("./modules/connections"),
+  import("./modules/media-links"),
+  import("./modules/library-links"),
+  import("./modules/playback"),
   import("./modules/anilist"),
   import("./modules/anilist/opening"),
   import("./modules/automation/management"),
   import("./modules/dashboard"),
   import("./modules/desktop"),
   import("./modules/destinations"),
+  import("./modules/destinations/storage"),
   import("./modules/discovery"),
   import("./modules/health"),
   import("./modules/jev"),
@@ -29,12 +38,21 @@ const routeModules = [
 ] as const;
 
 const [
+  { accessRoutesPlugin },
+  { publicDocumentsPlugin },
+  { access },
+  { connections },
+  { connectionsPlugin },
+  { mediaLinksApiPlugin, mediaLinksPlugin },
+  { libraryAvailabilityPlugin, linkedLibrariesPlugin },
+  { playbackPlugin },
   { anilistPlugin },
   { anilistOpeningPlugin },
   { automationManagementPlugin },
   { dashboardPlugin },
   { desktopPlugin },
   { destinationsPlugin },
+  { storageRootsPlugin },
   { discoveryPlugin },
   { healthPlugin },
   { jevManagementPlugin },
@@ -46,25 +64,29 @@ const [
   { updatesPlugin },
   { instance },
   { updates },
-] = await Promise.all(routeModules).catch(async (error: unknown) => {
-  recordLog({
-    component: "application",
-    dataDir: configuredInstance.dataDir,
-    error,
-    level: "error",
-    operation: "startup",
-  });
-  await Promise.allSettled(routeModules);
+] = await (async () => {
   try {
-    await resources.disposeAsync();
-  } catch (cleanupError) {
-    // biome-ignore lint/style/useErrorCause: The cause is an AggregateError containing both failures.
-    throw new Error("Application startup and cleanup failed", {
-      cause: new AggregateError([error, cleanupError], "Startup and cleanup errors"),
+    return await Promise.all(routeModules);
+  } catch (error) {
+    recordLog({
+      component: "application",
+      dataDir: configuredInstance.dataDir,
+      error,
+      level: "error",
+      operation: "startup",
     });
+    await Promise.allSettled(routeModules);
+    try {
+      await resources.disposeAsync();
+    } catch (cleanupError) {
+      // biome-ignore lint/style/useErrorCause: The aggregate retains the startup error as cause and the cleanup error as a member.
+      throw new AggregateError([error, cleanupError], "Application startup and cleanup failed", {
+        cause: error,
+      });
+    }
+    throw error;
   }
-  throw error;
-});
+})();
 
 export const apiPlugin = new Elysia({
   name: "tofu-api",
@@ -73,6 +95,10 @@ export const apiPlugin = new Elysia({
   .use(
     desktopApp({
       ...desktopHooks,
+      // Every listener request is authenticated here, before routing and Furin rendering.
+      admission: (request, context) => access.admit(request, context),
+      // Remote access needs a stable port; without it the private window keeps a random one.
+      listen: () => connections.listenOptions(),
       onReady,
       onShutdown,
       onStartup(context) {
@@ -98,11 +124,17 @@ export const apiPlugin = new Elysia({
         }
         context.signal.throwIfAborted();
       },
-      restrictWebToLoopback: true,
     })
   )
-  .request(({ request, set }) => {
+  .onRequest(({ request, set }) => {
     const { pathname } = new URL(request.url);
+    // Authenticated documents, navigation data and API responses never enter shared caches.
+    if (
+      (!pathname.startsWith("/_furin/") || pathname === "/_furin/data") &&
+      !pathname.startsWith("/api/player/engine/")
+    ) {
+      set.headers["cache-control"] = "private, no-store";
+    }
     // VLC runs in threads that share memory, which requires a cross-origin isolated player page.
     if (pathname.startsWith("/player/") || pathname.startsWith("/api/player/")) {
       set.headers["cross-origin-embedder-policy"] = "require-corp";
@@ -110,7 +142,7 @@ export const apiPlugin = new Elysia({
       set.headers["cross-origin-resource-policy"] = "same-origin";
     }
   })
-  .error("global", ({ request, error }) => {
+  .onError("global", ({ request, error }) => {
     recordLog({
       component: "api",
       context: { method: request.method, path: new URL(request.url).pathname },
@@ -120,7 +152,7 @@ export const apiPlugin = new Elysia({
       operation: "request",
     });
   })
-  .afterResponse("global", ({ request, path, set }) => {
+  .onAfterResponse("global", ({ request, path, set }) => {
     if (
       path.startsWith("/api/") &&
       (!["GET", "HEAD", "OPTIONS"].includes(request.method) ||
@@ -135,14 +167,23 @@ export const apiPlugin = new Elysia({
       });
     }
   })
+  .use(publicDocumentsPlugin)
+  .use(mediaLinksPlugin)
   .group("/api", (app) =>
     app
+      .use(accessRoutesPlugin)
+      .use(connectionsPlugin)
+      .use(mediaLinksApiPlugin)
+      .use(libraryAvailabilityPlugin)
+      .use(linkedLibrariesPlugin)
+      .use(playbackPlugin)
       .use(torrentServicePlugin)
       .use(healthPlugin)
       .use(settingsPlugin)
       .use(dashboardPlugin)
       .use(torrentPlugin)
       .use(destinationsPlugin)
+      .use(storageRootsPlugin)
       .use(anilistPlugin)
       .use(anilistOpeningPlugin)
       .use(automationManagementPlugin)

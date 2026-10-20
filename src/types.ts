@@ -11,6 +11,15 @@ export type ApplicationPlatform = ApplicationRuntime;
 
 export type InstanceProfile = "dev" | "release";
 
+export type DeviceRole = "playback" | "management" | "administration";
+/** server: another Tofu server using this one as a playback source for its own AniList. */
+export type DeviceKind = "browser" | "desktop" | "server";
+/**
+ * browser: cookie of a browser device; native: desktop bearer credential; window: desktop WebView
+ * cookie; link: bearer credential of a linked server.
+ */
+export type SessionKind = "browser" | "native" | "window" | "link";
+
 export interface ServerInfo {
   /** Private native session; stored only in the owner's descriptor. */
   cookie?: string;
@@ -257,6 +266,114 @@ export interface DashboardState {
   session: SessionStats;
   settings: Settings;
   torrents: TorrentSummary[];
+}
+
+/** Destination shown to every authenticated viewer; never carries host paths. */
+export interface LibraryDestination {
+  icon: DestinationIconName;
+  id: string;
+  name: string;
+  pinned: boolean;
+}
+
+export interface LibraryStorageIssue {
+  detectedAt: number;
+  kind: TorrentStorageIssue["kind"];
+}
+
+/** Torrent summary safe for every authenticated viewer. */
+export interface LibraryTorrent {
+  addedAt: number;
+  completedAt: number | null;
+  destinationId: string;
+  downloaded: number | null;
+  downloadSpeed: number;
+  /** Engine error with host paths removed. */
+  error: string | null;
+  eta: number | null;
+  id: string;
+  length: number;
+  name: string;
+  peers: number;
+  progress: number | null;
+  ratio: number | null;
+  received: number;
+  seeds: number;
+  status: TorrentStatus;
+  storageIssue: LibraryStorageIssue | null;
+  swarmPeers: number | null;
+  swarmSeeds: number | null;
+  uploaded: number;
+  uploadSpeed: number;
+}
+
+export interface LibraryFile {
+  downloaded: number | null;
+  index: number;
+  length: number;
+  name: string;
+  priority: FilePriority;
+  progress: number | null;
+}
+
+export interface LibraryTorrentDetail extends LibraryTorrent {
+  activeSeconds: number;
+  comment: string;
+  createdBy: string;
+  files: LibraryFile[];
+  lastTransferAt: number | null;
+  pieceLength: number;
+  pieceMap: number[];
+  pieces: number;
+  private: boolean;
+  seedSeconds: number;
+  verifiedPieces: number | null;
+}
+
+export interface LibrarySession {
+  active: number;
+  downloadSpeed: number;
+  freeSpace: number | null;
+  peers: number;
+  received: number;
+  startedAt: number;
+  uploaded: number;
+  uploadSpeed: number;
+}
+
+/** Library snapshot identical for every authenticated viewer, including server rendering. */
+export interface LibraryState {
+  appearance: { theme: ThemePreference };
+  destinations: LibraryDestination[];
+  detail: LibraryTorrentDetail | null;
+  history: SpeedSample[];
+  server: { id: string; name: string };
+  session: LibrarySession;
+  torrents: LibraryTorrent[];
+}
+
+/** Host configuration and diagnostics, sent only to Administration and the owner. */
+export interface HostState {
+  destinations: Destination[];
+  session: SessionStats;
+  settings: Settings;
+}
+
+/** Torrent internals that reveal host paths, peers or tracker credentials. */
+export interface TorrentHostDetail {
+  files: { index: number; path: string }[];
+  id: string;
+  magnet: string;
+  peerList: PeerStats[];
+  savePath: string;
+  storageIssue: TorrentStorageIssue | null;
+  trackers: TrackerStats[];
+}
+
+/** Live workspace state: the shared library plus host details the caller may see. */
+export interface LiveState extends LibraryState {
+  detailHost: TorrentHostDetail | null;
+  host: HostState | null;
 }
 
 export type SourcePluginId = string;
@@ -549,6 +666,7 @@ export interface AniListSubscription {
   userId?: number;
 }
 export interface AniListState {
+  accountId: number | null;
   authenticated: boolean;
   authorizationError: string | null;
   authorizationPending: boolean;
@@ -670,6 +788,7 @@ export interface OpenedTorrent {
 export interface TorrentAddOptions {
   destinationId?: string;
   downloadPath?: string;
+  operationKey?: string;
   paused: boolean;
   trackers?: string[];
 }
@@ -718,12 +837,24 @@ export type EngineFailure =
   | { kind: "http"; code: string; message: string; status: number }
   | { kind: "internal"; message: string };
 
+type EngineReturnedStatus = Extract<
+  Awaited<ReturnType<EngineOperations[keyof EngineOperations]>>,
+  { status: number; response: unknown }
+>;
+
 export type EngineMessage =
   | { type: "log"; line: string }
   | { type: "ready" }
   | { type: "snapshot"; snapshot: EngineSnapshot }
   | { type: "result"; id: number; value: unknown; snapshot: EngineSnapshot | null }
-  | { type: "error"; id: number; failure: EngineFailure };
+  | { type: "error"; id: number; failure: EngineFailure }
+  | {
+      type: "failure";
+      id: number;
+      status: EngineReturnedStatus["status"];
+      body: EngineReturnedStatus["response"];
+      headers: EngineReturnedStatus["headers"];
+    };
 
 export type PluginForm = FormStore<typeof pluginFormSchema>;
 export type PluginConfiguration = InferOutput<typeof pluginConfigurationSchema>;
@@ -738,10 +869,10 @@ export type FormModalKind =
   | { type: "drop"; files: File[] }
   | { type: "open"; torrent: OpenedTorrent }
   | { type: "destination"; destination: Destination | null }
-  | { type: "remove"; torrent: TorrentSummary }
-  | { type: "trackers"; torrent: TorrentDetail }
-  | { type: "locate"; torrent: TorrentDetail }
-  | { type: "peer"; torrent: TorrentDetail };
+  | { type: "remove"; torrent: LibraryTorrent }
+  | { type: "trackers"; torrent: LibraryTorrentDetail }
+  | { type: "locate"; torrent: LibraryTorrentDetail }
+  | { type: "peer"; torrent: LibraryTorrentDetail };
 
 export type AutomationSection =
   | "inbox"

@@ -13,7 +13,7 @@ test("a torrent rejects an incoming connection from its own peer id", async () =
     );
     const socket = await Bun.connect({
       hostname: "127.0.0.1",
-      port: expectSuccess(await context.client.state.get({ query: { selected: id } })).session.port,
+      port: expectSuccess(await context.client.host.get()).session.port,
       socket: {
         data() {
           /* The server's handshake is not needed for this assertion. */
@@ -32,12 +32,10 @@ test("a torrent rejects an incoming connection from its own peer id", async () =
       },
     });
     await Bun.sleep(500);
-    const state = expectSuccess(await context.client.state.get({ query: { selected: id } }));
+    const host = expectSuccess(await context.client.torrents({ id }).host.get());
     socket.end();
     expect(
-      state.detail?.peerList.filter((peer) =>
-        peer.id.startsWith(`${context.engine.client.peerId}-`)
-      )
+      host.peerList.filter((peer) => peer.id.startsWith(`${context.engine.client.peerId}-`))
     ).toHaveLength(0);
   } finally {
     await context.close();

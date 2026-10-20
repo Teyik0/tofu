@@ -36,10 +36,20 @@ export async function editorFixture() {
     favourite: boolean;
     favouriteWrites: number;
     listed: boolean;
+    /** Episode progress saved by `mutation SaveProgress`, with the account token used. */
+    progressSaves: { progress: number; token: string | null }[];
     reject: boolean;
     saves: number;
-  } = { favourite: false, favouriteWrites: 0, listed: true, reject: false, saves: 0 };
+  } = {
+    favourite: false,
+    favouriteWrites: 0,
+    listed: true,
+    progressSaves: [],
+    reject: false,
+    saves: 0,
+  };
   const provider = Bun.serve({
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: One HTTP fixture models the provider contract used by integration tests.
     async fetch(incoming) {
       const body = (await incoming.json()) as { query: string; variables: Partial<typeof entry> };
       if (remote.reject && body.query.includes("mutation")) {
@@ -55,6 +65,12 @@ export async function editorFixture() {
         return Response.json({ data: { DeleteMediaListEntry: { deleted: true } } });
       }
       expect(incoming.headers.get("authorization")).toBe("Bearer token");
+      if (body.query.includes("mutation SaveProgress")) {
+        const progress = Number(body.variables.progress);
+        remote.progressSaves.push({ progress, token: incoming.headers.get("authorization") });
+        entry = { ...entry, progress };
+        return Response.json({ data: { SaveMediaListEntry: { progress } } });
+      }
       if (body.query.includes("mutation SaveEntry")) {
         remote.saves += 1;
         remote.listed = true;

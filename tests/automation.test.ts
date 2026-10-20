@@ -425,8 +425,8 @@ test("Jev interprets natural language, sends no tracker credentials and uncertai
   }
 });
 test("an automation chooses one preferred version, downloads into its thread and catches up at startup", async () => {
-  const low = await fixture(4096, []);
-  const high = await fixture(8192, []);
+  const low = await fixture(4096, [], "Example S01E03.bin");
+  const high = await fixture(8192, [], "Example S01E02.bin");
   let episode = 2;
   let clock = Date.now();
   const upstream = Bun.serve({
@@ -514,12 +514,12 @@ test("an automation chooses one preferred version, downloads into its thread and
     expect(
       expectSuccess(await client.torrents({ id: high.seed.infoHash }).get()).destinationId
     ).toBe(destination.id);
-    expect(expectSuccess(await client.torrents({ id: high.seed.infoHash }).get()).savePath).toBe(
-      target
-    );
-    expect(Bun.SHA256.hash(await Bun.file(join(target, "source.bin")).arrayBuffer(), "hex")).toBe(
-      Bun.SHA256.hash(high.bytes, "hex")
-    );
+    expect(
+      expectSuccess(await client.torrents({ id: high.seed.infoHash }).host.get()).savePath
+    ).toBe(target);
+    expect(
+      Bun.SHA256.hash(await Bun.file(join(target, "Example S01E02.bin")).arrayBuffer(), "hex")
+    ).toBe(Bun.SHA256.hash(high.bytes, "hex"));
     expect(expectSuccess(await client.state.get()).torrents).toHaveLength(1);
     await client.torrents({ id: high.seed.infoHash }).delete({ deleteFiles: false });
     await client.automations({ id: rule.id }).run.post({});

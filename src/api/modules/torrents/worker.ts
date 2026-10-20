@@ -1,4 +1,4 @@
-import { HTTPError } from "elysia";
+import { ElysiaStatus, HTTPError, problem } from "elysia";
 import type { EngineFailure, EngineMessage, EngineRequest, EngineSnapshot } from "../../../types";
 import { logEvents, recordLog } from "../../lib/diagnostics";
 import { TorrentEngine } from "./service";
@@ -61,7 +61,7 @@ async function execute(request: EngineRequest) {
     return;
   }
   if (!engine || closing) {
-    throw new (HTTPError.id("SERVICE_UNAVAILABLE", 503))("The torrent engine is unavailable");
+    return problem(503, { detail: "The torrent engine has stopped" });
   }
   // biome-ignore-start lint/suspicious/noUnnecessaryConditions: Biome cannot narrow this mapped request union after the open branch.
   switch (request.method) {
@@ -141,6 +141,16 @@ self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
   const run = async () => {
     try {
       const value = await execute(data);
+      if (value instanceof ElysiaStatus) {
+        postMessage({
+          body: value.response,
+          headers: value.headers,
+          id: data.id,
+          status: value.status,
+          type: "failure",
+        } satisfies EngineMessage);
+        return;
+      }
       if (engine) {
         const readOnly = [
           "assertReady",

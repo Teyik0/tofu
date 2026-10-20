@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../src/api";
 import { resolveInstanceConfig } from "../src/api/lib/instance";
-import type { DashboardState, InstanceConfig } from "../src/types";
+import type { InstanceConfig, LibraryState } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { launchServer } from "./helpers/server-process";
 import { fixture, torrentBytes, waitFor } from "./helpers/torrent";
@@ -122,7 +122,7 @@ await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
     });
     const { id } = expectSuccess(response) as { id: string };
     await waitFor(
-      async () => expectSuccess(await treaty<Api>(url).api.state.get()) as DashboardState,
+      async () => expectSuccess(await treaty<Api>(url).api.state.get()) as LibraryState,
       (state) => state.torrents[0]?.status === "seeding"
     );
     await Bun.write(entry, program(2));
@@ -168,16 +168,18 @@ test("parallel dev and release APIs keep settings, transfers and persisted state
     const [devUrl, releaseUrl] = await Promise.all([dev.ready(), release.ready()]);
     expect(devUrl).not.toBe(releaseUrl);
     const read = async (url: string) =>
-      expectSuccess(await treaty<Api>(url).api.state.get()) as DashboardState;
+      expectSuccess(await treaty<Api>(url).api.state.get()) as LibraryState;
     expect(expectSuccess(await treaty<Api>(devUrl).api.instance.get())).toMatchObject({
       profile: "dev",
     });
     expect(expectSuccess(await treaty<Api>(releaseUrl).api.instance.get())).toMatchObject({
       profile: "release",
     });
-    const initial = await read(devUrl);
+    const initial = expectSuccess(await treaty<Api>(devUrl).api.host.get());
     expect(initial.settings.downloadPath).toBe(devConfig.downloadPath);
-    expect((await read(releaseUrl)).settings.downloadPath).toBe(releaseConfig.downloadPath);
+    expect(expectSuccess(await treaty<Api>(releaseUrl).api.host.get()).settings.downloadPath).toBe(
+      releaseConfig.downloadPath
+    );
     await treaty<Api>(devUrl).api.settings.put({ ...initial.settings, runInBackground: true });
     const add = await treaty<Api>(devUrl).api.torrents.post({
       paused: false,
@@ -196,14 +198,17 @@ test("parallel dev and release APIs keep settings, transfers and persisted state
     expect(Bun.SHA256.hash(torrentBytes(content), "hex")).toBe(
       Bun.SHA256.hash(context.bytes, "hex")
     );
-    const untouched = await read(releaseUrl);
-    expect(untouched.settings.runInBackground).toBe(false);
-    expect(untouched.torrents).toHaveLength(0);
+    expect(
+      expectSuccess(await treaty<Api>(releaseUrl).api.host.get()).settings.runInBackground
+    ).toBe(false);
+    expect((await read(releaseUrl)).torrents).toHaveLength(0);
     await dev.stop();
     dev = launchServer(devConfig);
-    const restarted = await read(await dev.ready());
-    expect(restarted.settings.runInBackground).toBe(true);
-    expect(restarted.torrents[0]?.id).toBe(id);
+    const restartedUrl = await dev.ready();
+    expect(
+      expectSuccess(await treaty<Api>(restartedUrl).api.host.get()).settings.runInBackground
+    ).toBe(true);
+    expect((await read(restartedUrl)).torrents[0]?.id).toBe(id);
     expect((await read(releaseUrl)).torrents).toHaveLength(0);
   } finally {
     await Promise.all([dev.stop(), release.stop()]);
@@ -235,9 +240,10 @@ test("release claims legacy state without losing existing preferences or downloa
   );
   try {
     const url = await release.ready();
-    const state = expectSuccess(await treaty<Api>(url).api.state.get()) as DashboardState;
-    expect(state.settings.downloadPath).toBe(savedPath);
-    expect(state.settings.runInBackground).toBe(true);
+    const state = expectSuccess(await treaty<Api>(url).api.state.get()) as LibraryState;
+    const { settings } = expectSuccess(await treaty<Api>(url).api.host.get());
+    expect(settings.downloadPath).toBe(savedPath);
+    expect(settings.runInBackground).toBe(true);
     expect(state.torrents[0]?.id).toBe(id);
     expect(state.torrents[0]?.status).toBe("paused");
     const bytes = torrentBytes(

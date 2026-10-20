@@ -1,0 +1,528 @@
+diff --git a/packages/electrobun/src/capabilities.ts b/packages/electrobun/src/capabilities.ts
+index 297f067..2d44795 100644
+--- a/packages/electrobun/src/capabilities.ts
++++ b/packages/electrobun/src/capabilities.ts
+@@ -127,6 +127,8 @@ export type NativeMenuItem =
+ 
+ /** Facts the listener establishes before an application authenticates a network request. */
+ export interface AdmissionContext {
++  /** A managed native host installed its private window guard. */
++  desktopHost: boolean;
+   /** The native window session cookie, origin and loopback peer were all verified. */
+   desktopSession: boolean;
+   /** TCP peer address reported by Bun; never derived from request headers. */
+diff --git a/packages/electrobun/src/development.ts b/packages/electrobun/src/development.ts
+index 27ab39c..8e1b929 100644
+--- a/packages/electrobun/src/development.ts
++++ b/packages/electrobun/src/development.ts
+@@ -29,7 +29,7 @@ export async function getDesktopDevelopment() {
+       // Publish before the SDK exits; the supervisor reads this only after reaping.
+       writeFileSync(join(directory, "failure.json"), JSON.stringify({ kind }), { mode: 0o600 });
+     },
+-    async ready(backend: DesktopBackend, shutdown: () => Promise<void>) {
++    async ready(backend: DesktopBackend | undefined, shutdown: () => Promise<void>) {
+       let closing: Promise<void> | undefined;
+       const stop = () => {
+         closing ??= withShutdownDeadline(shutdown()).finally(() => clearInterval(timer));
+@@ -51,9 +51,9 @@ export async function getDesktopDevelopment() {
+       process.on("SIGINT", stop);
+       process.on("SIGTERM", stop);
+       await publishDevReady(join(directory, "ready.json"), {
+-        origin: backend.origin,
+-        bootstrapOrigin: backend.bootstrapOrigin,
+-        url: backend.url,
++        origin: backend?.origin ?? "views://manager",
++        bootstrapOrigin: backend?.bootstrapOrigin ?? "",
++        url: backend?.url ?? "views://manager",
+       });
+     },
+   };
+diff --git a/packages/electrobun/src/native-sdk.ts b/packages/electrobun/src/native-sdk.ts
+index 69e2cd5..661fe4c 100644
+--- a/packages/electrobun/src/native-sdk.ts
++++ b/packages/electrobun/src/native-sdk.ts
+@@ -70,7 +70,11 @@ export interface DesktopSdk {
+   };
+   Session: {
+     fromPartition: (partition: string) => {
+-      cookies: { set: (cookie: NativeCookie) => boolean };
++      cookies: {
++        set: (cookie: NativeCookie) => boolean;
++        get: (filter: { name: string }) => NativeCookie[];
++        remove: (url: string, name: string) => boolean;
++      };
+     };
+   };
+   Tray: new (options: {
+diff --git a/packages/electrobun/src/server.ts b/packages/electrobun/src/server.ts
+index 7263b48..de7896c 100644
+--- a/packages/electrobun/src/server.ts
++++ b/packages/electrobun/src/server.ts
+@@ -58,6 +58,7 @@ function protectNetworkDispatch(
+   }
+   const peerAddress = app.server.requestIP(request)?.address;
+   return admission(request, {
++    desktopHost: state.guard !== undefined,
+     desktopSession:
+       state.guard !== undefined &&
+       denied === undefined &&
+@@ -174,7 +175,7 @@ export function desktopApp(hooks?: DesktopAppOptions) {
+         }
+         await state.start();
+         if (!state.guard && app.server) {
+-          await state.ready?.({ origin: `http://${app.server.hostname}:${app.server.port}` });
++          await state.ready?.({ origin: app.server.url.origin });
+         }
+       })
+       .cleanup(() => state.stop());
+diff --git a/packages/electrobun/src/standard-host.ts b/packages/electrobun/src/standard-host.ts
+index 23e3aed..5fa95ba 100644
+--- a/packages/electrobun/src/standard-host.ts
++++ b/packages/electrobun/src/standard-host.ts
+@@ -30,9 +30,17 @@ export interface StandardHostOptions {
+   config: DesktopConfig;
+   dataDir: string;
+   load: () => Promise<DesktopAppModule>;
++  /** Application-owned trusted server manager; also used by the native menu and tray. */
++  manager?: (
++    context: NativeActionContext & { backend?: DesktopBackend; startupError?: string }
++  ) => void | Promise<void>;
+   mode: DesktopMode;
++  /** Return true when an app-private native event was handled by the manager. */
++  onOpen?: (context: NativeActionContext & { event: OpenEvent }) => boolean | Promise<boolean>;
+   openBrowser?: boolean;
+   root: string;
++  /** A client-only host must not load the application module. */
++  startServer?: boolean;
+   /** Explicit opt-in only. The script executes on each new document's dom-ready. */
+   testScript?: string;
+ }
+@@ -138,6 +146,7 @@ export async function runStandardDesktopHost(
+   let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
+   const lifetime = new AbortController();
+   let failureCode = 0;
++  let startupError: string | undefined;
+   let state: DesktopState | undefined;
+   let window: NativeWindow | undefined;
+   let tray: NativeTray | undefined;
+@@ -200,19 +209,37 @@ export async function runStandardDesktopHost(
+       return desktop.snapshot();
+     }
+     const origins = [active.origin, active.bootstrapOrigin].filter(Boolean);
+-    if (
+-      active.session &&
+-      !sdk.Session.fromPartition("persist:default").cookies.set({
++    if (active.session) {
++      const session = sdk.Session.fromPartition("persist:default");
++      const cookie = {
+         name: active.session.name,
+         value: active.session.value,
+         domain: "127.0.0.1",
+         path: "/",
+         secure: true,
+         httpOnly: true,
+-        sameSite: "strict",
+-      })
+-    ) {
+-      throw new Error("The native window session could not be installed.");
++        sameSite: "strict" as const,
++      };
++      if (!session.cookies.set(cookie)) {
++        throw new Error("The native window session could not be installed.");
++      }
++      const installed = session.cookies
++        .get({ name: cookie.name })
++        .find((item) => item.value === cookie.value);
++      if (
++        !(
++          installed?.httpOnly &&
++          installed.secure &&
++          installed.path === "/" &&
++          installed.domain === "127.0.0.1" &&
++          installed.sameSite?.toLowerCase() === "strict"
++        )
++      ) {
++        session.cookies.remove(active.origin, cookie.name);
++        throw new Error(
++          "The native SDK cannot preserve HttpOnly, Secure, host-only and SameSite window cookies. Update the SDK before opening TLS windows."
++        );
++      }
+     }
+     const created = new sdk.BrowserWindow({
+       title: identity.name,
+@@ -231,7 +258,11 @@ export async function runStandardDesktopHost(
+         return;
+       }
+       window = undefined;
+-      if (phase === "ready" && !(state?.hooks?.background?.() && tray?.visible)) {
++      if (
++        phase === "ready" &&
++        !options.manager &&
++        !(state?.hooks?.background?.() && tray?.visible)
++      ) {
+         desktop.quit().catch(report);
+       }
+     });
+@@ -316,7 +347,9 @@ export async function runStandardDesktopHost(
+         if (installing) {
+           return installing;
+         }
+-        requireBackend();
++        if (!(backend || options.manager)) {
++          throw new Error("Desktop application is not ready.");
++        }
+         if (!sdk.Updater.updateInfo().updateReady) {
+           return Promise.reject(new Error("Download an update first."));
+         }
+@@ -378,7 +411,7 @@ export async function runStandardDesktopHost(
+       if (restarting) {
+         return restarting;
+       }
+-      if (!backend || closing) {
++      if (!(backend || options.manager) || closing) {
+         return Promise.reject(new Error("Desktop application cannot restart now."));
+       }
+       restarting = (async () => {
+@@ -481,7 +514,12 @@ export async function runStandardDesktopHost(
+   };
+   const reopen = () => {
+     if (phase === "ready") {
+-      open();
++      if (!backend && options.manager) {
++        // biome-ignore lint/complexity/noVoid: The native event does not await a manager callback.
++        void options.manager({ ...context(), backend, startupError });
++      } else {
++        open();
++      }
+     }
+   };
+   let association: ReturnType<typeof createAssociations>;
+@@ -509,7 +547,10 @@ export async function runStandardDesktopHost(
+         if (event) {
+           try {
+             // biome-ignore lint/performance/noAwaitInLoops: Deliver the next native event only after its predecessor settles.
+-            await state?.hooks?.onOpen?.({ ...context(), event });
++            const handled = await options.onOpen?.({ ...context(), event });
++            if (!handled) {
++              await state?.hooks?.onOpen?.({ ...context(), event });
++            }
+           } catch {
+             report();
+           }
+@@ -523,7 +564,7 @@ export async function runStandardDesktopHost(
+   try {
+     // SDK metadata resolves relative to native launch CWD and caches its result.
+     identity = await sdk.Updater.getLocalInfo();
+-    development = supplied ? undefined : await getDesktopDevelopment();
++    development = await getDesktopDevelopment();
+     options = await resolveOptions(sdk, identity, supplied, development);
+     const { config, root } = options;
+     lifetime.signal.throwIfAborted();
+@@ -596,17 +637,27 @@ export async function runStandardDesktopHost(
+         }
+       }
+     });
+-    starting = startDesktopBackend(
+-      async () => {
+-        const module = await options.load();
+-        state = getDesktopState(module.default);
+-        return module;
+-      },
+-      options.dataDir,
+-      options.mode,
+-      { kind: "desktop", identity, desktop, signal: lifetime.signal }
+-    );
+-    backend = await starting;
++    if (options.startServer !== false) {
++      try {
++        starting = startDesktopBackend(
++          async () => {
++            const module = await options.load();
++            state = getDesktopState(module.default);
++            return module;
++          },
++          options.dataDir,
++          options.mode,
++          { kind: "desktop", identity, desktop, signal: lifetime.signal }
++        );
++        backend = await starting;
++      } catch (error) {
++        if (!options.manager) {
++          throw error;
++        }
++        startupError = error instanceof Error ? error.message : "The local server could not start.";
++        starting = undefined;
++      }
++    }
+     lifetime.signal.throwIfAborted();
+     const image = config.tray?.[trayPlatform()];
+     if (image) {
+@@ -621,21 +672,38 @@ export async function runStandardDesktopHost(
+         height: 18,
+       });
+       tray.setMenu(
+-        menus(
+-          state?.hooks?.tray?.(context()) ?? [
++        menus([
++          ...(options.manager
++            ? [{ label: "Servers…", onSelect: () => options.manager?.({ ...context(), backend }) }]
++            : []),
++          ...((backend ? state?.hooks?.tray?.(context()) : undefined) ?? [
+             { label: `Open ${identity.name}`, onSelect: () => open() },
+             { label: "Open in browser", onSelect: () => desktop.browser.open() },
+             { type: "divider" },
+             { label: `Quit ${identity.name}`, onSelect: () => desktop.quit() },
+-          ]
+-        )
++          ]),
++        ])
+       );
+       tray.on("tray-clicked", dispatch);
+     }
+     if (process.platform !== "linux") {
+       sdk.ApplicationMenu.setApplicationMenu(
+-        menus(
+-          state?.hooks?.menus?.(context()) ?? [
++        menus([
++          ...(options.manager
++            ? [
++                {
++                  label: "Servers",
++                  submenu: [
++                    {
++                      label: "Servers…",
++                      accelerator: "CmdOrCtrl+Shift+S",
++                      onSelect: () => options.manager?.({ ...context(), backend }),
++                    },
++                  ],
++                },
++              ]
++            : []),
++          ...((backend ? state?.hooks?.menus?.(context()) : undefined) ?? [
+             {
+               label: identity.name,
+               submenu: [{ role: "about" }, { type: "divider" }, { role: "quit" }],
+@@ -646,15 +714,18 @@ export async function runStandardDesktopHost(
+                 role,
+               })),
+             },
+-          ]
+-        )
++          ]),
++        ])
+       );
+       sdk.ApplicationMenu.on("application-menu-clicked", dispatch);
+     }
+     phase = "ready";
+     await flush();
+-    open();
+-    if (options.openBrowser) {
++    await options.manager?.({ ...context(), backend, startupError });
++    if (backend) {
++      open();
++    }
++    if (options.openBrowser && backend) {
+       desktop.browser.open();
+     }
+     if (development) {
+diff --git a/packages/electrobun/tests/admission.test.ts b/packages/electrobun/tests/admission.test.ts
+index 9b0f80a..e60bee1 100644
+--- a/packages/electrobun/tests/admission.test.ts
++++ b/packages/electrobun/tests/admission.test.ts
+@@ -30,7 +30,11 @@ test("admission authenticates listener requests that lack the desktop session; i
+     backend = await startDesktopBackend(() => Promise.resolve({ default: app }), data, "build");
+     const anonymous = await fetch(`${backend.origin}/api/kind`);
+     expect(anonymous.status).toBe(401);
+-    expect(admitted.at(-1)).toEqual({ desktopSession: false, peerAddress: "127.0.0.1" });
++    expect(admitted.at(-1)).toEqual({
++      desktopHost: true,
++      desktopSession: false,
++      peerAddress: "127.0.0.1",
++    });
+ 
+     const remote = await fetch(`${backend.origin}/api/kind`, {
+       headers: { authorization: "Bearer remote" },
+@@ -41,7 +45,11 @@ test("admission authenticates listener requests that lack the desktop session; i
+       headers: { cookie: backend.cookie, origin: backend.origin },
+     });
+     expect(await desktop.json()).toEqual({ kind: "network" });
+-    expect(admitted.at(-1)).toEqual({ desktopSession: true, peerAddress: "127.0.0.1" });
++    expect(admitted.at(-1)).toEqual({
++      desktopHost: true,
++      desktopSession: true,
++      peerAddress: "127.0.0.1",
++    });
+ 
+     const calls = admitted.length;
+     expect((await treaty(app).api.kind.get()).data).toEqual({ kind: "in-process" });
+@@ -176,3 +184,46 @@ test("headless admission sees every listener request and rejects forged listener
+     await app.stop(true);
+   }
+ });
++
++test("the host refuses to open when the native cookie API drops HttpOnly", async () => {
++  const fixture = await standardLaunchFixture({
++    mode: "build",
++    listen: `() => ({ tls: {cert: require("node:fs").readFileSync(${JSON.stringify(join(import.meta.dir, "fixtures/tls-cert.pem"))},"utf8"),key: require("node:fs").readFileSync(${JSON.stringify(join(import.meta.dir, "fixtures/tls-key.pem"))},"utf8")} })`,
++  });
++  const host = fixture.launch({ FURIN_FIXTURE_INSECURE_COOKIE: "1" });
++  try {
++    await waitForFixture(() => Bun.file(join(fixture.root, "native-cookies")).exists(), Boolean);
++    await host.stop("SIGTERM");
++    expect(await Bun.file(join(fixture.root, "window-url")).exists()).toBe(false);
++    expect((await host.output).join("\n")).toContain("HttpOnly");
++  } finally {
++    await host.stop("SIGTERM");
++    await fixture.close();
++  }
++}, 20_000);
++
++test("headless TLS readiness retains the listener scheme", async () => {
++  const ready = Promise.withResolvers<string>();
++  const app = new Elysia()
++    .use(
++      desktopApp({
++        onReady({ backend }) {
++          ready.resolve(backend.origin);
++        },
++      })
++    )
++    .get("/", () => "ready");
++  try {
++    app.listen({
++      hostname: "127.0.0.1",
++      port: 0,
++      tls: {
++        cert: await Bun.file(join(import.meta.dir, "fixtures/tls-cert.pem")).text(),
++        key: await Bun.file(join(import.meta.dir, "fixtures/tls-key.pem")).text(),
++      },
++    });
++    expect(await ready.promise).toBe(`https://127.0.0.1:${app.server?.port}`);
++  } finally {
++    await app.stop(true);
++  }
++});
+diff --git a/packages/electrobun/tests/client-only.test.ts b/packages/electrobun/tests/client-only.test.ts
+new file mode 100644
+index 0000000..9f42ead
+--- /dev/null
++++ b/packages/electrobun/tests/client-only.test.ts
+@@ -0,0 +1,83 @@
++import { expect, test } from "bun:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import type { DesktopSdk } from "../src/native-sdk";
++import { runStandardDesktopHost } from "../src/standard-host";
++
++test("client-only host keeps the manager and lifecycle without importing a backend", async () => {
++  const root = await mkdtemp(join(tmpdir(), "furin-client-only-"));
++  const identity = {
++    identifier: "local.furin.client",
++    name: "Client",
++    channel: "dev",
++    version: "1.0.0",
++  };
++  let loaded = false;
++  let managed = false;
++  let managers = 0;
++  const events = new Map<string, (event: unknown) => void>();
++  let code: number | undefined;
++  const sdk = {
++    default: {
++      events: {
++        on(name: string, handler: (event: unknown) => void) {
++          events.set(name, handler);
++        },
++        off() {
++          /* No external listeners are installed in this SDK fixture. */
++        },
++      },
++    },
++    Updater: {
++      getLocalInfo() {
++        return Promise.resolve(identity);
++      },
++      onStatusChange() {
++        /* Updates are idle in this fixture. */
++      },
++    },
++    Utils: {
++      paths: { appData: root },
++      quit(value: number) {
++        code = value;
++      },
++    },
++    BrowserView: { getAll: () => [] },
++    ApplicationMenu: {
++      setApplicationMenu() {
++        /* No OS menu in the SDK fixture. */
++      },
++      on() {
++        /* No OS menu events. */
++      },
++    },
++  } as unknown as DesktopSdk;
++  try {
++    const host = await runStandardDesktopHost(sdk, {
++      config: { app: identity, window: { width: 800, height: 600 } },
++      root,
++      dataDir: root,
++      mode: "build",
++      startServer: false,
++      load() {
++        loaded = true;
++        return Promise.reject(new Error("Backend must remain absent"));
++      },
++      manager({ backend }) {
++        managed = true;
++        managers += 1;
++        expect(backend).toBeUndefined();
++      },
++    });
++    expect(managed).toBe(true);
++    expect(loaded).toBe(false);
++    expect(host?.snapshot().phase).toBe("ready");
++    events.get("reopen")?.({});
++    expect(managers).toBe(2);
++    await host?.quit();
++    expect(code).toBe(0);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/packages/electrobun/tests/fixtures/sdk.ts b/packages/electrobun/tests/fixtures/sdk.ts
+index 65297b9..9f14975 100644
+--- a/packages/electrobun/tests/fixtures/sdk.ts
++++ b/packages/electrobun/tests/fixtures/sdk.ts
+@@ -64,12 +64,14 @@ export async function installSdk(
+       requestClose() { this.close(); }
+     }
+     export const BrowserView = { getAll: () => [...views] };
++    const cookies = new Map();
+     export const Session = {
+       fromPartition(partition) {
+         return { cookies: { set(cookie) {
+           require("node:fs").appendFileSync(${JSON.stringify(join(root, "native-cookies"))}, JSON.stringify({ partition, ...cookie })+"\\n", {mode:0o600});
++          cookies.set(cookie.name, {...cookie, httpOnly: process.env.FURIN_FIXTURE_INSECURE_COOKIE ? false : cookie.httpOnly});
+           return true;
+-        } } };
++        }, get(filter) { return [...cookies.values()].filter(cookie => cookie.name === filter.name); }, remove(url,name) { cookies.delete(name); return true; } } };
+       }
+     };
+     export class Tray {
+diff --git a/packages/electrobun/tests/standard-host.test.ts b/packages/electrobun/tests/standard-host.test.ts
+index 9e7f226..89e9ea7 100644
+--- a/packages/electrobun/tests/standard-host.test.ts
++++ b/packages/electrobun/tests/standard-host.test.ts
+@@ -92,7 +92,9 @@ test("standard host lifecycle and successful update handoff", async () => {
+       }
+     },
+     BrowserView: { getAll: () => [] },
+-    Session: { fromPartition: () => ({ cookies: { set: () => true } }) },
++    Session: {
++      fromPartition: () => ({ cookies: { set: () => true, get: () => [], remove: () => true } }),
++    },
+     Tray: class {
+       visible = true;
+       setMenu() {

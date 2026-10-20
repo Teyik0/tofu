@@ -16,6 +16,6 @@ export const updatesServicePlugin = new Elysia({ name: "tofu-updates-service" })
   .use(databasePlugin)
   .decorate("updates", updates);
 resources.defer(updates.close.bind(updates));
-updatesServicePlugin.setup(() => {
+updatesServicePlugin.onStart(() => {
   updates.start();
 });

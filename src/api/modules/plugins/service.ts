@@ -1,8 +1,7 @@
 import { eq } from "drizzle-orm";
-import { HTTPError } from "elysia";
+import { ElysiaStatus, problem } from "elysia";
 import { automationPlugins } from "../../../db/schema";
 import type {
-  CredentialPluginId,
   FeedRelease,
   PluginId,
   PluginState,
@@ -12,11 +11,6 @@ import type {
 import type { TofuDatabase } from "../../lib/db";
 import { normalizePluginCredential, validatePluginCredential } from "./credentials";
 import { parseNyaaHtml, parseRss, parseTsundere } from "./feeds";
-
-export const pluginCredentialPages: Record<CredentialPluginId, string> = {
-  c411: "https://c411.org/user/integrations",
-  jev: "https://console.typesafe.ai/keys",
-};
 
 export const pluginEndpoints = {
   c411: "https://c411.org/api/torznab",
@@ -104,11 +98,12 @@ export class PluginsService {
     }));
   }
   registerSource(source: SourceRegistration) {
+    // Registration is application wiring, not client input: a bad source is a programming error.
     if (!namespacedSourceId.test(source.id) || this.plugins.has(source.id)) {
-      throw new (HTTPError.id("CONFLICT", 409))("Use a unique namespaced source identifier");
+      throw new Error("Use a unique namespaced source identifier");
     }
     if (this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("Plugin unavailable");
+      throw new Error("Plugin unavailable");
     }
     const row = this.db
       .select()
@@ -165,15 +160,20 @@ export class PluginsService {
       .onConflictDoUpdate({ set: { value }, target: automationPlugins.id })
       .run();
   }
+  /** A known plugin; callers validate client-supplied identifiers before reading it. */
   plugin(id: string) {
     const plugin = this.plugins.get(id as PluginId);
     if (!plugin) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown plugin");
+      throw new Error(`Unknown plugin ${id}`);
     }
     return structuredClone(plugin);
   }
   configure(id: string, input: { enabled: boolean; apiKey?: string; dailyLimit?: number }) {
-    const plugin = this.plugin(id);
+    const stored = this.plugins.get(id as PluginId);
+    if (!stored) {
+      return problem(404, { detail: "Unknown plugin" });
+    }
+    const plugin = structuredClone(stored);
     const next = {
       ...plugin,
       ...input,
@@ -181,7 +181,7 @@ export class PluginsService {
       error: null,
     };
     if (next.enabled && (id === "c411" || id === "jev") && !next.apiKey) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Add your API key before enabling this plugin");
+      return problem(400, { detail: "Add your API key before enabling this plugin" });
     }
     this.plugins.set(next.id, next);
     if (!next.enabled) {
@@ -191,37 +191,45 @@ export class PluginsService {
     return this.snapshot();
   }
   async test(id: string) {
-    if (id === "nyaa" || id === "tsundere" || id === "c411" || this.sources.has(id)) {
-      await this.fetchSource(id, "");
-    } else {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown plugin");
+    if (!(id === "nyaa" || id === "tsundere" || id === "c411" || this.sources.has(id))) {
+      return problem(404, { detail: "Unknown plugin" });
+    }
+    const releases = await this.fetchSource(id, "");
+    if (releases instanceof ElysiaStatus) {
+      return releases;
     }
     return this.snapshot();
   }
   async connect(id: string, input: { apiKey?: string; enabled: boolean; dailyLimit?: number }) {
     if (id !== "c411" && id !== "jev") {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("This plugin does not use an API key");
+      return problem(400, { detail: "This plugin does not use an API key" });
     }
     const plugin = this.plugins.get(id);
     if (!plugin || this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("Plugin unavailable");
+      return problem(409, { detail: "Plugin unavailable" });
     }
+    let apiKey: Awaited<ReturnType<PluginsService["validateCredential"]>>;
     try {
-      const apiKey = await this.validateCredential(id, input.apiKey ?? "", plugin);
-      this.configure(id, { ...input, apiKey });
-      const updated = this.plugins.get(id);
-      if (updated) {
-        updated.checkedAt = this.options.now();
-        this.storePlugin(updated);
-      }
-      return this.snapshot();
-    } catch (cause) {
-      throw cause instanceof HTTPError
-        ? cause
-        : new (HTTPError.id("BAD_GATEWAY", 502))(
-            `Unable to validate your ${id === "c411" ? "C411" : "TypeSafe"} API key. Check your connection and try again.`
-          );
+      apiKey = await this.validateCredential(id, input.apiKey ?? "", plugin);
+    } catch {
+      // Network and malformed responses are unexpected here; report a retryable gateway failure.
+      return problem(502, {
+        detail: `Unable to validate your ${id === "c411" ? "C411" : "TypeSafe"} API key. Check your connection and try again.`,
+      });
     }
+    if (apiKey instanceof ElysiaStatus) {
+      return apiKey;
+    }
+    const configured = this.configure(id, { ...input, apiKey });
+    if (configured instanceof ElysiaStatus) {
+      return configured;
+    }
+    const updated = this.plugins.get(id);
+    if (updated) {
+      updated.checkedAt = this.options.now();
+      this.storePlugin(updated);
+    }
+    return this.snapshot();
   }
 
   private readonly requests = new Map<PluginId, Set<AbortController>>();
@@ -235,7 +243,7 @@ export class PluginsService {
     run: (controller: AbortController) => Promise<Result>
   ) {
     if (this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("Plugin unavailable");
+      return problem(409, { detail: "Plugin unavailable" });
     }
     const controller = new AbortController();
     const active = this.requests.get(id) ?? new Set<AbortController>();
@@ -257,10 +265,11 @@ export class PluginsService {
     }
   }
 
+  /** Counts one call against the daily budget, or returns 429 once it is spent. */
   reserveDailyCall(id: PluginId) {
     const plugin = this.plugins.get(id);
     if (!plugin) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown plugin");
+      throw new Error(`Unknown plugin ${id}`);
     }
     const day = new Date(this.options.now()).toISOString().slice(0, 10);
     if (plugin.callsDay !== day) {
@@ -268,15 +277,19 @@ export class PluginsService {
       plugin.callsToday = 0;
     }
     if (plugin.callsToday >= plugin.dailyLimit) {
-      throw new (HTTPError.id("TOO_MANY_REQUESTS", 429))(
-        id === "jev" ? "Jev daily limit reached" : `${plugin.name} daily limit reached`
-      );
+      return problem(429, {
+        detail: id === "jev" ? "Jev daily limit reached" : `${plugin.name} daily limit reached`,
+      });
     }
     plugin.callsToday += 1;
     this.storePlugin(plugin);
+    return null;
   }
+  /** Spaces C411 calls; the queue slot is taken synchronously, before any await. */
   private reserveC411(controller: AbortController) {
-    const reservation = this.c411Queue.then(async () => {
+    const previous = this.c411Queue;
+    const reservation = (async () => {
+      await previous;
       controller.signal.throwIfAborted();
       const delay = Math.max(0, this.c411NextAt - Date.now());
       if (delay > 0) {
@@ -294,8 +307,14 @@ export class PluginsService {
       }
       controller.signal.throwIfAborted();
       this.c411NextAt = Date.now() + 4100;
-    });
-    this.c411Queue = reservation.catch(() => undefined);
+    })();
+    this.c411Queue = (async () => {
+      try {
+        await reservation;
+      } catch {
+        // An aborted reservation releases its slot; its caller observes the abort.
+      }
+    })();
     return reservation;
   }
   async fetchSource(sourceId: SourcePluginId, query: string) {
@@ -325,7 +344,7 @@ export class PluginsService {
       });
     }
     if (sourceId !== "nyaa" && sourceId !== "tsundere" && sourceId !== "c411") {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown source");
+      throw new Error(`Unknown source ${sourceId}`);
     }
     const url = new URL(this.options.endpoints[sourceId]);
     if (sourceId === "nyaa") {
@@ -375,33 +394,39 @@ export class PluginsService {
 
   private async validateCredential(id: "c411" | "jev", input: string, plugin: StoredPlugin) {
     const apiKey = normalizePluginCredential(id, input);
+    if (apiKey instanceof ElysiaStatus) {
+      return apiKey;
+    }
     if (!apiKey) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))(
-        "Paste your API key before validating the connection"
-      );
+      return problem(400, { detail: "Paste your API key before validating the connection" });
     }
     if (id === "jev") {
-      this.reserveDailyCall(id);
+      const reserved = this.reserveDailyCall(id);
+      if (reserved) {
+        return reserved;
+      }
     }
-    await this.request(
+    const validated = await this.request(
       id,
       15_000,
       id === "c411" ? (controller) => this.reserveC411(controller) : null,
       async (controller) => {
-        await validatePluginCredential({
+        const rejected = await validatePluginCredential({
           apiKey,
           endpoint: this.options.endpoints[id],
           id,
           signal: controller.signal,
         });
-        if (this.lifecycle.closed || controller.signal.aborted || this.plugins.get(id) !== plugin) {
-          throw new (HTTPError.id("CONFLICT", 409))(
-            "Plugin settings changed. Try validating the key again."
-          );
+        if (rejected) {
+          return rejected;
         }
+        if (this.lifecycle.closed || controller.signal.aborted || this.plugins.get(id) !== plugin) {
+          return problem(409, { detail: "Plugin settings changed. Try validating the key again." });
+        }
+        return null;
       }
     );
-    return apiKey;
+    return validated ?? apiKey;
   }
 
   downloadFile(release: FeedRelease) {
@@ -414,19 +439,17 @@ export class PluginsService {
           signal: controller.signal,
         });
         if (bytes.byteLength > 8 * 1024 * 1024) {
-          throw new (HTTPError.id("BAD_REQUEST", 400))("Torrent file too large");
+          return problem(400, { detail: "Torrent file too large" });
         }
         return bytes;
       }
       const response = await fetch(release.downloadUrl, { signal: controller.signal });
       if (!response.ok) {
-        throw new (HTTPError.id("BAD_GATEWAY", 502))(
-          `Torrent file unavailable (HTTP ${response.status})`
-        );
+        return problem(502, { detail: `Torrent file unavailable (HTTP ${response.status})` });
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.byteLength > 8 * 1024 * 1024) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("Torrent file too large");
+        return problem(400, { detail: "Torrent file too large" });
       }
       return bytes;
     });

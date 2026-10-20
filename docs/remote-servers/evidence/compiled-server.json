@@ -1,0 +1,14 @@
+{
+  "origin": "http://127.0.0.1:47993",
+  "pidMatches": true,
+  "descriptorStatus": 200,
+  "sessionStatus": 200,
+  "pageStatus": 200,
+  "serverId": "bc41cfdd-513d-47e3-b206-cea7465da67d",
+  "companionChecksumMatches": true,
+  "anonymousStateStatus": 401,
+  "anonymousPageStatus": 302,
+  "pairingStatus": 200,
+  "playbackHostStatus": 403,
+  "playbackLibraryStatus": 200
+}

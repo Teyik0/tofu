@@ -1,10 +1,11 @@
-import { HTTPError } from "elysia";
+import { problem } from "elysia";
 import type { CredentialPluginId } from "../../../types";
 import { parseJevResponse } from "../jev/service";
 import { parseRss } from "./feeds";
 
 const urlCredential = /^[a-z][a-z\d+.-]*:/i;
 
+/** The API key in `input`, or a returned 400 when a C411 link cannot carry one. */
 export function normalizePluginCredential(id: CredentialPluginId, input: string) {
   const value = input.trim();
   if (id !== "c411" || !urlCredential.test(value)) {
@@ -21,9 +22,9 @@ export function normalizePluginCredential(id: CredentialPluginId, input: string)
     keys?.length !== 1 ||
     !keys[0]?.trim()
   ) {
-    throw new (HTTPError.id("BAD_REQUEST", 400))(
-      "Paste your C411 API key or a Torznab link from C411 API integrations"
-    );
+    return problem(400, {
+      detail: "Paste your C411 API key or a Torznab link from C411 API integrations",
+    });
   }
   return keys[0].trim();
 }
@@ -61,23 +62,22 @@ export async function validatePluginCredential(options: {
   });
   const name = id === "c411" ? "C411" : "TypeSafe";
   if ([401, 403].includes(response.status)) {
-    throw new (HTTPError.id("BAD_REQUEST", 400))(
-      `${name} rejected this API key. Generate a new key and try again.`
-    );
+    return problem(400, {
+      detail: `${name} rejected this API key. Generate a new key and try again.`,
+    });
   }
   if (response.status === 429) {
-    throw new (HTTPError.id("TOO_MANY_REQUESTS", 429))(
-      `${name} rate limit reached. Try again later.`
-    );
+    return problem(429, { detail: `${name} rate limit reached. Try again later.` });
   }
   if (!response.ok) {
-    throw new (HTTPError.id("BAD_GATEWAY", 502))(
-      `Unable to validate your ${name} API key (HTTP ${response.status})`
-    );
+    return problem(502, {
+      detail: `Unable to validate your ${name} API key (HTTP ${response.status})`,
+    });
   }
   if (id === "c411") {
     parseRss(await response.text(), "c411");
   } else {
     parseJevResponse(await response.json(), questions);
   }
+  return null;
 }

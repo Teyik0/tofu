@@ -13,6 +13,7 @@ type SettingsPath =
   | "/options/preferences"
   | "/options/appearance"
   | "/options/downloads"
+  | "/options/connections"
   | "/options/updates"
   | "/plugins"
   | "/plugins/sources"

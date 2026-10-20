@@ -3,16 +3,16 @@ import { useMutation } from "@teyik0/furin/client";
 import { useState } from "react";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
-import type { DashboardState, FilePriority, TorrentDetail } from "../types";
+import type { FilePriority, LibraryTorrentDetail, LiveState } from "../types";
 import { request } from "./api";
 import type { ModalKind } from "./modal";
 
 export interface DetailActionsProps {
   act: (id: string, task: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
-  data: DashboardState;
+  data: LiveState;
   open: (modal: ModalKind) => void;
-  torrent: TorrentDetail;
+  torrent: LibraryTorrentDetail;
 }
 
 export function useDetailActions({ torrent, data }: Pick<DetailActionsProps, "torrent" | "data">) {

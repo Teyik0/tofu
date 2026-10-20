@@ -115,24 +115,25 @@ interface TorrentEngineOptions {
 ## Isomorphic Eden client: mandatory and protected
 
 - Never modify `src/lib/client.ts` unless the user explicitly requests a change to that file. Architecture, startup, AOT, and desktop fixes do not authorize changing it.
-- The server branch must remain `createClient(apiPlugin).api`, with direct in-process Eden dispatch and no network request. `apiPlugin` is also the listening root; desktop network guards intentionally allow direct in-process dispatch.
-- The browser branch must use `createClient<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).api`.
+- The server branch must remain `treaty(apiPlugin).use(furinSync).api`, with direct in-process Eden dispatch and no network request. `apiPlugin` is also the listening root; desktop network guards intentionally allow direct in-process dispatch.
+- The browser branch must use `treaty<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).use(furinSync).api`.
 - Never add a custom `fetcher`, manual `app.handle()` dispatch, an internal HTTP origin, request-scoped `AsyncLocalStorage`, or cookie/origin/header forwarding for this client.
 
 Required implementation:
 
 ```ts
+import { treaty } from "@elysia/eden";
 import { createIsomorphicFn } from "@teyik0/furin";
-import { createClient } from "@teyik0/furin/client";
+import { furinSync } from "@teyik0/furin/client";
 import { type Api, apiPlugin } from "@/api";
 
 export const api = createIsomorphicFn()
-  .server(() => createClient(apiPlugin).api)
+  .server(() => treaty(apiPlugin).use(furinSync).api)
   .client(
     () =>
-      createClient<Api>(window.location.origin, {
+      treaty<Api>(window.location.origin, {
         fetch: { cache: "no-store", credentials: "include" },
-      }).api
+      }).use(furinSync).api
   )();
 ```
 
