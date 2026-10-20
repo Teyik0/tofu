@@ -1,0 +1,588 @@
+src/pages/plugins/index.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 3-4
+tests/desktop-backend.test.ts
+  s_98098e5eb83024::t_0a839478fb9cb0 270-272
+  s_98098e5eb83024::t_4d7fbcf889bc46 268
+  s_2d28b06421aad4::t_f2d1dec81e7dea 6,105,181,194-195,217,234-236,251-252,259-260,265-266,279-290
+src/pages/plugins/sources.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 3-4
+tests/player.test.ts
+  s_56f3787cacdf4a::t_683646432797ba 2,4,77-95,97-98,102-107
+  s_56f3787cacdf4a::t_18690b2d2f4a80 108-110
+  s_56f3787cacdf4a::t_1cb27f1623eff4 96,99-101
+src/components/media-player.tsx
+  s_56f3787cacdf4a::t_868ef96421573a 145-146,176-179,181-201,209,238,248-250,265-273,285-286,291-293,317-342,347,355-374,381,384,389,396-397,402,406-438,440-441,479,482,485-487,497
+  s_56f3787cacdf4a::t_f0a2a9167ddedd 147,180,224,239
+  s_56f3787cacdf4a::t_1cb27f1623eff4 297,439
+  s_56f3787cacdf4a::t_53f17b5f65f543 21,24,37-38
+  s_56f3787cacdf4a::t_683646432797ba 137,141,295-296,298-302,304,483-484
+  s_2d28b06421aad4::t_3f24896c2b7fcd 2,39-40,71-76,85-90,95-136,138-140,148-149,202,225-226,240-247,251-253,294,303,309-310,488-496,498-531,609-648,694-697,730,737,739-741,748-821,890,928,958-970
+src/api/modules/torrents/service.ts
+  s_b666c9cfb0fa8a::t_25ca6cc0790990 67,142,147,325-326,377-378,383,385,392,396,400,403,408,456,524-525,532,535,607,614,619-625,655-658,675-682,684-686,689-693,695-750,762-765,767,953-954,959,984-986,997,1001,1004,1007,1010-1014,1029-1032,1038-1041,1043,1046,1069,1072,1083,1086,1094,1124,1131-1134,1150,1153,1157-1160,1162-1165,1167-1196,1207-1210,1225-1227,1240-1245,1247,1250,1269-1334,1338,1346-1348,1351-1353,1356-1374,1377,1380,1382-1413,1423-1425,1433-1435,1439-1441,1446,1449-1451,1456-1465,1516-1518,1528,1535,1550,1555,1559,1564,1567-1573,1579-1581,1585,1591-1594,1597-1638,1640-1642,1646,1649,1652-1656,1660,1663-1665,1714-1725,1732-1734,1736,1738-1782,1784-1785,1790-1796,1800,1802-1825,1835-1836,1877,1985-1986,1992,2016,2026,2040,2043,2049,2078,2083,2090-2091,2120,2128,2134,2136,2156,2169-2170,2176,2202,2220,2222,2226,2273,2282,2285,2290,2391,2408-2410,2416,2422,2425,2456,2463
+  s_b666c9cfb0fa8a::t_88eba4d8d60a93 626-632,683,694,2018,2021
+  s_b666c9cfb0fa8a::t_0a9b1047f4b968 146,635-642,1832,2031-2033,2205,2281,2421
+  s_b666c9cfb0fa8a::t_13d922f09f363c 643,654,687-688
+  s_2d28b06421aad4::t_33da1f2574ebbb 14,17-22,32,65-66,68-69,73,92,107,141,143-145,149-150,177,324,327-336,340,372-376,379-382,384,386-391,393-395,397-399,401-402,404-407,409-418,434-438,445,469,491,507,526-528,530,534,536-537,596,604-606,608-609,633-634,644-649,651-653,1826-1831,1833-1834,1837-1839,1845,1860-1861,1871-1876,1878,1880,1901,1987-1991,1993-2000,2012-2015,2017,2019-2020,2022-2025,2027-2030,2034-2039,2041-2042,2044-2047,2050,2074-2077,2080,2082,2084-2089,2092-2102,2104-2108,2113-2116,2121-2122,2129-2131,2135,2143-2145,2151-2153,2155,2157-2158,2171,2175,2177-2196,2198-2201,2203-2204,2206-2215,2221,2223-2225,2227-2240,2254-2272,2274-2280,2283-2284,2286-2287,2291-2292,2318-2321,2324,2329-2331,2337,2340,2349-2351,2369,2375,2378,2387,2399,2405-2407,2413-2415,2417-2420,2424,2426,2452-2455,2461-2462,2464,2473-2475,2481-2484,2513-2515,2517-2520,2528-2531,2533-2536,2538-2544,2551-2553,2555,2558,2563-2566,2568-2574,2578-2584,2595-2598,2622,2624-2626,2628,2635-2638,2643-2644,2647,2650,2652-2657,2662,2696-2698,2700,2703,2714,2806-2810,2863-2865,2867-2869,2872,2877,2880,2884,2887,2895,2898-2900,2944-2945,2962-2963,2966,2969-2971,3004-3006,3008-3011,3015-3017,3020,3024,3027-3032,3035,3038-3040,3042,3044-3045,3049,3064-3065
+patches/libvlc-wasm@0.2.0.patch
+  s_56f3787cacdf4a::t_43973ca5c9076b 39
+  s_56f3787cacdf4a::t_95ba660de497db 1-24,26-38,40
+  s_56f3787cacdf4a::t_51a12a63b45921 25
+package.json
+  s_98098e5eb83024::t_20c592e5d8d782 56,64-65
+  s_98098e5eb83024::t_a737dca615c352 57
+  s_98098e5eb83024::t_4209b192531cea 50-51
+  s_2d28b06421aad4::t_aeea77a5afb7fc 17,42-43,68,87
+AGENTS.md
+  s_98098e5eb83024::t_bf50f1df7752d0 118-119,125,127,131,134,136
+src/pages/plugins/integrations.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 3-4
+src/api/modules/anilist/opening.ts
+  s_98098e5eb83024::t_a534ff5296e91a 14-30
+  s_2d28b06421aad4::t_5cd8d9fe907171 1,4,8,31-39,41
+src/pages/options/_route.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 25
+  s_2d28b06421aad4::t_1adcd2f0e68403 3,6,14,21,26,29,39,45-50
+src/api/modules/automation/management.ts
+  s_98098e5eb83024::t_1b0c4affda8ebd 12,14,21-23,29,41-43,51,63-69,73
+  s_98098e5eb83024::t_959656ea0ff49b 40,62
+  s_2d28b06421aad4::t_573d18ec2bcfb7 2,4,34-37,39,49-50,52,54-58,72,74-75,79-84
+src/api/modules/anilist/index.ts
+  s_98098e5eb83024::t_d5ea538d071beb 60,76-78,85-88,101-103,105-107,112-114,116-118,120,131,134-142,149-151,171-173,187-188
+  s_98098e5eb83024::t_0f18a16938b75c 75
+  s_2d28b06421aad4::t_e8e9991373b0b3 3,6,34-37,39-45,63-66,72,189,203-206,208-218,221-228,230-239,241-252,258-260,266-269,275-277,286-289
+src/pages/plugins/intelligence.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 3-4
+src/api/modules/automation/plugin.ts
+  s_98098e5eb83024::t_33f9d9d67d840c 22
+  s_2d28b06421aad4::t_4a353cdd900a7a 23-30
+src/api/modules/anilist/plugin.ts
+  s_98098e5eb83024::t_33f9d9d67d840c 37
+  s_2d28b06421aad4::t_041a8d72edd90b 38-51
+tests/storage-recovery.test.ts
+  s_b666c9cfb0fa8a::t_e2030c4f2f870b 63-66,69
+  s_b666c9cfb0fa8a::t_c896ec992c7661 71,87
+  s_b666c9cfb0fa8a::t_13d922f09f363c 2,7,10,14-43,45-49,54-56,67-68,70,72-86,88-95,428
+  s_b666c9cfb0fa8a::t_88eba4d8d60a93 44
+  s_b666c9cfb0fa8a::t_f1aba420555a46 13,50-53,57-62
+  s_2d28b06421aad4::t_2070a35a824b88 96,171,175,216-218,220-225,227,236-238,260-263,267-269,289-292,315,356,373,377-380,384,386-389,404,407,412,432,467,496-499,527-528,584,586,591,604,606,621-623,625,649-652,682,684,689,696-697,705-708,721-723,725,752-755
+src/api/modules/updates/index.ts
+  s_98098e5eb83024::t_a534ff5296e91a 12
+  s_2d28b06421aad4::t_8724a07a0823b0 4,9,11,14-15
+src/components/updates.tsx
+  s_98098e5eb83024::t_11fc835bbde4b8 216
+src/lib/automation-mutations.ts
+  s_98098e5eb83024::t_11fc835bbde4b8 27,50,60,77,85
+tests/anilist/native/library.ts
+  s_98098e5eb83024::t_ccc246c4e3a9e4 192,195,198
+  s_2d28b06421aad4::t_9723da11c53607 383-384,420
+src/lib/client.ts
+  s_98098e5eb83024::t_5ef8fa1251034f 1,3,7,10,12
+src/api/modules/updates/plugin.ts
+  s_98098e5eb83024::t_33f9d9d67d840c 19
+src/api/modules/torrents/worker-client.ts
+  s_56f3787cacdf4a::t_f0a2a9167ddedd 23,38-40,68-70,84-89,91,119,121,126-143,181-185,189-192,216,230
+  s_56f3787cacdf4a::t_15d4ec0cc03c14 90
+  s_2d28b06421aad4::t_de088deadd31c5 3,231,293-294,319-333
+src/api/modules/player/index.ts
+  s_56f3787cacdf4a::t_6e52493fd2d99a 3,5-7,16,19-52
+  s_2d28b06421aad4::t_7dc887181c0624 53-55
+src/pages/options/downloads.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 32
+  s_2d28b06421aad4::t_dac481eace76e9 3,8,31,34-35,38-50,52-135,141-142,144-160,163-167,170-174,177-288
+src/pages/options/index.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 20-21
+  s_2d28b06421aad4::t_5eda61a3f35d10 2-4,19,23-26,28-73,75-100,103-109,112-117,119-122,126-133,136-138,140-146,148-150,153-156,159-168,170-239
+src/pages/options/preferences.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 9
+  s_2d28b06421aad4::t_35b8efd4d10897 2-4,7,10,12-28
+src/pages/thread/[id].tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 7
+src/components/anilist/panel.tsx
+  s_98098e5eb83024::t_11fc835bbde4b8 409
+  s_2d28b06421aad4::t_455e2d80e2fa7c 3,10,49-51,79-81,85,96-100
+src/components/automation-center.tsx
+  s_98098e5eb83024::t_11fc835bbde4b8 42
+  s_2d28b06421aad4::t_66945c95042ff4 12,37
+src/api/modules/torrents/index.ts
+  s_98098e5eb83024::t_a534ff5296e91a 28
+  s_2d28b06421aad4::t_00f02f086e2da6 3,5-9,23-27,29-31,35,37,40-46,48-72,74-78,80-116,118,121-131,135-140,143-147,150-151,153-154,156-157,159-194,198,203-205,207-214,216,218-226,228-249,251-265,267-286,288-297,299-300,302,304-312
+src/components/general-preferences.tsx
+  s_98098e5eb83024::t_11fc835bbde4b8 22
+src/pages/anilist.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 31,34-35
+  s_2d28b06421aad4::t_fd4a927620a753 3-4,21,23-30,36-37,39-48,50-92,94-181,185-187,189,191,193-214
+src/pages/player/[id].tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 6
+  s_2d28b06421aad4::t_e021dccac7c366 33
+furin.config.ts
+  s_98098e5eb83024::t_32cf11ef2e8452 70
+  s_2d28b06421aad4::t_25361f5b4744a4 7,27,40-41,44-45,74
+src/components/app.tsx
+  s_98098e5eb83024::t_11fc835bbde4b8 153
+  s_2d28b06421aad4::t_24d866baf17bad 6-7,28,31,35-36,39,53-54,59-75,126-132,144
+src/api/index.ts
+  s_98098e5eb83024::t_c359a2f73af161 129,131-137,145,155
+  s_2d28b06421aad4::t_c10b496d8ee3a9 12-19,26,41-48,55,67,69-76,78-87,89,98-101,170-171,174-179,186
+src/pages/options/updates.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 4-5
+src/pages/options/appearance.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 23-24
+  s_2d28b06421aad4::t_2e9266fc992944 3,14,28,30,38-39,45,47-50,52
+src/api/modules/plugins/index.ts
+  s_98098e5eb83024::t_8cfaee86538661 24,28-31,45
+  s_2d28b06421aad4::t_5bb0cc6f4689d0 3,8,10,14,16-18,23,34-38,42-44,49,53-60,68-71,77,79-82
+tests/helpers/storage.ts
+  s_b666c9cfb0fa8a::t_13d922f09f363c 1-51
+src/pages/index.tsx
+  s_98098e5eb83024::t_c62ce05c3f3dab 7-8
+src/components/use-global-search.ts
+  s_98098e5eb83024::t_11fc835bbde4b8 52
+  s_2d28b06421aad4::t_89210b8cd12f00 15-16,22,27,97
+scripts/route-types.ts
+  s_98098e5eb83024::t_b0b77b8ad7472e 1-2,4
+  s_2d28b06421aad4::t_d87e8b8d16506a 7-10,12,14-18
+biome.jsonc
+  s_2d28b06421aad4::t_95b89f57e6e25e 4-7
+bun.lock
+  s_2d28b06421aad4::t_c434cd69e4d62a 11-12,17-18,25-26,29,48,191,435,437,517,519,731-732,857,911,1211,1223,1367-1370,1407,1409,1411,1469,1643-1644
+docs/remote-servers/README.md
+  s_2d28b06421aad4::t_6451a5f32a89d1 1-131
+docs/remote-servers/design/architecture.txt
+  s_2d28b06421aad4::t_b32d6317a82c65 1-225
+docs/remote-servers/design/brief.txt
+  s_2d28b06421aad4::t_6063c5d442f3f1 1-44
+docs/remote-servers/design/implementation-handoff.txt
+  s_2d28b06421aad4::t_e320fc19403dcb 1-41
+docs/remote-servers/design/review.txt
+  s_2d28b06421aad4::t_f64f89dc9281c9 1-433
+docs/remote-servers/design/ui-prototype.html
+  s_2d28b06421aad4::t_27bd4d80a558c8 1-97
+docs/remote-servers/design/ui.txt
+  s_2d28b06421aad4::t_219f0c0fc8ee1c 1-177
+docs/remote-servers/embedded-tailscale.md
+  s_2d28b06421aad4::t_b783634e96d69f 1-104
+docs/remote-servers/evidence/chromium-player.json
+  s_2d28b06421aad4::t_82a96141ae65c0 1-19
+docs/remote-servers/evidence/compiled-server.json
+  s_2d28b06421aad4::t_25f424e058976e 1-14
+docs/remote-servers/evidence/mobile-layout.json
+  s_2d28b06421aad4::t_ef288f6660469b 1-5
+docs/remote-servers/evidence/native-cookie-gate.json
+  s_2d28b06421aad4::t_6e98105e183818 1-19
+docs/remote-servers/implementation-log.md
+  s_2d28b06421aad4::t_622cdcb45949e2 1-301
+docs/remote-servers/specification.md
+  s_2d28b06421aad4::t_01b36ecaf31dd1 1-277
+native/tailscale/certificates.go
+  s_2d28b06421aad4::t_4e3ac9c35a5419 1-127
+native/tailscale/go.mod
+  s_2d28b06421aad4::t_d78ee854ff9395 1-51
+native/tailscale/go.sum
+  s_2d28b06421aad4::t_80e4080f442056 1-239
+native/tailscale/main.go
+  s_2d28b06421aad4::t_9577943591c1e4 1-231
+native/tailscale/transport_test.go
+  s_2d28b06421aad4::t_73d7612ecfac97 1-74
+scripts/browser-remote-proof.ts
+  s_2d28b06421aad4::t_8c67de99739311 1-199
+scripts/build-tsnet.ts
+  s_2d28b06421aad4::t_3f111fd0573142 1-100
+scripts/native-browser-entry.ts
+  s_2d28b06421aad4::t_0498c7b274f985 4,11
+scripts/native-remote-proof.ts
+  s_2d28b06421aad4::t_fca4ce9082df46 1-197
+scripts/native-smoke.ts
+  s_2d28b06421aad4::t_16b9cceb18b431 8,22,218-221,421-425
+scripts/native-workflow-connections.ts
+  s_2d28b06421aad4::t_3f7fea76746396 1-115
+scripts/resources.ts
+  s_2d28b06421aad4::t_9078b9e5c522f9 29-30
+scripts/tailscale-resources.ts
+  s_2d28b06421aad4::t_72982a47511109 1-29
+scripts/tofu-admin.ts
+  s_98098e5eb83024::t_3c566ccf7b11b5 1-130
+src/api/lib/database-plugin.ts
+  s_2d28b06421aad4::t_e274612863cb34 12-15,19,32-34,38,48-49
+src/api/lib/diagnostics.ts
+  s_2d28b06421aad4::t_863e5593cb5340 22-24,35-36
+src/api/lib/instance.ts
+  s_2d28b06421aad4::t_e0c96fdf1a16bd 152-157
+src/api/lib/lifecycle.ts
+  s_2d28b06421aad4::t_1f894c5a63d81b 2,11-50
+src/api/lib/logs.ts
+  s_2d28b06421aad4::t_bf6035786b93e9 48-52,54,58,61,63-81
+src/api/lib/native-opening.ts
+  s_2d28b06421aad4::t_dea140b5b4b811 2,4,16
+src/api/modules/access/admission.ts
+  s_2d28b06421aad4::t_dc4563439b18e4 1-45
+src/api/modules/access/brand.ts
+  s_2d28b06421aad4::t_38ca343b3f0e5b 1-3
+src/api/modules/access/devices.ts
+  s_2d28b06421aad4::t_9c56b204617004 1-184
+src/api/modules/access/documents.ts
+  s_2d28b06421aad4::t_8a5202a849ffcf 1-251
+src/api/modules/access/grants.ts
+  s_2d28b06421aad4::t_c286a75248fcd5 1-36
+src/api/modules/access/index.ts
+  s_2d28b06421aad4::t_196c4fb227489d 1-104
+src/api/modules/access/invitations.ts
+  s_2d28b06421aad4::t_04fb625ff5219b 1-348
+src/api/modules/access/model.ts
+  s_2d28b06421aad4::t_362d5f5f5eccb7 1-45
+src/api/modules/access/plugin.ts
+  s_2d28b06421aad4::t_0e6d7d504a77a0 1-106
+src/api/modules/access/service.ts
+  s_2d28b06421aad4::t_fb1d784f422d2c 1-540
+src/api/modules/access/tokens.ts
+  s_2d28b06421aad4::t_783671c2cb03df 1-9
+src/api/modules/anilist/catalog.ts
+  s_2d28b06421aad4::t_3965a10ee10661 1,51,53,106-107,114,117,144
+src/api/modules/anilist/editor.ts
+  s_2d28b06421aad4::t_7938121a47ceb5 1,11-12,14,31,33-37,41,55,71,75,79,86,88
+src/api/modules/anilist/graphql/transport.ts
+  s_2d28b06421aad4::t_9789c847267eb4 5-10,51,54
+src/api/modules/anilist/model.ts
+  s_2d28b06421aad4::t_652d131a677b11 13,29-32
+src/api/modules/anilist/oauth.ts
+  s_2d28b06421aad4::t_2630525095d14e 1,4,71-72,75,83,87,98,100-102,119,124,133-135,148-150,171-176,209,218-226
+src/api/modules/anilist/service.ts
+  s_2d28b06421aad4::t_6e9b1370bdd6af 3,36,146,152,156,205-210,232,234-236,364,431-433,445,447,453-456,460,463,539,541-544,565-569,577-580,582,588-604,606-610,617,623-624,627-630,632-637,640,644-646,649-660,665,667-671,673-677,679,681-692,701-704,713,719,731,735-737,754,756-766,768,774,777-780,782-784,786,792,794-803,809-812,814,830,834-835,854,857-872,874-878,896,899-900,907-921,926-928,931-934,936,939,942,944-945,947-949,951,959,966,972,975,978,981,991-992,1002,1006,1027-1029,1032,1043,1047,1050,1052-1060,1063-1065,1067-1072,1074-1077,1080-1095,1098,1101,1114-1115,1120,1125,1128,1136-1138,1154-1160,1167,1169,1171,1177,1200,1246,1249-1252,1262,1279,1284-1290,1297-1311,1326,1329-1331,1333,1341,1354-1358,1363-1367,1381-1383,1403-1405,1417-1418,1427-1431,1437,1453-1456,1474-1477,1479,1493-1497,1529-1536,1574-1575
+src/api/modules/automation/integration.ts
+  s_2d28b06421aad4::t_acd999a7c2713b 1,11,19,76,79,110-113,117-121,131,138,151,162-175,178-181,187-188,190-197,210,216-228,233,269-271,275,278-280,304,333-341,414-416,418-426,446-449,452,461-465,484-487,489-491
+src/api/modules/automation/service.ts
+  s_2d28b06421aad4::t_bc86f0fff4a458 2,146,150-152,188-190,244,251-258,271,290-292,298,302-303,307,309,316-318,336-337,347,363,373-375,391-394,396,398-402,412-413,421,471,494-496,511,559,613,619-632
+src/api/modules/connections/certificates.ts
+  s_2d28b06421aad4::t_3e4c9bb20d1b3c 1-76
+src/api/modules/connections/embedded.ts
+  s_2d28b06421aad4::t_52295ca756b848 1-158
+src/api/modules/connections/index.ts
+  s_2d28b06421aad4::t_8866c9062d44cf 1-117
+src/api/modules/connections/model.ts
+  s_2d28b06421aad4::t_f1d6dc2ac557dd 1-28
+src/api/modules/connections/plugin.ts
+  s_2d28b06421aad4::t_bfd03391d9735d 1-115
+src/api/modules/connections/service.ts
+  s_2d28b06421aad4::t_db9247667f0c99 1-303
+src/api/modules/connections/tailscale.ts
+  s_2d28b06421aad4::t_f430d576cb3386 1-135
+src/api/modules/connections/update.ts
+  s_2d28b06421aad4::t_ee1056c76ab25c 1-132
+src/api/modules/dashboard/index.ts
+  s_2d28b06421aad4::t_b7b1b0eaa2e7d1 2,4,7,11,13,17,20,22-24,32-36,38-45
+src/api/modules/dashboard/projection.ts
+  s_2d28b06421aad4::t_5d83e2f92db6bb 1-117
+src/api/modules/desktop/associations.ts
+  s_2d28b06421aad4::t_2bc2406c6df97a 2,9-11,16-18,26-29,47-49,57,61-64
+src/api/modules/desktop/index.ts
+  s_2d28b06421aad4::t_6c1f4389d4ce8c 3-5,9,19,21-22,24-39,93-97,104-106
+src/api/modules/desktop/opening.ts
+  s_2d28b06421aad4::t_8d5999893f91fa 5,90-92
+src/api/modules/desktop/service.ts
+  s_2d28b06421aad4::t_c3b1e7a96d67d2 24-33
+src/api/modules/destinations/index.ts
+  s_2d28b06421aad4::t_aa1b032fab0bc5 2,4-6,12,15-34,39-40,42,47,49-53,55-57,66,68-72,74-98,114-116
+src/api/modules/destinations/model.ts
+  s_2d28b06421aad4::t_d5112307b77f7f 37-50
+src/api/modules/destinations/plugin.ts
+  s_2d28b06421aad4::t_71e5c3ecef86d7 1-15
+src/api/modules/destinations/roots.ts
+  s_2d28b06421aad4::t_82dc358cf5760b 1-145
+src/api/modules/destinations/storage.ts
+  s_2d28b06421aad4::t_7599cbf0aa3a9f 1-23
+src/api/modules/discovery/index.ts
+  s_2d28b06421aad4::t_db902639e2af6f 4,10,12
+src/api/modules/discovery/service.ts
+  s_2d28b06421aad4::t_d8fc6dc2c2cb28 1,179,206-210,235-239,263-266,272,315-324,326-329,344-353,371,393,397-401,409,412
+src/api/modules/health/index.ts
+  s_2d28b06421aad4::t_9eba2c5898fea9 4,9,11-12
+src/api/modules/jev/index.ts
+  s_2d28b06421aad4::t_f6430cc3160fc3 4,10,12
+src/api/modules/jev/service.ts
+  s_2d28b06421aad4::t_7d446f6eddc64f 2,299,309-312,315,334-339,350,359,362,364-370,372-407
+src/api/modules/library-links/availability.ts
+  s_2d28b06421aad4::t_5abbd990148b83 1-133
+src/api/modules/library-links/index.ts
+  s_2d28b06421aad4::t_c186937f2d6a4b 1-70
+src/api/modules/library-links/model.ts
+  s_2d28b06421aad4::t_d83232cc7f8e96 1-48
+src/api/modules/library-links/plugin.ts
+  s_2d28b06421aad4::t_5c829db951fc6a 1-15
+src/api/modules/library-links/service.ts
+  s_2d28b06421aad4::t_636f8abc5f0989 1-402
+src/api/modules/media-links/index.ts
+  s_2d28b06421aad4::t_7ddf603f6b6d54 1-127
+src/api/modules/media-links/model.ts
+  s_2d28b06421aad4::t_6e71908dca4e6a 1-8
+src/api/modules/media-links/plugin.ts
+  s_2d28b06421aad4::t_3596689d918bcd 1-11
+src/api/modules/media-links/service.ts
+  s_2d28b06421aad4::t_c579efbadb3abd 1-175
+src/api/modules/playback/index.ts
+  s_2d28b06421aad4::t_8faf56f5eab1d8 1-32
+src/api/modules/playback/model.ts
+  s_2d28b06421aad4::t_b914c90be0c676 1-29
+src/api/modules/playback/service.ts
+  s_2d28b06421aad4::t_fc621beb255694 1-88
+src/api/modules/plugins/credentials.ts
+  s_2d28b06421aad4::t_387b544e5a8c3d 1,8,25-27,65-67,70,73-75,82
+src/api/modules/plugins/model.ts
+  s_2d28b06421aad4::t_79561fccc54b46 15,30-34
+src/api/modules/plugins/service.ts
+  s_2d28b06421aad4::t_84dfe46eabb8cc 2,101,103,106,163,167,172-176,184,194-199,205,209,211,213-225,227-232,246,268,272,280-282,286,288,290-292,310-317,347,397-399,401,404-407,409,414,420-422,424,426,429,442,448,452
+src/api/modules/settings/index.ts
+  s_2d28b06421aad4::t_8b164ede35c910 2,4,7,11,13,17-21,23-25,31-45
+src/api/modules/settings/service.ts
+  s_2d28b06421aad4::t_6e3b59a0706785 1-11
+src/api/modules/torrents/media.ts
+  s_2d28b06421aad4::t_a65f76d5ed4727 1-313
+src/api/modules/torrents/plugin.ts
+  s_2d28b06421aad4::t_8f1251c82bc7b8 1,18-22
+src/api/modules/torrents/worker.ts
+  s_2d28b06421aad4::t_44c7470b988b83 1,64,144-153
+src/api/modules/updates/service.ts
+  s_2d28b06421aad4::t_2ee214bded8312 4,179,181-192,199-205,304,310,313-316,319-322,324,328-329,331-332,338,342-345,349-352,365,374,385,391
+src/components/access-required.tsx
+  s_2d28b06421aad4::t_b3dc75ab59f8d3 1-29
+src/components/anilist/episode-header.tsx
+  s_2d28b06421aad4::t_7c18a23118e206 3,9-10,28-29,111
+src/components/anilist/episode-modal.tsx
+  s_2d28b06421aad4::t_32a2d7bc176cd6 6,20
+src/components/anilist/episode-panels.tsx
+  s_98098e5eb83024::t_ced16901525d95 3,9,18,32-33,95,103-160,162,189-197,215-229,261,275,309,334
+src/components/anilist/episode-row.tsx
+  s_2d28b06421aad4::t_cf396d91065d16 2,12,33-36,48,65-74,86-111,129-151,240
+src/components/anilist/library-settings.tsx
+  s_2d28b06421aad4::t_394e1b9ddb062f 4,18,57,65
+src/components/automation-rules.tsx
+  s_2d28b06421aad4::t_0aaa6680af6814 62
+src/components/automation-section.tsx
+  s_2d28b06421aad4::t_2a21c6ea69faa6 21,216,236,241,250-253
+src/components/automation-sections.tsx
+  s_2d28b06421aad4::t_7e24865d5aabeb 50,84
+src/components/connections/authorized-devices.tsx
+  s_98098e5eb83024::t_edc2f80dccdffe 1-196
+src/components/connections/desktop-servers.tsx
+  s_2d28b06421aad4::t_06bf2d604d9fb7 1-365
+src/components/connections/device-dialog.tsx
+  s_98098e5eb83024::t_aa9589a0cc714e 1-210
+src/components/connections/linked-libraries.tsx
+  s_2d28b06421aad4::t_d40305e026bab1 1-221
+src/components/connections/network-access.tsx
+  s_2d28b06421aad4::t_e1fbc5f9edf7e0 1-640
+src/components/connections/own-connection.tsx
+  s_2d28b06421aad4::t_e2eca71b43bced 1-95
+src/components/connections/pair-device-dialog.tsx
+  s_98098e5eb83024::t_bfd696c8331e69 1-333
+src/components/connections/server-addresses.tsx
+  s_2d28b06421aad4::t_f0c61f190e72c6 1-72
+src/components/connections/storage-locations.tsx
+  s_2d28b06421aad4::t_86b38b28abbb11 1-147
+src/components/destination-menu.tsx
+  s_2d28b06421aad4::t_495c68bf32215f 18,24-43
+src/components/destination-sidebar.tsx
+  s_2d28b06421aad4::t_6aa6239cefef32 2,8-9,18,129,134-136,169-184,191,219-228,236,251,264-272,279,301-313,329-330
+src/components/detail-panels.tsx
+  s_2d28b06421aad4::t_6b59a68d93fd4c 2-4,120,122,126,133,144,152,226,228,236,240,260,276,318,355-359,377,392,422-425,430
+src/components/detail.tsx
+  s_2d28b06421aad4::t_5fddaf8733ba22 3,5-6,33-34,40,43-47,58-101,121-139,179-204,206,219-221,232,234-247,261-271,282-296
+src/components/format.ts
+  s_2d28b06421aad4::t_d417eb62722573 1,74
+src/components/global-search-results.tsx
+  s_2d28b06421aad4::t_e36ff6b792d157 218
+src/components/global-search.tsx
+  s_2d28b06421aad4::t_9e860ea18e6e6d 6,42,102
+src/components/modal.tsx
+  s_2d28b06421aad4::t_2ea665a03ae016 3,20-22,136,196,346,360-361,407,518,620,651,657-661,711-715,717-718,726,767,832-845,852,914,958,964-968,1110,1117-1119,1161,1177,1188,1192
+src/components/plugins/plugin-card-fields.tsx
+  s_2d28b06421aad4::t_37d577e2ab50fe 3
+src/components/plugins/use-plugin-card.ts
+  s_2d28b06421aad4::t_c44ee6a24d05b9 71-72
+src/components/server-identity.tsx
+  s_2d28b06421aad4::t_3f6525112f8c80 1-40
+src/components/settings-layout.tsx
+  s_2d28b06421aad4::t_10bd04b58b290a 16
+src/components/tofu-state-sync.tsx
+  s_2d28b06421aad4::t_5702181af7ea26 6-14,16-22,27-29,31-32,44-46,49-54,60-89,91,93,95-111,115,117-118,120-131,135-140
+src/components/torrent-library-views.tsx
+  s_2d28b06421aad4::t_7553388a5b3c15 248,250
+src/components/use-detail-actions.ts
+  s_2d28b06421aad4::t_2abd6f27048b7b 6,13,15
+src/components/use-torrent-library.ts
+  s_2d28b06421aad4::t_4260c50480ddbb 10,23,34,75
+src/components/workspace-dialogs.tsx
+  s_2d28b06421aad4::t_1063b4bec7c2d3 5,26
+src/db/drizzle/0002_remote_access.sql
+  s_2d28b06421aad4::t_cec473e9387710 1-118
+src/db/drizzle/0003_playback_sequences.sql
+  s_2d28b06421aad4::t_dbbe86629f97cd 1-8
+src/db/drizzle/meta/0002_snapshot.json
+  s_2d28b06421aad4::t_7b0c00172e60c7 1-1041
+src/db/drizzle/meta/0003_snapshot.json
+  s_2d28b06421aad4::t_ac94874acb0878 1-1091
+src/db/drizzle/meta/_journal.json
+  s_2d28b06421aad4::t_ca3f82609fc261 18-31
+src/db/schema.ts
+  s_2d28b06421aad4::t_3ce8fca3ab8ebe 1-2,66-202,205,212-221
+src/hooks/use-anilist-releases.ts
+  s_2d28b06421aad4::t_ba8b985964abb2 21-28,32,36,40-42
+src/lib/global-search.ts
+  s_2d28b06421aad4::t_7273503fcda5da 1,5
+src/lib/navigation.ts
+  s_2d28b06421aad4::t_606953646d1c1c 3,32,36
+src/native/catalog.ts
+  s_2d28b06421aad4::t_3a5c13074c8dce 1-58
+src/native/control.ts
+  s_2d28b06421aad4::t_b4fe26fc918c6d 1-10
+src/native/discovery.ts
+  s_2d28b06421aad4::t_c6d73630772425 1-84
+src/native/host.ts
+  s_2d28b06421aad4::t_fa651d22a909ab 1-886
+src/native/manager-document.ts
+  s_2d28b06421aad4::t_26c65c7cafd3f8 1-16
+src/native/model.ts
+  s_2d28b06421aad4::t_fa26a50708f3ca 1-33
+src/pages/options/connections.tsx
+  s_2d28b06421aad4::t_0e2b23619d34ac 1-77
+src/pages/player/remote.tsx
+  s_2d28b06421aad4::t_5943547af63a02 1-105
+src/pages/plugins/_route.tsx
+  s_2d28b06421aad4::t_3560894e62f20c 3,5-6,15-16,25-29,31-55,72-88,113-114,121,126-168
+src/pages/root.tsx
+  s_2d28b06421aad4::t_24de2e6b925849 16,29-34,37,62
+src/server.ts
+  s_2d28b06421aad4::t_569829d57a393a 2,7,11-13,22,27-66
+src/state/workspace.ts
+  s_2d28b06421aad4::t_215f9a30892a3e 2-6,10,12-16,24,26-27,30-34
+src/styles.css
+  s_2d28b06421aad4::t_73ff245d7bd541 5019-5365
+src/sync.ts
+  s_2d28b06421aad4::t_68a8799111eb23 5,9-16
+src/types.ts
+  s_2d28b06421aad4::t_408b4439583ae3 14-22,271-378,669,791,840-844,850-857,872-875
+tests/anilist/catalog-download.test.ts
+  s_2d28b06421aad4::t_b5d6c28495d3df 4,58
+tests/anilist/sync.test.ts
+  s_2d28b06421aad4::t_a90f76d575682a 152-153
+tests/anilist/threads.test.ts
+  s_2d28b06421aad4::t_584aa564aa7720 91,109-110,134,149,248-250
+tests/automation.test.ts
+  s_2d28b06421aad4::t_da9bcdf1980b74 428-429,517-522
+tests/connections.test.ts
+  s_2d28b06421aad4::t_be29547ceccac7 9,89,176
+tests/crypto-worker.test.ts
+  s_2d28b06421aad4::t_c7404fddc0760e 8,62
+tests/desktop-update-host.test.ts
+  s_2d28b06421aad4::t_892d20676a5374 5,79,84-87
+tests/destinations.test.ts
+  s_2d28b06421aad4::t_61ad5ff80901e6 8,35,47,49,52-54,72,121,134-138,172,174-175,200,249-251,257,260-263,301-303,314-318,335,340-342,359-361,375,378,393,415,419,430-435,447,451,461-463,479,485,489-491,500-504,509,537,540,599,611,624-625,635,654
+tests/engine-worker.test.ts
+  s_2d28b06421aad4::t_57748b91f06710 9,60,95-96
+tests/files.test.ts
+  s_2d28b06421aad4::t_cca7cc6ddcecc5 5,27-32,51,55,57,83-84,91-96,107-111,113
+tests/helpers/anilist/editor.ts
+  s_2d28b06421aad4::t_aa0fdb9cd2e42a 39-40,43-50,52,68-73
+tests/helpers/application.ts
+  s_2d28b06421aad4::t_20dc52178b9fe9 8,187-195
+tests/helpers/embedded-tailscale.ts
+  s_2d28b06421aad4::t_87b715c43345f8 1-41
+tests/helpers/plugin-integration-routes.ts
+  s_98098e5eb83024::t_d0fee7c98a4dd1 1,19-21,38,52-58,72,85-87
+tests/helpers/remote.ts
+  s_2d28b06421aad4::t_bc7c792ebdf943 1-84
+tests/helpers/server-process.ts
+  s_2d28b06421aad4::t_01204a79d3f486 4,15,20-22,46,59-70
+tests/helpers/torrent.ts
+  s_2d28b06421aad4::t_995b1f50daa661 3,53-55
+tests/instance.test.ts
+  s_2d28b06421aad4::t_eb6efe125f0ca0 8,125,171,178,180-182,201-204,207-211,243-246
+tests/lifecycle.test.ts
+  s_2d28b06421aad4::t_ee13cef8de5f14 2,13-14
+tests/live-state.test.ts
+  s_2d28b06421aad4::t_03eb55f3d3adbf 6,13,15,75-76
+tests/logging.test.ts
+  s_2d28b06421aad4::t_4cecda617e7110 46,50,52-53
+tests/persistence.test.ts
+  s_2d28b06421aad4::t_e8e02b9ccfcad4 7,56-57,61,132,180-181,193,205
+tests/remote/access.test.ts
+  s_2d28b06421aad4::t_c75ce99fba1379 1-323
+tests/remote/crash.test.ts
+  s_2d28b06421aad4::t_dc979abea81d5f 1-89
+tests/remote/embedded-tailscale.test.ts
+  s_2d28b06421aad4::t_395a3aa8063931 1-80
+tests/remote/linked-library.test.ts
+  s_2d28b06421aad4::t_de3e952c8831d0 1-203
+tests/remote/network-recovery.test.ts
+  s_2d28b06421aad4::t_8785f46050ed45 1-98
+tests/remote/recovery.test.ts
+  s_98098e5eb83024::t_10d3af0e521a35 1-361
+tests/remote/tailscale.test.ts
+  s_2d28b06421aad4::t_0bccff26c6080c 1-189
+tests/removal.test.ts
+  s_2d28b06421aad4::t_61c716432daff2 3,10-11,13-18
+tests/seeding-connections.test.ts
+  s_2d28b06421aad4::t_1c25dc34ae802c 6,50-52,65-66,78-81,95-96
+tests/self-peer.test.ts
+  s_2d28b06421aad4::t_57850fcb5c302d 16,35,38
+tests/storage.test.ts
+  s_2d28b06421aad4::t_74a4adf6bf93b1 5,218,222,238-240,243,283,285,288,290-291,295
+tests/streaming.test.ts
+  s_2d28b06421aad4::t_1aafc3171e948a 62-66,68-77,79-84
+tests/trackers.test.ts
+  s_2d28b06421aad4::t_54e305055c77d6 3,43-45,47-48,51-52,57-58,60,69-70
+tests/upgrades.test.ts
+  s_2d28b06421aad4::t_f96363ad651e5c 81,88-90,301,348
+tests/verify.test.ts
+  s_2d28b06421aad4::t_695061bace3816 3,14,47-50,52
+vendor/README.md
+  s_2d28b06421aad4::t_e8752fd164e1b9 1-40
+vendor/patches/0001-feat-electrobun-add-network-admission-dispatch-kind-.patch
+  s_2d28b06421aad4::t_ef5dcd946dc688 1-642
+vendor/patches/0002-native-client-only-manager.patch
+  s_2d28b06421aad4::t_eb5872861a05f6 1-528
+vendor/patches/0003-remote-servers-on-3a83c0d.patch
+  s_2d28b06421aad4::t_b4924bc8098516 1-1029
+vendor/patches/electrobun-2.0.2-macos-cookie.patch
+  s_2d28b06421aad4::t_2722f07b5f509d 1-32
+vendor/patches/0004-aot-process-resource-isolation.patch
+  s_2d28b06421aad4::t_f138051d36e77d 1-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a36fe3874739472a6da84a6747ab950a0e36c48e",
+  "prompts": {},
+  "sessions": {
+    "s_2d28b06421aad4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15305-dc7f-7c50-b668-bcabdf83d641",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_56f3787cacdf4a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15848-d252-7c30-a6cd-b77af5f03be8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_98098e5eb83024": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3c08702-d086-4128-b687-f5448ac0df4e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_b666c9cfb0fa8a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a154ae-e89f-7442-8895-dc056b295f74",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
