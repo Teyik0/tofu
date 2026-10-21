@@ -1,0 +1,32 @@
+README.md
+  s_dd32aa4935524e::t_a90de7b09c826b 135
+  s_dd32aa4935524e::t_ff8e40dd9df965 55
+package.json
+  s_dd32aa4935524e::t_0975ddb2da26c9 17,20
+  s_dd32aa4935524e::t_e1318d7d8bb319 25
+  s_dd32aa4935524e::t_cf61036763a417 26
+.github/pull_request_template.md
+  s_dd32aa4935524e::t_a90de7b09c826b 10
+CHANGELOG.md
+  s_dd32aa4935524e::t_16da43ada16df0 11
+CONTRIBUTING.md
+  s_dd32aa4935524e::t_a90de7b09c826b 15,22,25,30
+.github/workflows/ci.yml
+  s_dd32aa4935524e::t_a90de7b09c826b 54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f0ad3acd82382bb482d61c3b58e2a3a4e3668c89",
+  "prompts": {},
+  "sessions": {
+    "s_dd32aa4935524e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ecb-5424-73f3-a4c0-bd2761559ccf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
