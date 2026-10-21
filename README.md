@@ -48,22 +48,18 @@ You need **Bun 1.4.3+** for the built-in `bun check` type checker. macOS also re
 ```sh
 git clone https://github.com/Teyik0/Tofu.git
 cd Tofu
-bun install --ignore-scripts
+bun install
 bun run setup
-bun run prepare
-bun run build:desktop
-bun run desktop
+bun run dev
 ```
 
 Run `bun run dev` to open the native app and a browser against the same authenticated backend. Bun's Furin preload manages the desktop supervisor. For browser-only development, run `bun run dev:web` and open **http://127.0.0.1:3030**.
 
 Frontend CSS and React changes use HMR in the existing window. Backend changes restart
 its native host after releasing application resources; unsaved UI state is not preserved
-across those restarts. `bun run desktop` launches a compiled package without HMR.
-Stop it before starting `bun run dev`, since both normally use the same development profile.
+across those restarts. Stop any compiled development instance before starting `bun run dev`,
+since both normally use the same development profile.
 Known development failures and their reproductions are recorded in the [HMR investigation](docs/hmr-investigation.md).
-
-Want to try a real local transfer? Keep `bun run demo` running while Tofu is open.
 
 ## 🧩 Plugins
 
@@ -138,16 +134,9 @@ bun run tscheck
 bun run fix
 bun run test
 bun run build:desktop
-bun run test:native
 ```
 
-`bun run test` runs the integration suite with Bun in isolated processes. API tests call the typed endpoints through Eden and exercise real application services, real peers, local trackers, and temporary folders. Shared fixtures and assertions live in `tests/helpers/`; AniList tests live in `tests/anilist/` without repeating the feature name in filenames. Keep only essential integration scenarios, with no function unit tests, component snapshots, or tests of framework internals. The native test also checks the actual desktop interface and requires a graphical session.
-
-Native tests launch an isolated application copy outside the repository. After `bun run build:release`, use `TOFU_NATIVE_PROFILE=release bun run test:native` to extract and test the stable update archive, or additionally set `TOFU_NATIVE_LAUNCHER` to an extracted application's launcher. Self-extracting installers are rejected to avoid modifying the installed app. User data remains separate, and the smoke script is injected only by this opt-in test command.
-
-Use `TOFU_NATIVE_WORKFLOW=global-search bun run test:native` for the global search workflow: keyboard navigation, cross-thread results, stale responses, source failures, destination selection, duplicate detection, and a real peer download. Discovery responses use an HTTP fixture; the release cache, addition API, and file transfer are real.
-
-The default native workflow covers torrent transfers, settings, updates, and tab deletion. The focused workflows are `global-search`, `plugins`, `anilist`, and `anilist-catalog`. AniList integration tests live in `tests/anilist/`, with native scenarios in its `native/` subdirectory. Small presentation checks and duplicate native workflows are omitted in favor of API integration tests and complete native flows.
+`bun run test` runs the integration suite with Bun in isolated processes. API tests call the typed endpoints through Eden and exercise real application services, real peers, local trackers, and temporary folders. Shared fixtures and assertions live in `tests/helpers/`; AniList tests live in `tests/anilist/` without repeating the feature name in filenames. Keep only essential integration scenarios, with no function unit tests, component snapshots, or tests of framework internals.
 
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 

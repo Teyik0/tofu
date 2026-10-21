@@ -1,5 +1,4 @@
-import { join } from "node:path";
-import type { DesktopTarget, InstanceProfile } from "./types";
+import type { DesktopTarget } from "./types";
 
 export const releaseTargets: DesktopTarget[] = [
   { arch: "arm64", platform: "macos" },
@@ -26,18 +25,6 @@ export function installerName(version: string, target: DesktopTarget) {
 export function installerExtension(target: DesktopTarget) {
   const extensions = { linux: "tar.gz", macos: "dmg", win: "zip" } as const;
   return extensions[target.platform];
-}
-
-export function desktopLauncher(root: string, target: DesktopTarget, profile: InstanceProfile) {
-  const channel = profile === "dev" ? "dev" : "stable";
-  const name = profile === "dev" ? "Tofu-dev" : "Tofu";
-  const directory = join(
-    root,
-    `.furin/electrobun/build/${channel}-${target.platform}-${target.arch}`
-  );
-  return target.platform === "macos"
-    ? join(directory, `${name}.app/Contents/MacOS/launcher`)
-    : join(directory, name, "bin", target.platform === "win" ? "launcher.exe" : "launcher");
 }
 
 export function hostDesktopTarget() {

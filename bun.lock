@@ -35,6 +35,7 @@
         "@commitlint/cli": "21.2.4",
         "@commitlint/config-conventional": "21.2.4",
         "@graphql-codegen/cli": "7.4.6",
+        "@graphql-codegen/schema-ast": "6.1.1",
         "@graphql-codegen/typescript-generic-sdk": "5.0.1",
         "@graphql-codegen/typescript-operations": "6.1.10",
         "@types/bun": "1.4.3",
@@ -52,6 +53,9 @@
       },
     },
   },
+  "trustedDependencies": [
+    "node-datachannel",
+  ],
   "patchedDependencies": {
     "libvlc-wasm@0.2.0": "patches/libvlc-wasm@0.2.0.patch",
   },

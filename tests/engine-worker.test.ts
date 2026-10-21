@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { treaty } from "@elysia/eden";
-import { databaseMigrationsPlugin } from "../scripts/database-migrations";
 import { defaultConnectionPolicy } from "../src/api/modules/torrents/connections";
 import { WorkerTorrentEngine } from "../src/api/modules/torrents/worker-client";
 import type { LibraryState, LibraryTorrentDetail } from "../src/types";
@@ -26,12 +25,14 @@ test.each(["source", "bundle", "host"])(
         const result = await Bun.build({
           entrypoints: [join(import.meta.dir, "../src/api/modules/torrents/worker-client.ts")],
           outdir,
-          plugins: [databaseMigrationsPlugin],
           target: "bun",
         });
         if (!result.success) {
           throw new AggregateError(result.logs, "Worker client build failed");
         }
+        await cp(join(import.meta.dir, "../src/db/drizzle"), join(outdir, "drizzle"), {
+          recursive: true,
+        });
         let client = join(outdir, "worker-client.js");
         if (mode === "host") {
           await mkdir(join(bundle, "bun"));

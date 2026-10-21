@@ -19,7 +19,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.3
-      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun install --frozen-lockfile
       - run: bunx --bun ultracite check
 
   check:
@@ -47,7 +47,7 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2
 
-      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun install --frozen-lockfile
 
       - run: bun run setup
 

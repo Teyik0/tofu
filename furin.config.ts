@@ -1,8 +1,9 @@
+import { cp } from "node:fs/promises";
+import { join } from "node:path";
 import { defineConfig } from "@teyik0/furin/config";
 import { defineDesktopConfig } from "@teyik0/furin-electrobun";
 import tailwind from "bun-plugin-tailwind";
 import { version } from "./package.json";
-import { databaseMigrationsPlugin } from "./scripts/database-migrations";
 import { playerEnginePlugin } from "./scripts/player-engine";
 import { tailscaleResourcesPlugin } from "./scripts/tailscale-resources";
 
@@ -69,19 +70,23 @@ export default defineConfig({
   }),
   pagesDir: "./src/pages",
   plugins: [
-    databaseMigrationsPlugin,
-    playerEnginePlugin,
-    tailscaleResourcesPlugin,
     {
-      buildOnly: true,
-      name: "tofu-build-scan-cleanup",
-      async setup(builder) {
-        if (builder.config.target === "bun") {
-          const { stopServices } = await import("./src/api/lib/lifecycle");
-          await stopServices();
+      name: "tofu-database-migrations",
+      setup(builder) {
+        // Furin also probes plugins with a resolver-only runtime builder.
+        if (!("onEnd" in builder) || builder.config.target !== "bun" || !builder.config.outdir) {
+          return;
         }
+        const destination = join(builder.config.outdir, "drizzle");
+        builder.onEnd(async (result) => {
+          if (result.success) {
+            await cp(join(import.meta.dir, "src/db/drizzle"), destination, { recursive: true });
+          }
+        });
       },
     },
+    playerEnginePlugin,
+    tailscaleResourcesPlugin,
     {
       name: tailwind.name,
       setup(builder) {

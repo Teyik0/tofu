@@ -1,11 +1,29 @@
+import { cp, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveAniListClient } from "../src/api/modules/anilist/client";
 
-const directory = join(import.meta.dir, "../node_modules/node-datachannel");
-const native = Bun.spawn([process.execPath, "../prebuild-install/bin.js", "-r", "napi"], {
-  cwd: directory,
-  stderr: "inherit",
-  stdout: "inherit",
+const root = join(import.meta.dir, "..");
+const runtime = join(root, "runtime");
+await mkdir(runtime, { recursive: true });
+const worker = await Bun.build({
+  entrypoints: [join(root, "src/api/modules/torrents/worker.ts")],
+  external: ["webtorrent", "parse-torrent"],
+  naming: "engine-worker.worker",
+  outdir: runtime,
+  target: "bun",
 });
-if ((await native.exited) !== 0) {
-  throw new Error("Unable to install the native WebTorrent module");
+if (!worker.success) {
+  throw new AggregateError(worker.logs, "Torrent worker build failed");
 }
+await cp(join(root, "src/db/drizzle"), join(runtime, "drizzle"), { recursive: true });
+await Bun.write(
+  join(runtime, "anilist-client.json"),
+  JSON.stringify(
+    resolveAniListClient(
+      process.env.TOFU_RELEASE === "1" ? "release" : "dev",
+      process.env.TOFU_ANILIST_CLIENT_ID
+    )
+  )
+);
+
+await import("./build-tsnet");
