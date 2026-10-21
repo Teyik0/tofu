@@ -1,21 +1,12 @@
 import "@teyik0/furin/server-only";
 import { Elysia, ElysiaStatus, problem } from "elysia";
-import { db } from "../../lib/database-plugin";
+import { databasePlugin } from "../../lib/database-plugin";
 import { runtime } from "../../lib/runtime";
-import { connections } from "../connections/plugin";
+import { connectionsServicePlugin } from "../connections/plugin";
 import { Devices } from "./devices";
 import { rank } from "./grants";
 import { Invitations } from "./invitations";
 import { AccessService, type Caller, callers } from "./service";
-
-export const access = new AccessService({
-  db,
-  headless: () => runtime.current.kind === "server",
-  now: Date.now,
-  policy: () => connections.policy(),
-});
-export const invitations = new Invitations({ access, db, now: Date.now });
-export const devices = new Devices({ access, db, now: Date.now });
 
 type Member = Exclude<Caller, { kind: "anonymous" }>;
 
@@ -40,9 +31,23 @@ function atLeast(caller: Member, role: "management" | "administration") {
  * admits in-process dispatch, so server rendering can read Playback-safe data and nothing else.
  */
 export const accessPlugin = new Elysia({ name: "tofu-access" })
-  .decorate("access", access)
-  .decorate("devices", devices)
-  .decorate("invitations", invitations)
+  .use(databasePlugin)
+  .use(connectionsServicePlugin)
+  .decorate((dependencies) => {
+    const access = new AccessService({
+      db: dependencies.db,
+      headless: () => runtime.current.kind === "server",
+      now: Date.now,
+      policy: () => dependencies.connections.policy(),
+    });
+
+    return {
+      ...dependencies,
+      access,
+      devices: new Devices({ access, db: dependencies.db, now: Date.now }),
+      invitations: new Invitations({ access, db: dependencies.db, now: Date.now }),
+    };
+  })
   .macro({
     administration: {
       derive({ request }) {

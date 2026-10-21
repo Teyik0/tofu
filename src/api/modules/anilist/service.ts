@@ -19,7 +19,6 @@ import type {
   FeedRelease,
 } from "../../../types";
 import type { DatabaseConnection, TofuDatabase } from "../../lib/db";
-import { recordLog } from "../../lib/diagnostics";
 import { refreshRecords } from "../../lib/persisted-cache";
 import type { ReleaseAutomationService } from "../automation/integration";
 import { compareReleases, interpretLocally } from "../automation/rules";
@@ -1516,29 +1515,21 @@ export class AniListService {
       this.pause(subscription);
     }
   }
+
   async start() {
     if (this.lifecycle.started || this.lifecycle.closed) {
       return;
     }
     this.lifecycle.started = true;
-    try {
-      await this.tick(true);
-    } finally {
-      if (!this.lifecycle.closed) {
-        this.timer = setInterval(() => {
-          const poll = async () => {
-            try {
-              await this.tick(false);
-            } catch (error) {
-              recordLog({ component: "anilist", error, level: "error", operation: "poll" });
-            }
-          };
-          void poll();
-        }, 15_000);
-        this.timer.unref();
-      }
+    await this.tick(true);
+    if (!this.lifecycle.closed) {
+      this.timer = setInterval(async () => {
+        await this.tick(false);
+      }, 15_000);
+      this.timer.unref();
     }
   }
+
   async tick(force: boolean) {
     if (this.lifecycle.closed) {
       return;
@@ -1555,6 +1546,7 @@ export class AniListService {
         .map((subscription) => this.sync(subscription.id))
     );
   }
+
   async close() {
     this.lifecycle.closed = true;
     if (this.timer) {

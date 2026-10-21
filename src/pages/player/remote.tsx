@@ -92,6 +92,10 @@ export const route = defineRoute("/player/remote")
       torrent: t.String(),
     }),
   })
-  .loader(({ query }) => query)
+  .loader(({ query, set }) => {
+    set.headers["cross-origin-embedder-policy"] = "require-corp";
+    set.headers["cross-origin-opener-policy"] = "same-origin";
+    return query;
+  })
   .head(() => ({ meta: [{ title: "Remote player — Tofu" }] }))
   .page((query) => <RemotePlayer {...query} />);

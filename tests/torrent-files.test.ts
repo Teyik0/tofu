@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { desktopHooks, desktopRuntime } from "../src/api/modules/desktop/service";
+import { treaty } from "@elysia/eden";
 import type { OpenedTorrent } from "../src/types";
 import { expectSuccess } from "./helpers/problem";
 import { fixture, waitFor } from "./helpers/torrent";
@@ -55,10 +55,6 @@ test("a .torrent file opened from the system waits for the user to choose its th
   await using resources = new AsyncDisposableStack();
   const context = await fixture(16 * 1024, []);
   resources.defer(context.close);
-  desktopRuntime.engine = context.engine;
-  resources.defer(() => {
-    desktopRuntime.engine = undefined;
-  });
   const folder = join(context.directory, "series");
   const series = expectSuccess(
     await context.client.destinations.post({
@@ -82,25 +78,9 @@ test("a .torrent file opened from the system waits for the user to choose its th
   const events = stream[Symbol.asyncIterator]();
   expect((await events.next()).value?.data).toEqual([]);
 
-  let shown = 0;
-  const messages: unknown[] = [];
-  await desktopHooks.onOpen({
-    desktop: {
-      dialogs: {
-        message: (message: unknown) => {
-          messages.push(message);
-          return Promise.resolve({ response: 0 });
-        },
-      },
-      window: {
-        open: () => {
-          shown += 1;
-        },
-      },
-    },
-    event: { path: source, type: "file" },
-    identity: { name: "Tofu Dev" },
-  } as unknown as Parameters<typeof desktopHooks.onOpen>[0]);
+  const { shown, messages } = expectSuccess(
+    await treaty(context.api).__test.desktop.open.post({ path: source })
+  );
   expect(messages).toEqual([]);
   expect(shown).toBe(1);
   const [opened] = ((await events.next()).value?.data ?? []) as OpenedTorrent[];

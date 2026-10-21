@@ -2,11 +2,12 @@ import { type FSWatcher, watch } from "node:fs";
 import { readdir, stat, unlink } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { eq } from "drizzle-orm";
+import { createLogger } from "evlog";
 import parseTorrent from "parse-torrent";
 import { watchedTorrentFiles } from "../../../db/schema";
 import type { Destination, EnginePort } from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
-import { recordLog } from "../../lib/diagnostics";
+import { sanitizeLog } from "../../lib/diagnostics";
 import { runtime } from "../../lib/runtime";
 
 interface TorrentFoldersOptions {
@@ -69,28 +70,30 @@ export class TorrentFolders {
           watcher.on("error", (error) => {
             watcher.close();
             this.watchers.set(folder, null);
-            recordLog({
+            const log = createLogger({
               component: "torrent-folders",
               context: { folder },
               dataDir: this.options.dataDir,
-              error,
-              level: "warn",
+              error: sanitizeLog(error),
               operation: "watch",
             });
+            log.setLevel("warn");
+            log.emit();
           });
           this.watchers.set(folder, watcher);
         } catch (error) {
           this.watchers.set(folder, null);
           // The rescan retries every interval; report the failure once.
           if (!retrying) {
-            recordLog({
+            const log = createLogger({
               component: "torrent-folders",
               context: { folder },
               dataDir: this.options.dataDir,
-              error,
-              level: "warn",
+              error: sanitizeLog(error),
               operation: "watch",
             });
+            log.setLevel("warn");
+            log.emit();
           }
           continue;
         }
@@ -128,14 +131,15 @@ export class TorrentFolders {
       try {
         await operation;
       } catch (error) {
-        recordLog({
+        const log = createLogger({
           component: "torrent-folders",
           context: { path },
           dataDir: this.options.dataDir,
-          error,
-          level: "error",
+          error: sanitizeLog(error),
           operation: "add",
         });
+        log.setLevel("error");
+        log.emit();
       } finally {
         this.processing.delete(path);
       }
@@ -199,13 +203,14 @@ export class TorrentFolders {
   private async import(path: string, destination: Destination, size: number, age: number) {
     const { db, engine, dataDir } = this.options;
     if (size > 8 * 1024 * 1024) {
-      recordLog({
+      const log = createLogger({
         component: "torrent-folders",
         context: { path, size },
         dataDir,
-        level: "warn",
         operation: "skip-large-file",
       });
+      log.setLevel("warn");
+      log.emit();
       return null;
     }
     const bytes = new Uint8Array(await Bun.file(path).arrayBuffer());
@@ -217,14 +222,15 @@ export class TorrentFolders {
         this.schedule(path, 2000);
         return;
       }
-      recordLog({
+      const log = createLogger({
         component: "torrent-folders",
         context: { path },
         dataDir,
-        error,
-        level: "warn",
+        error: sanitizeLog(error),
         operation: "skip-invalid-file",
       });
+      log.setLevel("warn");
+      log.emit();
       return null;
     }
     const { infoHash } = parsed;
@@ -233,23 +239,24 @@ export class TorrentFolders {
       try {
         await engine.add(bytes, { destinationId: destination.id, paused: false });
       } catch (error) {
-        recordLog({
+        const log = createLogger({
           component: "torrent-folders",
           context,
           dataDir,
-          error,
-          level: "error",
+          error: sanitizeLog(error),
           operation: "add",
         });
+        log.setLevel("error");
+        log.emit();
         return infoHash;
       }
-      recordLog({
+      const log = createLogger({
         component: "torrent-folders",
         context,
         dataDir,
-        level: "info",
         operation: "add",
       });
+      log.emit();
       if (runtime.current.kind === "desktop") {
         runtime.current.desktop.notifications.show({
           body: `${[parsed.name].flat()[0] || infoHash} was added to ${destination.name}`,
@@ -263,14 +270,15 @@ export class TorrentFolders {
     try {
       await unlink(path);
     } catch (error) {
-      recordLog({
+      const log = createLogger({
         component: "torrent-folders",
         context: { path },
         dataDir,
-        error,
-        level: "warn",
+        error: sanitizeLog(error),
         operation: "delete-source",
       });
+      log.setLevel("warn");
+      log.emit();
       return infoHash;
     }
     db.delete(watchedTorrentFiles).where(eq(watchedTorrentFiles.path, path)).run();

@@ -1,13 +1,16 @@
 import { ElysiaStatus, HTTPError, problem } from "elysia";
+import { createLogger, initLogger } from "evlog";
 import type { EngineFailure, EngineMessage, EngineRequest, EngineSnapshot } from "../../../types";
-import { logEvents, recordLog } from "../../lib/diagnostics";
+import { loggerConfig, sanitizeLog } from "../../lib/diagnostics";
 import { TorrentEngine } from "./service";
 
 declare let self: Worker;
 
-logEvents.addEventListener("log", (event) => {
-  const { line } = (event as CustomEvent<{ line: string }>).detail;
-  postMessage({ line, type: "log" } satisfies EngineMessage);
+initLogger({
+  ...loggerConfig,
+  drain(context) {
+    postMessage({ context, type: "log" } satisfies EngineMessage);
+  },
 });
 let dataDir = "";
 const torrentIdPattern = /^[a-f0-9]{40}$/;
@@ -48,13 +51,14 @@ async function execute(request: EngineRequest) {
             postMessage({ snapshot: current, type: "snapshot" } satisfies EngineMessage);
           }
         } catch (error) {
-          recordLog({
+          const log = createLogger({
             component: "torrent-worker",
             dataDir,
-            error,
-            level: "error",
+            error: sanitizeLog(error),
             operation: "publish",
           });
+          log.setLevel("error");
+          log.emit();
         }
       });
     });
@@ -171,14 +175,15 @@ self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
         } satisfies EngineMessage);
       }
     } catch (error) {
-      recordLog({
+      const log = createLogger({
         component: "torrent-worker",
         context: { torrentId },
         dataDir,
-        error,
-        level: "error",
+        error: sanitizeLog(error),
         operation: data.method,
       });
+      log.setLevel("error");
+      log.emit();
       const failure: EngineFailure =
         error instanceof HTTPError && typeof error.status === "number"
           ? {

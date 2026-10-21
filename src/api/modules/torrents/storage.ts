@@ -1,9 +1,10 @@
 import { constants, type Stats } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
 import { HTTPError } from "elysia";
+import { createLogger } from "evlog";
 import type { Torrent } from "webtorrent";
 import type { FileStats, TorrentStorageIssue } from "../../../types";
-import { recordLog } from "../../lib/diagnostics";
+import { sanitizeLog } from "../../lib/diagnostics";
 
 export interface StorageIdentity {
   canonicalPath?: string;
@@ -66,14 +67,15 @@ export function storageFailure(
 ): TorrentStorageIssue {
   if (context) {
     const { dataDir, ...fields } = context;
-    recordLog({
+    const log = createLogger({
       component: "storage",
       context: { ...fields, paths },
       dataDir,
-      error: cause,
-      level: "error",
+      error: sanitizeLog(cause),
       operation: "access",
     });
+    log.setLevel("error");
+    log.emit();
   }
   const message = cause instanceof Error ? cause.message : String(cause);
   const code =

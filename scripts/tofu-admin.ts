@@ -7,6 +7,7 @@ import { acquireInstance, currentInstanceConfig } from "../src/api/lib/instance"
 import { Devices } from "../src/api/modules/access/devices";
 import { Invitations } from "../src/api/modules/access/invitations";
 import { AccessService } from "../src/api/modules/access/service";
+import { EmbeddedTailscale } from "../src/api/modules/connections/embedded";
 import { ConnectionsService } from "../src/api/modules/connections/service";
 import { StorageRoots } from "../src/api/modules/destinations/roots";
 import {
@@ -28,11 +29,16 @@ const lease = await acquireInstance(config);
 try {
   const db = await openDatabase(config.dataDir);
   try {
+    await using embeddedTailscale = new EmbeddedTailscale(
+      join(config.dataDir, "tailscale"),
+      join(config.dataDir, "tls")
+    );
     const connections = new ConnectionsService({
       dataDir: config.dataDir,
       db,
       defaultLanPort: config.profile === "dev" ? 3442 : 3443,
       defaultPort: config.profile === "dev" ? 3030 : 3031,
+      embeddedTailscale,
       fixedPort: null,
       now: Date.now,
     });

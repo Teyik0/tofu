@@ -1,15 +1,6 @@
+import type { LoggerConfig } from "evlog";
 import { version } from "../../../package.json";
 
-export interface LogInput {
-  component: string;
-  context?: Record<string, unknown>;
-  dataDir?: string;
-  error?: unknown;
-  level: "info" | "warn" | "error";
-  operation: string;
-}
-
-export const logEvents = new EventTarget();
 const sensitiveKey =
   /authorization|cookie|password|secret|token|api[-_]?key|credential|headers|body|metadata|source/i;
 const sensitiveValue =
@@ -78,26 +69,21 @@ export function sanitizeLog(value: unknown, seen = new WeakSet<object>(), depth 
   }
 }
 
-export function recordLog(input: LogInput) {
-  const { dataDir, ...fields } = input;
-  const record = {
-    ...fields,
-    pid: process.pid,
-    timestamp: new Date().toISOString(),
-    version,
-  };
-  let line = JSON.stringify(sanitizeLog(record));
-  if (Buffer.byteLength(line) > 64 * 1024) {
-    line = JSON.stringify(
-      sanitizeLog({
-        ...record,
-        context: { truncated: true },
-        error:
-          input.error instanceof Error
-            ? { message: input.error.message, name: input.error.name, stack: input.error.stack }
-            : "Error details exceeded the log size limit",
-      })
-    );
-  }
-  logEvents.dispatchEvent(new CustomEvent("log", { detail: { dataDir, line: `${line}\n` } }));
-}
+export const loggerConfig = {
+  env: { service: "tofu", version },
+  redact: {
+    builtins: false,
+    transform(event) {
+      event.pid = process.pid;
+      const sanitized = sanitizeLog(event);
+      if (sanitized && typeof sanitized === "object") {
+        Object.assign(event, sanitized);
+      }
+      if (Buffer.byteLength(JSON.stringify(event)) > 64 * 1024) {
+        event.context = { truncated: true };
+        event.error = { message: "Error details exceeded the log size limit" };
+      }
+    },
+  },
+  silent: true,
+} satisfies LoggerConfig;

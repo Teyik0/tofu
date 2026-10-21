@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { dirname, join, normalize, sep } from "node:path";
 import { Elysia, problem, t } from "elysia";
+import { createLogger } from "evlog";
 import { version } from "libvlc-wasm/package.json";
 import { databasePlugin, instance } from "../../lib/database-plugin";
-import { recordLog } from "../../lib/diagnostics";
+import { sanitizeLog } from "../../lib/diagnostics";
 import { accessPlugin } from "../access/plugin";
 
 // Builds copy the engine next to the server bundle; development and tests run from the project
@@ -42,17 +43,25 @@ export const playerPlugin = new Elysia({ name: "tofu-player-api" })
     },
     ({ body }) => {
       const { message, operation, ...context } = body;
-      recordLog({
+      const log = createLogger({
         component: "player",
         context: { ...context, engineVersion: version },
         dataDir: instance.dataDir,
-        error: { message },
-        level: "error",
+        error: sanitizeLog({ message }),
         operation,
       });
+      log.setLevel("error");
+      log.emit();
       return { ok: true };
     }
   )
+  .guard({
+    transform({ set }) {
+      // The engine's workers must remain cross-origin isolated as well as the document.
+      set.headers["cross-origin-embedder-policy"] = "require-corp";
+      set.headers["cross-origin-resource-policy"] = "same-origin";
+    },
+  })
   // The engine reads fonts as lazy files, which first ask for their size with HEAD.
   .head("/player/engine/:version/*", async ({ params }) => {
     const path = normalize(join(engineRoot, params["*"]));

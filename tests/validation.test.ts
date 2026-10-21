@@ -8,6 +8,7 @@ test("moving downloads requires a destination path", async () => {
   try {
     const invalid = await context.client.settings.patch({ moveFiles: true });
     expect(invalid.status).toBe(422);
+    expect(new Headers(invalid.headers).get("cache-control")).toBe("private, no-store");
     const valid = await context.client.settings.patch({ downloadLimit: 1024 });
     expect(valid.status).toBe(200);
     expect(expectSuccess(valid).downloadLimit).toBe(1024);

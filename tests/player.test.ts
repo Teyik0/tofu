@@ -59,7 +59,9 @@ test("the player streams completed files by range and serves its engine in isola
   for (const response of [engineHead, engineGet]) {
     expect(response.status).toBe(200);
     expect(response.headers.get("cross-origin-embedder-policy")).toBe("require-corp");
-    expect(response.headers.get("cross-origin-opener-policy")).toBe("same-origin");
+    expect(response.headers.get("cross-origin-resource-policy")).toBe("same-origin");
+    expect(response.headers.get("cross-origin-opener-policy")).toBeNull();
+    expect(response.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
   }
   expect(Number(engineHead.headers.get("content-length"))).toBeGreaterThan(0);
   expect((await engineGet.arrayBuffer()).byteLength).toBe(
@@ -74,6 +76,7 @@ test("the player streams completed files by range and serves its engine in isola
   // Only the player is cross-origin isolated, so the library can still show remote images.
   const state = await context.api.handle(new Request("http://localhost/api/state"));
   expect(state.headers.get("cross-origin-embedder-policy")).toBeNull();
+  expect(state.headers.get("cache-control")).toBe("private, no-store");
 
   const diagnostic = {
     audioState: "interrupted",
@@ -88,7 +91,7 @@ test("the player streams completed files by range and serves its engine in isola
   };
   expectSuccess(await context.client.player.diagnostics.post(diagnostic));
   await context.api.application.logs.flush();
-  const logs = await readLogRecords(join(context.api.application.logs.directory, "app.jsonl"));
+  const logs = await readLogRecords(join(context.api.application.instance.dataDir, "logs"));
   expect(logs).toContainEqual(
     expect.objectContaining({
       component: "player",

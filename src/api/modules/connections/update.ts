@@ -1,8 +1,8 @@
 import "@teyik0/furin/server-only";
 import { ElysiaStatus, problem } from "elysia";
+import type { EmbeddedTailscale } from "./embedded";
 import type { ConnectionsUpdate } from "./model";
-import { closeLan, connections, embeddedTailscale, openLan } from "./plugin";
-import type { RemoteAccessConfig } from "./service";
+import type { ConnectionsService, RemoteAccessConfig } from "./service";
 import { checkTailscale, disableTailscale, enableTailscale } from "./tailscale";
 
 /** A browser-facing HTTPS origin without credentials, path, query or fragment. */
@@ -28,7 +28,12 @@ function httpsOrigin(value: string) {
  * certificate names) are refused for other callers.
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Validation, activation and rollback of one exposure form one lifecycle operation.
-export async function updateRemoteAccess(body: ConnectionsUpdate, owner: boolean) {
+export async function updateRemoteAccess(
+  connections: ConnectionsService,
+  embeddedTailscale: EmbeddedTailscale,
+  body: ConnectionsUpdate,
+  owner: boolean
+) {
   const turn = connections.reserve();
   try {
     await turn.previous;
@@ -124,11 +129,11 @@ export async function updateRemoteAccess(body: ConnectionsUpdate, owner: boolean
     // Journal, then activate. An interrupted change never widens access after a restart.
     connections.journal(next, serveIntent);
     if (lanChanged && next.lan.enabled) {
-      const opened = await openLan(next);
+      const opened = await connections.openLan(next);
       if (opened instanceof ElysiaStatus) {
         if (current.lan.enabled) {
           // Restore the previous local network ingress; its address and port stay in use.
-          const restored = await openLan(current);
+          const restored = await connections.openLan(current);
           if (restored instanceof ElysiaStatus) {
             return restored;
           }
@@ -183,7 +188,7 @@ export async function updateRemoteAccess(body: ConnectionsUpdate, owner: boolean
       }
     }
     if (lanChanged && !next.lan.enabled) {
-      const closed = await closeLan();
+      const closed = await connections.closeLan();
       if (closed instanceof ElysiaStatus) {
         connections.abandon();
         return closed;

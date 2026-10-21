@@ -61,17 +61,16 @@ test.each(["desktop", "web"])(
         await Bun.file(join(context.directory, "failed-startup-state/server.json")).exists()
       ).toBe(false);
       expect(await Bun.file(downloadPath).text()).toBe("This is a file, not a download directory.");
-      const records = await readLogRecords(
-        join(context.directory, "failed-startup-state/logs/app.jsonl")
-      );
+      const records = await readLogRecords(join(context.directory, "failed-startup-state/logs"));
       expect(records).toContainEqual(
         expect.objectContaining({
+          component: "torrent-worker",
           error: expect.objectContaining({
             message: expect.stringContaining(downloadPath),
             stack: expect.any(String),
           }),
           level: "error",
-          operation: "startup",
+          operation: "open",
         })
       );
     } finally {
@@ -159,6 +158,9 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
     expect((await host.client.state.get()).status).toBe(200);
     const page = await host.page("/");
     expect(page.status).toBe(200);
+    expect(page.headers.get("cache-control")).toContain("no-store");
+    expect(page.headers.get("cross-origin-embedder-policy")).toBeNull();
+    expect(page.headers.get("cross-origin-opener-policy")).toBeNull();
     expect(await page.text()).toContain("<h1>All torrents</h1>");
     const destination = await host.client.destinations.post({
       downloadPath: join(context.directory, "thread-downloads"),
@@ -182,6 +184,19 @@ test("the Furin desktop host initializes Tofu, guards requests and preserves rea
       ) as LibraryState;
     };
     await waitFor(state, (value) => value.detail?.status === "seeding");
+    const player = await host.page(`/player/${id}?file=0`);
+    expect(player.status).toBe(200);
+    expect(player.headers.get("cross-origin-embedder-policy")).toBe("require-corp");
+    expect(player.headers.get("cross-origin-opener-policy")).toBe("same-origin");
+    expect(player.headers.get("cache-control")).toContain("no-store");
+    await player.text();
+    const remotePlayer = await host.page(
+      "/player/remote?episode=1&file=0&link=test&media=1&torrent=test"
+    );
+    expect(remotePlayer.status).toBe(200);
+    expect(remotePlayer.headers.get("cross-origin-embedder-policy")).toBe("require-corp");
+    expect(remotePlayer.headers.get("cross-origin-opener-policy")).toBe("same-origin");
+    await remotePlayer.text();
     const bytes = torrentBytes(
       await host.client.torrents({ id }).files({ index: "0" }).content.get()
     );

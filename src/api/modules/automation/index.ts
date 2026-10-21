@@ -1,10 +1,15 @@
 import { Elysia } from "elysia";
-import { db } from "../../lib/database-plugin";
-import { jev, jevServicePlugin } from "../jev/plugin";
+import { databasePlugin } from "../../lib/database-plugin";
+import { jevServicePlugin } from "../jev/plugin";
 import { AutomationService } from "./service";
 
-export const automation = new AutomationService(db, { jev, now: Date.now });
 export const automationPlugin = new Elysia({ name: "tofu-automation-service" })
+  .use(databasePlugin)
   .use(jevServicePlugin)
-  .decorate("automation", automation);
-export type AutomationPlugin = typeof automationPlugin;
+  .decorate((dependencies) => ({
+    ...dependencies,
+    automation: new AutomationService(dependencies.db, {
+      jev: dependencies.jev,
+      now: Date.now,
+    }),
+  }));

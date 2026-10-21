@@ -9,7 +9,9 @@ export const route = defineRoute("/player/[id]")
     params: t.Object({ id: t.String() }),
     query: t.Object({ file: t.String() }),
   })
-  .loader(async ({ params, query }) => {
+  .loader(async ({ params, query, set }) => {
+    set.headers["cross-origin-embedder-policy"] = "require-corp";
+    set.headers["cross-origin-opener-policy"] = "same-origin";
     const { data, error } = await api.torrents({ id: params.id }).get();
     if (error) {
       if (error.status === 404) {

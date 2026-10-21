@@ -5,7 +5,7 @@ import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { problem } from "elysia";
 import { instance } from "../../lib/database-plugin";
-import { embeddedTailscale } from "./plugin";
+import type { EmbeddedTailscale } from "./embedded";
 
 const LOCAL_HOST_SUFFIX = /\.local$/i;
 
@@ -29,7 +29,7 @@ export function localCertificate() {
   };
 }
 
-export async function prepareCertificate(names: string[]) {
+export async function prepareCertificate(embeddedTailscale: EmbeddedTailscale, names: string[]) {
   const binary = embeddedTailscale.available();
   if (!binary) {
     return problem(503, {

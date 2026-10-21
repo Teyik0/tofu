@@ -1,31 +1,27 @@
 import { Elysia } from "elysia";
-import { recordLog } from "../../lib/diagnostics";
-import { resources } from "../../lib/runtime";
-import { discovery, discoveryServicePlugin } from "../discovery/plugin";
-import { plugins } from "../plugins/plugin";
-import { engine } from "../torrents/plugin";
-import { automation, automationPlugin } from ".";
+import { discoveryServicePlugin } from "../discovery/plugin";
+import { pluginRegistryPlugin } from "../plugins/plugin";
+import { torrentServicePlugin } from "../torrents/plugin";
+import { automationPlugin } from ".";
 import { ReleaseAutomationService } from "./integration";
 
-export const releaseAutomation = new ReleaseAutomationService({
-  automation,
-  discovery,
-  engine,
-  now: Date.now,
-  plugins,
-});
 export const releaseAutomationPlugin = new Elysia({ name: "tofu-release-automation-integration" })
   .use(automationPlugin)
   .use(discoveryServicePlugin)
-  .decorate("releaseAutomation", releaseAutomation);
-resources.defer(releaseAutomation.close.bind(releaseAutomation));
-releaseAutomationPlugin.onStart(() => {
-  const start = async () => {
-    try {
-      await releaseAutomation.start();
-    } catch (error) {
-      recordLog({ component: "automation", error, level: "error", operation: "start" });
-    }
-  };
-  void start();
-});
+  .use(pluginRegistryPlugin)
+  .use(torrentServicePlugin)
+  .use((app) =>
+    app.decorate((dependencies) => {
+      const releaseAutomation = new ReleaseAutomationService({
+        automation: dependencies.automation,
+        discovery: dependencies.discovery,
+        engine: dependencies.torrents,
+        now: Date.now,
+        plugins: dependencies.plugins,
+      });
+
+      app.onStart(releaseAutomation.start.bind(releaseAutomation));
+
+      return { ...dependencies, releaseAutomation };
+    })
+  );

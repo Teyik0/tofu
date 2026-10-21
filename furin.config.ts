@@ -77,8 +77,8 @@ export default defineConfig({
       name: "tofu-build-scan-cleanup",
       async setup(builder) {
         if (builder.config.target === "bun") {
-          const { resources } = await import("./src/api/lib/runtime");
-          await resources.disposeAsync();
+          const { stopServices } = await import("./src/api/lib/lifecycle");
+          await stopServices();
         }
       },
     },

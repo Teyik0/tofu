@@ -1,5 +1,6 @@
 import type { FormStore } from "@formisch/react";
 import type { ApplicationRuntime } from "@teyik0/furin-electrobun/host";
+import type { DrainContext } from "evlog";
 import type { InferOutput } from "valibot";
 import type { Options as TorrentNetworkOptions } from "webtorrent";
 import type { pluginConfigurationSchema, pluginFormSchema } from "./api/modules/plugins/model";
@@ -843,7 +844,7 @@ type EngineReturnedStatus = Extract<
 >;
 
 export type EngineMessage =
-  | { type: "log"; line: string }
+  | { type: "log"; context: DrainContext }
   | { type: "ready" }
   | { type: "snapshot"; snapshot: EngineSnapshot }
   | { type: "result"; id: number; value: unknown; snapshot: EngineSnapshot | null }

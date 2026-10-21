@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateRouteTypes } from "@teyik0/furin/build";
-import { resources } from "../src/api/lib/runtime";
 
 // Scanning imports the route modules, which open Tofu's runtime resources; release them so the process exits.
 const scratch = await mkdtemp(join(tmpdir(), "tofu-route-types-"));
@@ -12,7 +11,8 @@ try {
   await generateRouteTypes({ pagesDir: "./src/pages", rootDir: `${import.meta.dir}/..` });
 } finally {
   try {
-    await resources.disposeAsync();
+    const { stopServices } = await import("../src/api/lib/lifecycle");
+    await stopServices();
   } finally {
     await rm(scratch, { force: true, recursive: true });
   }

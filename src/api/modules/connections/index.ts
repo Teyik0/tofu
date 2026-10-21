@@ -11,15 +11,16 @@ import { cookieName } from "../access/admission";
 import { accessPlugin } from "../access/plugin";
 import { localCertificate, prepareCertificate } from "./certificates";
 import { connectionsUpdateSchema } from "./model";
-import { connections, embeddedTailscale } from "./plugin";
+import { connectionsServicePlugin } from "./plugin";
 import { checkTailscale } from "./tailscale";
 import { updateRemoteAccess } from "./update";
 
 export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
+  .use(connectionsServicePlugin)
   .use(accessPlugin)
   .use(furinSync(sync))
   .guard({ administration: true, idempotent: false })
-  .get("/connections", ({ access }) => {
+  .get("/connections", ({ access, connections, embeddedTailscale }) => {
     const identity = access.identity();
     return {
       /** Local network HTTPS origins the ingress serves now; each is covered by the certificate. */
@@ -34,7 +35,7 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
   .get("/connections/certificate", { owner: true }, () => ({
     certificate: localCertificate(),
   }))
-  .post("/connections/certificate", { owner: true }, async () => {
+  .post("/connections/certificate", { owner: true }, async ({ connections, embeddedTailscale }) => {
     const turn = connections.reserve();
     try {
       await turn.previous;
@@ -44,7 +45,7 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
           detail: "Turn off local network sharing before renewing its certificate",
         });
       }
-      return await prepareCertificate(config.lan.hostnames);
+      return await prepareCertificate(embeddedTailscale, config.lan.hostnames);
     } finally {
       turn.release();
     }
@@ -89,35 +90,39 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
     runtime.current.desktop.shell.showItemInFolder(path);
     return { path };
   })
-  .post("/connections/tailscale/enroll", { owner: true }, async ({ access }) => {
+  .post("/connections/tailscale/enroll", { owner: true }, async ({ access, embeddedTailscale }) => {
     const status = await embeddedTailscale.request({
       hostname: `tofu-${access.identity().serverId.slice(0, 8)}`,
       method: "start",
     });
     return status;
   })
-  .post("/connections/tailscale/logout", { owner: true }, async () => {
-    const turn = connections.reserve();
-    try {
-      await turn.previous;
-      const { tailscale } = connections.config();
-      if (tailscale.enabled && tailscale.mode === "embedded") {
-        return problem(409, {
-          detail: "Turn off Tailscale sharing before signing out of Tailscale",
-        });
+  .post(
+    "/connections/tailscale/logout",
+    { owner: true },
+    async ({ connections, embeddedTailscale }) => {
+      const turn = connections.reserve();
+      try {
+        await turn.previous;
+        const { tailscale } = connections.config();
+        if (tailscale.enabled && tailscale.mode === "embedded") {
+          return problem(409, {
+            detail: "Turn off Tailscale sharing before signing out of Tailscale",
+          });
+        }
+        return await embeddedTailscale.request({ method: "logout" });
+      } finally {
+        turn.release();
       }
-      return await embeddedTailscale.request({ method: "logout" });
-    } finally {
-      turn.release();
     }
-  })
-  .post("/connections/tailscale/https", { owner: true }, () =>
+  )
+  .post("/connections/tailscale/https", { owner: true }, ({ embeddedTailscale }) =>
     embeddedTailscale.request({ method: "authorize-https" })
   )
-  .get("/connections/tailscale/embedded", { owner: true }, () =>
+  .get("/connections/tailscale/embedded", { owner: true }, ({ embeddedTailscale }) =>
     embeddedTailscale.request({ method: "status" })
   )
-  .post("/connections/tailscale/check", async () => {
+  .post("/connections/tailscale/check", async ({ connections }) => {
     const turn = connections.reserve();
     try {
       await turn.previous;
@@ -134,8 +139,13 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
   .put(
     "/connections",
     { body: connectionsUpdateSchema },
-    async ({ access, body, caller, cookie }) => {
-      const updated = await updateRemoteAccess(body, caller.kind === "owner");
+    async ({ access, body, caller, connections, cookie, embeddedTailscale }) => {
+      const updated = await updateRemoteAccess(
+        connections,
+        embeddedTailscale,
+        body,
+        caller.kind === "owner"
+      );
       if (updated instanceof ElysiaStatus) {
         return updated;
       }

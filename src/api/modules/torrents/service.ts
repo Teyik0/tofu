@@ -12,6 +12,7 @@ import {
 } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
+import { createLogger } from "evlog";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
 import WebTorrent, { type Options, type Torrent } from "webtorrent";
 import {
@@ -38,7 +39,7 @@ import type {
   TrackerStats,
 } from "../../../types";
 import { type DatabaseConnection, openDatabase, type TofuDatabase } from "../../lib/db";
-import { recordLog } from "../../lib/diagnostics";
+import { sanitizeLog } from "../../lib/diagnostics";
 import { ConnectionScheduler, defaultConnectionPolicy } from "./connections";
 import { installCryptoDiagnostics } from "./crypto-diagnostics";
 import { announce, peers, watchTrackers } from "./stats";
@@ -259,13 +260,14 @@ export class TorrentEngine {
     this.client.throttleDownload(this.settings.downloadLimit);
     this.client.throttleUpload(this.settings.uploadLimit);
     this.client.on("error", (error) => {
-      recordLog({
+      const log = createLogger({
         component: "torrent-engine",
         dataDir: this.dataDir,
-        error,
-        level: "error",
+        error: sanitizeLog(error),
         operation: "client",
       });
+      log.setLevel("error");
+      log.emit();
     });
     for (const row of this.db.select().from(torrentRecords).orderBy(sql`rowid`).all()) {
       const storedEntry: StoredEntry = JSON.parse(row.value);
@@ -327,7 +329,13 @@ export class TorrentEngine {
         try {
           await this.checkStorage();
         } catch (error) {
-          recordLog({ component: "storage", error, level: "error", operation: "check" });
+          const log = createLogger({
+            component: "storage",
+            error: sanitizeLog(error),
+            operation: "check",
+          });
+          log.setLevel("error");
+          log.emit();
         } finally {
           this.storageCheck = null;
           pending.resolve();
@@ -605,7 +613,13 @@ export class TorrentEngine {
         // biome-ignore lint/performance/noAwaitInLoops: Each iteration depends on the previous lifecycle or readiness result.
         await this.serial(entry, () => this.inspectStorage(entry), { checkpoint: true });
       } catch (error) {
-        recordLog({ component: "storage", error, level: "error", operation: "inspect" });
+        const log = createLogger({
+          component: "storage",
+          error: sanitizeLog(error),
+          operation: "inspect",
+        });
+        log.setLevel("error");
+        log.emit();
       }
     }
   }
@@ -734,13 +748,13 @@ export class TorrentEngine {
         entry.detail.storageIssue = null;
         entry.detail.error = null;
         await this.finishVerification(entry);
-        recordLog({
+        const log = createLogger({
           component: "storage",
           context: { previous, root, savePath: entry.detail.savePath, torrentId: entry.detail.id },
           dataDir: this.dataDir,
-          level: "info",
           operation: "recovered",
         });
+        log.emit();
       }
     } finally {
       entry.verifying = verifying;
@@ -808,7 +822,7 @@ export class TorrentEngine {
   }
 
   private markStorageIssue(entry: Entry, issue: TorrentStorageIssue) {
-    recordLog({
+    const log = createLogger({
       component: "storage",
       context: {
         expected: entry.storageRoot,
@@ -817,9 +831,10 @@ export class TorrentEngine {
         torrentId: entry.detail.id,
       },
       dataDir: this.dataDir,
-      level: "warn",
       operation: "blocked",
     });
+    log.setLevel("warn");
+    log.emit();
     entry.detail.storageIssue = issue;
     entry.detail.error = issue.message;
     entry.detail.downloaded = null;
@@ -1944,14 +1959,15 @@ export class TorrentEngine {
         return;
       }
       detail.error = String(error);
-      recordLog({
+      const log = createLogger({
         component: "torrent-engine",
         context: { savePath: detail.savePath, torrentId: detail.id },
         dataDir: this.dataDir,
-        error,
-        level: "error",
+        error: sanitizeLog(error),
         operation: "torrent",
       });
+      log.setLevel("error");
+      log.emit();
       if (entry.torrent === torrent) {
         entry.torrent = null;
       }
@@ -1994,7 +2010,13 @@ export class TorrentEngine {
                 })
               );
             } catch (error) {
-              recordLog({ component: "storage", error, level: "error", operation: "block" });
+              const log = createLogger({
+                component: "storage",
+                error: sanitizeLog(error),
+                operation: "block",
+              });
+              log.setLevel("error");
+              log.emit();
             }
           };
           void block();
@@ -2037,14 +2059,15 @@ export class TorrentEngine {
             entry.storageFiles = [...identities.values()];
           });
         } catch (error) {
-          recordLog({
+          const log = createLogger({
             component: "storage",
             context: { savePath: detail.savePath, torrentId: detail.id },
             dataDir: this.dataDir,
-            error,
-            level: "error",
+            error: sanitizeLog(error),
             operation: "completed-file-identity",
           });
+          log.setLevel("error");
+          log.emit();
         }
       };
       void recordIdentity();

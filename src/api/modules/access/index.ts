@@ -2,7 +2,7 @@ import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
 import { sync } from "../../../sync";
 import { runtime } from "../../lib/runtime";
-import { connections } from "../connections/plugin";
+import { connectionsServicePlugin } from "../connections/plugin";
 import { cookieName } from "./admission";
 import { deviceChangeSchema, invitationSchema, pairSchema, serverNameSchema } from "./model";
 import { accessPlugin } from "./plugin";
@@ -10,9 +10,10 @@ import { accessPlugin } from "./plugin";
 const SESSION_COOKIE_MAX_AGE = 365 * 86_400;
 
 export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
+  .use(connectionsServicePlugin)
   .use(accessPlugin)
   .use(furinSync(sync))
-  .get("/session", { personal: true }, ({ access, caller, set }) => {
+  .get("/session", { personal: true }, ({ access, caller, connections, set }) => {
     set.headers["cache-control"] = "private, no-store";
     return access.sessionView(caller, {
       native: runtime.current.kind === "desktop",

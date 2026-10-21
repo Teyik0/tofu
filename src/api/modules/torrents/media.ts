@@ -1,9 +1,10 @@
+import { createLogger } from "evlog";
 import "@teyik0/furin/server-only";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { type Context, ElysiaStatus, problem } from "elysia";
 import type { EnginePort } from "../../../types";
-import { recordLog } from "../../lib/diagnostics";
+import { sanitizeLog } from "../../lib/diagnostics";
 
 const CHUNK = 256 * 1024;
 const RANGE_LIMIT = 4 * 1024 * 1024;
@@ -240,7 +241,13 @@ export async function streamTorrentFile(options: {
         try {
           await engine.cancelRange(key);
         } catch (error) {
-          recordLog({ component: "torrent-stream", error, level: "error", operation: "cancel" });
+          const log = createLogger({
+            component: "torrent-stream",
+            error: sanitizeLog(error),
+            operation: "cancel",
+          });
+          log.setLevel("error");
+          log.emit();
         }
       };
       signal.addEventListener("abort", cancel, { once: true });

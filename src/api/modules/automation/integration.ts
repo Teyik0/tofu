@@ -1,4 +1,5 @@
 import { ElysiaStatus, problem } from "elysia";
+import { createLogger } from "evlog";
 import type {
   AutomationDecision,
   AutomationDraft,
@@ -9,7 +10,7 @@ import type {
   FeedRelease,
 } from "../../../types";
 import type { DatabaseTransaction } from "../../lib/db";
-import { recordLog } from "../../lib/diagnostics";
+import { sanitizeLog } from "../../lib/diagnostics";
 import { normalizeTitle } from "../../lib/title";
 import type { DiscoveryService } from "../discovery/service";
 import { collectSourceQueries, uniqueReleases } from "../discovery/sources";
@@ -485,7 +486,13 @@ export class ReleaseAutomationService {
           try {
             await this.tick();
           } catch (error) {
-            recordLog({ component: "automation", error, level: "error", operation: "poll" });
+            const log = createLogger({
+              component: "automation",
+              error: sanitizeLog(error),
+              operation: "poll",
+            });
+            log.setLevel("error");
+            log.emit();
           }
         };
         this.timer = setInterval(() => void poll(), 15_000);

@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import { closeTestOpeningApplications, createTestAniListOpeningApi } from "./helpers/application";
 
@@ -34,6 +35,6 @@ test.each([false, true])(
     const client = treaty(app).api;
     const result = await client.desktop.logs.open.post({});
     expect(result.status).toBe(isDesktop ? 200 : 409);
-    expect(opened).toEqual(isDesktop ? [app.application.logs.directory] : []);
+    expect(opened).toEqual(isDesktop ? [join(app.application.instance.dataDir, "logs")] : []);
   }
 );

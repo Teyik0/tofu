@@ -25,7 +25,7 @@ import { anilistServicePlugin } from "./plugin";
 
 const invalidateLibrary = { path: "/anilist", type: "page" } as const;
 
-export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
+export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/anilist" })
   .use(anilistServicePlugin)
   .use(automationPlugin)
   .use(releaseAutomationPlugin)
@@ -34,7 +34,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
   .use(accessPlugin)
   // The AniList account, list and automation belong to the server owner.
   .guard({ administration: true })
-  .get("/anilist", {}, ({ anilist, defer }) => {
+  .get("/", {}, ({ anilist, defer }) => {
     if (anilist.needsRefresh()) {
       defer(async () => {
         try {
@@ -46,15 +46,15 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
     return anilist.snapshot();
   })
-  .post("/anilist/catalog", { body: catalogSchema }, ({ anilist, body }) =>
+  .post("/catalog", { body: catalogSchema }, ({ anilist, body }) =>
     anilist.catalog(body as AniListCatalogFilters)
   )
-  .get("/anilist/catalog/options", ({ anilist }) => anilist.catalogOptions())
-  .get("/anilist/entries/:mediaId/editor", { params: mediaParamsSchema }, ({ anilist, params }) =>
+  .get("/catalog/options", ({ anilist }) => anilist.catalogOptions())
+  .get("/entries/:mediaId/editor", { params: mediaParamsSchema }, ({ anilist, params }) =>
     anilist.editor(params.mediaId)
   )
   .put(
-    "/anilist/entries/:mediaId/editor",
+    "/entries/:mediaId/editor",
     {
       body: aniListEntrySchema,
 
@@ -66,7 +66,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .put(
-    "/anilist/entries/:mediaId/favourite",
+    "/entries/:mediaId/favourite",
     {
       body: enabledSchema,
 
@@ -78,7 +78,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .delete(
-    "/anilist/entries/:mediaId/editor",
+    "/entries/:mediaId/editor",
     {
       params: mediaParamsSchema,
     },
@@ -87,13 +87,11 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
       return anilist.deleteEntry(params.mediaId);
     }
   )
-  .post(
-    "/anilist/entries/:mediaId/releases",
-    { params: mediaParamsSchema },
-    ({ anilist, params }) => anilist.releases(params.mediaId)
+  .post("/entries/:mediaId/releases", { params: mediaParamsSchema }, ({ anilist, params }) =>
+    anilist.releases(params.mediaId)
   )
   .put(
-    "/anilist/entries/:mediaId/automation",
+    "/entries/:mediaId/automation",
     {
       body: draft,
       params: mediaParamsSchema,
@@ -125,7 +123,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .put(
-    "/anilist/entries/:mediaId/episodes/:episode",
+    "/entries/:mediaId/episodes/:episode",
     {
       body: episodeCompletionSchema,
 
@@ -142,7 +140,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .put(
-    "/anilist/preferences",
+    "/preferences",
     {
       body: aniListPreferencesSchema,
     },
@@ -156,14 +154,14 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .post(
-    "/anilist/threads/preview",
+    "/threads/preview",
     {
       body: threadPreviewSchema,
     },
     ({ anilist, body }) => anilist.previewThreads(body.basePath, body.statuses)
   )
   .put(
-    "/anilist/entries/:mediaId",
+    "/entries/:mediaId",
     {
       body: enabledSchema,
       params: mediaParamsSchema,
@@ -180,7 +178,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .put(
-    "/anilist/selection",
+    "/selection",
     {
       body: selectionSchema,
     },
@@ -196,7 +194,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .put(
-    "/anilist",
+    "/",
     {
       body: aniListConfigurationSchema,
     },
@@ -205,7 +203,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
       return anilist.configure(body);
     }
   )
-  .post("/anilist/connect", {}, ({ anilist, caller, invalidate }) => {
+  .post("/connect", {}, ({ anilist, caller, invalidate }) => {
     invalidate(invalidateLibrary);
 
     if (caller.kind === "device" && caller.device.kind !== "desktop") {
@@ -217,7 +215,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     return anilist.connect(caller.kind === "device" ? caller.device.id : undefined);
   })
   .post(
-    "/anilist/callback",
+    "/callback",
     { body: authorizationCallbackSchema },
     ({ anilist, body, caller, invalidate }) => {
       invalidate(invalidateLibrary);
@@ -228,7 +226,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .post(
-    "/anilist/oauth/remote-callback",
+    "/oauth/remote-callback",
     { body: authorizationCallbackSchema },
     ({ anilist, body, caller, invalidate }) => {
       invalidate(invalidateLibrary);
@@ -238,20 +236,20 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
       );
     }
   )
-  .delete("/anilist/connect", {}, ({ anilist, invalidate }) => {
+  .delete("/connect", {}, ({ anilist, invalidate }) => {
     invalidate(invalidateLibrary);
     return anilist.cancelAuthorization();
   })
-  .post("/anilist/list", {}, ({ anilist, invalidate }) => {
+  .post("/list", {}, ({ anilist, invalidate }) => {
     invalidate(invalidateLibrary);
     return anilist.list();
   })
-  .post("/anilist/refresh", {}, ({ anilist, invalidate }) => {
+  .post("/refresh", {}, ({ anilist, invalidate }) => {
     invalidate(invalidateLibrary);
     return anilist.refresh();
   })
   .post(
-    "/anilist/subscriptions",
+    "/subscriptions",
     {
       body: subscriptionSchema,
     },
@@ -263,12 +261,12 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
       return result;
     }
   )
-  .post("/anilist/subscriptions/:id/sync", {}, ({ anilist, params, invalidate }) => {
+  .post("/subscriptions/:id/sync", {}, ({ anilist, params, invalidate }) => {
     invalidate(invalidateLibrary);
     return anilist.sync(params.id);
   })
   .put(
-    "/anilist/subscriptions/:id",
+    "/subscriptions/:id",
     {
       body: enabledSchema,
     },
@@ -282,7 +280,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .delete(
-    "/anilist/subscriptions/:id",
+    "/subscriptions/:id",
     {},
     async ({ anilist, automation, params, mutation, invalidate }) => {
       invalidate({ path: "/", type: "layout" });

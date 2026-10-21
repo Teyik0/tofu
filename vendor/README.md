@@ -19,9 +19,10 @@ Upstream commit `495de76f797fa0bb64f8fea5290d33d043d7f835` includes Remote Serve
 admission, TLS listener configuration and the client-only manager, so the desktop package
 no longer needs a local patch. Commit `c8e0461` also recovers the development supervisor
 after backend compilation errors. Commit `9e6e12f` adds client-render recovery after HMR
-and corrects WebKit source-map diagnostics. Tofu still uses a single `apiPlugin` listener;
-network requests authenticate before dispatch, while the protected isomorphic Eden client
-keeps direct in-process server dispatch. No client transport workaround is introduced.
+and corrects WebKit source-map diagnostics. Tofu's root Elysia application composes
+`apiPlugin` and Furin on one listener. Network requests authenticate before dispatch,
+while the protected isomorphic Eden client keeps direct in-process dispatch to
+`apiPlugin`. No client transport workaround is introduced.
 
 ## Rebuilding
 
@@ -31,12 +32,9 @@ with Bun 1.4.3, apply patch 0004 from the repository root, and run each package'
 and copy the resulting archives to the names above. Packing resolves workspace catalog
 references to published ranges. Archives contain their upstream MIT licenses.
 
-The older `*c8e0461.tgz` and `*3a83c0d.tgz` archives, `furin-electrobun-remote-native-v5.tgz` and patches
-0001/0002/0003 are retained as historical references; they are not active dependencies.
-Historical implementation notes reference those earlier pins and are superseded by this
-integration.
+Only the two active archives and their required AOT source patch are kept here.
+Historical archives and superseded or unapplied patches are not shipped.
 
-The Electrobun 2.0.2 cookie proposal in `patches/electrobun-2.0.2-macos-cookie.patch`
-remains a separate SDK change. Rebuilding Furin does not fix that native SDK binary:
-Tofu continues to refuse remote views when HttpOnly and other cookie flags cannot be
-verified. Per-session embedded client routing also remains a separate platform gate.
+The separate `../patches/libvlc-wasm@0.2.0.patch` is applied by Bun through
+`package.json`. It bounds VLC worker shutdown and the HTTP source chunk cache;
+both fixes are still needed by the installed player version.

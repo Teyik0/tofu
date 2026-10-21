@@ -1,14 +1,17 @@
+import { createLogger } from "evlog";
 import "@teyik0/furin/server-only";
 import { X509Certificate } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { problem } from "elysia";
-import { connectionState } from "../../../db/schema";
+import { ElysiaStatus, problem } from "elysia";
+import { connectionState, serverIdentity } from "../../../db/schema";
 import type { TofuDatabase } from "../../lib/db";
-import { recordLog } from "../../lib/diagnostics";
+
 import type { RemoteAccessPolicy } from "../access/service";
+import type { EmbeddedTailscale } from "./embedded";
+import { disableTailscale } from "./tailscale";
 
 const LOCAL_HOST_SUFFIX = /\.local$/i;
 const LINK_LOCAL = /^fe[89ab][0-9a-f]:/i;
@@ -74,6 +77,7 @@ interface ConnectionsServiceOptions {
   /** Default local network HTTPS port of new configurations. */
   defaultLanPort: number;
   defaultPort: number;
+  embeddedTailscale: EmbeddedTailscale;
   /** Fixed listener port of a headless server (TOFU_PORT); desktop hosts choose their own. */
   fixedPort: number | null;
   now: () => number;
@@ -120,6 +124,8 @@ export class ConnectionsService {
   private lanHosts: string[] = [];
   private readonly serving = new Set<Exposure>();
   private readonly failures = new Map<Exposure, string>();
+  /** Bonjour advertisement of the local network ingress while it is open. */
+  private advertisement: ReturnType<typeof Bun.spawn<"ignore", "ignore", "ignore">> | null = null;
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Migration, interrupted-change recovery and port separation form one ordered startup decision.
   constructor(options: ConnectionsServiceOptions) {
@@ -169,13 +175,14 @@ export class ConnectionsService {
           options.defaultLanPort === active.port
             ? options.defaultLanPort + 1
             : options.defaultLanPort;
-        recordLog({
+        const log = createLogger({
           component: "connections",
           context: { from: active.lan.port, to: port },
           dataDir: options.dataDir,
-          level: "warn",
           operation: "local-network-port-moved",
         });
+        log.setLevel("warn");
+        log.emit();
         active = { ...active, lan: { ...active.lan, port } };
       }
     }
@@ -383,6 +390,223 @@ export class ConnectionsService {
       proxy: state("proxy", false),
       tailscale: state("tailscale", this.active.tailscale.mode === "embedded"),
     };
+  }
+
+  /** Validate and restore configured network services before opening the application. */
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep dependent network validation and enrollment steps in startup order.
+  async start() {
+    const configured = this.config();
+    const { embeddedTailscale } = this.options;
+    if (
+      configured.tailscale.serveOwned &&
+      !(configured.tailscale.enabled && configured.tailscale.mode === "system")
+    ) {
+      const removed = await disableTailscale(configured.port);
+      if (removed.state === "available" || removed.state === "conflict") {
+        this.save({
+          ...configured,
+          tailscale: { ...configured.tailscale, serveOwned: false },
+        });
+      }
+    }
+
+    // Forwarding opens in activateExposures once the application's actual port is known.
+    if (configured.lan.enabled) {
+      const names = this.lanNames(configured);
+      if (names instanceof ElysiaStatus) {
+        throw new Error(names.response.detail);
+      }
+      if (!embeddedTailscale.available()) {
+        throw new Error("The native network component is missing. Rebuild or reinstall Tofu");
+      }
+    }
+    if (configured.tailscale.enabled && configured.tailscale.mode === "embedded") {
+      const identity = this.options.db
+        .select()
+        .from(serverIdentity)
+        .where(eq(serverIdentity.key, "server"))
+        .get();
+      if (!identity) {
+        throw new Error("The server identity must be initialized before restoring connections");
+      }
+      const started = await embeddedTailscale.request({
+        hostname: `tofu-${identity.serverId.slice(0, 8)}`,
+        method: "start",
+      });
+      if (started instanceof ElysiaStatus) {
+        throw new Error(started.response.detail);
+      }
+      let enrolled = false;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        // biome-ignore lint/performance/noAwaitInLoops: Enrollment must be validated before opening the application.
+        const status = await embeddedTailscale.request({ method: "status" });
+        if (status instanceof ElysiaStatus) {
+          throw new Error(status.response.detail);
+        }
+        if (status.authUrl) {
+          throw new Error("The embedded Tailscale login expired. Reconnect it on the host");
+        }
+        if (status.origin && status.origin !== configured.tailscale.origin) {
+          throw new Error("The embedded Tailscale identity changed. Review it on the host");
+        }
+        if (status.state === "Running" && status.origin === configured.tailscale.origin) {
+          enrolled = true;
+          break;
+        }
+        await Bun.sleep(250);
+      }
+      if (!enrolled) {
+        throw new Error(
+          "The embedded private network is unavailable. Recover the connection on the host"
+        );
+      }
+    }
+  }
+
+  /** Opens the local HTTPS ingress and advertises its public port, replacing its previous state. */
+  async openLan(config: RemoteAccessConfig) {
+    const previous = this.advertisement;
+    this.advertisement = null;
+    if (previous && previous.exitCode === null) {
+      previous.kill();
+      await previous.exited;
+    }
+    const names = this.lanNames(config);
+    if (names instanceof ElysiaStatus) {
+      this.closed("lan", names.response.detail);
+      return names;
+    }
+    const opened = await this.options.embeddedTailscale.request({
+      hosts: names,
+      lanPort: config.lan.port,
+      method: "lan-open",
+      port: this.servicePort(),
+    });
+    if (opened instanceof ElysiaStatus) {
+      this.closed("lan", opened.response.detail);
+      return opened;
+    }
+    this.opened("lan", opened.hosts ?? []);
+    const discovery = process.platform === "darwin" ? Bun.which("dns-sd") : null;
+    const identity = this.options.db
+      .select()
+      .from(serverIdentity)
+      .where(eq(serverIdentity.key, "server"))
+      .get();
+    if (process.env.TOFU_DISCOVERY !== "0" && discovery && identity) {
+      this.advertisement = Bun.spawn(
+        [
+          discovery,
+          "-R",
+          identity.name,
+          "_tofu._tcp",
+          "local",
+          String(config.lan.port),
+          `serverId=${identity.serverId}`,
+          "protocol=1",
+        ],
+        { stderr: "ignore", stdin: "ignore", stdout: "ignore" }
+      );
+    }
+    return opened;
+  }
+
+  /** Closes the local ingress and its advertisement without stopping the private network. */
+  async closeLan() {
+    this.closed("lan");
+    const previous = this.advertisement;
+    this.advertisement = null;
+    if (previous && previous.exitCode === null) {
+      previous.kill();
+      await previous.exited;
+    }
+    if (!this.options.embeddedTailscale.running()) {
+      return;
+    }
+    return await this.options.embeddedTailscale.request({ method: "lan-close" });
+  }
+
+  /** Restore enabled forwarding after the host has recorded the application's actual port. */
+  async activateExposures() {
+    const config = this.config();
+    const { embeddedTailscale } = this.options;
+    if (config.lan.enabled) {
+      const opened = await this.openLan(config);
+      if (opened instanceof ElysiaStatus) {
+        return opened;
+      }
+    }
+    if (!config.tailscale.enabled || config.tailscale.mode !== "embedded") {
+      return;
+    }
+    const identity = this.options.db
+      .select()
+      .from(serverIdentity)
+      .where(eq(serverIdentity.key, "server"))
+      .get();
+    if (!identity) {
+      return problem(503, { detail: "The server identity is not initialized" });
+    }
+    const started = await embeddedTailscale.request({
+      hostname: `tofu-${identity.serverId.slice(0, 8)}`,
+      method: "start",
+    });
+    if (started instanceof ElysiaStatus) {
+      return started;
+    }
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      // biome-ignore lint/performance/noAwaitInLoops: Each forwarding check depends on the previous readiness result.
+      const status = await embeddedTailscale.request({ method: "serve", port: this.servicePort() });
+      if (status instanceof ElysiaStatus) {
+        return status;
+      }
+      if (status.state === "ready" && status.origin === config.tailscale.origin) {
+        this.opened("tailscale");
+        return;
+      }
+      if (status.origin && status.origin !== config.tailscale.origin) {
+        return problem(409, {
+          detail: "The embedded Tailscale node identity changed. Review remote access on the host",
+        });
+      }
+      if (status.authUrl) {
+        return problem(409, {
+          detail: "The embedded Tailscale login expired. Reconnect it on the host",
+        });
+      }
+      await Bun.sleep(250);
+    }
+    return problem(503, {
+      detail: "The embedded private network is not ready. Check its enrollment on the host",
+    });
+  }
+
+  /** Lifecycle cleanup continues through failures and waits for any configuration change. */
+  async close() {
+    const turn = this.reserve();
+    const errors: unknown[] = [];
+    try {
+      await turn.previous;
+      try {
+        const closed = await this.closeLan();
+        if (closed instanceof ElysiaStatus) {
+          errors.push(new Error(closed.response.detail));
+        }
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        await this.options.embeddedTailscale[Symbol.asyncDispose]();
+      } catch (error) {
+        errors.push(error);
+      }
+      this.closed("tailscale");
+    } finally {
+      turn.release();
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Tofu could not stop every connection service");
+    }
   }
 
   /** Offline owner recovery turns off every exposure. */

@@ -1,4 +1,5 @@
 import { on } from "node:events";
+import { join } from "node:path";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem, sse } from "elysia";
 import { nativeControl } from "../../../native/control";
@@ -42,7 +43,7 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
       return problem(409, { detail: "The logs folder is on the machine hosting Tofu" });
     }
     await logs.flush();
-    return { opened: runtime.current.desktop.shell.openPath(logs.directory) };
+    return { opened: runtime.current.desktop.shell.openPath(join(instance.dataDir, "logs")) };
   })
   .get("/desktop/openings", async function* ({ request }) {
     // Register before the first list so no torrent opened in between is missed.

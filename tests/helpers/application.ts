@@ -2,9 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { furinSync } from "@teyik0/furin/sync";
+import type { DrainContext } from "evlog";
+import { createFsDrain } from "evlog/fs";
+import { createDrainPipeline } from "evlog/pipeline";
 import { version } from "../../package.json";
 import { resolveInstanceConfig } from "../../src/api/lib/instance";
-import { ApplicationLogs } from "../../src/api/lib/logs";
 import { callers } from "../../src/api/modules/access/service";
 import { AniListService } from "../../src/api/modules/anilist/service";
 import { pluginEndpoints } from "../../src/api/modules/plugins/service";
@@ -13,12 +15,13 @@ import { TorrentEngine } from "../../src/api/modules/torrents/service";
 import { UpdatesService } from "../../src/api/modules/updates/service";
 import type { AniListClient, ApplicationPlatform, EnginePort } from "../../src/types";
 import { openTestDatabase, type TestSyncOptions } from "./database";
+import { testLogDrains } from "./logs";
 import { serviceApplications } from "./service-registry";
 import { openTestServices } from "./services";
 
 const serviceReplacements = [
-  [/[\\/]api[\\/]lib[\\/]runtime\.ts$/, "resources, runtime"],
-  [/[\\/]api[\\/]lib[\\/]database-plugin\.ts$/, "db, instance, logs, databasePlugin"],
+  [/[\\/]api[\\/]lib[\\/]runtime\.ts$/, "runtime"],
+  [/[\\/]api[\\/]lib[\\/]database-plugin\.ts$/, "db, instance, lease, logs, databasePlugin"],
   [
     /[\\/]api[\\/]modules[\\/]torrents[\\/]plugin\.ts$/,
     "engine, torrentFolders, torrentServicePlugin",
@@ -63,8 +66,20 @@ export async function createTestApplication(
     }),
     desktop: engine.mode === "desktop",
   };
-  const logs = await ApplicationLogs.open({ dataDir: instance.dataDir });
-  resources.defer(logs.close.bind(logs));
+  const pipeline = createDrainPipeline<DrainContext>({ batch: { intervalMs: 1000, size: 25 } });
+  const logs = pipeline(
+    createFsDrain({
+      dir: join(instance.dataDir, "logs"),
+      maxFiles: 4,
+      maxSizePerFile: 5 * 1024 * 1024,
+      pretty: false,
+    })
+  );
+  testLogDrains.set(instance.dataDir, logs);
+  resources.defer(async () => {
+    await logs.flush();
+    testLogDrains.delete(instance.dataDir);
+  });
   const feeds =
     services ??
     (await openTestServices(
@@ -122,6 +137,7 @@ export async function createTestApplication(
     engine,
     instance,
     jev: feeds.jev,
+    lease: options.lease,
     logs,
     plugins: feeds.plugins,
     releaseAutomation: feeds.releaseAutomation,
@@ -160,10 +176,14 @@ export async function mountTestApplication(
             external: true,
             path: Bun.resolveSync(path, dirname(importer)),
           }));
-          builder.onResolve({ filter: serviceModulePattern }, ({ path, importer }) => ({
-            external: true,
-            path: Bun.resolveSync(path, dirname(importer)),
-          }));
+          builder.onResolve({ filter: serviceModulePattern }, ({ path, importer }) => {
+            const resolved = Bun.resolveSync(path, dirname(importer));
+            // Compose native hooks with this application's supplied services, not process globals.
+            if (resolved === join(import.meta.dir, "../../src/api/modules/desktop/service.ts")) {
+              return;
+            }
+            return { external: true, path: resolved };
+          });
         },
       },
     ],

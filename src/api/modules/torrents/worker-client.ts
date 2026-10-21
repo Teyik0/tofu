@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { ElysiaStatus, HTTPError, problem } from "elysia";
+import { createLogger } from "evlog";
 import workerBundle from "../../../../runtime/engine-worker.worker" with { type: "file" };
 import type {
   DashboardState,
@@ -16,8 +17,8 @@ import type {
   SettingsInput,
   TorrentAddOptions,
 } from "../../../types";
-import { recordLog } from "../../lib/diagnostics";
-import type { ApplicationLogs } from "../../lib/logs";
+import { sanitizeLog } from "../../lib/diagnostics";
+import type { logDrain } from "../../lib/logs";
 
 interface PendingOperation {
   method: EngineRequest["method"];
@@ -28,7 +29,7 @@ interface PendingOperation {
 export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }> {
   private readonly worker: Worker;
   private readonly options: EngineOpenOptions;
-  private readonly logs?: ApplicationLogs;
+  private readonly logs?: typeof logDrain;
   private readonly pending = new Map<number, PendingOperation>();
   private readonly ready = Promise.withResolvers<void>();
   private state!: DashboardState;
@@ -43,7 +44,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
   private shutdown: Promise<void> | null = null;
   mode: "desktop" | "server" = "server";
 
-  private constructor(entry: string | URL, options: EngineOpenOptions, logs?: ApplicationLogs) {
+  private constructor(entry: string | URL, options: EngineOpenOptions, logs?: typeof logDrain) {
     super();
     // Every open live stream listens for changes.
     this.setMaxListeners(0);
@@ -52,7 +53,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
     this.worker = new Worker(entry);
     this.worker.addEventListener("message", ({ data }: MessageEvent<EngineMessage>) => {
       if (data.type === "log") {
-        this.logs?.write(data.line);
+        this.logs?.(data.context);
         return;
       }
       if (data.type === "ready") {
@@ -148,7 +149,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
     return this.call("setObserved", [observed]);
   }
 
-  static async open(options: EngineOpenOptions, logs?: ApplicationLogs) {
+  static async open(options: EngineOpenOptions, logs?: typeof logDrain) {
     const source = new URL("./worker.ts", import.meta.url);
     const compiled = new URL(workerBundle, import.meta.url);
     // The native host shares the backend's worker and external package tree.
@@ -174,6 +175,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
       return engine;
     } catch (error) {
       engine.worker.terminate();
+      await logs?.flush();
       throw error;
     }
   }
@@ -184,17 +186,18 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
       return;
     }
     if (!this.shutdown) {
-      recordLog({
+      const log = createLogger({
         component: "torrent-worker",
         context: {
           exitCode,
           pendingOperations: [...this.pending.values()].map((operation) => operation.method),
         },
         dataDir: this.options.dataDir,
-        error,
-        level: "error",
+        error: sanitizeLog(error),
         operation: "stopped",
       });
+      log.setLevel("error");
+      log.emit();
     }
     this.failure = error;
     this.ready.reject(error);

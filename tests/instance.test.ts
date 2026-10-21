@@ -93,14 +93,14 @@ test("watch mode restarts the application and restores its profile, settings and
   const entry = join(watchDirectory, "watch-entry.ts");
   const signal = join(context.directory, "watch-ready.json");
   const source = join(import.meta.dir, "../src/server.ts");
-  const serverProgram = (await Bun.file(source).text()).replaceAll(
-    'from "./',
-    `from "${pathToFileURL(join(import.meta.dir, "../src")).href}/`
-  );
+  const sourceDirectory = pathToFileURL(join(import.meta.dir, "../src")).href;
+  const serverProgram = (await Bun.file(source).text())
+    .replaceAll('from "./', `from "${sourceDirectory}/`)
+    .replaceAll('import("./', `import("${sourceDirectory}/`);
   // Publish readiness atomically so polling never reads a partially written JSON file.
   const program = (iteration: number) => `import { rename } from "node:fs/promises";
 ${serverProgram}
-await Bun.write(${JSON.stringify(`${signal}.tmp`)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + apiPlugin.server?.port}));
+await Bun.write(${JSON.stringify(`${signal}.tmp`)}, JSON.stringify({iteration: ${iteration}, url: "http://127.0.0.1:" + app.server?.port}));
 await rename(${JSON.stringify(`${signal}.tmp`)}, ${JSON.stringify(signal)});`;
   await Bun.write(entry, program(1));
   const dev = launchServer(config, entry);

@@ -1,12 +1,12 @@
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
-import type { engine as torrentEngine } from "../modules/torrents/plugin";
+import { createLogger } from "evlog";
+import type { WorkerTorrentEngine } from "../modules/torrents/worker-client";
 import type { instance as databaseInstance } from "./database-plugin";
-import { recordLog } from "./diagnostics";
 
 export async function writeServerInfo(
   instance: typeof databaseInstance,
-  engine: typeof torrentEngine,
+  engine: WorkerTorrentEngine,
   url: string,
   cookie: string | undefined
 ) {
@@ -23,12 +23,12 @@ export async function writeServerInfo(
     { mode: 0o600 }
   );
   await rename(join(dataDir, "server.json.tmp"), join(dataDir, "server.json"));
-  recordLog({
+  const log = createLogger({
     component: "application",
     context: { mode: engine.mode, profile: instance.profile },
     dataDir,
-    level: "info",
     operation: "ready",
   });
+  log.emit();
   console.log(`${instance.name} is ready : ${url} (data: ${dataDir})`);
 }
