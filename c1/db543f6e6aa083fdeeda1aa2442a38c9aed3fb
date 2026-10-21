@@ -1,0 +1,21 @@
+CONTRIBUTING.md
+  s_db7c89a6509c76::t_20591fe1fb925b 19-20
+scripts/anilist-codegen.ts
+  s_db7c89a6509c76::t_20591fe1fb925b 22-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c1db543f6e6aa083fdeeda1aa2442a38c9aed3fb",
+  "prompts": {},
+  "sessions": {
+    "s_db7c89a6509c76": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15dfe-a938-7fa1-9f0c-17891eea8c35",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
