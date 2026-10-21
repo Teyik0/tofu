@@ -40,7 +40,13 @@
       }
     },
     {
-      "includes": ["src/components/**"],
+      "includes": [
+        "src/components/**",
+        "src/pages/anilist/_*.{ts,tsx}",
+        "src/pages/options/connections/_*.tsx",
+        "src/pages/plugins/_plugin-*.tsx",
+        "src/pages/plugins/_use-plugin-card.ts"
+      ],
       "linter": {
         "rules": {
           "complexity": {

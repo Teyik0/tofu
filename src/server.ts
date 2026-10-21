@@ -15,6 +15,9 @@ import { sync } from "./sync";
 
 export let { port } = instance;
 
+// Furin initializes the process logger during composition; restore Tofu's explicit-event drain.
+initLogger({ ...loggerConfig, drain: logs });
+
 const app = new Elysia({
   name: "tofu",
   serve: { hostname: "127.0.0.1", idleTimeout: 120, maxRequestBodySize: 9 * 1024 * 1024 },
@@ -88,24 +91,12 @@ const app = new Elysia({
   .use(httpPolicyPlugin)
   .guard({ noStore: true })
   .use(apiPlugin)
-  .use(await furin({ logger: { exclude: ["/**"] }, pagesDir: "./src/pages", sync }));
+  .use(await furin({ logger: { exclude: ["/**"] }, pagesDir: "./src/pages", sync }))
+  .listen(port);
 
-// Furin initializes the process logger during composition; restore Tofu's explicit-event drain.
-initLogger({ ...loggerConfig, drain: logs });
-
-if (import.meta.main) {
-  app.listen(port);
-  const shutdown = async () => {
-    try {
-      await app.stop(true);
-    } catch (error) {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-      process.exitCode = 1;
-    }
-    process.exit(process.exitCode ?? 0);
-  };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
-}
-
-export default app;
+const shutdown = async () => {
+  await app.stop(true);
+  process.exit(process.exitCode ?? 0);
+};
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);

@@ -1,0 +1,95 @@
+import { useField, useForm } from "@formisch/react";
+import { BookOpenIcon, ListChecksIcon, ZapIcon } from "lucide-react";
+import { object, string } from "valibot";
+import { Dialog, DialogContent } from "../../components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { useAniListEditor } from "../../hooks/use-anilist-editor";
+import { useAniListReleases } from "../../hooks/use-anilist-releases";
+import type { AniListEntry, AniListMedia, AutomationState, LiveState } from "../../types";
+import { EpisodeHeader } from "./_episode-header";
+import { EpisodeAutomationPanel, EpisodeDownloadsPanel, EpisodeListPanel } from "./_episode-panels";
+
+export function AniListEpisodeModal({
+  authenticated,
+  dashboard,
+  entry,
+  automation,
+  close,
+}: {
+  authenticated: boolean;
+  dashboard: LiveState;
+  entry: AniListMedia | AniListEntry;
+  automation: AutomationState;
+  close: () => void;
+}) {
+  const listed = "progress" in entry;
+  const rule = listed
+    ? automation.automations.find((item) => item.id === entry.automationId)
+    : undefined;
+  const destinationForm = useForm({
+    initialInput: { destinationId: rule?.destinationId ?? "default" },
+    schema: object({ destinationId: string() }),
+  });
+  const destination = useField(destinationForm, { path: ["destinationId"] });
+  const editor = useAniListEditor(authenticated, entry.mediaId);
+  const releases = useAniListReleases(entry);
+  return (
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) {
+          close();
+        }
+      }}
+      open
+    >
+      <DialogContent className="anime-modal">
+        <EpisodeHeader
+          authenticated={authenticated}
+          available={releases.result ? releases.available : null}
+          entry={entry}
+          model={editor}
+        />
+        <div className="anime-modal-body">
+          <Tabs defaultValue="list">
+            <TabsList variant="line">
+              <TabsTrigger value="list">
+                <ListChecksIcon />
+                My list
+              </TabsTrigger>
+              <TabsTrigger value="episodes">
+                <BookOpenIcon />
+                Episodes
+              </TabsTrigger>
+              <TabsTrigger disabled={!listed} value="automation">
+                <ZapIcon />
+                Automation
+              </TabsTrigger>
+            </TabsList>
+            <EpisodeListPanel
+              authenticated={authenticated}
+              close={close}
+              entry={entry}
+              model={editor}
+            />
+            <EpisodeDownloadsPanel
+              automation={automation}
+              dashboard={dashboard}
+              destinationId={destination.input ?? "default"}
+              entry={entry}
+              model={releases}
+              setDestinationId={destination.onChange}
+            />
+            <EpisodeAutomationPanel
+              dashboard={dashboard}
+              destinationId={destination.input ?? "default"}
+              entry={entry}
+              reload={releases.reload}
+              rule={rule}
+              setDestinationId={destination.onChange}
+            />
+          </Tabs>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

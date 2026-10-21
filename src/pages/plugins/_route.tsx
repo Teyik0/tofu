@@ -4,7 +4,6 @@ import { useAtomValue } from "jotai";
 import { BrainCircuitIcon, CableIcon, GlobeIcon, PlugIcon, RefreshCwIcon } from "lucide-react";
 import { startTransition, useActionState, useEffect, useState } from "react";
 import { AccessRequired, SettingsSkeleton } from "../../components/access-required";
-import { PluginGroup } from "../../components/plugins/plugin-group";
 import { SettingsLayout } from "../../components/settings-layout";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -14,6 +13,7 @@ import { errorMessage } from "../../lib/errors";
 import { isSupersededNavigation } from "../../lib/navigation";
 import { sessionAtom } from "../../state/workspace";
 import type { AutomationState } from "../../types";
+import { PluginGroup } from "./_plugin-group";
 
 const sections = [
   { icon: PlugIcon, label: "Installed", to: "/plugins" },
