@@ -1,0 +1,102 @@
+src/pages/anilist/_library-filters.ts
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 19
+src/pages/options/connections/_authorized-devices.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 10-20
+  s_3cc6b4f5b8aec3::t_104db0688727a8 21
+src/pages/options/connections/_desktop-servers.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3-5,13-20
+src/pages/anilist/_library-cards.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 5-7,9-12
+src/pages/player/[id]/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3-4
+src/pages/anilist/_library-results.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 1-11,15
+src/pages/plugins/_plugin-card.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 1-4,6-7
+src/pages/anilist/_library-header.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3-7,14-19
+src/pages/anilist/_episode-row.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4-11
+src/pages/options/appearance/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4,13-15
+src/pages/options/connections/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4-14
+src/pages/options/connections/_own-connection.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3-8
+src/pages/plugins/_plugin-card-fields.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4-9,11-13
+  s_3cc6b4f5b8aec3::t_c2497d34820716 10
+src/pages/anilist/_episode-header.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 8-10
+  s_3cc6b4f5b8aec3::t_7e40c13e868ab4 6-7
+src/pages/thread/[id]/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3-5
+src/pages/anilist/_list-editor-fields.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 2-4,12-24
+src/pages/anilist/_media-info.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 2-3,5
+src/pages/anilist/_library-controls.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 12-20,28-29,35,43
+src/pages/anilist/_episode-panels.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4-12,29-30
+src/pages/options/updates/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 2
+src/pages/anilist/_library-settings.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 2-12
+src/pages/plugins/_plugin-group.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 1,3
+src/pages/options/downloads/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 7-9,19-20,26-32
+src/pages/options/preferences/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4-7
+src/pages/anilist/_status-dot.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 1
+src/pages/anilist/_list-editor.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 2,11-15
+src/pages/player/remote/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4-7
+src/pages/options/connections/_linked-libraries.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3-5,13-15
+  s_3cc6b4f5b8aec3::t_847e8ee42682f0 16-17
+src/pages/anilist/_browse-filters.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3-5,13-21
+src/pages/anilist/_date-picker.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 10-11
+src/pages/options/connections/_device-dialog.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 2-5,13-21
+biome.jsonc
+  s_3cc6b4f5b8aec3::t_27e2b28ed3c0d2 43-49
+src/pages/options/connections/_pair-device-dialog.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4-8,16-24
+  s_3cc6b4f5b8aec3::t_87c7823ca33f10 25
+src/pages/options/connections/_server-addresses.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3-4
+  s_3cc6b4f5b8aec3::t_6fd533c72c5823 5
+src/pages/options/connections/_network-access.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 3,13-15,23-28,30-34
+  s_3cc6b4f5b8aec3::t_4d7afe239652ea 29,35-38
+src/pages/anilist/index.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 21-28
+src/pages/anilist/_episode-modal.tsx
+  s_3cc6b4f5b8aec3::t_a71ec78c187bef 4-5,9-10
+src/pages/plugins/_route.tsx
+  s_3cc6b4f5b8aec3::t_df9bcc06a56569 16
+src/server.ts
+  s_3cc6b4f5b8aec3::t_64186e1237124b 18-20,94-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5173d3734a562f07dc9f36c5ff62bf74f39c7811",
+  "prompts": {},
+  "sessions": {
+    "s_3cc6b4f5b8aec3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ed4-881d-7e73-a56d-b01ff558282c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
