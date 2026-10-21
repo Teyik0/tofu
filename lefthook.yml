@@ -3,14 +3,18 @@ pre-commit:
     - name: format-and-lint
       run: bun run fix
       stage_fixed: true
+
     - name: typescript
       run: bun check
+
 pre-push:
   jobs:
     - name: build
       run: bun run build
+
     - name: tests
       run: bun run test
+
 commit-msg:
   commands:
     conventional-commit:

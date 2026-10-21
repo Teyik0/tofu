@@ -51,9 +51,9 @@ jobs:
 
       - run: bun run setup
 
-      - run: bun run build:desktop
+      - run: bun run build
 
-      - run: bun run tscheck
+      - run: bun check
 
       # Integration tests spawn real servers; limit contention on Windows runners.
       - run: bun run test ${{ runner.os == 'Windows' && '--parallel=2' || '' }}

@@ -2,7 +2,7 @@
   "name": "tofu",
   "version": "0.2.8",
   "private": true,
-  "description": "Torrent client powered by Bun, Furin, and Electrobun",
+  "description": "Torrent client powered by Bun, Furin, Elysia and Electrobun",
   "bugs": {
     "url": "https://github.com/Teyik0/Tofu/issues"
   },
@@ -14,23 +14,16 @@
   "author": "teyik0",
   "type": "module",
   "scripts": {
-    "prebuild": "bun run setup",
-    "build": "bun run codegen && bun --bun furin build --target bun",
-    "prebuild:desktop": "TOFU_RELEASE=0 bun run setup",
-    "build:desktop": "bun run codegen && TOFU_RELEASE=0 bun --bun furin-electrobun build --env=dev",
+    "build": "bun run setup && bun run codegen && bun --bun furin-electrobun build --env=dev",
     "codegen": "graphql-codegen --config scripts/anilist-codegen.ts",
-    "commitlint": "bunx --bun --no-install commitlint",
     "db:generate": "bunx --bun --no-install drizzle-kit generate",
-    "predev": "TOFU_RELEASE=0 bun run setup",
-    "dev": "bun run codegen && TOFU_RELEASE=0 TOFU_PROFILE=dev bun --hot src/server.ts",
-    "predev:web": "TOFU_RELEASE=0 bun run setup",
-    "dev:web": "bun run codegen && TOFU_MODE=server TOFU_PROFILE=dev bun --bun furin dev --web --port 3030",
+    "dev": "bun run setup && bun run codegen && TOFU_PROFILE=dev bun --hot src/server.ts",
     "fix": "ultracite fix",
     "iup": "bun update --interactive --recursive",
     "prepare": "lefthook install",
     "setup": "bun scripts/setup.ts",
-    "start": "TOFU_MODE=server bun .furin/build/bun/server.js",
-    "test": "bun run codegen && bun test --parallel --isolate --bail --timeout 30000"
+    "start": "open .furin/electrobun/build/dev-macos-arm64/Tofu-dev.app",
+    "test": "bun run codegen && bun test --parallel --isolate --bail"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

@@ -12,22 +12,22 @@ bun run setup
 bun run dev
 ```
 
-`bun install` automatically runs `prepare` to install Lefthook. Keep the Git hooks enabled. `bun run dev` opens the native app for development; `bun run build:desktop` builds its compiled package. The Electrobun SDK is prepared through Hutch.
+`bun install` automatically runs `prepare` to install Lefthook. Keep the Git hooks enabled. `bun run dev` opens the native app for development; `bun run build` builds its compiled package. The Electrobun SDK is prepared through Hutch.
 
 ## Before requesting review
 
 `bun run codegen` generates the AniList SDK from the checked-in schema without contacting AniList. To refresh both the schema and SDK from the live API, run `TOFU_UPDATE_ANILIST_SCHEMA=1 bun run codegen` and review the schema diff. Normal development, builds, and tests use the local schema so provider outages do not block them.
 
 ```sh
-bun run tscheck
+bun check
 bun run fix
 bun run test
-bun run build:desktop
+bun run build
 ```
 
 The integration suite covers 15 essential scenarios grouped by domain under `tests/`. Tests start the real server in temporary directories and call its typed Eden endpoints directly. Transfer tests use real local peers; external providers are simulated at their HTTP boundary. Keep shared resource lifecycle and assertion helpers in `tests/helpers/`, and verify a failing case before implementing a fix.
 
-For changes to development/release isolation, build locally with `bun run build:desktop` and check settings, transfers, and shutdown. Stable release builds, signing, artifact preparation, and publication run exclusively through `.github/workflows/release.yml`, triggered by a version tag or manually with an existing tag.
+For changes to development/release isolation, build locally with `bun run build` and check settings, transfers, and shutdown. Stable release builds, signing, artifact preparation, and publication run exclusively through `.github/workflows/release.yml`, triggered by a version tag or manually with an existing tag.
 
 ## Changes and commits
 

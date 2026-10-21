@@ -49,11 +49,10 @@ You need **Bun 1.4.3+** for the built-in `bun check` type checker. macOS also re
 git clone https://github.com/Teyik0/Tofu.git
 cd Tofu
 bun install
-bun run setup
 bun run dev
 ```
 
-Run `bun run dev` to open the native app and a browser against the same authenticated backend. Bun's Furin preload manages the desktop supervisor. For browser-only development, run `bun run dev:web` and open **http://127.0.0.1:3030**.
+Run `bun run dev` to prepare the runtime, generate the AniList client, and open the native app and a browser against the same authenticated backend. Bun's Furin preload manages the desktop supervisor.
 
 Frontend CSS and React changes use HMR in the existing window. Backend changes restart
 its native host after releasing application resources; unsaved UI state is not preserved
@@ -133,7 +132,7 @@ The torrent worker commits engine invalidations to the shared SQLite journal and
 bun run tscheck
 bun run fix
 bun run test
-bun run build:desktop
+bun run build
 ```
 
 `bun run test` runs 15 integration scenarios grouped into `tests/torrents/`, `tests/library/`, `tests/lifecycle/`, `tests/anilist/`, `tests/plugins/`, and `tests/remote/`. Each scenario starts the real server in temporary directories and calls typed Eden endpoints. Transfers use real local peers; AniList and release providers use a local HTTP fixture through a test-only preload. Shared process, peer, provider, polling, and assertion helpers live in `tests/helpers/`. Coverage includes missing files after restart and explicit repair, preserving downloaded data, OAuth, watched progress, automation, and remote permissions. Keep only essential integration scenarios, with no function unit tests, component snapshots, or tests of framework internals.
