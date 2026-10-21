@@ -2,12 +2,12 @@
 
 Both active packages use the latest upstream baseline from
 [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
-`9e6e12fbf571c305444d133f911cc905b78c9718`.
+`f272df99cbc21bd44010b9f2171bd0bc48ad9c96`.
 
 | Active archive | Local source patch | SHA-256 |
 | --- | --- | --- |
-| `furin-remote-native-9e6e12f.tgz` | `patches/0004-aot-process-resource-isolation.patch` | `480ba40f2ba406d88c257fe3925f1190e9dabf25a18ec198f52d5a9afff32a00` |
-| `furin-electrobun-pr163-9e6e12f.tgz` | None | `5e75583a5cea3ecdd75a247c40c0f9c7123eefe21cecb8dc022d0e81ee2a5668` |
+| `furin-remote-native-f272df9.tgz` | `patches/0004-aot-process-resource-isolation.patch` | `70692fabbf0afcf416fab7344cd17c6f22271d203bb433d052b9131bd442dbc6` |
+| `furin-electrobun-pr163-f272df9.tgz` | None | `5e75583a5cea3ecdd75a247c40c0f9c7123eefe21cecb8dc022d0e81ee2a5668` |
 
 The core patch evaluates Elysia AOT in a child process and waits for its exit before
 prerendering. An application can own native file locks and database handles during
@@ -19,7 +19,10 @@ Upstream commit `495de76f797fa0bb64f8fea5290d33d043d7f835` includes Remote Serve
 admission, TLS listener configuration and the client-only manager, so the desktop package
 no longer needs a local patch. Commit `c8e0461` also recovers the development supervisor
 after backend compilation errors. Commit `9e6e12f` adds client-render recovery after HMR
-and corrects WebKit source-map diagnostics. Tofu's root Elysia application composes
+and corrects WebKit source-map diagnostics. Commit `f272df9` isolates route discovery
+imports before AOT so discovery releases import-time resources before compilation.
+The Electrobun package is unchanged from `9e6e12f`; its archive has the same checksum.
+Tofu's root Elysia application composes
 `apiPlugin` and Furin on one listener. Network requests authenticate before dispatch,
 while the protected isomorphic Eden client keeps direct in-process dispatch to
 `apiPlugin`. No client transport workaround is introduced.

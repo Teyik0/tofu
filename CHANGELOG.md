@@ -6,6 +6,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ### Changed
 
+- Update the vendored Furin core and Electrobun packages to PR #163 revision `f272df9`, isolating route discovery imports before AOT while retaining the local AOT process-isolation patch.
 - Move stable release builds, signing, artifact preparation, and publication into GitHub Actions; keep `bun run build:desktop` for local desktop builds.
 
 ## [0.2.7] - 2026-10-19
