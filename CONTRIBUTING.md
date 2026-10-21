@@ -16,6 +16,8 @@ bun run dev
 
 ## Before requesting review
 
+`bun run codegen` generates the AniList SDK from the checked-in schema without contacting AniList. To refresh both the schema and SDK from the live API, run `TOFU_UPDATE_ANILIST_SCHEMA=1 bun run codegen` and review the schema diff. Normal development, builds, and tests use the local schema so provider outages do not block them.
+
 ```sh
 bun run tscheck
 bun run fix

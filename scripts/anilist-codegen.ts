@@ -19,7 +19,10 @@ const config = {
       plugins: ["schema-ast"],
     },
   },
-  schema: "https://graphql.anilist.co",
+  schema:
+    process.env.TOFU_UPDATE_ANILIST_SCHEMA === "1"
+      ? "https://graphql.anilist.co"
+      : "src/api/modules/anilist/graphql/schema.graphql",
 } satisfies CodegenConfig;
 
 export default config;
