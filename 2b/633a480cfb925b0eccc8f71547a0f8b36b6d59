@@ -1,0 +1,108 @@
+tests/library/destinations.test.ts
+  s_db7c89a6509c76::t_7d021ba6af463e 2-6,8-13,21-25,29
+  s_db7c89a6509c76::t_eb35dbd752605f 14-20,26-28,30-33
+tests/lifecycle/ownership.test.ts
+  s_db7c89a6509c76::t_5ea4516ca40a5a 2-3,5-14
+tests/helpers/provider.ts
+  s_db7c89a6509c76::t_ba28e2ea4a3fa5 4-11,17
+  s_db7c89a6509c76::t_eb35dbd752605f 36-39,44,80-89,93-96,105-107,114,116,118,126-132,135-139,141-142,144-147
+  s_db7c89a6509c76::t_cdaeb215ed3c3f 1-3,12-15,19-27,29,31-35,40-42,45-79,91-92,97-102,104,109,122-125,133-134,143,153-156
+  s_db7c89a6509c76::t_debb09858dcfa0 30
+tests/anilist/episodes.test.ts
+  s_db7c89a6509c76::t_167977451e54d2 2-6,8-12,16-21,30-33,38-41,54-57
+  s_db7c89a6509c76::t_eb35dbd752605f 13-14,22-23,25,28-29,34-37,42-53
+src/hooks/use-anilist-catalog.ts
+  s_6b4536e7340198::t_55dc5885d62a0a 71,105-117
+  s_6b4536e7340198::t_925cf89b4ab57f 14-15,18-33,48-70,72-74,76-78,83-84,91-104,118-126,128-133,152
+tests/helpers/peer.ts
+  s_db7c89a6509c76::t_0448b68f39088c 1-4,6,9,11,16-25,30-33,35-37,39,41-42
+  s_db7c89a6509c76::t_b14052a0f267f4 8,13-15,40
+  s_db7c89a6509c76::t_eb35dbd752605f 26-29
+README.md
+  s_db7c89a6509c76::t_debb09858dcfa0 139
+tests/helpers/preload.ts
+  s_db7c89a6509c76::t_0448b68f39088c 3,11,14-33
+tests/anilist/catalog.test.ts
+  s_db7c89a6509c76::t_eb35dbd752605f 13-15,19-22,25-34
+  s_db7c89a6509c76::t_735b36136c4e13 2-4,6-12,16-18,24,35-37
+tests/plugins/sources.test.ts
+  s_db7c89a6509c76::t_f0d5b792fc87e2 2-5,7-20,27,31-33
+  s_db7c89a6509c76::t_eb35dbd752605f 21-26,28-30
+CHANGELOG.md
+  s_db7c89a6509c76::t_2bc5f7c0201dea 9
+tests/plugins/automation.test.ts
+  s_db7c89a6509c76::t_2db64abf35bb33 3-7,9-15,39-42,46-50,55-58
+  s_db7c89a6509c76::t_eb35dbd752605f 16-19,22-32,34-38,43-45,51-54
+tests/helpers/app.ts
+  s_db7c89a6509c76::t_0448b68f39088c 6,9-33,35-56,58,60-70,72,74-98,107-108,110-113,115-116
+  s_db7c89a6509c76::t_2bc5f7c0201dea 57,106,109
+  s_db7c89a6509c76::t_86176ba9f6c585 99-105
+  s_db7c89a6509c76::t_b14052a0f267f4 8,34
+tests/torrents/transfers.test.ts
+  s_db7c89a6509c76::t_0448b68f39088c 2-5,7-21,23
+  s_db7c89a6509c76::t_b23f121813b8a1 52-68
+  s_db7c89a6509c76::t_eb35dbd752605f 47-50
+  s_db7c89a6509c76::t_020c8be27eef1d 24-32,34-46,51
+  s_db7c89a6509c76::t_750bafdf1c82a1 22
+  s_db7c89a6509c76::t_700647e6fa877f 33
+CONTRIBUTING.md
+  s_db7c89a6509c76::t_debb09858dcfa0 26,38
+.github/workflows/ci.yml
+  s_db7c89a6509c76::t_debb09858dcfa0 58
+src/pages/anilist.tsx
+  s_6b4536e7340198::t_925cf89b4ab57f 4,17,89-113
+furin.config.ts
+  s_db7c89a6509c76::t_96cb968ad815f1 2,86-111
+  s_db7c89a6509c76::t_182cd34c506bd7 112-136
+tests/remote/access.test.ts
+  s_db7c89a6509c76::t_debb09858dcfa0 135
+  s_db7c89a6509c76::t_eb35dbd752605f 13-14,17,21,27-29,31-32,34-38,45-50,53-54,59-60,73-74,81-85,87-91,94-98,104-106,110-112,121-123,126-133,140-148,150-152
+  s_db7c89a6509c76::t_ba28e2ea4a3fa5 40-42,44,99-101,103
+  s_db7c89a6509c76::t_f0a77a822bc582 2,7-8,62,64-72,86,107-109,113-120,124-125,134,136-139,149
+  s_db7c89a6509c76::t_1b579060238f0c 5-6,10-12,26,30,52,56-58,153
+tests/lifecycle/restart.test.ts
+  s_db7c89a6509c76::t_eb35dbd752605f 13-25,46-49
+  s_db7c89a6509c76::t_8a606da2020f3c 3-6,8-12,26-45
+tests/helpers/assert.ts
+  s_db7c89a6509c76::t_1b579060238f0c 22-28
+  s_db7c89a6509c76::t_0448b68f39088c 2-9,11
+  s_db7c89a6509c76::t_750bafdf1c82a1 12-14,16-20
+tests/anilist/account.test.ts
+  s_db7c89a6509c76::t_eb35dbd752605f 10-16,20-22,37-39
+  s_db7c89a6509c76::t_cdaeb215ed3c3f 1-9,17-19,23-36,40-41
+tests/library/removal.test.ts
+  s_db7c89a6509c76::t_2c8b428e761182 3-6,8-32
+tests/helpers/poll.ts
+  s_db7c89a6509c76::t_b14052a0f267f4 4,6
+  s_db7c89a6509c76::t_0448b68f39088c 5,7-12,14,16
+tests/torrents/recovery.test.ts
+  s_db7c89a6509c76::t_35b1eb63d74c0e 2,4-7,9-13,15-16,18-26,28-34,36-40,42-47,49
+bun.lock
+  s_db7c89a6509c76::t_6f667d344db5ee 1063,1807-1808
+package.json
+  s_6b4536e7340198::t_7b507eb2bca128 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2b633a480cfb925b0eccc8f71547a0f8b36b6d59",
+  "prompts": {},
+  "sessions": {
+    "s_6b4536e7340198": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15e35-0691-79c1-b8e6-9b5eeda6fec7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_db7c89a6509c76": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15dfe-a938-7fa1-9f0c-17891eea8c35",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
