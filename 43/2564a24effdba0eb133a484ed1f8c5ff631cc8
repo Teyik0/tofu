@@ -1,0 +1,328 @@
+src/api/modules/discovery/model.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 16-53
+  s_3cc6b4f5b8aec3::t_7b9227419f3af1 3
+src/api/lib/server-info.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 36-43
+  s_3cc6b4f5b8aec3::t_aebe7c1db0e3ff 23
+  s_3cc6b4f5b8aec3::t_4d8111ae82ba8b 6,44
+src/api/modules/updates/service.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 401-420
+  s_3cc6b4f5b8aec3::t_c6a1ae9444a5e0 5
+  s_3cc6b4f5b8aec3::t_ad6ca27becd7eb 421
+src/pages/anilist/_library-settings.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2-4
+src/state/workspace.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2-6,39-43
+src/api/modules/torrents/connections.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 5-6,454-483
+src/db/schema.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2
+  s_3cc6b4f5b8aec3::t_4eaad062174741 3
+src/hooks/use-anilist-releases.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2-4
+src/api/modules/anilist/client.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2,25-28
+  s_3cc6b4f5b8aec3::t_7593ec98a11bf4 29
+src/pages/plugins/_plugin-card.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 6
+  s_3cc6b4f5b8aec3::t_b07508acf03f8b 1
+src/hooks/use-source-search.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 98-104
+  s_3cc6b4f5b8aec3::t_40e321cbcf27be 2-3,105
+src/api/modules/automation/rules.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2-3
+  s_3cc6b4f5b8aec3::t_29f221fea6fd72 4
+src/api/modules/torrents/stats.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3
+src/api/modules/access/model.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1,47-57
+src/hooks/use-plugin-forms.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 5
+  s_3cc6b4f5b8aec3::t_8e0d7b7f1e0451 3
+src/components/format.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1-2
+src/lib/plugin-forms.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1,3,18-21
+src/pages/plugins/_plugin-group.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3
+  s_3cc6b4f5b8aec3::t_54f2238d8c5fd6 1
+src/lib/navigation.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3
+.github/scripts/release.ts
+  s_3cc6b4f5b8aec3::t_e0166baa72c47b 4
+src/api/modules/settings/service.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+src/components/destination-sidebar.tsx
+  s_3cc6b4f5b8aec3::t_3a6cfcb6a26cb8 19
+  s_3cc6b4f5b8aec3::t_23cd144c6fde28 5-6,10
+src/components/anilist/threads.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1-3
+src/pages/anilist/_episode-modal.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 4-6
+src/pages/plugins/_use-plugin-card.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 8
+  s_3cc6b4f5b8aec3::t_575df1d76ca1cf 5
+src/components/automation-center.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 11,125-132
+src/lib/anilist-score.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+src/components/anilist/tracking-steps.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 4
+src/api/modules/torrents/types.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1-2,14
+src/components/use-detail-actions.ts
+  s_3cc6b4f5b8aec3::t_3a6cfcb6a26cb8 8
+  s_3cc6b4f5b8aec3::t_c0583dc11d5419 4-5
+.github/scripts/platform.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 35-38
+  s_3cc6b4f5b8aec3::t_c6a1ae9444a5e0 39
+src/native/catalog.ts
+  s_81bde3a85acfc6::t_3ba795930d89aa 16,29,32
+src/api/modules/settings/model.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1,56-71
+src/components/destination-icon.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 16
+src/components/anilist/status.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+src/api/modules/torrents/worker-protocol.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1-65
+src/api/modules/anilist/service.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 620,1566-1570
+  s_3cc6b4f5b8aec3::t_efd1840d3316b0 8,11,18-19,21,25,37-44
+src/api/modules/anilist/releases.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 56,247-251
+  s_3cc6b4f5b8aec3::t_a871e579e1ebb0 2,4,6-7
+src/components/modal.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1286-1295
+  s_3cc6b4f5b8aec3::t_5c911ed3103ebf 6-12
+src/api/modules/torrents/crypto-diagnostics.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 75-80
+  s_3cc6b4f5b8aec3::t_afa0d849882d46 81
+src/api/modules/plugins/index.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 5,25,32
+src/components/detail.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 5
+  s_3cc6b4f5b8aec3::t_41d384b58e98a9 6
+src/api/modules/plugins/releases.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+src/api/modules/discovery/sources.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+  s_3cc6b4f5b8aec3::t_1aa6140143f4d0 2
+src/api/modules/plugins/model.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1,16,36-60
+src/lib/global-search.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1-2,29-32
+  s_3cc6b4f5b8aec3::t_92757d44c2c9db 33
+src/api/modules/anilist/model.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1,161-171
+src/native/host.ts
+  s_81bde3a85acfc6::t_3ba795930d89aa 1,51,427,514,524-526,528-529,543-544,546,549,575,591,596-597
+  s_81bde3a85acfc6::t_9ef400041fc047 212
+  s_3cc6b4f5b8aec3::t_6f58b1e9317d7e 217
+src/components/global-search.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 5
+src/api/modules/anilist/catalog.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 71,89-92,209-212
+  s_3cc6b4f5b8aec3::t_5ded0ecb9bb6a5 2,19
+src/hooks/use-automation-draft-form.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3
+src/components/automation-fields.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 7-8
+src/api/modules/desktop/associations.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3,34
+src/components/traffic-chart.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3
+src/components/use-global-search.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 173-174
+  s_3cc6b4f5b8aec3::t_e8eac5906a17bf 5-6,11
+src/api/modules/anilist/opening.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 5,32,39
+src/api/modules/plugins/feeds.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1-2
+src/pages/anilist/index.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 13-16
+src/hooks/use-anilist-catalog.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2-4
+src/api/modules/desktop/opening.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 7,122-133
+  s_3cc6b4f5b8aec3::t_0bfdb33823acc2 134
+src/components/destination-menu.tsx
+  s_3cc6b4f5b8aec3::t_3a6cfcb6a26cb8 8
+  s_3cc6b4f5b8aec3::t_ddc9577044c804 4
+src/api/modules/anilist/editor.ts
+  s_3cc6b4f5b8aec3::t_3a6cfcb6a26cb8 91
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 12,55,90
+  s_3cc6b4f5b8aec3::t_45b72c5939ee88 4
+src/lib/anilist-autosave.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+src/pages/anilist/_status-dot.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+src/lib/automation-mutations.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 6
+src/pages/options/connections/_desktop-servers.tsx
+  s_81bde3a85acfc6::t_3ba795930d89aa 38-43,325,328-330
+src/pages/anilist/_use-list-editor.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 4-6
+src/api/lib/instance.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 6,257-267
+src/components/anilist/panel.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 8-11
+src/api/modules/jev/service.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 5-8
+src/hooks/use-async-action.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 28-29
+src/components/detail-panels.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3
+  s_3cc6b4f5b8aec3::t_b5cc2ea1906d68 4
+src/components/automation-inbox.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 13-15
+  s_3cc6b4f5b8aec3::t_24aa7982acb7e5 16
+src/api/modules/automation/model.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1,23-24,127-169
+src/api/modules/anilist/types.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2-87
+  s_3cc6b4f5b8aec3::t_7969ab0a30152e 1
+src/pages/anilist/_media-info.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 2-3
+src/api/modules/dashboard/projection.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1,12,40,64,79-80,106,109-123
+  s_3cc6b4f5b8aec3::t_f379bf67210040 124
+src/hooks/use-preferences-form.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3
+src/components/status-glyph.tsx
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+src/pages/anilist/_library-filters.ts
+  s_3cc6b4f5b8aec3::t_3a6cfcb6a26cb8 1-2,9,28,62-72,94,105
+src/api/modules/access/grants.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1
+src/api/modules/torrents/service.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 3114-3131
+  s_3cc6b4f5b8aec3::t_e1a831a4b055c3 17,27-29,41-51
+src/api/modules/destinations/model.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 1,66-83
+  s_3cc6b4f5b8aec3::t_3a6cfcb6a26cb8 14-27
+  s_3cc6b4f5b8aec3::t_df28cb1e441a4d 13
+src/components/anilist/use-tracking.ts
+  s_3cc6b4f5b8aec3::t_2fc89e941c9441 6-7
+  s_3cc6b4f5b8aec3::t_d5ce4f8dfd4784 4
+src/api/modules/access/devices.ts
+  s_3cc6b4f5b8aec3::t_9acdb3e191b87c 7
+src/api/modules/access/invitations.ts
+  s_3cc6b4f5b8aec3::t_56f502170fa982 7
+src/api/modules/access/service.ts
+  s_3cc6b4f5b8aec3::t_4291517e1b99c8 22
+src/api/modules/anilist/index.ts
+  s_3cc6b4f5b8aec3::t_4cb1ea544ae6c6 9
+src/api/modules/automation/integration.ts
+  s_3cc6b4f5b8aec3::t_6ac3c794ee2a31 6,11-12
+src/api/modules/automation/service.ts
+  s_3cc6b4f5b8aec3::t_dfe33d9610feb4 6,13,15-20
+src/api/modules/destinations/index.ts
+  s_3cc6b4f5b8aec3::t_a76579aac958ee 8
+src/api/modules/discovery/service.ts
+  s_3cc6b4f5b8aec3::t_412aca46cfe312 8,11-12
+src/api/modules/library-links/availability.ts
+  s_3cc6b4f5b8aec3::t_0742f6bfd6dd20 6
+src/api/modules/library-links/service.ts
+  s_3cc6b4f5b8aec3::t_4c051073b45bd5 8
+src/api/modules/media-links/service.ts
+  s_3cc6b4f5b8aec3::t_01b8f313ae47a6 6
+src/api/modules/plugins/credentials.ts
+  s_3cc6b4f5b8aec3::t_a2605f4d0099a6 4
+src/api/modules/plugins/service.ts
+  s_3cc6b4f5b8aec3::t_b300342cf36c31 5,8
+src/api/modules/torrents/folders.ts
+  s_3cc6b4f5b8aec3::t_d9d4a337668849 11-12
+src/api/modules/torrents/index.ts
+  s_3cc6b4f5b8aec3::t_e2f5e22ab64015 7,22
+src/api/modules/torrents/media.ts
+  s_3cc6b4f5b8aec3::t_454d2567036af8 7
+src/api/modules/torrents/storage.ts
+  s_3cc6b4f5b8aec3::t_4b7c44d65d661a 7
+src/api/modules/torrents/worker-client.ts
+  s_3cc6b4f5b8aec3::t_07ac468ba64ccc 8-12
+src/api/modules/torrents/worker.ts
+  s_3cc6b4f5b8aec3::t_c0594fdf271944 5-6
+src/components/app.tsx
+  s_3cc6b4f5b8aec3::t_45ef5daa909255 5
+src/components/automation-discovery.tsx
+  s_3cc6b4f5b8aec3::t_f1b3e90ab33211 6,8-9
+src/components/automation-rules.tsx
+  s_3cc6b4f5b8aec3::t_44464d12c53de2 6,8
+src/components/automation-section.tsx
+  s_3cc6b4f5b8aec3::t_b03f892876143a 16-20,22
+src/components/automation-sections.tsx
+  s_3cc6b4f5b8aec3::t_9ffb8fc71960c1 3
+src/components/connections/storage-locations.tsx
+  s_3cc6b4f5b8aec3::t_a308b5782532ee 2
+src/components/general-preferences.tsx
+  s_3cc6b4f5b8aec3::t_f094e2ee87901f 5
+src/components/opened-torrents.tsx
+  s_3cc6b4f5b8aec3::t_41ca0d1111c88d 5
+src/components/tofu-state-sync.tsx
+  s_3cc6b4f5b8aec3::t_531e693f628cf2 4-5
+src/components/updates.tsx
+  s_3cc6b4f5b8aec3::t_20e6ab25b7566c 4
+src/components/use-torrent-library.ts
+  s_3cc6b4f5b8aec3::t_8a3f6a6fb3fb40 5
+src/components/workspace-dialogs.tsx
+  s_3cc6b4f5b8aec3::t_224bee9e0c9eae 3,7
+src/hooks/use-anilist-editor.ts
+  s_3cc6b4f5b8aec3::t_2049bc09943773 2
+src/pages/anilist/_browse-filters.tsx
+  s_3cc6b4f5b8aec3::t_53740b573adf63 3-4
+src/pages/anilist/_date-picker.tsx
+  s_3cc6b4f5b8aec3::t_6c5b95cd27abd8 10
+src/pages/anilist/_episode-header.tsx
+  s_3cc6b4f5b8aec3::t_7a2652b87ec00c 6
+src/pages/anilist/_episode-panels.tsx
+  s_3cc6b4f5b8aec3::t_0cc91f68bae8b3 4-10,22
+src/pages/anilist/_episode-row.tsx
+  s_3cc6b4f5b8aec3::t_a84f6874110452 4-6,15
+src/pages/anilist/_library-cards.tsx
+  s_3cc6b4f5b8aec3::t_6bb72e96ff25f8 5
+src/pages/anilist/_library-header.tsx
+  s_3cc6b4f5b8aec3::t_7d9214afe1a54e 3
+src/pages/anilist/_library-results.tsx
+  s_3cc6b4f5b8aec3::t_8f45f23631948d 1
+src/pages/anilist/_list-editor.tsx
+  s_3cc6b4f5b8aec3::t_b26aa316575de0 2-3
+src/pages/options/appearance/index.tsx
+  s_3cc6b4f5b8aec3::t_6ca17a1b94737b 4
+src/pages/options/connections/_authorized-devices.tsx
+  s_3cc6b4f5b8aec3::t_d85c9823bef3a0 11
+src/pages/options/connections/_device-dialog.tsx
+  s_3cc6b4f5b8aec3::t_51d8e0f0bf828e 3
+src/pages/options/connections/_pair-device-dialog.tsx
+  s_3cc6b4f5b8aec3::t_dddbcd64e4f231 5
+src/pages/options/downloads/index.tsx
+  s_3cc6b4f5b8aec3::t_7464c0791c51f8 7
+src/pages/options/index.tsx
+  s_3cc6b4f5b8aec3::t_2a50a20c92302d 4
+src/pages/plugins/_route.tsx
+  s_3cc6b4f5b8aec3::t_f1202e4119fa1f 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "432564a24effdba0eb133a484ed1f8c5ff631cc8",
+  "prompts": {},
+  "sessions": {
+    "s_3cc6b4f5b8aec3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ed4-881d-7e73-a56d-b01ff558282c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_81bde3a85acfc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15edb-37d6-74e0-b009-3231f9a369bc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
