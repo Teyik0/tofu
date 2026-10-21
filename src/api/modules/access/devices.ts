@@ -2,9 +2,9 @@ import "@teyik0/furin/server-only";
 import { and, eq, isNull } from "drizzle-orm";
 import { problem } from "elysia";
 import { authorizedDevices, deviceSessions, pairingInvitations } from "../../../db/schema";
-import type { DeviceRole } from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
 import { grantsOf, holds } from "./grants";
+import type { DeviceRole } from "./model";
 import type { AccessService, Caller, Device } from "./service";
 
 export interface GrantChange {

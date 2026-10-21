@@ -14,6 +14,7 @@ import { eq, sql } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
+import type { Options as TorrentNetworkOptions } from "webtorrent";
 import WebTorrent, { type Options, type Torrent } from "webtorrent";
 import {
   operationReceipts,
@@ -21,25 +22,11 @@ import {
   torrentDestinations,
   torrentRecords,
 } from "../../../db/schema";
-import type {
-  ConnectionPolicy,
-  DashboardState,
-  Destination,
-  DestinationInput,
-  DestinationPresentation,
-  EngineChange,
-  EngineOpenOptions,
-  FilePriority,
-  FileStats,
-  Settings,
-  SettingsInput,
-  SpeedSample,
-  TorrentDetail,
-  TorrentStorageIssue,
-  TrackerStats,
-} from "../../../types";
 import { type DatabaseConnection, openDatabase, type TofuDatabase } from "../../lib/db";
 import { sanitizeLog } from "../../lib/diagnostics";
+import type { Destination, DestinationInput, DestinationPresentation } from "../destinations/model";
+import type { Settings, SettingsInput } from "../settings/model";
+import type { ConnectionPolicy } from "./connections";
 import { ConnectionScheduler, defaultConnectionPolicy } from "./connections";
 import { installCryptoDiagnostics } from "./crypto-diagnostics";
 import { announce, peers, watchTrackers } from "./stats";
@@ -51,6 +38,17 @@ import {
   storageRoot,
   verifiedFileBytes,
 } from "./storage";
+import type {
+  DashboardState,
+  EngineChange,
+  FilePriority,
+  FileStats,
+  SpeedSample,
+  TorrentDetail,
+  TorrentStorageIssue,
+  TrackerStats,
+} from "./types";
+import type { WorkerTorrentEngine } from "./worker-client";
 
 interface RelocatedFile {
   source: string;
@@ -3112,4 +3110,22 @@ export class TorrentEngine {
       this.cryptoDiagnostics?.close();
     }
   }
+}
+
+export type EnginePort = TorrentEngine | WorkerTorrentEngine;
+
+export interface EngineOpenOptions {
+  connectionPolicy?: ConnectionPolicy;
+  cryptoDiagnostics?: boolean;
+  dataDir: string;
+  downloadPath: string;
+  network: TorrentNetworkOptions;
+}
+
+export interface TorrentAddOptions {
+  destinationId?: string;
+  downloadPath?: string;
+  operationKey?: string;
+  paused: boolean;
+  trackers?: string[];
 }

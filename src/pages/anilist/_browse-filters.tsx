@@ -1,5 +1,7 @@
 import { ChevronDownIcon, XIcon } from "lucide-react";
 import { useState } from "react";
+import type { AniListCatalogFilters, AniListCatalogSort } from "../../api/modules/anilist/catalog";
+import type { AniListCatalogOptions, AniListMedia } from "../../api/modules/anilist/types";
 import { OptionSelect, type SelectOption } from "../../components/option-select";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -13,12 +15,6 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { Field, FieldGroup, FieldLabel } from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
-import type {
-  AniListCatalogFilters,
-  AniListCatalogOptions,
-  AniListCatalogSort,
-  AniListMedia,
-} from "../../types";
 
 export const catalogSortOptions = [
   { label: "Title", value: "title" },

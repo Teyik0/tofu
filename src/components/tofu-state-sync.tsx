@@ -1,6 +1,8 @@
 import { useRouter } from "@teyik0/furin/link";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useEffect } from "react";
+import type { LibraryState } from "../api/modules/dashboard/projection";
+import type { ThemePreference } from "../api/modules/settings/model";
 import { api } from "../lib/client";
 import { destinationFromPath, isPreferencesPath, selectedTorrentId } from "../lib/navigation";
 import {
@@ -11,7 +13,6 @@ import {
   themeAtom,
   themeStorageKey,
 } from "../state/workspace";
-import type { LibraryState, ThemePreference } from "../types";
 
 const THEMES = new Set<string>(["system", "light", "dark"]);
 

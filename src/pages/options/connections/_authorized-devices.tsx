@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { holds } from "../../../api/modules/access/grants";
+import type { DeviceRole } from "../../../api/modules/access/model";
 import { ActionTooltip } from "../../../components/action-tooltip";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Badge } from "../../../components/ui/badge";
@@ -15,7 +16,6 @@ import { Button } from "../../../components/ui/button";
 import { api } from "../../../lib/client";
 import { errorMessage } from "../../../lib/errors";
 import type { ServerSession } from "../../../state/workspace";
-import type { DeviceRole } from "../../../types";
 import { DeviceDialog } from "./_device-dialog";
 import { PairDeviceDialog } from "./_pair-device-dialog";
 import type { ConnectionsState } from "./index";

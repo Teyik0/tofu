@@ -2,9 +2,9 @@ import { on } from "node:events";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem, sse } from "elysia";
 import { sync } from "../../../sync";
-import type { LiveState, TorrentDetail } from "../../../types";
 import { accessPlugin } from "../access/plugin";
 import type { Caller } from "../access/service";
+import type { LiveState } from "../dashboard/projection";
 import { hostDetail, hostState, libraryDetail, libraryState } from "../dashboard/projection";
 import { mediaReaders, streamTorrentFile } from "./media";
 import {
@@ -19,6 +19,7 @@ import {
   uploadTorrentSchema,
 } from "./model";
 import { torrentServicePlugin } from "./plugin";
+import type { TorrentDetail } from "./types";
 
 function seesHost(caller: Caller | { kind: "in-process" }) {
   return (

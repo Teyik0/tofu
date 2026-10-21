@@ -1,5 +1,5 @@
 import { dirname, join } from "node:path";
-import type { AniListClient, InstanceProfile } from "../../../types";
+import type { InstanceProfile } from "../../lib/instance";
 
 export function resolveAniListClient(
   profile: InstanceProfile,
@@ -21,4 +21,9 @@ export async function readAniListClient(
   const file = Bun.file(join(dirname(executable), "../Resources/app/bun/anilist-client.json"));
   const packaged = (await file.exists()) ? ((await file.json()) as AniListClient) : undefined;
   return resolveAniListClient(profile, packaged?.clientId);
+}
+
+export interface AniListClient {
+  clientId: string;
+  redirectUri: string;
 }

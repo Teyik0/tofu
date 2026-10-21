@@ -1,5 +1,5 @@
+import type { AniListStatus } from "../../api/modules/anilist/types";
 import { aniListStatusLabel } from "../../components/anilist/status";
-import type { AniListStatus } from "../../types";
 
 export function AniListStatusDot({ status }: { status: AniListStatus }) {
   const label = aniListStatusLabel(status);

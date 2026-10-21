@@ -1,4 +1,5 @@
-import type { DiscoveryResult, FeedRelease, SourcePluginId } from "../../../types";
+import type { SourcePluginId } from "../plugins/model";
+import type { DiscoveryResult, FeedRelease } from "./model";
 
 interface SourceQueries {
   accept: (release: FeedRelease) => boolean;

@@ -2,7 +2,7 @@ import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
 import { sync } from "../../../sync";
-import type { PluginCredentialPage } from "../../../types";
+
 import { openExternalUrl } from "../../lib/native-opening";
 import { runtime } from "../../lib/runtime";
 import { accessPlugin } from "../access/plugin";
@@ -22,14 +22,14 @@ export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
     const url = pluginCredentialPages[params.id];
     // Only the host's own window opens the host browser; remote callers open it themselves.
     if (caller.kind !== "owner" || runtime.current.kind !== "desktop") {
-      return { opened: false, url } satisfies PluginCredentialPage;
+      return { opened: false, url };
     }
     const { shell } = runtime.current.desktop;
     const failed = openExternalUrl(shell, url, "Unable to open the API key page in your browser");
     if (failed) {
       return failed;
     }
-    return { opened: true, url } satisfies PluginCredentialPage;
+    return { opened: true, url };
   })
   // Plugin changes alter the dashboard, the plugin pages and the AniList library.
   .onBeforeHandle(({ invalidate }) => {

@@ -1,6 +1,6 @@
 import type { DesktopCapabilities } from "@teyik0/furin-electrobun/host";
 import { problem } from "elysia";
-import type { InstanceProfile, TorrentDefaults } from "../../../types";
+import type { InstanceProfile } from "../../lib/instance";
 
 type Associations = Pick<DesktopCapabilities, "associations">;
 
@@ -31,7 +31,7 @@ export async function setDefaultTorrentFileApp(profile: InstanceProfile, desktop
   return { torrent: confirmed.application };
 }
 
-export async function readTorrentDefaults(desktop: Associations): Promise<TorrentDefaults> {
+export async function readTorrentDefaults(desktop: Associations) {
   const [magnet, torrent] = await Promise.all([
     desktop.associations.read({ scheme: "magnet" }),
     desktop.associations.read({ extension: "torrent", mimeType: "application/x-bittorrent" }),

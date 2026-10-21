@@ -3,6 +3,7 @@ import { useRouter } from "@teyik0/furin/link";
 import { useAtomValue } from "jotai";
 import { BrainCircuitIcon, CableIcon, GlobeIcon, PlugIcon, RefreshCwIcon } from "lucide-react";
 import { startTransition, useActionState, useEffect, useState } from "react";
+import type { AutomationState } from "../../api/modules/automation/model";
 import { AccessRequired, SettingsSkeleton } from "../../components/access-required";
 import { SettingsLayout } from "../../components/settings-layout";
 import { Alert, AlertDescription } from "../../components/ui/alert";
@@ -12,7 +13,6 @@ import { api } from "../../lib/client";
 import { errorMessage } from "../../lib/errors";
 import { isSupersededNavigation } from "../../lib/navigation";
 import { sessionAtom } from "../../state/workspace";
-import type { AutomationState } from "../../types";
 import { PluginGroup } from "./_plugin-group";
 
 const sections = [

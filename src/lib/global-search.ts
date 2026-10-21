@@ -1,4 +1,5 @@
-import type { FeedRelease, LibraryTorrent, SearchReleaseGroup } from "../types";
+import type { LibraryTorrent } from "../api/modules/dashboard/projection";
+import type { FeedRelease } from "../api/modules/discovery/model";
 
 const queryWords = /\s+/;
 
@@ -24,4 +25,9 @@ export function groupSearchReleases(releases: FeedRelease[]): SearchReleaseGroup
     }
   }
   return [...groups.values()];
+}
+
+export interface SearchReleaseGroup {
+  key: string;
+  releases: FeedRelease[];
 }

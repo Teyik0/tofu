@@ -1,5 +1,6 @@
+import type { PluginId, PluginState } from "../../api/modules/plugins/model";
 import { FieldGroup, FieldLegend, FieldSet } from "../../components/ui/field";
-import type { PluginForms, PluginId, PluginState } from "../../types";
+import type { PluginForms } from "../../lib/plugin-forms";
 import { PluginCard } from "./_plugin-card";
 
 export function PluginGroup({

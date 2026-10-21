@@ -3,7 +3,7 @@ import { mkdir, realpath, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ApplicationRuntime, DesktopIdentity } from "@teyik0/furin-electrobun/host";
-import type { InstanceConfig, InstanceProfile } from "../../types";
+
 import { lockDataDirectory } from "./instance-lock";
 
 function within(directory: string, root: string) {
@@ -254,3 +254,14 @@ async function removeServerInfo(dataDir: string) {
     }
   }
 }
+
+export interface InstanceConfig {
+  dataDir: string;
+  downloadPath: string;
+  identifier: string;
+  name: string;
+  port: number;
+  profile: InstanceProfile;
+}
+
+export type InstanceProfile = "dev" | "release";

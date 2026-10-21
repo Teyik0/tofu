@@ -1,16 +1,11 @@
 import { eq } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { automationPlugins } from "../../../db/schema";
-import type {
-  FeedRelease,
-  PluginId,
-  PluginState,
-  SourcePluginId,
-  StoredPlugin,
-} from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
+import type { FeedRelease } from "../discovery/model";
 import { normalizePluginCredential, validatePluginCredential } from "./credentials";
 import { parseNyaaHtml, parseRss, parseTsundere } from "./feeds";
+import type { PluginId, PluginState, SourcePluginId, StoredPlugin } from "./model";
 
 export const pluginEndpoints = {
   c411: "https://c411.org/api/torznab",

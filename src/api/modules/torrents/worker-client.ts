@@ -3,22 +3,13 @@ import { existsSync } from "node:fs";
 import { ElysiaStatus, HTTPError, problem } from "elysia";
 import { createLogger } from "evlog";
 import workerBundle from "../../../../runtime/engine-worker.worker" with { type: "file" };
-import type {
-  DashboardState,
-  DestinationInput,
-  DestinationPresentation,
-  EngineChange,
-  EngineMessage,
-  EngineOpenOptions,
-  EngineOperations,
-  EngineRequest,
-  EngineSnapshot,
-  FilePriority,
-  SettingsInput,
-  TorrentAddOptions,
-} from "../../../types";
 import { sanitizeLog } from "../../lib/diagnostics";
 import type { logDrain } from "../../lib/logs";
+import type { DestinationInput, DestinationPresentation } from "../destinations/model";
+import type { SettingsInput } from "../settings/model";
+import type { EngineOpenOptions, TorrentAddOptions } from "./service";
+import type { DashboardState, EngineChange, EngineSnapshot, FilePriority } from "./types";
+import type { EngineMessage, EngineOperations, EngineRequest } from "./worker-protocol";
 
 interface PendingOperation {
   method: EngineRequest["method"];

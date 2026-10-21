@@ -1,10 +1,10 @@
 import { useMutation, useQuery } from "@teyik0/furin/client";
 import { DownloadIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { UpdateState } from "../api/modules/updates/service";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
-import type { UpdateState } from "../types";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {

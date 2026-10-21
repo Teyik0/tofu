@@ -1,6 +1,10 @@
 import { atom, createStore } from "jotai";
+import type { LibraryState, LiveState } from "../api/modules/dashboard/projection";
+import type { Destination } from "../api/modules/destinations/model";
+import type { ThemePreference } from "../api/modules/settings/model";
+import type { AutomationSection } from "../components/automation-center";
+import type { FormModalKind } from "../components/modal";
 import type { api } from "../lib/client";
-import type { LibraryState, LiveState, ModalKind, ThemePreference } from "../types";
 
 /** Effective grants of this browser or window on the displayed server, read after mount. */
 export type ServerSession = NonNullable<Awaited<ReturnType<typeof api.session.get>>["data"]>;
@@ -32,3 +36,8 @@ export function createTofuStore(dashboard: LibraryState) {
 export function themeStorageKey(serverId: string) {
   return `tofu-theme:${serverId}`;
 }
+
+export type ModalKind =
+  | FormModalKind
+  | { type: "automation"; destinationId: string; section: AutomationSection }
+  | { type: "deleteDestination"; destination: Destination };

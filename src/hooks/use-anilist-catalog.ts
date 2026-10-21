@@ -1,7 +1,9 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import type { AniListCatalogFilters } from "../api/modules/anilist/catalog";
+import type { AniListCatalog } from "../api/modules/anilist/service";
+import type { AniListCatalogOptions } from "../api/modules/anilist/types";
 import { request } from "../components/api";
 import { errorMessage } from "../lib/errors";
-import type { AniListCatalog, AniListCatalogFilters, AniListCatalogOptions } from "../types";
 
 export function useAniListCatalog(browsing: boolean, filters: AniListCatalogFilters) {
   const [catalogReload, setCatalogReload] = useState(0);

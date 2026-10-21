@@ -1,7 +1,7 @@
 import { problem } from "elysia";
-import type { CredentialPluginId } from "../../../types";
 import { parseJevResponse } from "../jev/service";
 import { parseRss } from "./feeds";
+import type { CredentialPluginId } from "./model";
 
 const urlCredential = /^[a-z][a-z\d+.-]*:/i;
 

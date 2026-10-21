@@ -5,16 +5,13 @@ import { ExternalLinkIcon, PauseIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from
 import { type ReactNode, useState } from "react";
 import { pick } from "valibot";
 import { aniListConfigurationSchema } from "../../api/modules/anilist/model";
+import type { AniListState } from "../../api/modules/anilist/types";
+import type { AutomationPreferences, AutomationRule } from "../../api/modules/automation/model";
+import type { Destination } from "../../api/modules/destinations/model";
+import type { PluginState } from "../../api/modules/plugins/model";
 import { useAuthorizationPolling } from "../../hooks/use-authorization-polling";
 import { api } from "../../lib/client";
 import { sessionAtom } from "../../state/workspace";
-import type {
-  AniListState,
-  AutomationPreferences,
-  AutomationRule,
-  Destination,
-  PluginState,
-} from "../../types";
 import { ActionTooltip } from "../action-tooltip";
 import { request } from "../api";
 import { relative } from "../format";

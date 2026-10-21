@@ -3,6 +3,7 @@ import { cn } from "cn";
 import { useAtomValue } from "jotai";
 import { ExternalLinkIcon, HeartIcon } from "lucide-react";
 import { type CSSProperties, useState } from "react";
+import type { AniListEntry, AniListMedia } from "../../api/modules/anilist/types";
 import { ActionTooltip } from "../../components/action-tooltip";
 import { AniListCover } from "../../components/anilist/cover";
 import { Alert, AlertDescription } from "../../components/ui/alert";
@@ -12,7 +13,6 @@ import type { useAniListEditor } from "../../hooks/use-anilist-editor";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import { api } from "../../lib/client";
 import { sessionAtom } from "../../state/workspace";
-import type { AniListEntry, AniListMedia } from "../../types";
 export function EpisodeHeader({
   entry,
   authenticated,

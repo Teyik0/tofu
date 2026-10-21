@@ -1,4 +1,4 @@
-import type { AniListScoreFormat } from "../types";
+import type { AniListScoreFormat } from "../api/modules/anilist/types";
 
 export const aniListScoreScales: { [Format in AniListScoreFormat]: { max: number; step: number } } =
   {

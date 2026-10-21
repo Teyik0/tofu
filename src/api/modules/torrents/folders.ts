@@ -5,10 +5,11 @@ import { eq } from "drizzle-orm";
 import { createLogger } from "evlog";
 import parseTorrent from "parse-torrent";
 import { watchedTorrentFiles } from "../../../db/schema";
-import type { Destination, EnginePort } from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
 import { sanitizeLog } from "../../lib/diagnostics";
 import { runtime } from "../../lib/runtime";
+import type { Destination } from "../destinations/model";
+import type { EnginePort } from "./service";
 
 interface TorrentFoldersOptions {
   dataDir: string;

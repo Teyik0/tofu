@@ -1,4 +1,4 @@
-import type { FeedRelease } from "../../../types";
+import type { FeedRelease } from "../discovery/model";
 
 export function publicRelease(release: FeedRelease) {
   return release.sourceId === "c411" || release.privateDownload

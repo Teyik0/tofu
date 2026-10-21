@@ -1,3 +1,4 @@
+import type { InferOutput } from "valibot";
 import {
   boolean,
   integer,
@@ -43,3 +44,14 @@ export const deviceChangeSchema = object({
 });
 
 export const serverNameSchema = object({ name: label });
+
+export type DeviceRole = InferOutput<typeof role>;
+
+/** server: another Tofu server using this one as a playback source for its own AniList. */
+export type DeviceKind = InferOutput<typeof pairSchema>["kind"];
+
+/**
+ * browser: cookie of a browser device; native: desktop bearer credential; window: desktop WebView
+ * cookie; link: bearer credential of a linked server.
+ */
+export type SessionKind = "browser" | "native" | "window" | "link";

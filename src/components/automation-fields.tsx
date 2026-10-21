@@ -4,8 +4,8 @@ import type {
   AutomationCriterion,
   AutomationDraft,
   AutomationPreferences,
-  SourcePluginId,
-} from "../types";
+} from "../api/modules/automation/model";
+import type { SourcePluginId } from "../api/modules/plugins/model";
 import { ActionTooltip } from "./action-tooltip";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";

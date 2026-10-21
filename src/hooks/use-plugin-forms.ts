@@ -1,7 +1,8 @@
 import { getInput, isDirty, reset, useForm } from "@formisch/react";
 import { useEffect } from "react";
+import type { PluginState } from "../api/modules/plugins/model";
 import { pluginFormSchema } from "../api/modules/plugins/model";
-import type { PluginForm, PluginState } from "../types";
+import type { PluginForm } from "../lib/plugin-forms";
 
 function usePluginForm(dailyLimit: number): PluginForm {
   const form = useForm({

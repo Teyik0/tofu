@@ -1,11 +1,11 @@
 import { useMutation } from "@teyik0/furin/client";
 import { PencilIcon, PinIcon, PinOffIcon, ShapesIcon, Trash2Icon } from "lucide-react";
 import type { ReactElement } from "react";
+import type { Destination } from "../api/modules/destinations/model";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
-import type { Destination } from "../types";
-import type { ModalKind } from "./modal";
+import type { ModalKind } from "../state/workspace";
 import {
   ContextMenu,
   ContextMenuContent,

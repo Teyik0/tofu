@@ -1,6 +1,6 @@
 import { useRouter } from "@teyik0/furin/link";
 import { useCallback } from "react";
-import type { LibraryTorrent } from "../types";
+import type { LibraryTorrent } from "../api/modules/dashboard/projection";
 
 type Router = ReturnType<typeof useRouter>;
 

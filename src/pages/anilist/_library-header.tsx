@@ -1,5 +1,6 @@
 import { useMutation } from "@teyik0/furin/client";
 import { ChevronDownIcon, RefreshCwIcon, SettingsIcon } from "lucide-react";
+import type { AniListState } from "../../api/modules/anilist/types";
 import { ActionTooltip } from "../../components/action-tooltip";
 import { AniListIcon } from "../../components/anilist/icon";
 import { aniListStatusLabel, aniListStatusLabels } from "../../components/anilist/status";
@@ -16,7 +17,6 @@ import type { useAniListCatalog } from "../../hooks/use-anilist-catalog";
 import type { useAsyncAction } from "../../hooks/use-async-action";
 import { api } from "../../lib/client";
 import { useRefresh } from "../../lib/navigation";
-import type { AniListState } from "../../types";
 
 type CatalogModel = ReturnType<typeof useAniListCatalog>;
 type Actions = ReturnType<typeof useAsyncAction>;

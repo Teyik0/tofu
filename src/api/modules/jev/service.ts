@@ -1,14 +1,11 @@
 import { eq } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { automationJudgements } from "../../../db/schema";
-import type {
-  AniListMedia,
-  AutomationCriterion,
-  AutomationDraft,
-  FeedRelease,
-  SourcePluginId,
-} from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
+import type { AniListMedia } from "../anilist/types";
+import type { AutomationCriterion, AutomationDraft } from "../automation/model";
+import type { FeedRelease } from "../discovery/model";
+import type { SourcePluginId } from "../plugins/model";
 import type { PluginsService } from "../plugins/service";
 
 const feedExpression1 = /\s+/;

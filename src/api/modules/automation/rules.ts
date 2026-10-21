@@ -1,10 +1,7 @@
-import type {
-  AutomationDraft,
-  AutomationPreferences,
-  FeedRelease,
-  SourcePluginId,
-} from "../../../types";
 import { normalizeTitle } from "../../lib/title";
+import type { FeedRelease } from "../discovery/model";
+import type { SourcePluginId } from "../plugins/model";
+import type { AutomationDraft, AutomationPreferences } from "./model";
 
 const feedExpression3 = /[«"“]([^»"”]+)[»"”]/;
 const feedExpression4 =

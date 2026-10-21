@@ -1,6 +1,7 @@
 import { defineRoute } from "@teyik0/furin";
 import { getRouteApi } from "@teyik0/furin/client";
 import { useAtom } from "jotai";
+import type { ThemePreference } from "../../../api/modules/settings/model";
 import { OptionSelect } from "../../../components/option-select";
 import {
   Field,
@@ -12,7 +13,6 @@ import {
   FieldSet,
 } from "../../../components/ui/field";
 import { themeAtom, themeStorageKey } from "../../../state/workspace";
-import type { ThemePreference } from "../../../types";
 
 const themeOptions = [
   { label: "System (default)", value: "system" },

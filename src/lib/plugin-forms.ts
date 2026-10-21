@@ -1,5 +1,6 @@
+import type { FormStore } from "@formisch/react";
 import { getInput, reset } from "@formisch/react";
-import type { PluginForm } from "../types";
+import type { PluginId, pluginFormSchema } from "../api/modules/plugins/model";
 
 export function confirmPluginConfiguration(
   form: PluginForm,
@@ -14,3 +15,7 @@ export function confirmPluginConfiguration(
     path: ["dailyLimit"],
   });
 }
+
+export type PluginForm = FormStore<typeof pluginFormSchema>;
+
+export type PluginForms = Record<PluginId, PluginForm>;

@@ -7,9 +7,9 @@ import {
   XIcon,
 } from "lucide-react";
 import { useState } from "react";
+import type { AniListDate } from "../../api/modules/anilist/model";
 import { Button } from "../../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import type { AniListDate } from "../../types";
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const monthName = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" });

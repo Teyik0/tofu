@@ -2,21 +2,17 @@ import { useMutation, useQuery } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
+import type { LibraryTorrent, LiveState } from "../api/modules/dashboard/projection";
+import type { SourcePluginId } from "../api/modules/plugins/model";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { useSourceSearch } from "../hooks/use-source-search";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
+import type { SearchReleaseGroup } from "../lib/global-search";
 import { groupSearchReleases, searchTorrents } from "../lib/global-search";
 import { isSupersededNavigation, useRefresh } from "../lib/navigation";
 import { playSoundCue } from "../lib/sound-cues";
 import { recentSearchesAtom, searchDestinationAtom } from "../state/workspace";
-import type {
-  GlobalSearchScope,
-  LibraryTorrent,
-  LiveState,
-  SearchReleaseGroup,
-  SourcePluginId,
-} from "../types";
 
 export type SearchItem =
   | { kind: "torrent"; torrent: LibraryTorrent }
@@ -174,3 +170,5 @@ export function useGlobalSearch({
     updateQuery,
   };
 }
+
+export type GlobalSearchScope = "all" | "torrents" | "sources";

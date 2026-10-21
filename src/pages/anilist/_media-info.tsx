@@ -1,7 +1,8 @@
 import { FrownIcon, MehIcon, SmileIcon } from "lucide-react";
+import type { AniListDate } from "../../api/modules/anilist/model";
+import type { AniListEntry, AniListMedia } from "../../api/modules/anilist/types";
 import { aniListStatusLabel } from "../../components/anilist/status";
 import { Badge } from "../../components/ui/badge";
-import type { AniListDate, AniListEntry, AniListMedia } from "../../types";
 import { aniListMediaColors } from "./_media-colors";
 
 const seasons = { FALL: "Fall", SPRING: "Spring", SUMMER: "Summer", WINTER: "Winter" };

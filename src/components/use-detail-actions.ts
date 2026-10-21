@@ -1,11 +1,12 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
 import { useMutation } from "@teyik0/furin/client";
 import { useState } from "react";
+import type { LibraryTorrentDetail, LiveState } from "../api/modules/dashboard/projection";
+import type { FilePriority } from "../api/modules/torrents/types";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
-import type { FilePriority, LibraryTorrentDetail, LiveState } from "../types";
+import type { ModalKind } from "../state/workspace";
 import { request } from "./api";
-import type { ModalKind } from "./modal";
 
 export interface DetailActionsProps {
   act: (id: string, task: () => Promise<unknown>) => Promise<void>;

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import type { AniListReleases } from "../api/modules/anilist/releases";
+import type { AniListEntry, AniListMedia } from "../api/modules/anilist/types";
+import type { FeedRelease } from "../api/modules/discovery/model";
 import { request } from "../components/api";
 import { errorMessage } from "../lib/errors";
-import type { AniListEntry, AniListMedia, AniListReleases, FeedRelease } from "../types";
 
 export function useAniListReleases(entry: AniListMedia | AniListEntry) {
   const { mediaId } = entry;

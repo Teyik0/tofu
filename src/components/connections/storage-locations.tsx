@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
+import type { Destination } from "../../api/modules/destinations/model";
 import { api } from "../../lib/client";
 import { errorMessage } from "../../lib/errors";
-import type { Destination } from "../../types";
 import { OptionSelect } from "../option-select";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";

@@ -1,9 +1,9 @@
 import { ElysiaStatus } from "elysia";
 import "@teyik0/furin/server-only";
-import type { EnginePort } from "../../../types";
 import { normalizeTitle } from "../../lib/title";
 import { parseDiscovery } from "../discovery/service";
 import { releaseMetadata } from "../plugins/feeds";
+import type { EnginePort } from "../torrents/service";
 
 const PART_NUMBER = /\b(?:part|cour)\s*(\d+)\b/i;
 

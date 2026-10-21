@@ -3,8 +3,8 @@ import "@teyik0/furin/server-only";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { type Context, ElysiaStatus, problem } from "elysia";
-import type { EnginePort } from "../../../types";
 import { sanitizeLog } from "../../lib/diagnostics";
+import type { EnginePort } from "./service";
 
 const CHUNK = 256 * 1024;
 const RANGE_LIMIT = 4 * 1024 * 1024;

@@ -2,12 +2,12 @@ import { useMutation } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
 import { useSetAtom } from "jotai";
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
+import type { LibraryTorrent, LiveState } from "../api/modules/dashboard/projection";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
 import { selectedTorrentId, useRefresh } from "../lib/navigation";
 import { armSoundCues } from "../lib/sound-cues";
 import { modalAtom } from "../state/workspace";
-import type { LibraryTorrent, LiveState } from "../types";
 
 type Filter = "all" | "downloading" | "seeding" | "paused" | "error";
 export const filters: { id: Filter; label: string }[] = [

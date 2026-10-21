@@ -19,7 +19,6 @@ export const nativeServerActionSchema = object({
     literal("disconnect"),
     literal("forget"),
     literal("save-server"),
-    literal("hosting"),
   ]),
   address: optional(pipe(string(), maxLength(4096))),
   alias: optional(pipe(string(), maxLength(64))),

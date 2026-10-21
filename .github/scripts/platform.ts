@@ -1,5 +1,3 @@
-import type { DesktopTarget } from "./types";
-
 export const releaseTargets: DesktopTarget[] = [
   { arch: "arm64", platform: "macos" },
   { arch: "x64", platform: "win" },
@@ -33,4 +31,9 @@ export function hostDesktopTarget() {
     throw new Error(`Unsupported desktop target: ${process.platform}/${process.arch}`);
   }
   return target;
+}
+
+export interface DesktopTarget {
+  arch: "arm64" | "x64";
+  platform: "macos" | "win" | "linux";
 }

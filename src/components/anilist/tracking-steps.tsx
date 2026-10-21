@@ -1,7 +1,7 @@
 import { validate } from "@formisch/react";
 import { CheckIcon, RefreshCwIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import type { AniListThreadProposal } from "../../types";
+import type { AniListThreadProposal } from "../../api/modules/anilist/model";
 import { request } from "../api";
 import { PreferenceFields, preferenceSummary } from "../automation-fields";
 import { OptionSelect } from "../option-select";

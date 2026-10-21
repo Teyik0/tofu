@@ -2,8 +2,9 @@
 import { cn } from "cn";
 import { useAtomValue } from "jotai";
 import { memo } from "react";
+import type { LibraryTorrentDetail, LiveState } from "../api/modules/dashboard/projection";
+import type { ModalKind } from "../state/workspace";
 import { sessionAtom } from "../state/workspace";
-import type { LibraryTorrentDetail, LiveState } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import {
   DetailActivity,
@@ -14,7 +15,6 @@ import {
 } from "./detail-panels";
 import { bytes, duration, percent, ratio, speed, torrentStatusLabel } from "./format";
 import { Icon } from "./icon";
-import type { ModalKind } from "./modal";
 import { StatusGlyph } from "./status-glyph";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";

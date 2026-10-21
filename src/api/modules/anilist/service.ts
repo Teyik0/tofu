@@ -2,37 +2,27 @@ import { isAbsolute, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { anilistState } from "../../../db/schema";
-import type {
-  AniListCatalog,
-  AniListCatalogFilters,
-  AniListCatalogOptions,
-  AniListClient,
-  AniListEntry,
-  AniListListUpdate,
-  AniListMedia,
-  AniListState,
-  AniListStatus,
-  AniListSubscription,
-  AniListThreadProposal,
-  AutomationDraft,
-  EnginePort,
-  FeedRelease,
-} from "../../../types";
 import type { DatabaseConnection, TofuDatabase } from "../../lib/db";
 import { refreshRecords } from "../../lib/persisted-cache";
 import type { ReleaseAutomationService } from "../automation/integration";
+import type { AutomationDraft } from "../automation/model";
 import { compareReleases, interpretLocally } from "../automation/rules";
 import type { AutomationService } from "../automation/service";
+import type { FeedRelease } from "../discovery/model";
 import { classicDiscovery, type DiscoveryService } from "../discovery/service";
 import { collectSourceQueries } from "../discovery/sources";
 import type { JevService } from "../jev/service";
 import { animeSearchQuestions, type JevAnswer } from "../jev/service";
 import { publicRelease } from "../plugins/releases";
 import type { PluginsService } from "../plugins/service";
+import type { EnginePort } from "../torrents/service";
+import type { AniListCatalogFilters } from "./catalog";
 import { catalogMedia, catalogVariables } from "./catalog";
+import type { AniListClient } from "./client";
 import { editorState, validateEntryUpdate } from "./editor";
 import type { LibraryQuery } from "./graphql/generated";
 import { AniListUnavailable, createAniListSdk } from "./graphql/transport";
+import type { AniListListUpdate, AniListThreadProposal } from "./model";
 import { AniListAuthorization } from "./oauth";
 import {
   animeEpisodeOffset,
@@ -44,6 +34,14 @@ import {
   localAnimeSearch,
   matchesAnimeRelease,
 } from "./releases";
+import type {
+  AniListCatalogOptions,
+  AniListEntry,
+  AniListMedia,
+  AniListState,
+  AniListStatus,
+  AniListSubscription,
+} from "./types";
 
 interface AniListOptions {
   automation: AutomationService;
@@ -619,7 +617,7 @@ export class AniListService {
         hasNextPage: page.pageInfo.hasNextPage,
         media: page.media.flatMap((media) => (media ? [catalogMedia(media)] : [])),
         page: page.pageInfo.currentPage,
-      } satisfies AniListCatalog;
+      };
     });
   }
   private catalogOptionsCache: AniListCatalogOptions | null = null;
@@ -1565,3 +1563,8 @@ export class AniListService {
 }
 
 type ListFailure = Extract<Awaited<ReturnType<AniListService["loadList"]>>, { status: number }>;
+
+export type AniListCatalog = Extract<
+  Awaited<ReturnType<AniListService["catalog"]>>,
+  { media: AniListMedia[] }
+>;

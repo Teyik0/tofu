@@ -8,7 +8,6 @@ import {
   pairingInvitations,
   serverIdentity,
 } from "../../../db/schema";
-import type { DeviceRole, SessionKind } from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
 import {
   cookieName,
@@ -20,6 +19,7 @@ import {
   readCookie,
 } from "./admission";
 import { rank } from "./grants";
+import type { DeviceRole, SessionKind } from "./model";
 import { hash, randomToken } from "./tokens";
 
 const LOCAL_HOST_SUFFIX = /\.local$/i;

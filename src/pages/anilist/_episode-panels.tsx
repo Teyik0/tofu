@@ -1,6 +1,13 @@
 import { useMutation } from "@teyik0/furin/client";
 import { LoaderCircleIcon, RefreshCwIcon, SettingsIcon, ZapIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { AniListEntry, AniListMedia } from "../../api/modules/anilist/types";
+import type {
+  AutomationDraft,
+  AutomationRule,
+  AutomationState,
+} from "../../api/modules/automation/model";
+import type { LiveState } from "../../api/modules/dashboard/projection";
 import { request } from "../../components/api";
 import { RuleFields } from "../../components/automation-fields";
 import { OptionSelect } from "../../components/option-select";
@@ -12,20 +19,12 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { TabsContent } from "../../components/ui/tabs";
 import type { useAniListEditor } from "../../hooks/use-anilist-editor";
 import type { useAniListReleases } from "../../hooks/use-anilist-releases";
+import type { AsyncAction as Action } from "../../hooks/use-async-action";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import { useAutomationDraftForm } from "../../hooks/use-automation-draft-form";
 import { api } from "../../lib/client";
 import { errorMessage } from "../../lib/errors";
 import { useRefresh } from "../../lib/navigation";
-import type {
-  AsyncAction as Action,
-  AniListEntry,
-  AniListMedia,
-  AutomationDraft,
-  AutomationRule,
-  AutomationState,
-  LiveState,
-} from "../../types";
 import { EpisodeRow } from "./_episode-row";
 import { AniListEditorUnavailable, AniListListEditor } from "./_list-editor";
 

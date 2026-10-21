@@ -1,3 +1,4 @@
+import type { InferOutput } from "valibot";
 import {
   array,
   boolean,
@@ -157,3 +158,14 @@ export const aniListEntrySchema = pipe(
   }),
   check((body) => Object.keys(body).length > 0, "Choose a field to update")
 );
+
+export type AniListDate = InferOutput<typeof aniListDateSchema>;
+
+export type AniListListUpdate = InferOutput<typeof aniListEntrySchema>;
+
+export type AniListOrganization = InferOutput<typeof organization>;
+
+export type AniListThreadProposal = Extract<
+  AniListOrganization,
+  { mode: "per-anime" }
+>["overrides"][number];

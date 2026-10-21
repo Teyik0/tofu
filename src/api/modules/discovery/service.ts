@@ -1,19 +1,15 @@
 import { ElysiaStatus, problem } from "elysia";
 import parseTorrent from "parse-torrent";
 import { automationReleases } from "../../../db/schema";
-import type {
-  DiscoveryResult,
-  DiscoverySearch,
-  EnginePort,
-  FeedRelease,
-  SourcePluginId,
-} from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
 import { normalizeTitle } from "../../lib/title";
 import type { JevService } from "../jev/service";
 import { discoveryMatchQuestions, discoveryTitleQuestions, safeReleaseState } from "../jev/service";
+import type { SourcePluginId } from "../plugins/model";
 import { publicRelease } from "../plugins/releases";
 import type { PluginEndpoints, PluginsService } from "../plugins/service";
+import type { EnginePort } from "../torrents/service";
+import type { DiscoveryResult, DiscoverySearch, FeedRelease } from "./model";
 import { collectSourceQueries, uniqueReleases } from "./sources";
 
 const feedExpression = /^(Source unavailable|Invalid RSS feed|RSS feed missing|Invalid JSON feed)/;

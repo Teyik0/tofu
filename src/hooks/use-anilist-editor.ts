@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
+import type { AniListEditor } from "../api/modules/anilist/editor";
 import { request } from "../components/api";
 import { errorMessage } from "../lib/errors";
 import { useRefresh } from "../lib/navigation";
-import type { AniListEditor } from "../types";
 
 export function useAniListEditor(authenticated: boolean, mediaId: number) {
   const refresh = useRefresh();

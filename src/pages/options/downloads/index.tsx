@@ -4,6 +4,7 @@ import { useAtomValue } from "jotai";
 import { FolderIcon } from "lucide-react";
 import { startTransition } from "react";
 import { pick } from "valibot";
+import type { HostState, LibraryTorrent } from "../../../api/modules/dashboard/projection";
 import { bandwidthInputSchema, settingsSchema } from "../../../api/modules/settings/model";
 import { AccessRequired, SettingsSkeleton } from "../../../components/access-required";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
@@ -29,7 +30,6 @@ import { ToggleGroup, ToggleGroupItem } from "../../../components/ui/toggle-grou
 import { useAutosaveField } from "../../../hooks/use-autosave-field";
 import { useSettingsAction } from "../../../hooks/use-settings-action";
 import { dashboardAtom, sessionAtom } from "../../../state/workspace";
-import type { HostState, LibraryTorrent } from "../../../types";
 
 export const route = defineRoute("/options/downloads")
   .config({ mode: "ssr" })

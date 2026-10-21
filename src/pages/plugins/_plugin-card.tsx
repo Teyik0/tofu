@@ -1,8 +1,9 @@
+import type { PluginState } from "../../api/modules/plugins/model";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "../../components/ui/field";
 import { Switch } from "../../components/ui/switch";
-import type { PluginForm, PluginState } from "../../types";
+import type { PluginForm } from "../../lib/plugin-forms";
 import { PluginActions, PluginCredentials } from "./_plugin-card-fields";
 import { usePluginCard } from "./_use-plugin-card";
 

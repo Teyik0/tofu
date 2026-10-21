@@ -1,6 +1,7 @@
 import { defineRoute } from "@teyik0/furin";
 import { useAtomValue } from "jotai";
 import { startTransition, useEffect, useState } from "react";
+import type { HostState } from "../../api/modules/dashboard/projection";
 import { AccessRequired, SettingsSkeleton } from "../../components/access-required";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -18,7 +19,6 @@ import { useSettingsAction } from "../../hooks/use-settings-action";
 import { api } from "../../lib/client";
 import { errorMessage } from "../../lib/errors";
 import { dashboardAtom, sessionAtom } from "../../state/workspace";
-import type { HostState } from "../../types";
 
 export const route = defineRoute("/options")
   .config({ mode: "ssr" })

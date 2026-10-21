@@ -1,6 +1,9 @@
 import { useMutation } from "@teyik0/furin/client";
 import { DownloadIcon, PlayIcon } from "lucide-react";
 import { useState } from "react";
+import type { AniListEntry, AniListMedia } from "../../api/modules/anilist/types";
+import type { LiveState } from "../../api/modules/dashboard/projection";
+import type { FeedRelease } from "../../api/modules/discovery/model";
 import { bytes } from "../../components/format";
 import { OptionSelect } from "../../components/option-select";
 import { Badge } from "../../components/ui/badge";
@@ -9,16 +12,10 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { Field, FieldLabel } from "../../components/ui/field";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
+import type { AsyncAction as Action } from "../../hooks/use-async-action";
 import { api } from "../../lib/client";
 import { useRefresh } from "../../lib/navigation";
 import { playSoundCue } from "../../lib/sound-cues";
-import type {
-  AsyncAction as Action,
-  AniListEntry,
-  AniListMedia,
-  FeedRelease,
-  LiveState,
-} from "../../types";
 
 type ReleaseStatus = "searching" | "ready" | "failed";
 

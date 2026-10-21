@@ -1,13 +1,4 @@
-import type {
-  DashboardState,
-  HostState,
-  LibraryState,
-  LibraryTorrent,
-  LibraryTorrentDetail,
-  TorrentDetail,
-  TorrentHostDetail,
-  TorrentSummary,
-} from "../../../types";
+import type { DashboardState, TorrentDetail, TorrentSummary } from "../torrents/types";
 
 // Absolute POSIX or Windows paths embedded in engine messages.
 const HOST_PATH = /(?:[A-Za-z]:\\|\\\\|\/)(?:[^\s'"`:]+[\\/])*[^\s'"`:]*/g;
@@ -18,7 +9,7 @@ export function redactPaths(message: string | null) {
 }
 
 /** Explicit allowlist projection of a torrent summary; new engine fields stay private. */
-export function libraryTorrent(torrent: TorrentSummary): LibraryTorrent {
+export function libraryTorrent(torrent: TorrentSummary) {
   return {
     addedAt: torrent.addedAt,
     completedAt: torrent.completedAt,
@@ -46,7 +37,7 @@ export function libraryTorrent(torrent: TorrentSummary): LibraryTorrent {
   };
 }
 
-export function libraryDetail(detail: TorrentDetail): LibraryTorrentDetail {
+export function libraryDetail(detail: TorrentDetail) {
   return {
     ...libraryTorrent(detail),
     activeSeconds: detail.activeSeconds,
@@ -70,7 +61,7 @@ export function libraryDetail(detail: TorrentDetail): LibraryTorrentDetail {
   };
 }
 
-export function hostDetail(detail: TorrentDetail): TorrentHostDetail {
+export function hostDetail(detail: TorrentDetail) {
   return {
     files: detail.files.map((file) => ({ index: file.index, path: file.path })),
     id: detail.id,
@@ -85,8 +76,8 @@ export function hostDetail(detail: TorrentDetail): TorrentHostDetail {
 export function libraryState(
   state: DashboardState,
   detail: TorrentDetail | null,
-  server: LibraryState["server"]
-): LibraryState {
+  server: { id: string; name: string }
+) {
   return {
     appearance: { theme: state.settings.theme },
     destinations: state.destinations.map((destination) => ({
@@ -112,6 +103,22 @@ export function libraryState(
   };
 }
 
-export function hostState(state: DashboardState): HostState {
+export function hostState(state: DashboardState) {
   return { destinations: state.destinations, session: state.session, settings: state.settings };
+}
+
+export type LibraryTorrent = ReturnType<typeof libraryTorrent>;
+
+export type LibraryTorrentDetail = ReturnType<typeof libraryDetail>;
+
+export type LibraryState = ReturnType<typeof libraryState>;
+
+export type HostState = ReturnType<typeof hostState>;
+
+export type TorrentHostDetail = ReturnType<typeof hostDetail>;
+
+/** Live workspace state: the shared library plus host details the caller may see. */
+export interface LiveState extends LibraryState {
+  detailHost: TorrentHostDetail | null;
+  host: HostState | null;
 }

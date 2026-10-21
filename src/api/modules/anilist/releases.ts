@@ -1,13 +1,10 @@
-import type {
-  AniListEntry,
-  AniListMedia,
-  AniListReleaseSearchPlan,
-  AutomationPreferences,
-  FeedRelease,
-} from "../../../types";
 import { normalizeTitle } from "../../lib/title";
+import type { AutomationPreferences } from "../automation/model";
 import { interpretLocally, localMatch } from "../automation/rules";
+import type { FeedRelease } from "../discovery/model";
 import { parseDiscovery } from "../discovery/service";
+import type { AniListService } from "./service";
+import type { AniListEntry, AniListMedia } from "./types";
 
 const partNumber = /\bpart\s*(\d+)\b/i;
 const partSuffix = /\s+part\s*\d+$/i;
@@ -56,7 +53,7 @@ export function animeSearchPlan(
   seriesTitles: string[],
   season: number | null,
   part: number | null
-): AniListReleaseSearchPlan {
+) {
   const names = [...new Set(seriesTitles)];
   const requestedPart = part ?? 1;
   return {
@@ -247,3 +244,8 @@ export function animeQueries(
     ? titles.flatMap((title) => preferences.languages.map((language) => `${title} ${language}`))
     : titles;
 }
+
+export type AniListReleases = Extract<
+  Awaited<ReturnType<AniListService["releases"]>>,
+  { releases: FeedRelease[] }
+>;

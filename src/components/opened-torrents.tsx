@@ -2,10 +2,10 @@ import { useMutation } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
+import type { OpenedTorrent } from "../api/modules/desktop/opening";
 import { api } from "../lib/client";
 import { showTorrent } from "../lib/navigation";
 import { modalAtom } from "../state/workspace";
-import type { OpenedTorrent } from "../types";
 
 /** Shows the add dialog for each magnet link or .torrent file opened from the system. */
 export function OpenedTorrents() {

@@ -1,8 +1,9 @@
 import { ElysiaStatus, HTTPError, problem } from "elysia";
 import { createLogger, initLogger } from "evlog";
-import type { EngineFailure, EngineMessage, EngineRequest, EngineSnapshot } from "../../../types";
 import { loggerConfig, sanitizeLog } from "../../lib/diagnostics";
 import { TorrentEngine } from "./service";
+import type { EngineSnapshot } from "./types";
+import type { EngineFailure, EngineMessage, EngineRequest } from "./worker-protocol";
 
 declare let self: Worker;
 

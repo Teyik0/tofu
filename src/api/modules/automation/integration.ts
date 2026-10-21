@@ -1,21 +1,15 @@
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
-import type {
-  AutomationDecision,
-  AutomationDraft,
-  AutomationRule,
-  AutomationState,
-  DiscoveryResult,
-  EnginePort,
-  FeedRelease,
-} from "../../../types";
 import type { DatabaseTransaction } from "../../lib/db";
 import { sanitizeLog } from "../../lib/diagnostics";
 import { normalizeTitle } from "../../lib/title";
+import type { DiscoveryResult, FeedRelease } from "../discovery/model";
 import type { DiscoveryService } from "../discovery/service";
 import { collectSourceQueries, uniqueReleases } from "../discovery/sources";
 import { publicRelease } from "../plugins/releases";
 import type { PluginsService } from "../plugins/service";
+import type { EnginePort } from "../torrents/service";
+import type { AutomationDecision, AutomationDraft, AutomationRule, AutomationState } from "./model";
 import { compareReleases, contentKey } from "./rules";
 import type { AutomationService, PreparedRule, RuleOwnership } from "./service";
 

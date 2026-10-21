@@ -6,14 +6,14 @@ import {
   InboxIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { useNow } from "../hooks/use-now";
 import type {
   AutomationDecision,
   AutomationRule,
   AutomationState,
-  Destination,
-  FeedRelease,
-} from "../types";
+} from "../api/modules/automation/model";
+import type { Destination } from "../api/modules/destinations/model";
+import type { FeedRelease } from "../api/modules/discovery/model";
+import { useNow } from "../hooks/use-now";
 import { sourceNames } from "./automation-fields";
 import { bytes, relative } from "./format";
 import { Badge } from "./ui/badge";

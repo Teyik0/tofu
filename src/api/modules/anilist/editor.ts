@@ -1,7 +1,7 @@
 import { problem } from "elysia";
 import { aniListScoreScales } from "../../../lib/anilist-score";
-import type { AniListEditor, AniListListEntry, AniListListUpdate } from "../../../types";
 import type { AniListListEntryFragment, EditorQuery } from "./graphql/generated";
+import type { AniListListUpdate } from "./model";
 import { isAniListStatus } from "./service";
 
 function jsonEntries(value: unknown): [string, unknown][] {
@@ -9,7 +9,7 @@ function jsonEntries(value: unknown): [string, unknown][] {
 }
 
 /** A list entry from AniList, or null when the provider returned an incomplete entry. */
-export function listEntry(entry: AniListListEntryFragment): AniListListEntry | null {
+export function listEntry(entry: AniListListEntryFragment) {
   if (!(isAniListStatus(entry.status) && entry.progress !== null)) {
     return null;
   }
@@ -52,7 +52,7 @@ export function editorState(result: EditorQuery, mediaId: number) {
       ),
       scoreFormat: options?.scoreFormat ?? null,
     },
-  } satisfies AniListEditor;
+  };
 }
 
 export function validateEntryUpdate(
@@ -87,3 +87,5 @@ export function validateEntryUpdate(
   }
   return null;
 }
+
+export type AniListEditor = Extract<ReturnType<typeof editorState>, { options: object }>;

@@ -1,5 +1,6 @@
 import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import type { Destination, DeviceKind, DeviceRole, SessionKind } from "../types";
+import type { DeviceKind, DeviceRole, SessionKind } from "../api/modules/access/model";
+import type { Destination } from "../api/modules/destinations/model";
 
 export const torrentConfig = sqliteTable("config", {
   key: text().primaryKey(),

@@ -3,7 +3,7 @@ import type {
   AutomationPreferences,
   AutomationRule,
   AutomationState,
-} from "../types";
+} from "../api/modules/automation/model";
 import type { api } from "./client";
 
 function ruleStatus(draft: AutomationDraft, state: AutomationState): AutomationRule["status"] {

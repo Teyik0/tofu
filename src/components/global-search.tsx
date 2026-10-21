@@ -2,8 +2,8 @@ import { Autocomplete } from "@base-ui/react/autocomplete";
 import { useAtom, useSetAtom } from "jotai";
 import { HistoryIcon, SearchIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
+import type { LiveState } from "../api/modules/dashboard/projection";
 import { globalSearchOpenAtom } from "../state/workspace";
-import type { LiveState } from "../types";
 import {
   GlobalSearchResults,
   GlobalSearchReview,

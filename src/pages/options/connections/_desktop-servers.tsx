@@ -35,6 +35,12 @@ export function DesktopServers() {
   const [alias, setAlias] = useState("");
   const [origins, setOrigins] = useState("");
   useEffect(() => {
+    const invitation = new URLSearchParams(window.location.hash.slice(1)).get("invitation");
+    if (invitation) {
+      setAddress(invitation);
+      setEditing("new");
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
     const read = async () => {
       const { data, error: failure } = await api.desktop.servers.get();
       if (failure) {
@@ -93,19 +99,6 @@ export function DesktopServers() {
         settings. Linked libraries below supply media to your personal AniList instead.
       </p>
       <div className="settings-group">
-        <div className="connections-row connections-workspace">
-          <ServerIcon aria-hidden="true" className="connections-row-icon" />
-          <div className="connections-row-copy">
-            <strong>This computer</strong>
-            <p className="connections-muted">Start the local server when Tofu opens</p>
-          </div>
-          <Switch
-            aria-label="Start the local server when Tofu opens"
-            checked={state?.startLocal ?? true}
-            disabled={busy || !state}
-            onCheckedChange={() => setConfirm({ action: "hosting" })}
-          />
-        </div>
         {state?.servers.map((server) => (
           <div className="connections-row connections-workspace" key={server.serverId}>
             <ServerIcon aria-hidden="true" className="connections-row-icon" />
@@ -329,18 +322,12 @@ export function DesktopServers() {
         <DialogContent className="connections-dialog">
           <DialogHeader>
             <DialogTitle>
-              {confirm?.action === "hosting"
-                ? "Change local server startup?"
-                : confirm?.action === "forget"
-                  ? "Forget this server?"
-                  : "Disconnect this window?"}
+              {confirm?.action === "forget" ? "Forget this server?" : "Disconnect this window?"}
             </DialogTitle>
             <DialogDescription>
-              {confirm?.action === "hosting"
-                ? "Tofu restarts. Turning local hosting off pauses this computer’s downloads. Saved remote servers remain available."
-                : confirm?.action === "forget"
-                  ? "Remove this server’s saved credentials, cookies and storage from this computer. Downloads on that server continue."
-                  : "Close this computer’s remote window. Downloads on the server continue."}
+              {confirm?.action === "forget"
+                ? "Remove this server’s saved credentials, cookies and storage from this computer. Downloads on that server continue."
+                : "Close this computer’s remote window. Downloads on the server continue."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

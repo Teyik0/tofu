@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import type { CryptoDiagnostics } from "../../../types";
 
 const msePrime =
   "ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a63a36210000000000090563";
@@ -72,4 +71,11 @@ export function installCryptoDiagnostics() {
       return { ...installation.counters };
     },
   };
+}
+
+export interface CryptoDiagnostics {
+  attempts: number;
+  failures: number;
+  maxConstructorMilliseconds: number;
+  totalConstructorMilliseconds: number;
 }

@@ -2,8 +2,8 @@ import "@teyik0/furin/server-only";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { authorizedDevices, mediaLinks } from "../../../db/schema";
-import type { EnginePort } from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
+import type { EnginePort } from "../torrents/service";
 
 const DEFAULT_TTL = 6 * 3_600_000;
 

@@ -1,10 +1,10 @@
 import { useMutation } from "@teyik0/furin/client";
 import { HistoryIcon, RefreshCwIcon } from "lucide-react";
+import type { AutomationDecision } from "../api/modules/automation/model";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { useNow } from "../hooks/use-now";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
-import type { AutomationDecision } from "../types";
 import { QueriedAniListPanel } from "./anilist/panel";
 import { AutomationInbox, isPending, ReleaseLine } from "./automation-inbox";
 import {

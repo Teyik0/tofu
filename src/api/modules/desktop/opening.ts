@@ -4,7 +4,7 @@ import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ElysiaStatus, problem } from "elysia";
 import parseTorrent from "parse-torrent";
-import type { EnginePort, OpenedTorrent, TorrentAddOptions } from "../../../types";
+import type { EnginePort, TorrentAddOptions } from "../torrents/service";
 
 interface StagedTorrent {
   opened: OpenedTorrent;
@@ -118,4 +118,17 @@ export class TorrentOpenings extends EventEmitter<{ change: [] }> {
     this.emit("change");
     return { ok: true };
   }
+}
+
+/** A magnet link or .torrent file opened from the system, waiting for the user to add it. */
+export interface OpenedTorrent {
+  /** Thread whose folder contains the opened file, suggested as its destination. */
+  destinationId: string | null;
+  /** Set when the torrent is already in the library; it is shown instead of added again. */
+  existing: { destinationId: string } | null;
+  fileCount: number | null;
+  id: string;
+  infoHash: string;
+  length: number | null;
+  name: string;
 }

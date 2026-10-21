@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { holds } from "../../../api/modules/access/grants";
+import type { DeviceRole } from "../../../api/modules/access/model";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
@@ -17,7 +18,6 @@ import { RadioGroup, RadioGroupItem } from "../../../components/ui/radio-group";
 import { api } from "../../../lib/client";
 import { errorMessage } from "../../../lib/errors";
 import type { ServerSession } from "../../../state/workspace";
-import type { DeviceRole } from "../../../types";
 import { type DeviceSummary, roleNames } from "./_authorized-devices";
 
 /**

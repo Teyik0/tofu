@@ -1,10 +1,12 @@
 import { useMutation } from "@teyik0/furin/client";
 import { FrownIcon, MehIcon, SmileIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { AniListEditor } from "../../api/modules/anilist/editor";
+import type { AniListListUpdate } from "../../api/modules/anilist/model";
+import type { AniListMedia } from "../../api/modules/anilist/types";
 import { type AniListSaveState, createAniListAutosave } from "../../lib/anilist-autosave";
 import { aniListScoreScales } from "../../lib/anilist-score";
 import { api } from "../../lib/client";
-import type { AniListEditor, AniListListUpdate, AniListMedia } from "../../types";
 
 export type Action = (task: () => Promise<void>) => void;
 

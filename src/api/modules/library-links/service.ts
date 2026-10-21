@@ -2,10 +2,10 @@ import "@teyik0/furin/server-only";
 import { eq } from "drizzle-orm";
 import { problem } from "elysia";
 import { linkedServers } from "../../../db/schema";
-import type { AniListEntry } from "../../../types";
 import type { TofuDatabase } from "../../lib/db";
 import { PROTOCOL_MAJOR } from "../access/service";
 import { animeEpisodeOffset, localAnimeSearch } from "../anilist/releases";
+import type { AniListEntry } from "../anilist/types";
 import type { AvailabilityQuery, EpisodeSource } from "./availability";
 
 const DEADLINE = 4000;

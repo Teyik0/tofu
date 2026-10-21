@@ -3,8 +3,8 @@ import { access, realpath, stat } from "node:fs/promises";
 import { HTTPError } from "elysia";
 import { createLogger } from "evlog";
 import type { Torrent } from "webtorrent";
-import type { FileStats, TorrentStorageIssue } from "../../../types";
 import { sanitizeLog } from "../../lib/diagnostics";
+import type { FileStats, TorrentStorageIssue } from "./types";
 
 export interface StorageIdentity {
   canonicalPath?: string;

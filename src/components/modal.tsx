@@ -3,6 +3,13 @@ import { useMutation } from "@teyik0/furin/client";
 import { useAtomValue } from "jotai";
 import { FolderIcon, LinkIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
+import type {
+  LibraryTorrent,
+  LibraryTorrentDetail,
+  LiveState,
+} from "../api/modules/dashboard/projection";
+import type { OpenedTorrent } from "../api/modules/desktop/opening";
+import type { Destination, DestinationInput } from "../api/modules/destinations/model";
 import {
   addTorrentFormSchema,
   destinationFormSchema,
@@ -18,7 +25,6 @@ import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
 import { playSoundCue } from "../lib/sound-cues";
 import { sessionAtom } from "../state/workspace";
-import type { Destination, DestinationInput, FormModalKind, LiveState } from "../types";
 import { BoundedDestination } from "./connections/storage-locations";
 import { DestinationIconPicker } from "./destination-icon";
 import { bytes } from "./format";
@@ -55,8 +61,6 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-
-export type { FormModalKind, ModalKind } from "../types";
 
 function ModalFrame({
   remove,
@@ -1279,3 +1283,13 @@ function DestinationMoveOptions({ model }: { model: ReturnType<typeof useDestina
     </>
   ) : null;
 }
+
+export type FormModalKind =
+  | { type: "add"; destinationId: string }
+  | { type: "drop"; files: File[] }
+  | { type: "open"; torrent: OpenedTorrent }
+  | { type: "destination"; destination: Destination | null }
+  | { type: "remove"; torrent: LibraryTorrent }
+  | { type: "trackers"; torrent: LibraryTorrentDetail }
+  | { type: "locate"; torrent: LibraryTorrentDetail }
+  | { type: "peer"; torrent: LibraryTorrentDetail };

@@ -1,4 +1,5 @@
-import type { FeedRelease, SourcePluginId } from "../../../types";
+import type { FeedRelease } from "../discovery/model";
+import type { SourcePluginId } from "./model";
 
 const feedExpression1 = /^([\d.]+)\s*(Bytes|B|KiB|MiB|GiB|TiB|KB|MB|GB)$/i;
 const feedExpression2 = /\bS(\d{1,3})E(\d{1,4})\b/i;

@@ -1,4 +1,5 @@
-import type { LibraryTorrent, TorrentStatus, TorrentStorageIssue } from "../types";
+import type { LibraryTorrent } from "../api/modules/dashboard/projection";
+import type { TorrentStatus, TorrentStorageIssue } from "../api/modules/torrents/types";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
 export function bytes(value: number | null) {

@@ -1,9 +1,10 @@
 import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
+import type { LiveState } from "../api/modules/dashboard/projection";
 import { showDestination, showTorrent } from "../lib/navigation";
 import { modalAtom } from "../state/workspace";
-import type { FormModalKind, LiveState } from "../types";
 import { AutomationCenter } from "./automation-center";
+import type { FormModalKind } from "./modal";
 import { DeleteDestinationModal, Modal } from "./modal";
 
 function operationKey(modal: FormModalKind) {

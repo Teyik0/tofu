@@ -1,11 +1,11 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
 import { sync } from "../../../sync";
-import type { DestinationInput } from "../../../types";
 import { accessPlugin } from "../access/plugin";
 import type { Caller } from "../access/service";
 import { anilistServicePlugin } from "../anilist/plugin";
 import { torrentServicePlugin } from "../torrents/plugin";
+import type { DestinationInput } from "./model";
 import {
   createDestinationSchema,
   destinationPresentationSchema,

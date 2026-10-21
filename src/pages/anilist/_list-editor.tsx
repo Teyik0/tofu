@@ -1,4 +1,6 @@
 import { CheckIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
+import type { AniListEditor } from "../../api/modules/anilist/editor";
+import type { AniListMedia } from "../../api/modules/anilist/types";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import {
   AlertDialog,
@@ -10,7 +12,6 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
-import type { AniListEditor, AniListMedia } from "../../types";
 import { AniListListAside, AniListListFields } from "./_list-editor-fields";
 import { type Action, useAniListListEditor } from "./_use-list-editor";
 

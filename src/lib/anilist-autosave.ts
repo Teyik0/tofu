@@ -1,4 +1,4 @@
-import type { AniListListUpdate } from "../types";
+import type { AniListListUpdate } from "../api/modules/anilist/model";
 import { errorMessage } from "./errors";
 
 export interface AniListSaveState {

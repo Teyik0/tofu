@@ -2,8 +2,7 @@ import { chmod, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { DesktopCapabilities } from "@teyik0/furin-electrobun/host";
 import { problem } from "elysia";
-import { desktopTarget, installerName } from "../../../platform";
-import type { UpdateState } from "../../../types";
+import { desktopTarget, installerName } from "../../../../.github/scripts/platform";
 
 const repository = "Teyik0/Tofu";
 const versionPattern: RegExp = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -398,4 +397,25 @@ export class UpdatesService {
       },
     });
   }
+}
+
+export interface UpdateState {
+  automatic: boolean;
+  checkedAt: number | null;
+  currentVersion: string;
+  downloadName: string | null;
+  error: string | null;
+  latestVersion: string | null;
+  progress: number | null;
+  releaseUrl: string | null;
+  status:
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "ready"
+    | "restarting"
+    | "current"
+    | "no-release"
+    | "error";
 }

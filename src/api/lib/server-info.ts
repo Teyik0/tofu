@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createLogger } from "evlog";
 import type { WorkerTorrentEngine } from "../modules/torrents/worker-client";
 import type { instance as databaseInstance } from "./database-plugin";
+import type { InstanceProfile } from "./instance";
 
 export async function writeServerInfo(
   instance: typeof databaseInstance,
@@ -19,7 +20,7 @@ export async function writeServerInfo(
       pid: process.pid,
       profile: instance.profile,
       url,
-    }),
+    } satisfies ServerInfo),
     { mode: 0o600 }
   );
   await rename(join(dataDir, "server.json.tmp"), join(dataDir, "server.json"));
@@ -31,4 +32,13 @@ export async function writeServerInfo(
   });
   log.emit();
   console.log(`${instance.name} is ready : ${url} (data: ${dataDir})`);
+}
+
+export interface ServerInfo {
+  /** Private native session; stored only in the owner's descriptor. */
+  cookie?: string;
+  mode: "desktop" | "server";
+  pid: number;
+  profile: InstanceProfile;
+  url: string;
 }

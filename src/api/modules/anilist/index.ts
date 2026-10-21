@@ -2,11 +2,11 @@ import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
 import { sync } from "../../../sync";
-import type { AniListCatalogFilters } from "../../../types";
 import { accessPlugin } from "../access/plugin";
 import { automationPlugin } from "../automation";
 import { draft } from "../automation/model";
 import { releaseAutomationPlugin } from "../automation/plugin";
+import type { AniListCatalogFilters } from "./catalog";
 import { catalogSchema } from "./catalog";
 import {
   aniListConfigurationSchema,

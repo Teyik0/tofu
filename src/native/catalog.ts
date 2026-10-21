@@ -13,9 +13,8 @@ export interface SavedServer {
 /** Independent from the library database and its lease. Contains no credentials. */
 export class ServerCatalog {
   readonly path: string;
-  value: { version: 1; startLocal: boolean; servers: SavedServer[] } = {
+  value: { version: 1; servers: SavedServer[] } = {
     servers: [],
-    startLocal: true,
     version: 1,
   };
   private saving: Promise<void> = Promise.resolve();
@@ -27,14 +26,10 @@ export class ServerCatalog {
   async read() {
     if (await Bun.file(this.path).exists()) {
       const value = await Bun.file(this.path).json();
-      if (
-        value.version !== 1 ||
-        typeof value.startLocal !== "boolean" ||
-        !Array.isArray(value.servers)
-      ) {
+      if (value.version !== 1 || !Array.isArray(value.servers)) {
         throw new Error("The saved server catalog is invalid");
       }
-      this.value = value;
+      this.value = { servers: value.servers, version: 1 };
     }
     // Connections chosen as memory-only cannot survive this native process.
     this.value.servers = this.value.servers.filter((server) => !server.temporary);

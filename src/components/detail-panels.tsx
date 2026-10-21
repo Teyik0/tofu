@@ -1,7 +1,8 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
 import { useAtomValue } from "jotai";
+import type { TorrentHostDetail } from "../api/modules/dashboard/projection";
+import type { FilePriority } from "../api/modules/torrents/types";
 import { sessionAtom } from "../state/workspace";
-import type { FilePriority, TorrentHostDetail } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import { bytes, date, duration, percent, ratio, speed } from "./format";
 import { Icon } from "./icon";

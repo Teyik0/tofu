@@ -10,14 +10,10 @@ import { useNow } from "@/hooks/use-now";
 import { errorMessage } from "@/lib/errors";
 import { useRefresh } from "@/lib/navigation";
 import { dashboardAtom, sessionAtom } from "@/state/workspace";
-import type {
-  AniListCatalogFilters,
-  AniListCatalogSort,
-  AniListMedia,
-  AniListState,
-  AutomationState,
-  LibraryState,
-} from "@/types";
+import type { AniListCatalogFilters, AniListCatalogSort } from "../../api/modules/anilist/catalog";
+import type { AniListMedia, AniListState } from "../../api/modules/anilist/types";
+import type { AutomationState } from "../../api/modules/automation/model";
+import type { LibraryState } from "../../api/modules/dashboard/projection";
 import { api } from "../../lib/client";
 import { browseRequest, catalogSortOptions } from "./_browse-filters";
 import { AniListEpisodeModal } from "./_episode-modal";

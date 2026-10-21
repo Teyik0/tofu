@@ -1,4 +1,5 @@
 import { problem } from "elysia";
+import type { InferOutput } from "valibot";
 import {
   array,
   check,
@@ -13,9 +14,9 @@ import {
   pipe,
   string,
 } from "valibot";
-import type { AniListCatalogFilters, AniListMedia } from "../../../types";
 import { integerInput } from "../../lib/validation";
 import type { AniListMediaFragment, CatalogQueryVariables } from "./graphql/generated";
+import type { AniListMedia } from "./types";
 
 export type CatalogMedia = AniListMediaFragment;
 const mediaStatuses = ["RELEASING", "FINISHED", "NOT_YET_RELEASED", "CANCELLED", "HIATUS"] as const;
@@ -67,7 +68,7 @@ const count = optional(pipe(integerInput, integer(), minValue(0), maxValue(100_0
 export const catalogSchema = object({
   airingStatus: choices(mediaStatuses),
   countryOfOrigin: choices(["JP", "KR", "CN", "TW"]),
-  doujin: choices(["any", "only", "exclude"]),
+  doujin: optional(picklist(["any", "only", "exclude"])),
   durationMax: count,
   durationMin: count,
   episodesMax: count,
@@ -85,8 +86,10 @@ export const catalogSchema = object({
   genres: names,
   page: optional(pipe(integerInput, integer(), minValue(1), maxValue(1000))),
   search: optional(pipe(string(), maxLength(200))),
-  season: choices(["WINTER", "SPRING", "SUMMER", "FALL"]),
-  sort: choices(["title", "popularity", "score", "trending", "favourites", "added", "released"]),
+  season: optional(picklist(["WINTER", "SPRING", "SUMMER", "FALL"])),
+  sort: optional(
+    picklist(["title", "popularity", "score", "trending", "favourites", "added", "released"])
+  ),
   source: choices(mediaSources),
   streamingOn: optional(pipe(integerInput, integer(), minValue(1))),
   tags: names,
@@ -203,3 +206,7 @@ export function catalogMedia(media: CatalogMedia): AniListMedia {
     title: aliases[0] ?? `Anime ${media.id}`,
   };
 }
+
+export type AniListCatalogFilters = InferOutput<typeof catalogSchema>;
+
+export type AniListCatalogSort = NonNullable<AniListCatalogFilters["sort"]>;

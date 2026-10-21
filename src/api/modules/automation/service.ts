@@ -1,23 +1,23 @@
 import { eq } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { automationDecisions, automationPreferences, automationRules } from "../../../db/schema";
-import type {
-  AutomationDecision,
-  AutomationDraft,
-  AutomationPreferences,
-  AutomationRule,
-  FeedRelease,
-  SourcePluginId,
-} from "../../../types";
 import type { DatabaseConnection, DatabaseTransaction, TofuDatabase } from "../../lib/db";
 import { refreshRecords } from "../../lib/persisted-cache";
+import type { FeedRelease } from "../discovery/model";
 import {
   interpretationQuestions,
   type JevService,
   matchQuestions,
   safeReleaseState,
 } from "../jev/service";
+import type { SourcePluginId } from "../plugins/model";
 import { publicRelease } from "../plugins/releases";
+import type {
+  AutomationDecision,
+  AutomationDraft,
+  AutomationPreferences,
+  AutomationRule,
+} from "./model";
 import {
   compareQuality,
   compareReleases,

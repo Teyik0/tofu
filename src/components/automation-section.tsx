@@ -9,18 +9,17 @@ import {
   type ZapIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { createAutomationMutations } from "../lib/automation-mutations";
-import { api } from "../lib/client";
 import type {
   AutomationDraft,
   AutomationRule,
-  AutomationSection,
   AutomationState,
-  DiscoveryResult,
-  FeedRelease,
-  LiveState,
-} from "../types";
+} from "../api/modules/automation/model";
+import type { LiveState } from "../api/modules/dashboard/projection";
+import type { DiscoveryResult, FeedRelease } from "../api/modules/discovery/model";
+import { createAutomationMutations } from "../lib/automation-mutations";
+import { api } from "../lib/client";
 import { ActionTooltip } from "./action-tooltip";
+import type { AutomationSection } from "./automation-center";
 import { sourceNames } from "./automation-fields";
 import { relative } from "./format";
 import { OptionSelect } from "./option-select";

@@ -2,10 +2,11 @@ import { getDeepError, handleSubmit, useField } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
 import { useRef, useState } from "react";
+import type { PluginConfiguration, PluginState } from "../../api/modules/plugins/model";
 import { api } from "../../lib/client";
 import { errorMessage } from "../../lib/errors";
+import type { PluginForm } from "../../lib/plugin-forms";
 import { confirmPluginConfiguration } from "../../lib/plugin-forms";
-import type { PluginConfiguration, PluginForm, PluginState } from "../../types";
 
 type PluginCommand = { type: "configure"; configuration: PluginConfiguration } | { type: "test" };
 interface PluginFeedback {

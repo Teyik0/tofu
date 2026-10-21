@@ -1,4 +1,4 @@
-import type { DeviceRole } from "../../../types";
+import type { DeviceRole } from "./model";
 import type { Caller } from "./service";
 
 /** Grants held by a caller; the owner holds everything. */

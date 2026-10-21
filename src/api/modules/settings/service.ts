@@ -1,4 +1,4 @@
-import type { Settings, SettingsInput } from "../../../types";
+import type { Settings, SettingsInput } from "./model";
 
 /** Host paths, native background mode and deleting source files are changed by the owner only. */
 export function changesOwnerSettings(current: Settings, input: SettingsInput) {

@@ -1,3 +1,4 @@
+import type { AniListEntry, AniListMedia, AniListState } from "../../api/modules/anilist/types";
 import { AniListIcon } from "../../components/anilist/icon";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -11,7 +12,6 @@ import {
 import { Skeleton } from "../../components/ui/skeleton";
 import type { useAniListCatalog } from "../../hooks/use-anilist-catalog";
 import type { useAsyncAction } from "../../hooks/use-async-action";
-import type { AniListEntry, AniListMedia, AniListState } from "../../types";
 import { AnimeCard, AnimeRow } from "./_library-cards";
 
 type CatalogModel = ReturnType<typeof useAniListCatalog>;

@@ -2,6 +2,7 @@ import { CopyIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { encode } from "uqr";
 import { holds } from "../../../api/modules/access/grants";
+import type { DeviceRole } from "../../../api/modules/access/model";
 import { OptionSelect } from "../../../components/option-select";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
@@ -20,7 +21,6 @@ import { RadioGroup, RadioGroupItem } from "../../../components/ui/radio-group";
 import { api } from "../../../lib/client";
 import { errorMessage } from "../../../lib/errors";
 import type { ServerSession } from "../../../state/workspace";
-import type { DeviceRole } from "../../../types";
 import { serverAddresses } from "./_server-addresses";
 import type { ConnectionsState } from "./index";
 

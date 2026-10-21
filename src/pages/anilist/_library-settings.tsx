@@ -1,4 +1,7 @@
 import { useState } from "react";
+import type { AniListState } from "../../api/modules/anilist/types";
+import type { AutomationState } from "../../api/modules/automation/model";
+import type { LiveState } from "../../api/modules/dashboard/projection";
 import { AniListPanel } from "../../components/anilist/panel";
 import { OptionSelect } from "../../components/option-select";
 import { Alert, AlertDescription } from "../../components/ui/alert";
@@ -12,7 +15,6 @@ import {
 import { Field, FieldLabel } from "../../components/ui/field";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import { useRefresh } from "../../lib/navigation";
-import type { AniListState, AutomationState, LiveState } from "../../types";
 export function LibrarySettings({
   state,
   automationState,

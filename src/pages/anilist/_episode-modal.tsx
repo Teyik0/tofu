@@ -1,11 +1,13 @@
 import { useField, useForm } from "@formisch/react";
 import { BookOpenIcon, ListChecksIcon, ZapIcon } from "lucide-react";
 import { object, string } from "valibot";
+import type { AniListEntry, AniListMedia } from "../../api/modules/anilist/types";
+import type { AutomationState } from "../../api/modules/automation/model";
+import type { LiveState } from "../../api/modules/dashboard/projection";
 import { Dialog, DialogContent } from "../../components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useAniListEditor } from "../../hooks/use-anilist-editor";
 import { useAniListReleases } from "../../hooks/use-anilist-releases";
-import type { AniListEntry, AniListMedia, AutomationState, LiveState } from "../../types";
 import { EpisodeHeader } from "./_episode-header";
 import { EpisodeAutomationPanel, EpisodeDownloadsPanel, EpisodeListPanel } from "./_episode-panels";
 
