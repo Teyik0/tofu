@@ -11,20 +11,20 @@ import { isSupersededNavigation, useRefresh } from "../lib/navigation";
 import { playSoundCue } from "../lib/sound-cues";
 import { recentSearchesAtom, searchDestinationAtom } from "../state/workspace";
 import type {
-  DashboardState,
   GlobalSearchScope,
+  LibraryTorrent,
+  LiveState,
   SearchReleaseGroup,
   SourcePluginId,
-  TorrentSummary,
 } from "../types";
 
 export type SearchItem =
-  | { kind: "torrent"; torrent: TorrentSummary }
+  | { kind: "torrent"; torrent: LibraryTorrent }
   | { kind: "release"; group: SearchReleaseGroup };
 export interface GlobalSearchProps {
   activeDestination: string | null;
   close: () => void;
-  dashboard: DashboardState;
+  dashboard: LiveState;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -49,7 +49,7 @@ export function useGlobalSearch({
   const [review, setReview] = useState<SearchReleaseGroup | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const { busy, error, setError, run } = useAsyncAction("Unable to download the release");
-  const { data: automation, error: pluginError } = useQuery(api.automation.get);
+  const { data: automation, error: pluginError } = useQuery(api.automation.get.live());
   const add = useMutation(api.discover.add.post);
   const sourceIds =
     automation && "plugins" in automation
@@ -94,7 +94,7 @@ export function useGlobalSearch({
     setNotice(null);
     setError(null);
   };
-  const openTorrent = async (torrent: TorrentSummary) => {
+  const openTorrent = async (torrent: LibraryTorrent) => {
     setError(null);
     remember();
     try {

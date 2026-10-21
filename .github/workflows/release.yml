@@ -67,13 +67,16 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2
 
-      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun install --frozen-lockfile
 
-      - run: bun run setup
+      - name: Prepare release resources
+        run: bun run setup
+        env:
+          TOFU_RELEASE: "1"
 
       - name: Validate version and architecture
         run: |
-          bun scripts/release.ts validate
+          bun .github/scripts/release.ts validate
           bun -e 'const { version } = await Bun.file("package.json").json(); if (process.env.RELEASE_TAG !== `v${version}`) throw new Error("The release tag must match package.json");'
         env:
           EXPECTED_ARCH: ${{ matrix.arch }}
@@ -83,14 +86,21 @@ jobs:
 
       - name: Configure optional Apple signing
         if: runner.os == 'macOS'
-        run: bun scripts/release.ts signing
+        run: bun .github/scripts/release.ts signing
         env:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
 
       - name: Build release and prepare the Hutch SDK
-        run: bun run build:release
+        run: |
+          bun run codegen
+          bun --bun furin-electrobun build --env=stable
+        env:
+          TOFU_RELEASE: "1"
+
+      - name: Prepare release artifacts
+        run: bun .github/scripts/release.ts artifacts
 
       - run: bun run tscheck
 
@@ -107,7 +117,7 @@ jobs:
 
       - name: Remove signing files
         if: always() && runner.os == 'macOS'
-        run: bun scripts/release.ts cleanup
+        run: bun .github/scripts/release.ts cleanup
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -133,9 +143,9 @@ jobs:
           merge-multiple: true
           path: .furin/electrobun/artifacts
 
-      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun install --frozen-lockfile
 
       - name: Publish GitHub release
-        run: bun scripts/release.ts publish
+        run: bun .github/scripts/release.ts publish
         env:
           GH_TOKEN: ${{ github.token }}

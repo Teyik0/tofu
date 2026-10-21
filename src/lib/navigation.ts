@@ -1,6 +1,6 @@
 import { useRouter } from "@teyik0/furin/link";
 import { useCallback } from "react";
-import type { TorrentSummary } from "../types";
+import type { LibraryTorrent } from "../types";
 
 type Router = ReturnType<typeof useRouter>;
 
@@ -29,11 +29,11 @@ export function destinationFromPath(path: string) {
  * to the page, otherwise the most recently added one, matching the library's default sort.
  */
 export function selectedTorrentId(
-  torrents: TorrentSummary[],
+  torrents: LibraryTorrent[],
   destinationId: string | null,
   requested: string | undefined
 ) {
-  let latest: TorrentSummary | undefined;
+  let latest: LibraryTorrent | undefined;
   for (const torrent of torrents) {
     if (destinationId !== null && torrent.destinationId !== destinationId) {
       continue;

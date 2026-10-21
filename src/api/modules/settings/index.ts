@@ -1,28 +1,45 @@
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia } from "elysia";
+import { Elysia, ElysiaStatus, problem } from "elysia";
 import { sync } from "../../../sync";
+import { accessPlugin } from "../access/plugin";
 import { torrentServicePlugin } from "../torrents/plugin";
 import { settingsPatchSchema, settingsSchema } from "./model";
+import { changesOwnerSettings } from "./service";
 
 export const settingsPlugin = new Elysia({ name: "tofu-settings-api" })
   .use(torrentServicePlugin)
+  .use(accessPlugin)
   .use(furinSync(sync))
-  .guard({ sync: false })
+  .guard({ administration: true, idempotent: false })
   .get("/settings", ({ torrents }) => torrents.settings)
   .put(
     "/settings",
-    {
-      body: settingsSchema,
-    },
-    async ({ torrents, torrentFolders, body }) => {
+    { body: settingsSchema },
+    async ({ caller, torrents, torrentFolders, body }) => {
+      if (caller.kind !== "owner" && changesOwnerSettings(torrents.settings, body)) {
+        return problem(403, { detail: "Change this on the server itself" });
+      }
       const settings = await torrents.updateSettings(body);
+      if (settings instanceof ElysiaStatus) {
+        return settings;
+      }
       // The default thread follows the download folder.
       torrentFolders.sync();
       return settings;
     }
   )
-  .patch("/settings", { body: settingsPatchSchema }, async ({ torrents, torrentFolders, body }) => {
-    const settings = await torrents.updateSettings(body);
-    torrentFolders.sync();
-    return settings;
-  });
+  .patch(
+    "/settings",
+    { body: settingsPatchSchema },
+    async ({ caller, torrents, torrentFolders, body }) => {
+      if (caller.kind !== "owner" && changesOwnerSettings(torrents.settings, body)) {
+        return problem(403, { detail: "Change this on the server itself" });
+      }
+      const settings = await torrents.updateSettings(body);
+      if (settings instanceof ElysiaStatus) {
+        return settings;
+      }
+      torrentFolders.sync();
+      return settings;
+    }
+  );

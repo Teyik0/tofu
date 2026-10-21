@@ -1,4 +1,4 @@
-import { HTTPError } from "elysia";
+import { problem } from "elysia";
 import { aniListScoreScales } from "../../../lib/anilist-score";
 import type { AniListEditor, AniListListEntry, AniListListUpdate } from "../../../types";
 import type { AniListListEntryFragment, EditorQuery } from "./graphql/generated";
@@ -8,9 +8,10 @@ function jsonEntries(value: unknown): [string, unknown][] {
   return value && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : [];
 }
 
-export function listEntry(entry: AniListListEntryFragment): AniListListEntry {
+/** A list entry from AniList, or null when the provider returned an incomplete entry. */
+export function listEntry(entry: AniListListEntryFragment): AniListListEntry | null {
   if (!(isAniListStatus(entry.status) && entry.progress !== null)) {
-    throw new (HTTPError.id("BAD_GATEWAY", 502))("Invalid AniList list entry");
+    return null;
   }
   return {
     ...entry,
@@ -27,13 +28,17 @@ export function listEntry(entry: AniListListEntryFragment): AniListListEntry {
   };
 }
 
-export function editorState(result: EditorQuery, mediaId: number): AniListEditor {
+export function editorState(result: EditorQuery, mediaId: number) {
   if (!result.Media || result.Media.id !== mediaId) {
-    throw new (HTTPError.id("NOT_FOUND", 404))("Anime not found on AniList");
+    return problem(404, { detail: "Anime not found on AniList" });
+  }
+  const entry = result.Media.mediaListEntry ? listEntry(result.Media.mediaListEntry) : null;
+  if (result.Media.mediaListEntry && !entry) {
+    return problem(502, { detail: "Invalid AniList list entry" });
   }
   const options = result.Viewer?.mediaListOptions;
   return {
-    entry: result.Media.mediaListEntry ? listEntry(result.Media.mediaListEntry) : null,
+    entry,
     isFavourite: typeof result.Media.isFavourite === "boolean" ? result.Media.isFavourite : null,
     isFavouriteBlocked:
       typeof result.Media.isFavouriteBlocked === "boolean" ? result.Media.isFavouriteBlocked : null,
@@ -47,7 +52,7 @@ export function editorState(result: EditorQuery, mediaId: number): AniListEditor
       ),
       scoreFormat: options?.scoreFormat ?? null,
     },
-  };
+  } satisfies AniListEditor;
 }
 
 export function validateEntryUpdate(
@@ -63,25 +68,22 @@ export function validateEntryUpdate(
       body.score > scale.max ||
       Math.abs(body.score / scale.step - Math.round(body.score / scale.step)) > 1e-8
     ) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))(
-        "Score does not match your AniList scoring format"
-      );
+      return problem(400, { detail: "Score does not match your AniList scoring format" });
     }
   }
   if (body.progress !== undefined && episodes !== null && body.progress > episodes) {
-    throw new (HTTPError.id("BAD_REQUEST", 400))("Progress exceeds the anime episode count");
+    return problem(400, { detail: "Progress exceeds the anime episode count" });
   }
   const customLists = new Set(options.customLists);
   if (body.customLists?.some((name) => !customLists.has(name))) {
-    throw new (HTTPError.id("BAD_REQUEST", 400))("Choose an existing AniList custom list");
+    return problem(400, { detail: "Choose an existing AniList custom list" });
   }
   if (
     body.advancedScores &&
     (!options.advancedScoringEnabled ||
       body.advancedScores.length !== options.advancedScoring.length)
   ) {
-    throw new (HTTPError.id("BAD_REQUEST", 400))(
-      "Advanced scores do not match your AniList settings"
-    );
+    return problem(400, { detail: "Advanced scores do not match your AniList settings" });
   }
+  return null;
 }

@@ -1,35 +1,43 @@
-# Furin PR #163 packages
+# Furin packages and Remote Servers integration
 
-Tofu pins these archives from [Furin PR #163](https://github.com/Teyik0/furin/pull/163):
+Both active packages use the latest upstream baseline from
+[Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
+`f272df99cbc21bd44010b9f2171bd0bc48ad9c96`.
 
-| Archive | Upstream commit | Package version | SHA-256 |
-| --- | --- | --- | --- |
-| `furin-pr163-118d85f.tgz` | `118d85f2d766fc4a21a55b84b8508e70783076fa` | `@teyik0/furin@0.7.0-alpha.5` | `bc9d8eb226be8b6c0af5480c5970a214c00cc684188b486797b29b36033c124e` |
-| `furin-electrobun-pr163-a1c9c5d.tgz` | `a1c9c5dc8e7cb652925418c98be06f5fa09ee0b2` | `@teyik0/furin-electrobun@0.1.0` | `c366f5006205e0d1285d2e10157a1b6b03268ac9b3d465b1d8af676429dbac21` |
+| Active archive | Local source patch | SHA-256 |
+| --- | --- | --- |
+| `furin-remote-native-f272df9.tgz` | `patches/0004-aot-process-resource-isolation.patch` | `70692fabbf0afcf416fab7344cd17c6f22271d203bb433d052b9131bd442dbc6` |
+| `furin-electrobun-pr163-f272df9.tgz` | None | `5e75583a5cea3ecdd75a247c40c0f9c7123eefe21cecb8dc022d0e81ee2a5668` |
 
-The core archive comes from the immutable published preview at
-`https://pkg.pr.new/Teyik0/furin/@teyik0/furin@118d85f2d766fc4a21a55b84b8508e70783076fa`.
-The core package is unchanged between that commit and the current Electrobun
-commit, so this upgrade retains the existing core archive.
+The core patch evaluates Elysia AOT in a child process and waits for its exit before
+prerendering. An application can own native file locks and database handles during
+compilation; terminating a JavaScript worker does not reliably close these process-owned
+resources. Process isolation releases them at the OS boundary. Existing AOT named-plugin,
+unnamed-plugin rejection and registration tests pass with this change.
 
-The Electrobun archive is built from an isolated checkout of its exact upstream
-commit using the package's `build.ts`, then packed with `bun pm pack` under Bun
-1.4.3. Packing resolves the workspace catalog references to published semver
-ranges. Its source matches upstream; no local guard patch is applied. Both
-archives include their MIT license.
+Upstream commit `495de76f797fa0bb64f8fea5290d33d043d7f835` includes Remote Servers network
+admission, TLS listener configuration and the client-only manager, so the desktop package
+no longer needs a local patch. Commit `c8e0461` also recovers the development supervisor
+after backend compilation errors. Commit `9e6e12f` adds client-render recovery after HMR
+and corrects WebKit source-map diagnostics. Commit `f272df9` isolates route discovery
+imports before AOT so discovery releases import-time resources before compilation.
+The Electrobun package is unchanged from `9e6e12f`; its archive has the same checksum.
+Tofu's root Elysia application composes
+`apiPlugin` and Furin on one listener. Network requests authenticate before dispatch,
+while the protected isomorphic Eden client keeps direct in-process dispatch to
+`apiPlugin`. No client transport workaround is introduced.
 
-Tofu mounts `desktopApp()` on its single Elysia application, exported as
-`apiPlugin` and used directly by the protected isomorphic Eden client. The
-upstream SDK distinguishes trusted in-process dispatch from requests arriving
-through Bun's HTTP listener. Network session and origin checks remain enforced;
-startup, update pause, and shutdown affect both transports.
+## Rebuilding
 
-The standard native host owns windows, tray, native events, and update handoff.
-The runtime data-directory policy in `furin.config.ts` preserves `Tofu` and
-`Tofu-dev` and resolves `TOFU_DATA_DIR` at launch. Failed update handoff restarts
-the process after releasing the native and application instance leases. Native
-smoke injection is opt-in through `FURIN_NATIVE_TEST_SCRIPT`.
+Use an isolated Furin checkout at the exact upstream commit above. Install dependencies
+with Bun 1.4.3, apply patch 0004 from the repository root, and run each package's
+`build.ts`, core first. Pack each package with `bun pm pack` from its package directory
+and copy the resulting archives to the names above. Packing resolves workspace catalog
+references to published ranges. Archives contain their upstream MIT licenses.
 
-The prior provisional guard patch and its archive have been removed. The
-upstream change requires no `allowInProcessRequests` option and no changes to
-`src/lib/client.ts`.
+Only the two active archives and their required AOT source patch are kept here.
+Historical archives and superseded or unapplied patches are not shipped.
+
+The separate `../patches/libvlc-wasm@0.2.0.patch` is applied by Bun through
+`package.json`. It bounds VLC worker shutdown and the HTTP source chunk cache;
+both fixes are still needed by the installed player version.

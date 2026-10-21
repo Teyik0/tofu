@@ -1,7 +1,7 @@
 import { Link, useRouter } from "@teyik0/furin/link";
 import { useAtomValue } from "jotai";
 import { ArrowLeftIcon, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { backToWorkspace } from "../lib/navigation";
 import { settingsBackPathAtom } from "../state/workspace";
 import { Logo } from "./icon";
@@ -13,6 +13,7 @@ type SettingsPath =
   | "/options/preferences"
   | "/options/appearance"
   | "/options/downloads"
+  | "/options/connections"
   | "/options/updates"
   | "/plugins"
   | "/plugins/sources"
@@ -40,6 +41,21 @@ export function SettingsLayout({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const navigation = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 520px)");
+    const revealActiveSection = () => {
+      if (mobile.matches) {
+        navigation.current?.querySelector(`[href="${CSS.escape(path)}"]`)?.scrollIntoView({
+          block: "nearest",
+          inline: "nearest",
+        });
+      }
+    };
+    revealActiveSection();
+    mobile.addEventListener("change", revealActiveSection);
+    return () => mobile.removeEventListener("change", revealActiveSection);
+  }, [path]);
   const router = useRouter();
   const backPath = useAtomValue(settingsBackPathAtom);
   return (
@@ -49,7 +65,7 @@ export function SettingsLayout({
           <Logo />
           <strong>Tofu</strong>
         </div>
-        <nav aria-label={navigationLabel}>
+        <nav aria-label={navigationLabel} ref={navigation}>
           {sections.map(({ to, label, icon: Icon }) => (
             <Link
               aria-current={path === to ? "page" : undefined}

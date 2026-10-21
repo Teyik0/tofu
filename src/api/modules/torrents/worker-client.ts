@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
-import { HTTPError } from "elysia";
+import { ElysiaStatus, HTTPError, problem } from "elysia";
+import { createLogger } from "evlog";
 import workerBundle from "../../../../runtime/engine-worker.worker" with { type: "file" };
 import type {
   DashboardState,
@@ -16,10 +17,11 @@ import type {
   SettingsInput,
   TorrentAddOptions,
 } from "../../../types";
-import { recordLog } from "../../lib/diagnostics";
-import type { ApplicationLogs } from "../../lib/logs";
+import { sanitizeLog } from "../../lib/diagnostics";
+import type { logDrain } from "../../lib/logs";
 
 interface PendingOperation {
+  method: EngineRequest["method"];
   reject: (error: Error) => void;
   resolve: (value: unknown) => void;
 }
@@ -27,20 +29,22 @@ interface PendingOperation {
 export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }> {
   private readonly worker: Worker;
   private readonly options: EngineOpenOptions;
-  private readonly logs?: ApplicationLogs;
+  private readonly logs?: typeof logDrain;
   private readonly pending = new Map<number, PendingOperation>();
   private readonly ready = Promise.withResolvers<void>();
   private state!: DashboardState;
   private currentStateRevision = 0;
   private currentTelemetryRevision = 0;
   private sampledAt = 0;
-  private refresh: Promise<DashboardState> | null = null;
+  private refresh: Promise<
+    DashboardState | ReturnType<typeof problem<503, { detail: string }>>
+  > | null = null;
   private sequence = 0;
   private failure: Error | null = null;
   private shutdown: Promise<void> | null = null;
   mode: "desktop" | "server" = "server";
 
-  private constructor(entry: string | URL, options: EngineOpenOptions, logs?: ApplicationLogs) {
+  private constructor(entry: string | URL, options: EngineOpenOptions, logs?: typeof logDrain) {
     super();
     // Every open live stream listens for changes.
     this.setMaxListeners(0);
@@ -49,7 +53,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
     this.worker = new Worker(entry);
     this.worker.addEventListener("message", ({ data }: MessageEvent<EngineMessage>) => {
       if (data.type === "log") {
-        this.logs?.write(data.line);
+        this.logs?.(data.context);
         return;
       }
       if (data.type === "ready") {
@@ -62,7 +66,9 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
       }
       const operation = this.pending.get(data.id);
       this.pending.delete(data.id);
-      if (data.type === "error") {
+      if (data.type === "failure") {
+        operation?.resolve(new ElysiaStatus(data.status, data.body, data.headers));
+      } else if (data.type === "error") {
         const { failure } = data;
         operation?.reject(
           failure.kind === "http"
@@ -76,9 +82,14 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
         operation?.resolve(data.value);
       }
     });
-    this.worker.addEventListener("error", (event) => this.fail(new Error(event.message)));
-    this.worker.addEventListener("close", () =>
-      this.fail(new (HTTPError.id("SERVICE_UNAVAILABLE", 503))("The torrent engine has stopped"))
+    this.worker.addEventListener("error", (event) =>
+      this.fail(new Error(event.message, { cause: event.error }))
+    );
+    this.worker.addEventListener("close", (event) =>
+      this.fail(
+        new (HTTPError.id("SERVICE_UNAVAILABLE", 503))("The torrent engine has stopped"),
+        "code" in event && typeof event.code === "number" ? event.code : undefined
+      )
     );
   }
 
@@ -106,18 +117,31 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
     return this.currentTelemetryRevision;
   }
 
-  refreshSnapshot(maxAgeMs: number): Promise<DashboardState> {
+  refreshSnapshot(maxAgeMs: number) {
     if (this.failure) {
-      return Promise.reject(this.failure);
+      return Promise.resolve(problem(503, { detail: "The torrent engine has stopped" }));
     }
     if (maxAgeMs > 0 && Date.now() - this.sampledAt <= maxAgeMs) {
       return Promise.resolve(this.snapshot(null, false));
     }
-    this.refresh ??= this.call("refreshSnapshot", [0])
-      .then(() => this.snapshot(null, false))
-      .finally(() => {
-        this.refresh = null;
-      });
+    if (!this.refresh) {
+      const pending = Promise.withResolvers<
+        DashboardState | ReturnType<typeof problem<503, { detail: string }>>
+      >();
+      this.refresh = pending.promise;
+      const refresh = async () => {
+        try {
+          const result = await this.call("refreshSnapshot", [0]);
+          pending.resolve(result instanceof ElysiaStatus ? result : this.snapshot(null, false));
+        } catch (error) {
+          pending.reject(error);
+        } finally {
+          this.refresh = null;
+        }
+      };
+      void refresh();
+      return pending.promise;
+    }
     return this.refresh;
   }
 
@@ -125,7 +149,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
     return this.call("setObserved", [observed]);
   }
 
-  static async open(options: EngineOpenOptions, logs?: ApplicationLogs) {
+  static async open(options: EngineOpenOptions, logs?: typeof logDrain) {
     const source = new URL("./worker.ts", import.meta.url);
     const compiled = new URL(workerBundle, import.meta.url);
     // The native host shares the backend's worker and external package tree.
@@ -151,19 +175,29 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
       return engine;
     } catch (error) {
       engine.worker.terminate();
+      await logs?.flush();
       throw error;
     }
   }
 
-  private fail(error: Error) {
+  private fail(error: Error, exitCode?: number) {
+    // Bun can emit error followed by close; keep the original exception and its stack.
+    if (this.failure) {
+      return;
+    }
     if (!this.shutdown) {
-      recordLog({
+      const log = createLogger({
         component: "torrent-worker",
+        context: {
+          exitCode,
+          pendingOperations: [...this.pending.values()].map((operation) => operation.method),
+        },
         dataDir: this.options.dataDir,
-        error,
-        level: "error",
+        error: sanitizeLog(error),
         operation: "stopped",
       });
+      log.setLevel("error");
+      log.emit();
     }
     this.failure = error;
     this.ready.reject(error);
@@ -182,7 +216,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
       return Promise.reject(this.failure);
     }
     return new Promise((resolve, reject) => {
-      this.pending.set(request.id, { reject, resolve });
+      this.pending.set(request.id, { method: request.method, reject, resolve });
       try {
         this.worker.postMessage(request);
       } catch (error) {
@@ -196,10 +230,8 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
     method: Method,
     args: Parameters<EngineOperations[Method]>
   ) {
-    if (this.shutdown) {
-      return Promise.reject(
-        new (HTTPError.id("SERVICE_UNAVAILABLE", 503))("The torrent engine is shutting down")
-      );
+    if (this.shutdown || this.failure) {
+      return Promise.resolve(problem(503, { detail: "The torrent engine is unavailable" }));
     }
     return this.send({ args, id: this.nextId(), method } as EngineRequest) as Promise<
       Awaited<ReturnType<EngineOperations[Method]>>
@@ -261,8 +293,8 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
   repair(id: string) {
     return this.call("repair", [id]);
   }
-  remove(id: string, deleteFiles: boolean) {
-    return this.call("remove", [id, deleteFiles]);
+  remove(id: string, deleteFiles: boolean, operationKey?: string) {
+    return this.call("remove", [id, deleteFiles, operationKey]);
   }
   removeDestination(id: string) {
     return this.call("removeDestination", [id]);
@@ -287,9 +319,21 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
   }
 
   close() {
-    this.shutdown ??= this.send({ args: [], id: this.nextId(), method: "close" })
-      .then(() => undefined)
-      .finally(() => this.worker.terminate());
+    if (!this.shutdown) {
+      const pending = Promise.withResolvers<void>();
+      this.shutdown = pending.promise;
+      const close = async () => {
+        try {
+          await this.send({ args: [], id: this.nextId(), method: "close" });
+          pending.resolve();
+        } catch (error) {
+          pending.reject(error);
+        } finally {
+          this.worker.terminate();
+        }
+      };
+      void close();
+    }
     return this.shutdown;
   }
 }

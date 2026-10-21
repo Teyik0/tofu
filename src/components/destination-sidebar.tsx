@@ -1,12 +1,12 @@
 import { Link, useRouter } from "@teyik0/furin/link";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { FolderIcon, PencilIcon, PlugIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { type MouseEvent, memo, startTransition, useActionState, useEffect, useState } from "react";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { errorMessage } from "../lib/errors";
 import { isSupersededNavigation, showDestination } from "../lib/navigation";
-import { modalAtom } from "../state/workspace";
-import type { DashboardState, Destination } from "../types";
+import { modalAtom, sessionAtom } from "../state/workspace";
+import type { Destination, LiveState } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import { AniListIcon } from "./anilist/icon";
 import { DestinationIcon } from "./destination-icon";
@@ -15,6 +15,7 @@ import { bytes } from "./format";
 import { GlobalSearchTrigger } from "./global-search";
 import { Logo } from "./icon";
 import { type ModalKind, useDeleteDestination } from "./modal";
+import { ServerIdentity } from "./server-identity";
 import { SidebarToggle } from "./sidebar-toggle";
 import { Button } from "./ui/button";
 import {
@@ -125,11 +126,14 @@ export const DestinationSidebar = memo(
     data,
     active,
   }: {
-    data: DashboardState | null;
+    data: LiveState | null;
     active: string | null;
   }) {
     const router = useRouter();
     const open = useSetAtom(modalAtom);
+    const capabilities = useAtomValue(sessionAtom)?.capabilities;
+    // Editing threads needs their host folders, which only administrators receive.
+    const editable = (id: string) => data?.host?.destinations.find((item) => item.id === id);
     const [navigationError, openPlugins] = useActionState<string | null, void>(async () => {
       try {
         await router.navigate({ to: "/plugins" });
@@ -162,27 +166,29 @@ export const DestinationSidebar = memo(
           <GlobalSearchTrigger />
           <nav aria-label="Sidebar shortcuts">
             <SidebarMenu className="sidebar-shortcuts">
-              <SidebarMenuItem>
-                <ActionTooltip>
-                  <Link
-                    aria-current={active === "anilist" ? "page" : undefined}
-                    aria-label="AniList"
-                    className="sidebar-shortcut sidebar-app-shortcut"
-                    data-sidebar="menu-button"
-                    resetScroll={false}
-                    to="/anilist"
-                  >
-                    <AniListIcon />
-                  </Link>
-                </ActionTooltip>
-              </SidebarMenuItem>
+              {capabilities?.administer ? (
+                <SidebarMenuItem>
+                  <ActionTooltip>
+                    <Link
+                      aria-current={active === "anilist" ? "page" : undefined}
+                      aria-label="AniList"
+                      className="sidebar-shortcut sidebar-app-shortcut"
+                      data-sidebar="menu-button"
+                      resetScroll={false}
+                      to="/anilist"
+                    >
+                      <AniListIcon />
+                    </Link>
+                  </ActionTooltip>
+                </SidebarMenuItem>
+              ) : null}
               {data?.destinations
                 .filter((destination) => destination.pinned)
                 .map((destination) => (
                   <SidebarMenuItem key={destination.id}>
                     <DestinationMenu
                       deletable={data.destinations.length > 1}
-                      destination={destination}
+                      destination={editable(destination.id)}
                       open={open}
                     >
                       <SidebarMenuButton
@@ -210,15 +216,16 @@ export const DestinationSidebar = memo(
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupLabel>DESTINATIONS</SidebarGroupLabel>
-            <ActionTooltip>
-              <SidebarGroupAction
-                aria-label="Create a tab"
-                disabled={!data}
-                onClick={() => open({ destination: null, type: "destination" })}
-              >
-                <PlusIcon />
-              </SidebarGroupAction>
-            </ActionTooltip>
+            {data?.host ? (
+              <ActionTooltip>
+                <SidebarGroupAction
+                  aria-label="Create a tab"
+                  onClick={() => open({ destination: null, type: "destination" })}
+                >
+                  <PlusIcon />
+                </SidebarGroupAction>
+              </ActionTooltip>
+            ) : null}
             <SidebarMenu aria-label="Destination tabs">
               {data?.destinations
                 .filter((destination) => !destination.pinned)
@@ -226,7 +233,7 @@ export const DestinationSidebar = memo(
                   <SidebarMenuItem key={destination.id}>
                     <DestinationMenu
                       deletable={data.destinations.length > 1}
-                      destination={destination}
+                      destination={editable(destination.id)}
                       open={open}
                     >
                       <SidebarMenuButton
@@ -241,7 +248,7 @@ export const DestinationSidebar = memo(
                             to="/thread/:id"
                           />
                         }
-                        title={destination.downloadPath}
+                        title={editable(destination.id)?.downloadPath ?? destination.name}
                         tooltip={destination.name}
                       >
                         <DestinationIcon name={destination.icon} />
@@ -254,19 +261,22 @@ export const DestinationSidebar = memo(
                           .length
                       }
                     </SidebarMenuBadge>
-                    <DestinationThreadActions
-                      activeDestination={active}
-                      deletable={data.destinations.length > 1}
-                      destination={destination}
-                      immediate={shiftHeld}
-                      open={open}
-                    />
+                    {editable(destination.id) ? (
+                      <DestinationThreadActions
+                        activeDestination={active}
+                        deletable={data.destinations.length > 1}
+                        destination={editable(destination.id) as Destination}
+                        immediate={shiftHeld}
+                        open={open}
+                      />
+                    ) : null}
                   </SidebarMenuItem>
                 ))}
             </SidebarMenu>
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
+          {data ? <ServerIdentity server={data.server} /> : null}
           <div className="sidebar-disk">
             <FolderIcon />
             <div>
@@ -288,18 +298,19 @@ export const DestinationSidebar = memo(
                   <SettingsIcon />
                 </Button>
               </ActionTooltip>
-              <ActionTooltip>
-                <Button
-                  aria-label="Plugins"
-                  disabled={!data}
-                  onClick={() => startTransition(() => openPlugins())}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <PlugIcon />
-                </Button>
-              </ActionTooltip>
+              {capabilities?.administer ? (
+                <ActionTooltip>
+                  <Button
+                    aria-label="Plugins"
+                    onClick={() => startTransition(() => openPlugins())}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <PlugIcon />
+                  </Button>
+                </ActionTooltip>
+              ) : null}
             </div>
             <SidebarUpdateAction />
           </fieldset>
@@ -315,6 +326,8 @@ export const DestinationSidebar = memo(
   (previous, next) =>
     previous.active === next.active &&
     previous.data?.destinations === next.data?.destinations &&
+    previous.data?.host === next.data?.host &&
+    previous.data?.server === next.data?.server &&
     previous.data?.torrents === next.data?.torrents &&
     previous.data?.session.freeSpace === next.data?.session.freeSpace
 );

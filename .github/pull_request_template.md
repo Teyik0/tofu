@@ -8,7 +8,6 @@
 - [ ] `bun run fix`
 - [ ] `bun run test`
 - [ ] `bun run build:desktop`
-- [ ] `bun run test:native` and `bun run test:background` for UI/native changes
 - [ ] Engine/lifecycle changes tested through public APIs with real peers in temporary directories
 - [ ] Downloaded files preserved unless the user explicitly requests deletion
 - [ ] `CHANGELOG.md` updated under Unreleased

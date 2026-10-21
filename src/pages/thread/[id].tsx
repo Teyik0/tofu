@@ -3,11 +3,9 @@ import { t } from "elysia";
 import { App } from "../../components/app";
 import { api } from "../../lib/client";
 import { selectedTorrentId } from "../../lib/navigation";
-import { route as root } from "../root";
 
-export const route = defineRoute()
+export const route = defineRoute("/thread/[id]")
   .config({
-    layout: root,
     mode: "ssr",
     params: t.Object({ id: t.String() }),
     query: t.Object({ torrent: t.Optional(t.String()) }),

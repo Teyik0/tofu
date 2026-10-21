@@ -1,6 +1,7 @@
 # Project rules
 
 These rules apply throughout the repository, to both new files and changes to existing code.
+Always use ponytail skills when starting a feature.
 
 ## Async syntax
 
@@ -64,10 +65,10 @@ export type Plugin = typeof plugin;
 
 ## Elysia application composition
 
-- `api/index.ts` declares the shared Elysia application as `apiPlugin`. Install `desktopApp()` first and compose API routes inside `.group("/api", ...)`; do not prefix the whole application.
-- `server.ts` attaches Furin to that same instance, exports it as the default application, and owns listening and process shutdown. Do not create a second root application or an `app.ts` entry.
-- Keep desktop host initialization and lifecycle hooks on the shared application in `api/index.ts`, before route plugins install wrappers.
-- The server-side Eden client and network requests use the same `apiPlugin` instance. Desktop network guards distinguish listener dispatch from direct in-process Eden calls. Do not add another HTTP listener or custom client transport.
+- `api/index.ts` declares the API plugin as `apiPlugin` and composes API routes inside `.group("/api", ...)`.
+- `server.ts` declares the root application directly with `new Elysia()`, installs `desktopApp()` first, then uses `apiPlugin` and Furin. It exports the root as default and owns listening and process shutdown. Do not introduce an `app.ts` entry or an application factory.
+- Keep desktop host initialization, network admission and lifecycle hooks on the root application in `server.ts`, before route plugins install wrappers.
+- The server-side Eden client dispatches directly to `apiPlugin`; network requests enter through the root application and its desktop network guards. Do not add another HTTP listener or custom client transport.
 - Preserve inferred API types from the route plugins. Initialize dependencies and mount routes before listening.
 
 ## No interfaces that mirror implementations
@@ -115,24 +116,25 @@ interface TorrentEngineOptions {
 ## Isomorphic Eden client: mandatory and protected
 
 - Never modify `src/lib/client.ts` unless the user explicitly requests a change to that file. Architecture, startup, AOT, and desktop fixes do not authorize changing it.
-- The server branch must remain `createClient(apiPlugin).api`, with direct in-process Eden dispatch and no network request. `apiPlugin` is also the listening root; desktop network guards intentionally allow direct in-process dispatch.
-- The browser branch must use `createClient<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).api`.
+- The server branch must remain `treaty(apiPlugin).use(furinSync).api`, with direct in-process Eden dispatch and no network request. The separate root application handles network admission; direct server-side dispatch to the API plugin is intentional.
+- The browser branch must use `treaty<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).use(furinSync).api`.
 - Never add a custom `fetcher`, manual `app.handle()` dispatch, an internal HTTP origin, request-scoped `AsyncLocalStorage`, or cookie/origin/header forwarding for this client.
 
 Required implementation:
 
 ```ts
+import { treaty } from "@elysia/eden";
 import { createIsomorphicFn } from "@teyik0/furin";
-import { createClient } from "@teyik0/furin/client";
+import { furinSync } from "@teyik0/furin/client";
 import { type Api, apiPlugin } from "@/api";
 
 export const api = createIsomorphicFn()
-  .server(() => createClient(apiPlugin).api)
+  .server(() => treaty(apiPlugin).use(furinSync).api)
   .client(
     () =>
-      createClient<Api>(window.location.origin, {
+      treaty<Api>(window.location.origin, {
         fetch: { cache: "no-store", credentials: "include" },
-      }).api
+      }).use(furinSync).api,
   )();
 ```
 

@@ -1,6 +1,13 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "extends": ["ultracite/biome/core", "ultracite/biome/react"],
+  // Preserve the approved design artifact and GraphQL Code Generator's native output.
+  "files": {
+    "includes": [
+      "!docs/remote-servers/design/ui-prototype.html",
+      "!src/api/modules/anilist/graphql/generated.ts"
+    ]
+  },
   "javascript": {
     "globals": ["Bun"]
   },

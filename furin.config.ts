@@ -1,9 +1,9 @@
+import { cp } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { defineConfig } from "@teyik0/furin/config";
 import { defineDesktopConfig } from "@teyik0/furin-electrobun";
 import tailwind from "bun-plugin-tailwind";
 import { version } from "./package.json";
-import { databaseMigrationsPlugin } from "./scripts/database-migrations";
-import { playerEnginePlugin } from "./scripts/player-engine";
 
 const release = process.env.TOFU_RELEASE === "1";
 process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
@@ -23,6 +23,7 @@ export default defineConfig({
     },
     dataDir: { developmentName: "Tofu-dev", env: "TOFU_DATA_DIR", name: "Tofu" },
     external: ["webtorrent", "parse-torrent"],
+    hostEntry: "src/native/host.ts",
     protocols: [release ? "tofu" : "tofu-dev"],
     sdk: {
       app: {
@@ -35,8 +36,12 @@ export default defineConfig({
         // The host has no dependency tree; only the backend packages WebTorrent addons.
         bun: { external: ["webtorrent"] },
         copy: {
+          [process.platform === "win32" ? "runtime/tofu-tsnet.exe" : "runtime/tofu-tsnet"]:
+            process.platform === "win32" ? "bun/tofu-tsnet.exe" : "bun/tofu-tsnet",
           "LICENSE.md": "bun/LICENSE.md",
           "runtime/anilist-client.json": "bun/anilist-client.json",
+          "runtime/tofu-tsnet.licenses.txt": "bun/tofu-tsnet.licenses.txt",
+          "runtime/tofu-tsnet.manifest.json": "bun/tofu-tsnet.manifest.json",
           "src/db/drizzle": "bun/drizzle",
         },
         linux: { icon: "public/tofu-icon.png" },
@@ -61,17 +66,72 @@ export default defineConfig({
     },
     window: { height: 940, width: 1400 },
   }),
+  pagesDir: "./src/pages",
   plugins: [
-    databaseMigrationsPlugin,
-    playerEnginePlugin,
     {
-      buildOnly: true,
-      name: "tofu-build-scan-cleanup",
-      async setup(builder) {
-        if (builder.config.target === "bun") {
-          const { resources } = await import("./src/api/lib/runtime");
-          await resources.disposeAsync();
+      name: "tofu-database-migrations",
+      setup(builder) {
+        // Furin also probes plugins with a resolver-only runtime builder.
+        if (!("onEnd" in builder) || builder.config.target !== "bun" || !builder.config.outdir) {
+          return;
         }
+        const destination = join(builder.config.outdir, "drizzle");
+        builder.onEnd(async (result) => {
+          if (result.success) {
+            await cp(join(import.meta.dir, "src/db/drizzle"), destination, { recursive: true });
+          }
+        });
+      },
+    },
+    {
+      name: "tofu-player-engine",
+      setup(builder) {
+        // Furin also probes plugins with a resolver-only runtime builder. Only the server bundle
+        // serves the engine; React Server Component graphs never load it.
+        if (
+          !("onEnd" in builder) ||
+          builder.config.target !== "bun" ||
+          !builder.config.outdir ||
+          builder.config.conditions?.includes("react-server")
+        ) {
+          return;
+        }
+        const engine = dirname(Bun.resolveSync("libvlc-wasm/package.json", import.meta.dir));
+        const destination = join(builder.config.outdir, "libvlc-wasm");
+        builder.onEnd(async (result) => {
+          if (result.success) {
+            await Promise.all(
+              ["COPYING", "LICENSE", "fonts", "package.json", "src", "wasm"].map((entry) =>
+                cp(join(engine, entry), join(destination, entry), { recursive: true })
+              )
+            );
+          }
+        });
+      },
+    },
+    {
+      name: "tofu-tailscale-resources",
+      setup(builder) {
+        if (
+          !("onEnd" in builder) ||
+          builder.config.target !== "bun" ||
+          !builder.config.outdir ||
+          builder.config.conditions?.includes("react-server")
+        ) {
+          return;
+        }
+        const destination = builder.config.outdir;
+        builder.onEnd(async (result) => {
+          if (result.success) {
+            await Promise.all(
+              [
+                process.platform === "win32" ? "tofu-tsnet.exe" : "tofu-tsnet",
+                "tofu-tsnet.licenses.txt",
+                "tofu-tsnet.manifest.json",
+              ].map((name) => cp(join(import.meta.dir, "runtime", name), join(destination, name)))
+            );
+          }
+        });
       },
     },
     {

@@ -1,13 +1,15 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
+import { accessPlugin } from "../access/plugin";
 import { addReleaseSchema, discoverySchema } from "./model";
 import { discoveryServicePlugin } from "./plugin";
 
 export const discoveryPlugin = new Elysia({ name: "tofu-discovery-api" })
   .use(discoveryServicePlugin)
+  .use(accessPlugin)
   .use(furinSync(sync))
-  .guard({ sync: false })
+  .guard({ idempotent: false, management: true })
   .post(
     "/discover",
     {

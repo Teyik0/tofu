@@ -1,0 +1,134 @@
+diff --git a/packages/core/src/build/elysia-aot-worker.ts b/packages/core/src/build/elysia-aot-worker.ts
+index 48c4c3d..52b660f 100644
+--- a/packages/core/src/build/elysia-aot-worker.ts
++++ b/packages/core/src/build/elysia-aot-worker.ts
+@@ -1,6 +1,5 @@
+ import { dirname, extname, join } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { parentPort, workerData } from "node:worker_threads";
+ import { aotFactory } from "elysia/plugin/aot/unplugin";
+ import { isomorphicTransformPlugin } from "../plugin/transform-isomorphic.ts";
+ import { collectFurinRegistrations, type FurinRegistration } from "../server/registrations.ts";
+@@ -23,11 +22,13 @@ export type AotWorkerResponse =
+   | (AotWorkerResult & { id: number; ok: true })
+   | { error: Error; id: number; ok: false; registrations?: FurinRegistration[] };
+ 
+-const port = parentPort;
+-if (!port) {
+-  throw new Error("[furin] Elysia AOT worker requires a parent port.");
++const requestedEntry = process.env.FURIN_AOT_ENTRY;
++const send = process.send?.bind(process);
++if (!send || !requestedEntry) {
++  throw new Error("[furin] Elysia AOT worker requires an entry and parent IPC channel.");
+ }
+-const { entry } = workerData as { entry: string };
++const entry = requestedEntry;
++process.once("disconnect", () => process.exit(0));
+ const hooks = aotFactory({ entry, strip: false, target: "bun" });
+ Bun.plugin(isomorphicTransformPlugin("server"));
+ const registrations = collectFurinRegistrations(false);
+@@ -99,7 +100,7 @@ async function exportInMemoryApps(): Promise<void> {
+   );
+ }
+ 
+-port.on("message", async (request: AotWorkerRequest) => {
++process.on("message", async (request: AotWorkerRequest) => {
+   try {
+     let code: string | undefined;
+     let virtualType: string | undefined;
+@@ -115,7 +116,7 @@ port.on("message", async (request: AotWorkerRequest) => {
+     } else {
+       hooks.buildEnd?.();
+     }
+-    port.postMessage({
++    send({
+       code,
+       id: request.id,
+       ok: true,
+@@ -123,7 +124,7 @@ port.on("message", async (request: AotWorkerRequest) => {
+       virtualType,
+     } satisfies AotWorkerResponse);
+   } catch (error) {
+-    port.postMessage({
++    send({
+       error: error instanceof Error ? error : new Error(String(error)),
+       id: request.id,
+       ok: false,
+diff --git a/packages/core/src/build/elysia-aot.ts b/packages/core/src/build/elysia-aot.ts
+index b586444..61b8206 100644
+--- a/packages/core/src/build/elysia-aot.ts
++++ b/packages/core/src/build/elysia-aot.ts
+@@ -1,7 +1,7 @@
+ import { existsSync, realpathSync } from "node:fs";
+ import { dirname, join, relative, resolve } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { Worker } from "node:worker_threads";
++import { fork } from "node:child_process";
+ import type { RouteInstanceSpec } from "../plugin/route-tree.ts";
+ import type { FurinRegistration } from "../server/registrations.ts";
+ import type {
+@@ -109,7 +109,14 @@ export function elysiaAot(entry: string, expected: AotBuildApps): Bun.BunPlugin
+   return {
+     name: "elysia-aot",
+     async setup(build) {
+-      const worker = new Worker(AOT_WORKER_PATH, { workerData: { entry: entryPath } });
++      const worker = fork(AOT_WORKER_PATH, [], {
++        env: { ...process.env, FURIN_AOT_ENTRY: entryPath },
++        execArgv: [],
++        execPath: process.execPath,
++        serialization: "advanced",
++        stdio: ["ignore", "ignore", "inherit", "ipc"],
++      });
++      const exited = Promise.withResolvers<void>();
+       const pending = new Map<
+         number,
+         {
+@@ -138,7 +145,10 @@ export function elysiaAot(entry: string, expected: AotBuildApps): Bun.BunPlugin
+         }
+       });
+       worker.on("error", fail);
+-      worker.on("exit", (code) => fail(new Error(`[furin] Elysia AOT worker exited (${code}).`)));
++      worker.on("exit", (code) => {
++        exited.resolve();
++        fail(new Error(`[furin] Elysia AOT worker exited (${code}).`));
++      });
+       const request = (payload: AotWorkerOperation) =>
+         new Promise<AotWorkerResult>((resolveResponse, reject) => {
+           if (workerFailure) {
+@@ -148,14 +158,15 @@ export function elysiaAot(entry: string, expected: AotBuildApps): Bun.BunPlugin
+           const id = nextId;
+           nextId += 1;
+           pending.set(id, { reject, resolve: resolveResponse });
+-          worker.postMessage({ ...payload, id } satisfies AotWorkerRequest);
++          worker.send({ ...payload, id } satisfies AotWorkerRequest);
+         });
+       let compiled: string | undefined;
+       let virtualType: string | undefined;
+       try {
+         ({ code: compiled, virtualType } = await request({ method: "start" }));
+       } catch (error) {
+-        await worker.terminate();
++        worker.kill();
++        await exited.promise;
+         const mismatch = registrationMismatch(expected, registrations, false);
+         if (mismatch) {
+           throw mismatch;
+@@ -172,14 +183,16 @@ export function elysiaAot(entry: string, expected: AotBuildApps): Bun.BunPlugin
+       }
+       const mismatch = registrationMismatch(expected, registrations, true);
+       if (mismatch) {
+-        await worker.terminate();
++        worker.kill();
++        await exited.promise;
+         throw mismatch;
+       }
+       build.onEnd(async () => {
+         try {
+           await request({ method: "end" });
+         } finally {
+-          await worker.terminate();
++          worker.kill();
++        await exited.promise;
+         }
+       });
+       const entrySource = await Bun.file(entryPath).text();

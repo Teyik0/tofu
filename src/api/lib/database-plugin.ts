@@ -1,22 +1,37 @@
+import { chmod, mkdir, open } from "node:fs/promises";
+import { join } from "node:path";
+import { createLogger, initLogger } from "evlog";
 import "@teyik0/furin/server-only";
 import { Elysia } from "elysia";
 import { assertDatabaseReady, openDatabase } from "./db";
-import { recordLog } from "./diagnostics";
+import { loggerConfig, sanitizeLog } from "./diagnostics";
 import { acquireInstance, currentInstanceConfig } from "./instance";
-import { ApplicationLogs } from "./logs";
-import { resources } from "./runtime";
+import { logDirectory, logDrain } from "./logs";
 
 export const instance = currentInstanceConfig();
-const lease = await acquireInstance(instance);
-resources.defer(lease.close.bind(lease));
-export const logs = await ApplicationLogs.open({ dataDir: instance.dataDir }).catch(
-  async (error: unknown) => {
-    await resources.disposeAsync();
-    throw error;
+export const lease = await acquireInstance(instance);
+
+export const logs = logDrain;
+
+try {
+  await mkdir(logDirectory, { mode: 0o700, recursive: true });
+  await chmod(logDirectory, 0o700);
+  const file = await open(
+    join(logDirectory, `${new Date().toISOString().slice(0, 10)}.jsonl`),
+    "a",
+    0o600
+  );
+  try {
+    await file.chmod(0o600);
+  } finally {
+    await file.close();
   }
-);
-resources.defer(logs.close.bind(logs));
-recordLog({
+} catch (error) {
+  await lease.close();
+  throw error;
+}
+initLogger({ ...loggerConfig, drain: logDrain });
+const startupLog = createLogger({
   component: "application",
   context: {
     mode: instance.desktop ? "desktop" : "server",
@@ -24,24 +39,34 @@ recordLog({
     profile: instance.profile,
   },
   dataDir: instance.dataDir,
-  level: "info",
   operation: "startup",
 });
-export const db = await openDatabase(instance.dataDir)
-  .then((database) => {
-    resources.defer(() => database.$client.close(true));
-    assertDatabaseReady(database);
+startupLog.emit();
+export const db = await (async () => {
+  try {
+    const database = await openDatabase(instance.dataDir);
+    try {
+      assertDatabaseReady(database);
+    } catch (error) {
+      database.$client.close(true);
+      throw error;
+    }
     return database;
-  })
-  .catch(async (error: unknown) => {
-    recordLog({
+  } catch (error) {
+    const log = createLogger({
       component: "database",
       dataDir: instance.dataDir,
-      error,
-      level: "error",
+      error: sanitizeLog(error),
       operation: "startup",
     });
-    await resources.disposeAsync();
+    log.setLevel("error");
+    log.emit();
+    try {
+      await logDrain.flush();
+    } finally {
+      await lease.close();
+    }
     throw error;
-  });
+  }
+})();
 export const databasePlugin = new Elysia({ name: "tofu-database-service" }).decorate("db", db);

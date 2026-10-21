@@ -1,5 +1,5 @@
 import { useMutation } from "@teyik0/furin/client";
-import { DownloadIcon } from "lucide-react";
+import { DownloadIcon, PlayIcon } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../lib/client";
 import { useRefresh } from "../../lib/navigation";
@@ -8,8 +8,8 @@ import type {
   AsyncAction as Action,
   AniListEntry,
   AniListMedia,
-  DashboardState,
   FeedRelease,
+  LiveState,
 } from "../../types";
 import { bytes } from "../format";
 import { OptionSelect } from "../option-select";
@@ -30,7 +30,10 @@ interface EpisodeRowProps {
   episode: number | null;
   releaseStatus: ReleaseStatus;
   releases: FeedRelease[];
-  torrents: DashboardState["torrents"];
+  remote: NonNullable<
+    Awaited<ReturnType<(typeof api)["linked-libraries"]["availability"]["post"]>>["data"]
+  >;
+  torrents: LiveState["torrents"];
 }
 
 export function EpisodeRow({
@@ -42,6 +45,7 @@ export function EpisodeRow({
   busy,
   releaseStatus,
   action,
+  remote,
 }: EpisodeRowProps) {
   const refresh = useRefresh();
   const addRelease = useMutation(api.discover.add.post);
@@ -58,6 +62,16 @@ export function EpisodeRow({
     releases.find((item) => item.infoHash !== null && torrentIds.has(item.infoHash)) ??
     releases[0];
   const torrent = torrents.find((item) => item.id === release?.infoHash);
+  const remoteMatches = remote.flatMap((item) =>
+    item.sources
+      .filter((source) => source.episode === episode)
+      .map((source) => ({ ...source, connectionState: item.state, link: item.link }))
+  );
+  const sources = remoteMatches.filter(
+    (source) =>
+      source.connectionState === "available" &&
+      (source.status === "playable" || source.status === "downloading")
+  );
   const listed = "progress" in entry;
   const completed = listed && episode !== null && entry.completedEpisodes.includes(episode);
   const label =
@@ -69,11 +83,32 @@ export function EpisodeRow({
       </div>
       <div className="anime-episode-info">
         <strong>{label}</strong>
-        <EpisodeStatus
-          releaseCount={releases.length}
-          releaseStatus={releaseStatus}
-          torrent={torrent}
-        />
+        {sources.length ? (
+          <span>
+            Available on{" "}
+            {sources
+              .map((source) => source.link.name)
+              .filter((name, index, all) => all.indexOf(name) === index)
+              .join(", ")}
+          </span>
+        ) : null}
+        {remoteMatches.length > 0 && sources.length === 0 ? (
+          <span>
+            {remoteMatches
+              .map(
+                (source) =>
+                  `${source.link.name}: ${source.connectionState === "offline" ? "offline (last known file)" : source.status}`
+              )
+              .join(", ")}
+          </span>
+        ) : null}
+        {torrent || remoteMatches.length === 0 ? (
+          <EpisodeStatus
+            releaseCount={releases.length}
+            releaseStatus={releaseStatus}
+            torrent={torrent}
+          />
+        ) : null}
         {release ? (
           <Tooltip>
             <TooltipTrigger className="anime-release-name" render={<span />} tabIndex={0}>
@@ -91,6 +126,29 @@ export function EpisodeRow({
           setChosen={setChosen}
         />
         <div className="anime-episode-actions">
+          {sources.map((source) => (
+            <Button
+              aria-label={`Watch ${source.fileName} on ${source.link.name}`}
+              key={`${source.link.id}:${source.torrentId}:${source.fileIndex}`}
+              onClick={() => {
+                const query = new URLSearchParams({
+                  episode: String(episode),
+                  file: String(source.fileIndex),
+                  link: source.link.id,
+                  media: String(entry.mediaId),
+                  torrent: source.torrentId,
+                });
+                window.location.assign(`/player/remote?${query}`);
+              }}
+              size="sm"
+              title={`${source.fileName} · ${source.resolution ?? "Unknown quality"} · ${source.match === "title" ? "Matched by title" : "Exact release"}`}
+              variant="secondary"
+            >
+              <PlayIcon data-icon="inline-start" />
+              Watch on {source.link.name}
+              {sources.length > 1 && source.resolution ? ` · ${source.resolution}` : ""}
+            </Button>
+          ))}
           {torrent ? (
             <Badge variant="secondary">
               {torrent.progress === 1 ? "Downloaded" : torrent.status}
@@ -179,7 +237,7 @@ function EpisodeStatus({
   releaseCount,
   releaseStatus,
 }: {
-  torrent: DashboardState["torrents"][number] | undefined;
+  torrent: LiveState["torrents"][number] | undefined;
   releaseCount: number;
   releaseStatus: ReleaseStatus;
 }) {

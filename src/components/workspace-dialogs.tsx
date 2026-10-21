@@ -2,7 +2,7 @@ import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
 import { showDestination, showTorrent } from "../lib/navigation";
 import { modalAtom } from "../state/workspace";
-import type { DashboardState, FormModalKind } from "../types";
+import type { FormModalKind, LiveState } from "../types";
 import { AutomationCenter } from "./automation-center";
 import { DeleteDestinationModal, Modal } from "./modal";
 
@@ -23,7 +23,7 @@ export function WorkspaceDialogs({
   dashboard,
   activeDestination,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   activeDestination: string | null;
 }) {
   const router = useRouter();

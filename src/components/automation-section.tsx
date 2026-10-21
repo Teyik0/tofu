@@ -16,9 +16,9 @@ import type {
   AutomationRule,
   AutomationSection,
   AutomationState,
-  DashboardState,
   DiscoveryResult,
   FeedRelease,
+  LiveState,
 } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import { sourceNames } from "./automation-fields";
@@ -213,7 +213,7 @@ export function RuleCard({
 }
 
 export interface AutomationPanelProps {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   onTarget: (value: string) => void;
   setTab: (value: AutomationSection) => void;
   state: AutomationState;
@@ -233,12 +233,12 @@ export function AutomationThread({
   disabled,
   onChange,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   target: string;
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
-  const destination = dashboard.destinations.find((item) => item.id === target);
+  const destination = (dashboard.host?.destinations ?? []).find((item) => item.id === target);
   return (
     <div className="automation-thread">
       <Field className="automation-target" orientation="horizontal">
@@ -247,7 +247,10 @@ export function AutomationThread({
           disabled={disabled}
           id="automation-destination"
           onValueChange={onChange}
-          options={dashboard.destinations.map((item) => ({ label: item.name, value: item.id }))}
+          options={(dashboard.host?.destinations ?? []).map((item) => ({
+            label: item.name,
+            value: item.id,
+          }))}
           value={target}
         />
       </Field>

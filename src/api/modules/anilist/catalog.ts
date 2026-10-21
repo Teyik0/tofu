@@ -1,4 +1,4 @@
-import { HTTPError } from "elysia";
+import { problem } from "elysia";
 import {
   array,
   check,
@@ -48,8 +48,9 @@ function enumValue<Value extends string>(input: string | undefined, values: read
     return;
   }
   const value = values.find((candidate) => candidate === input);
+  // catalogSchema restricts these values before a request reaches the service.
   if (value === undefined) {
-    throw new (HTTPError.id("BAD_REQUEST", 400))("Invalid AniList catalog filter");
+    throw new Error(`Unvalidated AniList catalog filter ${input}`);
   }
   return value;
 }
@@ -102,17 +103,18 @@ const mediaSort = {
   title: "TITLE_ROMAJI",
   trending: "TRENDING_DESC",
 } as const;
-export function catalogVariables(filters: AniListCatalogFilters): CatalogQueryVariables {
+/** Provider variables for valid filters, or a returned 400 when a range is inverted. */
+export function catalogVariables(filters: AniListCatalogFilters) {
   for (const [min, max] of [
     [filters.yearMin, filters.yearMax],
     [filters.episodesMin, filters.episodesMax],
     [filters.durationMin, filters.durationMax],
   ]) {
     if (min !== undefined && max !== undefined && min > max) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("The minimum must not exceed the maximum");
+      return problem(400, { detail: "The minimum must not exceed the maximum" });
     }
   }
-  return {
+  const variables: CatalogQueryVariables = {
     countryOfOrigin: filters.countryOfOrigin,
     duration_greater: filters.durationMin === undefined ? undefined : filters.durationMin - 1,
     duration_lesser: filters.durationMax === undefined ? undefined : filters.durationMax + 1,
@@ -139,6 +141,7 @@ export function catalogVariables(filters: AniListCatalogFilters): CatalogQueryVa
     tag_in: filters.tags?.length ? filters.tags : undefined,
     tag_not_in: filters.excludedTags?.length ? filters.excludedTags : undefined,
   };
+  return variables;
 }
 
 function catalogStatistics(media: CatalogMedia) {

@@ -1,8 +1,9 @@
 import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia, HTTPError } from "elysia";
+import { Elysia, ElysiaStatus, problem } from "elysia";
 import { sync } from "../../../sync";
 import type { AniListCatalogFilters } from "../../../types";
+import { accessPlugin } from "../access/plugin";
 import { automationPlugin } from "../automation";
 import { draft } from "../automation/model";
 import { releaseAutomationPlugin } from "../automation/plugin";
@@ -24,81 +25,97 @@ import { anilistServicePlugin } from "./plugin";
 
 const invalidateLibrary = { path: "/anilist", type: "page" } as const;
 
-export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
+export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/anilist" })
   .use(anilistServicePlugin)
   .use(automationPlugin)
   .use(releaseAutomationPlugin)
   .use(furinSync(sync))
   .use(furinInvalidate())
-  .guard({ sync: false })
-  .get("/anilist", { sync: { id: "tofu.anilist", scope: {} } }, ({ anilist, defer }) => {
+  .use(accessPlugin)
+  // The AniList account, list and automation belong to the server owner.
+  .guard({ administration: true })
+  .get("/", {}, ({ anilist, defer }) => {
     if (anilist.needsRefresh()) {
-      defer(() => anilist.refresh().catch(() => undefined));
+      defer(async () => {
+        try {
+          await anilist.refresh();
+        } catch {
+          /* Refresh status is shown by the AniList service. */
+        }
+      });
     }
     return anilist.snapshot();
   })
-  .post("/anilist/catalog", { body: catalogSchema }, ({ anilist, body }) =>
+  .post("/catalog", { body: catalogSchema }, ({ anilist, body }) =>
     anilist.catalog(body as AniListCatalogFilters)
   )
-  .get("/anilist/catalog/options", ({ anilist }) => anilist.catalogOptions())
-  .get("/anilist/entries/:mediaId/editor", { params: mediaParamsSchema }, ({ anilist, params }) =>
+  .get("/catalog/options", ({ anilist }) => anilist.catalogOptions())
+  .get("/entries/:mediaId/editor", { params: mediaParamsSchema }, ({ anilist, params }) =>
     anilist.editor(params.mediaId)
   )
   .put(
-    "/anilist/entries/:mediaId/editor",
+    "/entries/:mediaId/editor",
     {
       body: aniListEntrySchema,
-      invalidate: invalidateLibrary,
+
       params: mediaParamsSchema,
     },
-    ({ anilist, params, body }) => anilist.saveEntry(params.mediaId, body)
+    ({ anilist, params, body, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return anilist.saveEntry(params.mediaId, body);
+    }
   )
   .put(
-    "/anilist/entries/:mediaId/favourite",
+    "/entries/:mediaId/favourite",
     {
       body: enabledSchema,
-      invalidate: invalidateLibrary,
+
       params: mediaParamsSchema,
     },
-    ({ anilist, params, body }) => anilist.favourite(params.mediaId, body.enabled)
+    ({ anilist, params, body, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return anilist.favourite(params.mediaId, body.enabled);
+    }
   )
   .delete(
-    "/anilist/entries/:mediaId/editor",
+    "/entries/:mediaId/editor",
     {
-      invalidate: invalidateLibrary,
       params: mediaParamsSchema,
     },
-    ({ anilist, params }) => anilist.deleteEntry(params.mediaId)
+    ({ anilist, params, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return anilist.deleteEntry(params.mediaId);
+    }
   )
-  .post(
-    "/anilist/entries/:mediaId/releases",
-    { params: mediaParamsSchema },
-    ({ anilist, params }) => anilist.releases(params.mediaId)
+  .post("/entries/:mediaId/releases", { params: mediaParamsSchema }, ({ anilist, params }) =>
+    anilist.releases(params.mediaId)
   )
   .put(
-    "/anilist/entries/:mediaId/automation",
+    "/entries/:mediaId/automation",
     {
       body: draft,
       params: mediaParamsSchema,
-      sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ anilist, automation, releaseAutomation, torrents, params, body, mutation }) => {
+    async ({ anilist, automation, releaseAutomation, params, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
       const input = anilist.prepareAutomation(params.mediaId, body);
+      if (input instanceof ElysiaStatus) {
+        return input;
+      }
       const prepared = await releaseAutomation.prepareRule(input.id, input.draft, {
         key: input.key,
         ownerId: "tofu.anilist",
       });
+      if (prepared instanceof ElysiaStatus) {
+        return prepared;
+      }
       const result = await mutation((tx) => {
-        if (
-          !torrents
-            .snapshot(null, false)
-            .destinations.some((destination) => destination.id === prepared.rule.destinationId)
-        ) {
-          throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+        const rule = releaseAutomation.writeRule(tx, prepared);
+        if (rule instanceof ElysiaStatus) {
+          return rule;
         }
-        const rule = automation.writeRule(tx, prepared);
-        anilist.writeAutomationLink(tx, input, rule.id);
-        return rule;
+        return anilist.writeAutomationLink(tx, input, rule.id) ?? rule;
       });
       automation.refreshState();
       anilist.refreshState();
@@ -106,22 +123,30 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .put(
-    "/anilist/entries/:mediaId/episodes/:episode",
+    "/entries/:mediaId/episodes/:episode",
     {
       body: episodeCompletionSchema,
-      invalidate: invalidateLibrary,
+
       params: episodeParamsSchema,
     },
-    ({ anilist, params, body }) =>
-      anilist.completeEpisode(params.mediaId, params.episode, body.completed)
+    ({ anilist, params, body, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return anilist.completeEpisode(
+        params.mediaId,
+        params.episode,
+        body.completed,
+        body.accountId
+      );
+    }
   )
   .put(
-    "/anilist/preferences",
+    "/preferences",
     {
       body: aniListPreferencesSchema,
-      sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ anilist, body, mutation }) => {
+    async ({ anilist, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
       const library = anilist;
       const result = await mutation((tx) => library.writePreferences(tx, body.visibleStatuses));
       library.refreshState();
@@ -129,20 +154,21 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .post(
-    "/anilist/threads/preview",
+    "/threads/preview",
     {
       body: threadPreviewSchema,
     },
     ({ anilist, body }) => anilist.previewThreads(body.basePath, body.statuses)
   )
   .put(
-    "/anilist/entries/:mediaId",
+    "/entries/:mediaId",
     {
       body: enabledSchema,
       params: mediaParamsSchema,
-      sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ anilist, automation, params, body, mutation }) => {
+    async ({ anilist, automation, params, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
       const result = await mutation((tx) =>
         anilist.writeSelection(tx, [params.mediaId], body.enabled)
       );
@@ -152,12 +178,13 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .put(
-    "/anilist/selection",
+    "/selection",
     {
       body: selectionSchema,
-      sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ anilist, automation, body, mutation }) => {
+    async ({ anilist, automation, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
       const result = await mutation((tx) =>
         anilist.writeSelection(tx, body.mediaIds, body.enabled)
       );
@@ -167,48 +194,85 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .put(
-    "/anilist",
+    "/",
     {
       body: aniListConfigurationSchema,
-      invalidate: invalidateLibrary,
     },
-    ({ anilist, body }) => anilist.configure(body)
+    ({ anilist, body, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return anilist.configure(body);
+    }
   )
-  .post("/anilist/connect", { invalidate: invalidateLibrary }, ({ anilist }) => anilist.connect())
+  .post("/connect", {}, ({ anilist, caller, invalidate }) => {
+    invalidate(invalidateLibrary);
+
+    if (caller.kind === "device" && caller.device.kind !== "desktop") {
+      return problem(409, {
+        detail:
+          "Start AniList authorization in a paired Tofu desktop app or the server's own desktop window",
+      });
+    }
+    return anilist.connect(caller.kind === "device" ? caller.device.id : undefined);
+  })
   .post(
-    "/anilist/callback",
-    { body: authorizationCallbackSchema, invalidate: invalidateLibrary },
-    ({ anilist, body }) => anilist.receiveAuthorizationUrl(body.url)
+    "/callback",
+    { body: authorizationCallbackSchema },
+    ({ anilist, body, caller, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return anilist.receiveAuthorizationUrl(
+        body.url,
+        caller.kind === "device" ? caller.device.id : undefined
+      );
+    }
   )
-  .delete("/anilist/connect", { invalidate: invalidateLibrary }, ({ anilist }) =>
-    anilist.cancelAuthorization()
-  )
-  .post("/anilist/list", { invalidate: invalidateLibrary }, ({ anilist }) => anilist.list())
-  .post("/anilist/refresh", { invalidate: invalidateLibrary }, ({ anilist }) => anilist.refresh())
   .post(
-    "/anilist/subscriptions",
+    "/oauth/remote-callback",
+    { body: authorizationCallbackSchema },
+    ({ anilist, body, caller, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return anilist.receiveAuthorizationUrl(
+        body.url,
+        caller.kind === "device" ? caller.device.id : undefined
+      );
+    }
+  )
+  .delete("/connect", {}, ({ anilist, invalidate }) => {
+    invalidate(invalidateLibrary);
+    return anilist.cancelAuthorization();
+  })
+  .post("/list", {}, ({ anilist, invalidate }) => {
+    invalidate(invalidateLibrary);
+    return anilist.list();
+  })
+  .post("/refresh", {}, ({ anilist, invalidate }) => {
+    invalidate(invalidateLibrary);
+    return anilist.refresh();
+  })
+  .post(
+    "/subscriptions",
     {
       body: subscriptionSchema,
-      sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ anilist, body, mutation }) => {
+    async ({ anilist, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
       const result = await mutation((tx) => anilist.writeSubscription(tx, body));
       anilist.refreshState();
       return result;
     }
   )
-  .post(
-    "/anilist/subscriptions/:id/sync",
-    { invalidate: invalidateLibrary },
-    ({ anilist, params }) => anilist.sync(params.id)
-  )
+  .post("/subscriptions/:id/sync", {}, ({ anilist, params, invalidate }) => {
+    invalidate(invalidateLibrary);
+    return anilist.sync(params.id);
+  })
   .put(
-    "/anilist/subscriptions/:id",
+    "/subscriptions/:id",
     {
       body: enabledSchema,
-      sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ anilist, automation, params, body, mutation }) => {
+    async ({ anilist, automation, params, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
       const result = await mutation((tx) => anilist.writeToggle(tx, params.id, body.enabled));
       automation.refreshState();
       anilist.refreshState();
@@ -216,11 +280,11 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api" })
     }
   )
   .delete(
-    "/anilist/subscriptions/:id",
-    {
-      sync: { invalidate: { path: "/", type: "layout" } },
-    },
-    async ({ anilist, automation, params, mutation }) => {
+    "/subscriptions/:id",
+    {},
+    async ({ anilist, automation, params, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
       const result = await mutation((tx) => anilist.deleteSubscription(tx, params.id));
       automation.refreshState();
       anilist.refreshState();

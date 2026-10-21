@@ -215,7 +215,7 @@ export function GlobalSearchReview({ model }: { model: ReturnType<typeof useGlob
         </div>
       )}
       {destination && !existing && (
-        <span className="global-search-destination-path">{destination.downloadPath}</span>
+        <span className="global-search-destination-path">{destination.name}</span>
       )}
     </div>
   );

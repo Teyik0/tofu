@@ -245,9 +245,9 @@ export function TorrentLibraryList({ model }: { model: ReturnType<typeof useTorr
                     </span>
                   </span>
                   <span className="torrent-row-meta">
-                    <span className="torrent-location" title={destination?.downloadPath}>
+                    <span className="torrent-location" title={destination?.name}>
                       {activeDestination === null
-                        ? (destination?.downloadPath ?? destination?.name ?? "—")
+                        ? (destination?.name ?? "—")
                         : torrent.downloaded === null
                           ? bytes(torrent.length)
                           : `${bytes(torrent.downloaded)} of ${bytes(torrent.length)}`}

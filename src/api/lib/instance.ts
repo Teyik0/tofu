@@ -149,7 +149,12 @@ export async function acquireInstance(config: InstanceConfig) {
       port: undefined,
       profile: "release",
     }).dataDir;
-    const canonicalReleaseDir = await realpath(releaseDir).catch(() => releaseDir);
+    let canonicalReleaseDir = releaseDir;
+    try {
+      canonicalReleaseDir = await realpath(releaseDir);
+    } catch {
+      // A release directory that does not exist yet cannot be a symbolic link target.
+    }
     if (within(await realpath(config.dataDir), canonicalReleaseDir)) {
       throw new Error(
         "This data directory is reserved for release, including through a symbolic link"

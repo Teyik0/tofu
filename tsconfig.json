@@ -30,6 +30,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "scripts/**/*.ts",
+    ".github/scripts/**/*.ts",
     "tests/**/*.ts",
     "furin-env.d.ts"
   ]

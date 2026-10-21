@@ -19,7 +19,7 @@ export function GeneralPreferences({
 }: {
   initialPreferences: AutomationPreferences;
 }) {
-  const { data: live } = useQuery(api.automation.get);
+  const { data: live } = useQuery(api.automation.get.live());
   const savePreferences = useMutation(mutations.savePreferences);
   const [saved, setSaved] = useState(false);
   const preferences = live && "preferences" in live ? live.preferences : initialPreferences;

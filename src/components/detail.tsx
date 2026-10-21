@@ -1,7 +1,9 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
 import { cn } from "cn";
+import { useAtomValue } from "jotai";
 import { memo } from "react";
-import type { DashboardState, TorrentDetail } from "../types";
+import { sessionAtom } from "../state/workspace";
+import type { LibraryTorrentDetail, LiveState } from "../types";
 import { ActionTooltip } from "./action-tooltip";
 import {
   DetailActivity,
@@ -28,16 +30,21 @@ export const Detail = memo(function DetailView({
   act,
   open,
 }: {
-  torrent: TorrentDetail;
-  data: DashboardState;
+  torrent: LibraryTorrentDetail;
+  data: LiveState;
   busy: boolean;
   act: (id: string, task: () => Promise<unknown>) => Promise<void>;
   open: (modal: ModalKind) => void;
 }) {
   const model = useDetailActions({ data, torrent });
-  const { verify, repair, reveal, pause, resume, fileError, tabs } = model;
+  const { verify, repair, reveal, pause, resume, fileError } = model;
   const destination = data.destinations.find((item) => item.id === torrent.destinationId);
   const stopped = torrent.status === "paused" || torrent.status === "error";
+  const capabilities = useAtomValue(sessionAtom)?.capabilities;
+  const manage = capabilities?.manage === true;
+  // Paths, peers and trackers arrive only for administrators, through the live stream.
+  const host = data.detailHost?.id === torrent.id ? data.detailHost : null;
+  const tabs = model.tabs.filter((name) => host || (name !== "Trackers" && name !== "Peers"));
   return (
     <section aria-label="Torrent details" className="detail-pane">
       <div className="detail-toolbar">
@@ -48,42 +55,50 @@ export const Detail = memo(function DetailView({
           <span>Torrent details</span>
         </div>
         <div className="detail-actions">
-          <ActionTooltip>
-            <Button
-              aria-label="Verify files"
-              disabled={busy || !torrent.pieces}
-              onClick={() => void act(torrent.id, () => verify.mutateAsync())}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <Icon name="shield" />
-            </Button>
-          </ActionTooltip>
-          <ActionTooltip>
-            <Button
-              aria-label="Copy magnet link"
-              onClick={() => void navigator.clipboard.writeText(torrent.magnet)}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <Icon name="copy" />
-            </Button>
-          </ActionTooltip>
-          <span aria-hidden="true" className="toolbar-divider" />
-          <ActionTooltip>
-            <Button
-              aria-label="Remove torrent"
-              className="danger-text"
-              onClick={() => open({ torrent, type: "remove" })}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <Icon name="trash" />
-            </Button>
-          </ActionTooltip>
+          {manage ? (
+            <ActionTooltip>
+              <Button
+                aria-label="Verify files"
+                disabled={busy || !torrent.pieces}
+                onClick={() => void act(torrent.id, () => verify.mutateAsync())}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Icon name="shield" />
+              </Button>
+            </ActionTooltip>
+          ) : null}
+          {host ? (
+            <ActionTooltip>
+              <Button
+                aria-label="Copy magnet link"
+                onClick={() => void navigator.clipboard.writeText(host.magnet)}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Icon name="copy" />
+              </Button>
+            </ActionTooltip>
+          ) : null}
+          {manage ? (
+            <>
+              <span aria-hidden="true" className="toolbar-divider" />
+              <ActionTooltip>
+                <Button
+                  aria-label="Remove torrent"
+                  className="danger-text"
+                  onClick={() => open({ torrent, type: "remove" })}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Icon name="trash" />
+                </Button>
+              </ActionTooltip>
+            </>
+          ) : null}
         </div>
       </div>
       <div className="detail-top">
@@ -103,23 +118,25 @@ export const Detail = memo(function DetailView({
           <Badge className={cn("status", torrent.status)} variant="secondary">
             {torrentStatusLabel(torrent)}
           </Badge>
-          <Button
-            disabled={busy}
-            onClick={() =>
-              void act(torrent.id, () =>
-                torrent.storageIssue
-                  ? repair.mutateAsync()
-                  : stopped
-                    ? resume.mutateAsync()
-                    : pause.mutateAsync()
-              )
-            }
-            size="sm"
-            variant="outline"
-          >
-            <Icon name={stopped ? "play" : "pause"} />
-            {torrent.storageIssue ? "Repair download" : stopped ? "Resume" : "Pause"}
-          </Button>
+          {manage ? (
+            <Button
+              disabled={busy}
+              onClick={() =>
+                void act(torrent.id, () =>
+                  torrent.storageIssue
+                    ? repair.mutateAsync()
+                    : stopped
+                      ? resume.mutateAsync()
+                      : pause.mutateAsync()
+                )
+              }
+              size="sm"
+              variant="outline"
+            >
+              <Icon name={stopped ? "play" : "pause"} />
+              {torrent.storageIssue ? "Repair download" : stopped ? "Resume" : "Pause"}
+            </Button>
+          ) : null}
         </div>
         <div className="detail-progress-heading">
           <span>
@@ -159,26 +176,34 @@ export const Detail = memo(function DetailView({
             <dd>{ratio(torrent.ratio)}</dd>
           </div>
         </dl>
-        <div className="detail-destination">
-          <Icon name="folder" />
-          <div>
-            <span>Save location</span>
-            <code>{torrent.savePath}</code>
+        {capabilities && !manage && stopped ? (
+          <p className="detail-note">
+            This download is paused on {data.server.name}. Ask someone with Management access to
+            resume it.
+          </p>
+        ) : null}
+        {host ? (
+          <div className="detail-destination">
+            <Icon name="folder" />
+            <div>
+              <span>Save location</span>
+              <code>{host.savePath}</code>
+            </div>
+            {Boolean(capabilities?.hostNative) && (
+              <ActionTooltip>
+                <Button
+                  aria-label="Open folder"
+                  disabled={busy}
+                  onClick={() => void act(torrent.id, () => reveal.mutateAsync())}
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  <Icon name="folder" />
+                </Button>
+              </ActionTooltip>
+            )}
           </div>
-          {data.session.mode === "desktop" && (
-            <ActionTooltip>
-              <Button
-                aria-label="Open folder"
-                disabled={busy}
-                onClick={() => void act(torrent.id, () => reveal.mutateAsync())}
-                size="icon-sm"
-                variant="ghost"
-              >
-                <Icon name="folder" />
-              </Button>
-            </ActionTooltip>
-          )}
-        </div>
+        ) : null}
       </div>
       {fileError !== null && (
         <Alert variant="destructive">
@@ -191,7 +216,9 @@ export const Detail = memo(function DetailView({
             <TabsTrigger key={name} value={name}>
               {name}
               {name === "Files" && <Badge variant="secondary">{torrent.files.length}</Badge>}
-              {name === "Trackers" && <Badge variant="secondary">{torrent.trackers.length}</Badge>}
+              {name === "Trackers" && host && (
+                <Badge variant="secondary">{host.trackers.length}</Badge>
+              )}
               {name === "Peers" && <Badge variant="secondary">{torrent.peers}</Badge>}
             </TabsTrigger>
           ))}
@@ -202,18 +229,22 @@ export const Detail = memo(function DetailView({
               <AlertDescription>
                 <Icon name="alert" />
                 {torrent.error}
-                {torrent.storageIssue !== null && (
+                {torrent.storageIssue !== null && manage && (
                   <>
-                    <ul className="list-inside list-disc">
-                      {torrent.storageIssue.paths.slice(0, 10).map((path) => (
-                        <li className="break-all" key={path}>
-                          {path}
-                        </li>
-                      ))}
-                    </ul>
-                    {torrent.storageIssue.paths.length > 10 && (
-                      <p>And {torrent.storageIssue.paths.length - 10} more files.</p>
-                    )}
+                    {host?.storageIssue ? (
+                      <>
+                        <ul className="list-inside list-disc">
+                          {host.storageIssue.paths.slice(0, 10).map((path) => (
+                            <li className="break-all" key={path}>
+                              {path}
+                            </li>
+                          ))}
+                        </ul>
+                        {host.storageIssue.paths.length > 10 && (
+                          <p>And {host.storageIssue.paths.length - 10} more files.</p>
+                        )}
+                      </>
+                    ) : null}
                     <div className="flex flex-wrap gap-2">
                       <Button
                         disabled={busy || torrent.status === "checking"}
@@ -227,15 +258,17 @@ export const Detail = memo(function DetailView({
                           ? "Repair download"
                           : "Retry storage"}
                       </Button>
-                      <Button
-                        disabled={busy || torrent.status === "checking"}
-                        onClick={() => open({ torrent, type: "locate" })}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        Locate files
-                      </Button>
+                      {capabilities?.owner ? (
+                        <Button
+                          disabled={busy || torrent.status === "checking"}
+                          onClick={() => open({ torrent, type: "locate" })}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          Locate files
+                        </Button>
+                      ) : null}
                     </div>
                     {torrent.status === "paused" && (
                       <p>Repair checks the remaining data and keeps this torrent paused.</p>
@@ -246,10 +279,21 @@ export const Detail = memo(function DetailView({
             </Alert>
           )}
           <DetailActivity data={data} model={model} torrent={torrent} />
-          <DetailFiles act={act} busy={busy} model={model} torrent={torrent} />
-          <DetailTrackers act={act} busy={busy} model={model} open={open} torrent={torrent} />
-          <DetailPeers open={open} torrent={torrent} />
-          <DetailInformation torrent={torrent} />
+          <DetailFiles act={act} busy={busy} host={host} model={model} torrent={torrent} />
+          {host ? (
+            <>
+              <DetailTrackers
+                act={act}
+                busy={busy}
+                host={host}
+                model={model}
+                open={open}
+                torrent={torrent}
+              />
+              <DetailPeers host={host} open={open} torrent={torrent} />
+            </>
+          ) : null}
+          <DetailInformation host={host} torrent={torrent} />
         </div>
       </Tabs>
     </section>

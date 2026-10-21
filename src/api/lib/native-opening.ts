@@ -1,6 +1,7 @@
 import type { DesktopCapabilities } from "@teyik0/furin-electrobun/host";
-import { HTTPError } from "elysia";
+import { problem } from "elysia";
 
+/** Opens a URL in the host's browser; a refusal is returned as a typed problem. */
 export function openExternalUrl(
   shell: DesktopCapabilities["shell"],
   url: string,
@@ -12,7 +13,5 @@ export function openExternalUrl(
   } catch {
     opened = false;
   }
-  if (!opened) {
-    throw new (HTTPError.id("BAD_GATEWAY", 502))(errorMessage);
-  }
+  return opened ? null : problem(502, { detail: errorMessage });
 }

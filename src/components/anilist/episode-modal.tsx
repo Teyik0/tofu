@@ -3,7 +3,7 @@ import { BookOpenIcon, ListChecksIcon, ZapIcon } from "lucide-react";
 import { object, string } from "valibot";
 import { useAniListEditor } from "../../hooks/use-anilist-editor";
 import { useAniListReleases } from "../../hooks/use-anilist-releases";
-import type { AniListEntry, AniListMedia, AutomationState, DashboardState } from "../../types";
+import type { AniListEntry, AniListMedia, AutomationState, LiveState } from "../../types";
 import { Dialog, DialogContent } from "../ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
 import { EpisodeHeader } from "./episode-header";
@@ -17,7 +17,7 @@ export function AniListEpisodeModal({
   close,
 }: {
   authenticated: boolean;
-  dashboard: DashboardState;
+  dashboard: LiveState;
   entry: AniListMedia | AniListEntry;
   automation: AutomationState;
   close: () => void;
@@ -46,7 +46,6 @@ export function AniListEpisodeModal({
         <EpisodeHeader
           authenticated={authenticated}
           available={releases.result ? releases.available : null}
-          dashboard={dashboard}
           entry={entry}
           model={editor}
         />

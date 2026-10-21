@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import { useRefresh } from "../../lib/navigation";
-import type { AniListState, AutomationState, DashboardState } from "../../types";
+import type { AniListState, AutomationState, LiveState } from "../../types";
 import { OptionSelect } from "../option-select";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -15,7 +15,7 @@ export function LibrarySettings({
 }: {
   state: AniListState;
   automationState: AutomationState;
-  dashboard: DashboardState;
+  dashboard: LiveState;
   close: () => void;
 }) {
   const refresh = useRefresh();
@@ -54,7 +54,7 @@ export function LibrarySettings({
                 disabled={busy}
                 id="anime-default-destination"
                 onValueChange={setTarget}
-                options={dashboard.destinations.map((destination) => ({
+                options={(dashboard.host?.destinations ?? []).map((destination) => ({
                   label: destination.name,
                   value: destination.id,
                 }))}
@@ -62,7 +62,7 @@ export function LibrarySettings({
               />
             </Field>
           }
-          destinations={dashboard.destinations}
+          destinations={dashboard.host?.destinations ?? []}
           key={target}
           plugin={plugin}
           preferences={automationState.preferences}

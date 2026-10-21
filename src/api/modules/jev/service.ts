@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { HTTPError } from "elysia";
+import { ElysiaStatus, problem } from "elysia";
 import { automationJudgements } from "../../../db/schema";
 import type {
   AniListMedia,
@@ -296,7 +296,7 @@ export function parseJevResponse(value: unknown, questions: JevQuestions): JevRe
 export class JevService {
   private readonly db: TofuDatabase;
   private readonly lifecycle: { closed: boolean } = { closed: false };
-  private readonly evaluations = new Map<string, Promise<JevResult | null>>();
+  private readonly evaluations = new Map<string, ReturnType<JevService["requestEvaluation"]>>();
   private readonly requests = new Set<AbortController>();
   private readonly options: { plugins: PluginsService; now: () => number; endpoint: string };
   constructor(
@@ -306,9 +306,13 @@ export class JevService {
     this.db = db;
     this.options = options;
   }
+  /**
+   * Asks Jev, deduplicating identical questions and caching answers for a day. Returns null when
+   * Jev is disabled, and a typed problem when it is stopped, over budget or unavailable.
+   */
   async evaluate(state: object, questions: JevQuestions) {
     if (this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("Jev service stopped");
+      return problem(409, { detail: "Jev service stopped" });
     }
     const plugin = this.options.plugins.plugin("jev");
     if (!(plugin?.enabled && plugin.apiKey)) {
@@ -327,7 +331,12 @@ export class JevService {
     if (pending) {
       return pending;
     }
-    const task = this.requestEvaluation(state, questions).then((result) => {
+    // Register the evaluation before its first await so identical questions share it.
+    const task = (async () => {
+      const result = await this.requestEvaluation(state, questions);
+      if (result instanceof ElysiaStatus) {
+        return result;
+      }
       if (!result || this.lifecycle.closed) {
         return null;
       }
@@ -338,7 +347,7 @@ export class JevService {
         .onConflictDoUpdate({ set: judgement, target: automationJudgements.id })
         .run();
       return result;
-    });
+    })();
     this.evaluations.set(key, task);
     try {
       return await task;
@@ -347,47 +356,55 @@ export class JevService {
     }
   }
 
-  private requestEvaluation(state: object, questions: JevQuestions) {
+  private async requestEvaluation(state: object, questions: JevQuestions) {
     const plugin = this.options.plugins.plugin("jev");
     if (!(plugin?.enabled && plugin.apiKey)) {
-      return Promise.resolve(null);
+      return null;
     }
-    this.options.plugins.reserveDailyCall("jev");
-    return this.options.plugins.request("jev", 15_000, null, async (controller) => {
-      this.requests.add(controller);
-      try {
-        if (this.lifecycle.closed) {
-          controller.abort();
-        }
-        controller.signal.throwIfAborted();
-        const response = await fetch(this.options.endpoint, {
-          body: JSON.stringify({ model: "jev-latest", questions, state }),
-          headers: { authorization: `Bearer ${plugin.apiKey}`, "content-type": "application/json" },
-          method: "POST",
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          throw new (HTTPError.id("SERVICE_UNAVAILABLE", 503))(
-            `Jev unavailable (HTTP ${response.status})`
-          );
-        }
-        const result = parseJevResponse(await response.json(), questions);
-        if (!this.options.plugins.plugin("jev").enabled) {
-          throw new (HTTPError.id("CONFLICT", 409))("Jev plugin disabled");
-        }
-        this.options.plugins.recordSuccess("jev");
-        return result;
-      } catch (cause) {
-        if (plugin.enabled) {
-          this.options.plugins.recordFailure("jev", "Jev evaluation unavailable");
-        }
-        throw cause instanceof HTTPError
-          ? cause
-          : new (HTTPError.id("SERVICE_UNAVAILABLE", 503))("Unable to connect to Jev");
-      } finally {
-        this.requests.delete(controller);
+    const reserved = this.options.plugins.reserveDailyCall("jev");
+    if (reserved) {
+      return reserved;
+    }
+    const unavailable = (detail: string, status: 409 | 503) => {
+      if (plugin.enabled) {
+        this.options.plugins.recordFailure("jev", "Jev evaluation unavailable");
       }
-    });
+      return status === 409 ? problem(409, { detail }) : problem(503, { detail });
+    };
+    try {
+      return await this.options.plugins.request("jev", 15_000, null, async (controller) => {
+        this.requests.add(controller);
+        try {
+          if (this.lifecycle.closed) {
+            controller.abort();
+          }
+          controller.signal.throwIfAborted();
+          const response = await fetch(this.options.endpoint, {
+            body: JSON.stringify({ model: "jev-latest", questions, state }),
+            headers: {
+              authorization: `Bearer ${plugin.apiKey}`,
+              "content-type": "application/json",
+            },
+            method: "POST",
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            return unavailable(`Jev unavailable (HTTP ${response.status})`, 503);
+          }
+          const result = parseJevResponse(await response.json(), questions);
+          if (!this.options.plugins.plugin("jev").enabled) {
+            return unavailable("Jev plugin disabled", 409);
+          }
+          this.options.plugins.recordSuccess("jev");
+          return result;
+        } finally {
+          this.requests.delete(controller);
+        }
+      });
+    } catch {
+      // Aborts, timeouts, transport failures and malformed answers.
+      return unavailable("Unable to connect to Jev", 503);
+    }
   }
   async close() {
     this.lifecycle.closed = true;

@@ -1,21 +1,21 @@
 import type { DesktopCapabilities } from "@teyik0/furin-electrobun/host";
-import { HTTPError } from "elysia";
+import { problem } from "elysia";
 import type { InstanceProfile, TorrentDefaults } from "../../../types";
 
 type Associations = Pick<DesktopCapabilities, "associations">;
 
 export async function setDefaultTorrentFileApp(profile: InstanceProfile, desktop: Associations) {
   if (profile !== "release") {
-    throw new (HTTPError.id("CONFLICT", 409))(
-      "Use the installed release of Tofu to change default applications"
-    );
+    return problem(409, {
+      detail: "Use the installed release of Tofu to change default applications",
+    });
   }
   const target = { extension: "torrent", mimeType: "application/x-bittorrent" };
   const requested = await desktop.associations.requestDefault(target);
   if (requested.status !== "confirmed") {
-    throw new (HTTPError.id("CONFLICT", 409))(
-      "Choose Tofu for .torrent files in your system's default application settings"
-    );
+    return problem(409, {
+      detail: "Choose Tofu for .torrent files in your system's default application settings",
+    });
   }
   const confirmed = await desktop.associations.read(target);
   if (
@@ -23,9 +23,10 @@ export async function setDefaultTorrentFileApp(profile: InstanceProfile, desktop
     !requested.application ||
     confirmed.application !== requested.application
   ) {
-    throw new (HTTPError.id("CONFLICT", 409))(
-      "The system did not confirm Tofu as the default for .torrent files. Move Tofu to Applications and try again."
-    );
+    return problem(409, {
+      detail:
+        "The system did not confirm Tofu as the default for .torrent files. Move Tofu to Applications and try again.",
+    });
   }
   return { torrent: confirmed.application };
 }
@@ -43,9 +44,9 @@ export async function readTorrentDefaults(desktop: Associations): Promise<Torren
 
 export async function setDefaultTorrentApp(profile: InstanceProfile, desktop: Associations) {
   if (profile !== "release") {
-    throw new (HTTPError.id("CONFLICT", 409))(
-      "Use the installed release of Tofu to change default applications"
-    );
+    return problem(409, {
+      detail: "Use the installed release of Tofu to change default applications",
+    });
   }
   const torrent = await desktop.associations.requestDefault({
     extension: "torrent",
@@ -53,15 +54,14 @@ export async function setDefaultTorrentApp(profile: InstanceProfile, desktop: As
   });
   const magnet = await desktop.associations.requestDefault({ scheme: "magnet" });
   if (torrent.status !== "confirmed" || magnet.status !== "confirmed") {
-    throw new (HTTPError.id("CONFLICT", 409))(
-      "Choose Tofu in your system's default application settings"
-    );
+    return problem(409, { detail: "Choose Tofu in your system's default application settings" });
   }
   const defaults = await readTorrentDefaults(desktop);
   if (defaults.magnet !== "app.tofu.torrents" || defaults.torrent !== "app.tofu.torrents") {
-    throw new Error(
-      "The system did not confirm both torrent associations. Move Tofu to Applications and try again."
-    );
+    return problem(409, {
+      detail:
+        "The system did not confirm both torrent associations. Move Tofu to Applications and try again.",
+    });
   }
   return defaults;
 }
