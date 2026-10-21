@@ -1,7 +1,7 @@
 import { defineRoute } from "@teyik0/furin";
 import { useAtomValue } from "jotai";
 import { useEffect, useState } from "react";
-import { AccessRequired, SettingsSkeleton } from "@/components/access-required";
+import { AccessRequired } from "@/components/access-required";
 import { browseRequest, catalogSortOptions } from "@/components/anilist/browse-filters";
 import { AniListEpisodeModal } from "@/components/anilist/episode-modal";
 import { LibraryControls } from "@/components/anilist/library-controls";
@@ -14,6 +14,7 @@ import {
 import { LibraryHeader } from "@/components/anilist/library-header";
 import { LibraryResults } from "@/components/anilist/library-results";
 import { LibrarySettings } from "@/components/anilist/library-settings";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAniListCatalog } from "@/hooks/use-anilist-catalog";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { useAuthorizationPolling } from "@/hooks/use-authorization-polling";
@@ -85,8 +86,31 @@ export const route = defineRoute("/anilist")
     }
     if (!loadedState) {
       return (
-        <main className="anilist-library">
-          <SettingsSkeleton label="Loading AniList" />
+        <main aria-busy="true" aria-label="Loading AniList" className="anilist-library">
+          <header className="library-topbar anilist-page-header">
+            <Skeleton className="h-6 w-28" />
+            <Skeleton className="h-9 w-64" />
+          </header>
+          <div className="anilist-page-body">
+            <div className="anilist-filters">
+              {["search", "genres", "year", "season", "format"].map((filter) => (
+                <div className="anilist-filter" key={filter}>
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-[42px] w-full" />
+                </div>
+              ))}
+              <Skeleton className="anilist-advanced-toggle h-[42px] w-full" />
+            </div>
+            <div className="anilist-results-bar">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="ml-auto h-8 w-48" />
+            </div>
+            <div className="anime-grid">
+              {["first", "second", "third", "fourth", "fifth"].map((card) => (
+                <Skeleton className="anime-cover-skeleton" key={card} />
+              ))}
+            </div>
+          </div>
         </main>
       );
     }

@@ -1,11 +1,9 @@
 import { cp } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { defineConfig } from "@teyik0/furin/config";
 import { defineDesktopConfig } from "@teyik0/furin-electrobun";
 import tailwind from "bun-plugin-tailwind";
 import { version } from "./package.json";
-import { playerEnginePlugin } from "./scripts/player-engine";
-import { tailscaleResourcesPlugin } from "./scripts/tailscale-resources";
 
 const release = process.env.TOFU_RELEASE === "1";
 process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
@@ -85,8 +83,57 @@ export default defineConfig({
         });
       },
     },
-    playerEnginePlugin,
-    tailscaleResourcesPlugin,
+    {
+      name: "tofu-player-engine",
+      setup(builder) {
+        // Furin also probes plugins with a resolver-only runtime builder. Only the server bundle
+        // serves the engine; React Server Component graphs never load it.
+        if (
+          !("onEnd" in builder) ||
+          builder.config.target !== "bun" ||
+          !builder.config.outdir ||
+          builder.config.conditions?.includes("react-server")
+        ) {
+          return;
+        }
+        const engine = dirname(Bun.resolveSync("libvlc-wasm/package.json", import.meta.dir));
+        const destination = join(builder.config.outdir, "libvlc-wasm");
+        builder.onEnd(async (result) => {
+          if (result.success) {
+            await Promise.all(
+              ["COPYING", "LICENSE", "fonts", "package.json", "src", "wasm"].map((entry) =>
+                cp(join(engine, entry), join(destination, entry), { recursive: true })
+              )
+            );
+          }
+        });
+      },
+    },
+    {
+      name: "tofu-tailscale-resources",
+      setup(builder) {
+        if (
+          !("onEnd" in builder) ||
+          builder.config.target !== "bun" ||
+          !builder.config.outdir ||
+          builder.config.conditions?.includes("react-server")
+        ) {
+          return;
+        }
+        const destination = builder.config.outdir;
+        builder.onEnd(async (result) => {
+          if (result.success) {
+            await Promise.all(
+              [
+                process.platform === "win32" ? "tofu-tsnet.exe" : "tofu-tsnet",
+                "tofu-tsnet.licenses.txt",
+                "tofu-tsnet.manifest.json",
+              ].map((name) => cp(join(import.meta.dir, "runtime", name), join(destination, name)))
+            );
+          }
+        });
+      },
+    },
     {
       name: tailwind.name,
       setup(builder) {

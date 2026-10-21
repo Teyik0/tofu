@@ -136,7 +136,7 @@ bun run test
 bun run build:desktop
 ```
 
-`bun run test` runs the integration suite with Bun in isolated processes. API tests call the typed endpoints through Eden and exercise real application services, real peers, local trackers, and temporary folders. Shared fixtures and assertions live in `tests/helpers/`; AniList tests live in `tests/anilist/` without repeating the feature name in filenames. Keep only essential integration scenarios, with no function unit tests, component snapshots, or tests of framework internals.
+`bun run test` runs 15 integration scenarios grouped into `tests/torrents/`, `tests/library/`, `tests/lifecycle/`, `tests/anilist/`, `tests/plugins/`, and `tests/remote/`. Each scenario starts the real server in temporary directories and calls typed Eden endpoints. Transfers use real local peers; AniList and release providers use a local HTTP fixture through a test-only preload. Shared process, peer, provider, polling, and assertion helpers live in `tests/helpers/`. Coverage includes missing files after restart and explicit repair, preserving downloaded data, OAuth, watched progress, automation, and remote permissions. Keep only essential integration scenarios, with no function unit tests, component snapshots, or tests of framework internals.
 
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 

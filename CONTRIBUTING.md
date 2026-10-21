@@ -23,7 +23,7 @@ bun run test
 bun run build:desktop
 ```
 
-Transfer tests use real peers and temporary directories. Add tests through public APIs for changes to the engine or lifecycle, and verify a failing case before implementing the fix.
+The integration suite covers 15 essential scenarios grouped by domain under `tests/`. Tests start the real server in temporary directories and call its typed Eden endpoints directly. Transfer tests use real local peers; external providers are simulated at their HTTP boundary. Keep shared resource lifecycle and assertion helpers in `tests/helpers/`, and verify a failing case before implementing a fix.
 
 For changes to development/release isolation, build locally with `bun run build:desktop` and check settings, transfers, and shutdown. Stable release builds, signing, artifact preparation, and publication run exclusively through `.github/workflows/release.yml`, triggered by a version tag or manually with an existing tag.
 
@@ -35,7 +35,7 @@ For changes to development/release isolation, build locally with `bun run build:
 - Use Conventional Commits, enforced by commitlint, and update [CHANGELOG.md](CHANGELOG.md) under Unreleased.
 - Keep shared types in `src/types.ts`, avoid default function parameters, and retain unknown statistics as `null` in the API and `—` in the interface.
 - Pause, resume, tracker changes, and folder changes must preserve downloaded data. File deletion requires an explicit user choice.
-- Changes to WebTorrent 3.0.21 require rerunning tracker, wire, transfer, and lifecycle tests.
+- Changes to WebTorrent 3.0.21 require rerunning the torrent, library, and lifecycle scenarios.
 - Do not commit tokens, certificates, user databases, or downloaded files. Keep logs and reproductions free of personal data.
 - AI-assisted contributions require human review and supervision. Do not copy unattributed code. Be respectful.
 

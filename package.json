@@ -14,7 +14,6 @@
   "author": "teyik0",
   "type": "module",
   "scripts": {
-    "admin": "bun scripts/tofu-admin.ts",
     "prebuild": "bun run setup",
     "build": "bun run codegen && bun --bun furin build --target bun",
     "prebuild:desktop": "TOFU_RELEASE=0 bun run setup",
@@ -31,8 +30,7 @@
     "prepare": "lefthook install",
     "setup": "bun scripts/setup.ts",
     "start": "TOFU_MODE=server bun .furin/build/bun/server.js",
-    "test": "bun run codegen && bun test --parallel --isolate --bail --timeout 30000",
-    "tscheck": "bun run codegen && bun scripts/route-types.ts && bun check"
+    "test": "bun run codegen && bun test --parallel --isolate --bail --timeout 30000"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -72,11 +70,9 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@types/webtorrent": "3.0.0",
-    "bittorrent-tracker": "11.2.3",
     "drizzle-kit": "0.31.11",
     "electrobun": "2.0.4",
     "lefthook": "2.2.2",
-    "playwright": "1.64.1",
     "shadcn": "4.22.1",
     "typescript": "7.0.2",
     "ultracite": "8.0.1"

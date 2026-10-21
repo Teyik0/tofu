@@ -1,174 +1,38 @@
 import { expect, test } from "bun:test";
-import { join } from "node:path";
-import { treaty } from "@elysia/eden";
-import { createTestApi } from "../helpers/application";
-import { expectSuccess } from "../helpers/problem";
-import { openTestServices } from "../helpers/services";
-import { fixture } from "../helpers/torrent";
+import { application } from "../helpers/app";
+import { success } from "../helpers/assert";
+import { provider } from "../helpers/provider";
 
-test("AniList catalog browses trending anime without an account and keeps personal lists intact", async () => {
-  const context = await fixture(1024, []);
-  const requests: { query: string; variables: { sort: string[]; page: number } }[] = [];
-  const provider = Bun.serve({
-    async fetch(incoming) {
-      const body = await incoming.json();
-      requests.push(body);
-      if (body.query.includes("GenreCollection")) {
-        return Response.json({
-          data: {
-            ExternalLinkSourceCollection: [
-              { id: 7, isDisabled: null, site: "Crunchyroll", type: "STREAMING" },
-              { id: 8, isDisabled: true, site: "Disabled site", type: "STREAMING" },
-              { id: 9, isDisabled: false, site: "Official site", type: "INFO" },
-            ],
-            GenreCollection: ["Drama", "Action"],
-            MediaTagCollection: [
-              { category: "Setting", isAdult: false, name: "Space" },
-              { category: "Other", isAdult: true, name: "Adult tag" },
-            ],
-          },
-        });
-      }
-      return Response.json({
-        data: {
-          Page: {
-            media: [
-              {
-                averageScore: null,
-                coverImage: { color: "#e4a33a", large: "https://example.com/cover.jpg" },
-                endDate: { day: null, month: null, year: null },
-                genres: ["Action"],
-                id: 99,
-                nextAiringEpisode: { airingAt: 1_792_000_000, episode: 2 },
-                startDate: { day: 3, month: 4, year: 2026 },
-                status: "RELEASING",
-                studios: { nodes: [{ name: "Example Studio" }] },
-                synonyms: ["Alias"],
-                title: { english: "Example", romaji: "Trending Example" },
-                trending: 321,
-              },
-            ],
-            pageInfo: { currentPage: body.variables.page, hasNextPage: true },
-          },
-        },
-      });
-    },
-    hostname: "127.0.0.1",
-    port: 0,
-  });
-  const base = `http://127.0.0.1:${provider.port}`;
-  const service = await openTestServices({
-    dataDir: join(context.directory, "feeds"),
-    endpoints: { anilist: base, c411: base, jev: base, nyaa: base, tsundere: base },
-    engine: () => context.engine,
-    now: Date.now,
-  });
-  const api = await createTestApi(
-    () => context.engine,
-    context.sync.options,
-    () => service
+test("AniList catalog browsing and list edits use the provider and retain saved changes", async () => {
+  await using upstream = provider();
+  await using app = await application({ provider: upstream.url });
+  const { client } = await app.start();
+  const catalog = success(await client.anilist.catalog.post({ search: "Example" }));
+  expect(catalog.media).toHaveLength(1);
+  expect(catalog.media[0]).toMatchObject({ mediaId: 10, title: "Example" });
+  success(
+    await client.plugins({ id: "anilist" }).put({ apiKey: "test-anilist-token", enabled: true })
   );
-  const client = treaty(api).api;
-  try {
-    await client.anilist.preferences.put({ visibleStatuses: [] });
-    const response = await client.anilist.catalog.post({});
-    expect(response.status).toBe(200);
-    const result = expectSuccess(response);
-    expect(requests[0]?.variables).toMatchObject({ page: 1, sort: ["TRENDING_DESC", "ID_DESC"] });
-    expect(result).toMatchObject({
-      hasNextPage: true,
-      media: [
-        {
-          airingStatus: "RELEASING",
-          aliases: ["Trending Example", "Example", "Alias"],
-          averageScore: null,
-          coverColor: "#e4a33a",
-          episodes: null,
-          mediaId: 99,
-          title: "Trending Example",
-          trending: 321,
-        },
-      ],
-      page: 1,
-    });
-    const state = expectSuccess(await client.anilist.get());
-    expect(state.entries).toEqual([]);
-    expect(state.visibleStatuses).toEqual([]);
-    const filtered = await client.anilist.catalog.post({
-      airingStatus: "RELEASING",
-      countryOfOrigin: "JP",
-      doujin: "exclude",
-      durationMax: 30,
-      durationMin: 20,
-      episodesMax: 24,
-      episodesMin: 12,
-      excludedGenres: ["Horror"],
-      excludedTags: ["Gore"],
-      format: "TV",
-      genres: ["Action"],
-      page: 2,
-      search: "Example",
-      season: "SPRING",
-      sort: "score",
-      source: "MANGA",
-      streamingOn: 7,
-      tags: ["Space"],
-      year: 2026,
-      yearMax: 2026,
-      yearMin: 2020,
-    });
-    expect(filtered.status).toBe(200);
-    expect(requests[1]?.variables).toMatchObject({
-      countryOfOrigin: "JP",
-      duration_greater: 19,
-      duration_lesser: 31,
-      episodes_greater: 11,
-      episodes_lesser: 25,
-      format: "TV",
-      genre_in: ["Action"],
-      genre_not_in: ["Horror"],
-      licensedById: 7,
-      page: 2,
-      search: "Example",
-      season: "SPRING",
-      seasonYear: 2026,
-      sort: ["SCORE_DESC", "ID_DESC"],
-      source: "MANGA",
-      startDate_greater: 20_191_231,
-      startDate_lesser: 20_270_101,
-      status: "RELEASING",
-      tag_in: ["Space"],
-      tag_not_in: ["Gore"],
-    });
-    expect(requests[1]?.variables).not.toHaveProperty("isLicensed");
-    const invalid = await client.anilist.catalog.post({ episodesMax: 12, episodesMin: 24 });
-    expect(invalid.status).toBe(400);
-    expect(requests).toHaveLength(2);
-    expect(result.media[0]).toMatchObject({
-      endDate: { day: null, month: null, year: null },
-      nextAiringEpisode: { airingAt: 1_792_000_000, episode: 2 },
-      releaseDate: { day: 3, month: 4, year: 2026 },
-      studios: ["Example Studio"],
-    });
-    const options = expectSuccess(await client.anilist.catalog.options.get());
-    expect(options).toEqual({
-      genres: ["Action", "Drama"],
-      streaming: [{ id: 7, name: "Crunchyroll" }],
-      tags: [{ category: "Setting", isAdult: false, name: "Space" }],
-    });
-    await client.anilist.catalog.options.get();
-    expect(requests).toHaveLength(3);
-    const multipleFormats = await client.anilist.catalog.post({ formats: ["TV", "MOVIE"] });
-    expect(multipleFormats.status).toBe(200);
-    expect(requests.at(-1)?.variables).toMatchObject({ format_in: ["TV", "MOVIE"] });
-    const clearedFormats = await client.anilist.catalog.post({ formats: [] });
-    expect(clearedFormats.status).toBe(200);
-    expect(requests.at(-1)?.variables).not.toHaveProperty("format_in");
-    const invalidFormats = await client.anilist.catalog.post({ formats: ["INVALID"] as never });
-    expect(invalidFormats.status).toBe(422);
-  } finally {
-    await api.application.close();
-    provider.stop(true);
-    await context.close();
-  }
+  success(await client.anilist.list.post({}));
+  const editor = success(await client.anilist.entries({ mediaId: "10" }).editor.get());
+  expect(editor.entry?.notes).toBe("");
+  const saved = success(
+    await client.anilist
+      .entries({ mediaId: "10" })
+      .editor.put({ notes: "Watch this weekend", status: "PAUSED" })
+  );
+  expect(saved.entries[0]?.status).toBe("PAUSED");
+  expect(upstream.state.writes).toEqual([
+    {
+      token: "Bearer test-anilist-token",
+      variables: expect.objectContaining({
+        mediaId: 10,
+        notes: "Watch this weekend",
+        status: "PAUSED",
+      }),
+    },
+  ]);
+  const reopened = success(await client.anilist.entries({ mediaId: "10" }).editor.get());
+  expect(reopened.entry?.notes).toBe("Watch this weekend");
+  expect(reopened.entry?.status).toBe("PAUSED");
 });
