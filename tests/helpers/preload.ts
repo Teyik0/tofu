@@ -1,4 +1,29 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { ServerCatalog } from "../../src/native/catalog";
+import { nativeControl } from "../../src/native/control";
+import { RemoteThreads } from "../../src/native/remote-threads";
+import type { RemoteServerFixture } from "./app";
+
+const remoteServers = process.env.TOFU_TEST_REMOTE_SERVERS;
+
+if (remoteServers) {
+  const fixtures = JSON.parse(remoteServers) as RemoteServerFixture[];
+  const catalog = new ServerCatalog(join(process.env.TOFU_DATA_DIR!, "native"));
+
+  catalog.value.servers.push(...fixtures.map((fixture) => fixture.server));
+
+  nativeControl.tofuNativeThreads = new RemoteThreads({
+    catalog,
+    memory: new Map(
+      fixtures.map((fixture) => [
+        fixture.server.serverId,
+        fixture.token,
+      ])
+    ),
+    service: "tofu-integration",
+  });
+}
 
 // Loaded only by test subprocesses. Windows uses this file to request graceful shutdown.
 const shutdownPath = process.env.TOFU_TEST_SHUTDOWN;

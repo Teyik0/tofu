@@ -55,3 +55,7 @@ export type DeviceKind = InferOutput<typeof pairSchema>["kind"];
  * cookie; link: bearer credential of a linked server.
  */
 export type SessionKind = "browser" | "native" | "window" | "link";
+
+export const sessionTransferSchema = object({
+  secret: pipe(string(), minLength(43), maxLength(43)),
+});

@@ -12,6 +12,9 @@ export const route = defineRoute("/thread/[id]")
   })
   .loader(async ({ dashboard, params, query }) => {
     const state = await dashboard;
+    if (!state) {
+      notFound({ message: "The library is not available on this page" });
+    }
     if (!state.destinations.some((destination) => destination.id === params.id)) {
       notFound({ message: "This tab does not exist" });
     }
@@ -30,11 +33,13 @@ export const route = defineRoute("/thread/[id]")
     return { detail: data };
   })
   .head(() => ({ meta: [{ title: "Your downloads — Tofu" }] }))
-  .page(({ dashboard, params, detail, query }) => (
-    <App
-      activeDestination={params.id}
-      dashboard={dashboard}
-      detail={detail}
-      requested={query.torrent}
-    />
-  ));
+  .page(({ dashboard, params, detail, query }) =>
+    dashboard ? (
+      <App
+        activeDestination={params.id}
+        dashboard={dashboard}
+        detail={detail}
+        requested={query.torrent}
+      />
+    ) : null
+  );

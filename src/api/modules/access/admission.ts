@@ -6,9 +6,24 @@ export const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 /** Exact anonymous allowlist; everything else requires an authenticated caller. */
 export function isPublicRequest(method: string, pathname: string) {
   if (method === "GET" || method === "HEAD") {
-    return ["/.well-known/tofu", "/pair", "/signed-out", "/favicon.ico"].includes(pathname);
+    return (
+      [
+        "/.well-known/tofu",
+        "/pair",
+        "/signed-out",
+        "/session-transfer",
+        "/favicon.ico",
+        "/public/icon.png",
+        "/public/apple-touch-icon.png",
+      ].includes(pathname) ||
+      pathname.startsWith("/_client/") ||
+      pathname.startsWith("/_bun/client/") ||
+      pathname.startsWith("/_bun/asset/")
+    );
   }
-  return method === "POST" && pathname === "/api/auth/pair";
+  return (
+    method === "POST" && ["/api/auth/pair", "/api/auth/session-transfers/redeem"].includes(pathname)
+  );
 }
 
 /** Endpoints a linked server may call: availability and file-scoped playback links only. */

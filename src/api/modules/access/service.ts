@@ -1,3 +1,4 @@
+import { createLogger } from "evlog";
 import "@teyik0/furin/server-only";
 import { hostname } from "node:os";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
@@ -7,6 +8,7 @@ import {
   deviceSessions,
   pairingInvitations,
   serverIdentity,
+  sessionTransfers,
 } from "../../../db/schema";
 import type { TofuDatabase } from "../../lib/db";
 import {
@@ -258,6 +260,48 @@ export class AccessService {
       });
       return;
     }
+    if (url.pathname === "/" || url.pathname === "/api/session") {
+      const presented = bearer ?? cookie;
+      let reason = "missing-session";
+      let deviceId: string | null = null;
+      if (presented) {
+        const stored = this.options.db
+          .select({ device: authorizedDevices, session: deviceSessions })
+          .from(deviceSessions)
+          .innerJoin(authorizedDevices, eq(authorizedDevices.id, deviceSessions.deviceId))
+          .where(eq(deviceSessions.tokenHash, hash(presented)))
+          .get();
+        reason = "unknown-session";
+        if (stored) {
+          deviceId = stored.device.id;
+          const now = this.options.now();
+          if (stored.device.revokedAt !== null) {
+            reason = "revoked-device";
+          } else if (stored.session.expiresAt <= now) {
+            reason = "expired-session";
+          } else if (stored.session.idleExpiresAt <= now) {
+            reason = "inactive-session";
+          } else {
+            reason = "session-kind-or-path-not-allowed";
+          }
+        }
+      }
+      const log = createLogger({
+        component: "access",
+        context: {
+          browser: request.headers.get("user-agent"),
+          deviceId,
+          fetchSite: request.headers.get("sec-fetch-site"),
+          origin,
+          path: url.pathname,
+          reason,
+          secure,
+        },
+        operation: "session-rejected",
+      });
+      log.setLevel("warn");
+      log.emit();
+    }
     const navigation =
       request.method === "GET" &&
       (request.headers.get("sec-fetch-dest") === "document" ||
@@ -395,10 +439,13 @@ export class AccessService {
   }
 
   /** Stores a new session for a device and returns its one-time token. */
-  issueSession(deviceId: string, kind: SessionKind) {
+  issueSession(deviceId: string, kind: SessionKind, until = Number.POSITIVE_INFINITY) {
     const now = this.options.now();
     const token = randomToken(32);
-    const expiresAt = now + (kind === "window" ? WINDOW_SESSION_ABSOLUTE : SESSION_ABSOLUTE);
+    const expiresAt = Math.min(
+      now + (kind === "window" ? WINDOW_SESSION_ABSOLUTE : SESSION_ABSOLUTE),
+      until
+    );
     this.options.db
       .insert(deviceSessions)
       .values({
@@ -413,6 +460,85 @@ export class AccessService {
       })
       .run();
     return { expiresAt, token };
+  }
+
+  /** A browser may hand off its own grants, never the host's owner authority. */
+  createSessionTransfer(caller: Exclude<Caller, { kind: "anonymous" }>) {
+    if (caller.kind !== "device" || caller.session.kind !== "browser") {
+      return problem(403, { detail: "Only a paired browser can transfer its session" });
+    }
+    const now = this.options.now();
+    const expiresAt = Math.min(
+      now + 60_000,
+      caller.session.expiresAt,
+      caller.session.idleExpiresAt
+    );
+    const secret = randomToken(32);
+    this.options.db.transaction((tx) => {
+      tx.delete(sessionTransfers)
+        .where(
+          or(
+            lt(sessionTransfers.expiresAt, now),
+            eq(sessionTransfers.sourceSessionId, caller.session.id)
+          )
+        )
+        .run();
+      tx.insert(sessionTransfers)
+        .values({
+          expiresAt,
+          grantVersion: caller.device.grantVersion,
+          origin: caller.origin,
+          sourceSessionId: caller.session.id,
+          tokenHash: hash(secret),
+        })
+        .run();
+    });
+    return { expiresAt, secret };
+  }
+
+  /** Atomically consumes a handoff and creates a cookie session for the same device/profile. */
+  redeemSessionTransfer(secret: string, origin: string) {
+    const now = this.options.now();
+    return this.options.db.transaction((tx) => {
+      const stored = tx
+        .select({ device: authorizedDevices, session: deviceSessions, transfer: sessionTransfers })
+        .from(sessionTransfers)
+        .innerJoin(deviceSessions, eq(deviceSessions.id, sessionTransfers.sourceSessionId))
+        .innerJoin(authorizedDevices, eq(authorizedDevices.id, deviceSessions.deviceId))
+        .where(eq(sessionTransfers.tokenHash, hash(secret)))
+        .get();
+      if (
+        !stored ||
+        stored.transfer.expiresAt <= now ||
+        stored.session.expiresAt <= now ||
+        stored.session.idleExpiresAt <= now ||
+        stored.device.revokedAt !== null ||
+        stored.session.kind !== "browser" ||
+        stored.transfer.grantVersion !== stored.device.grantVersion
+      ) {
+        return problem(410, {
+          detail:
+            "This transfer expired or is no longer valid. Prepare a new link in the connected browser",
+        });
+      }
+      if (stored.transfer.origin !== origin) {
+        return problem(403, {
+          detail: "Open this transfer at the server address it was created for",
+        });
+      }
+      const consumed = tx
+        .delete(sessionTransfers)
+        .where(eq(sessionTransfers.tokenHash, hash(secret)))
+        .returning({ tokenHash: sessionTransfers.tokenHash })
+        .all();
+      if (consumed.length !== 1) {
+        return problem(410, {
+          detail: "This transfer was already used. Prepare a new link in the connected browser",
+        });
+      }
+      const session = this.issueSession(stored.device.id, "browser", stored.session.expiresAt);
+      return { deviceId: stored.device.id, session };
+    });
   }
 
   /** Short-lived WebView cookie minted by a desktop client from its native credential. */
@@ -532,6 +658,7 @@ export class AccessService {
       .delete(deviceSessions)
       .where(or(lt(deviceSessions.expiresAt, now), lt(deviceSessions.idleExpiresAt, now)))
       .run();
+    this.options.db.delete(sessionTransfers).where(lt(sessionTransfers.expiresAt, now)).run();
     this.options.db
       .delete(pairingInvitations)
       .where(lt(pairingInvitations.expiresAt, now - 30 * DAY))

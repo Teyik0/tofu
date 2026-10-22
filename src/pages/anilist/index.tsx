@@ -105,6 +105,9 @@ export const route = defineRoute("/anilist")
         </main>
       );
     }
+    if (!loaded) {
+      return null;
+    }
     return (
       <AniListLibrary
         automationState={loadedState.automation}

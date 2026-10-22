@@ -1,37 +1,34 @@
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import type { DesktopConfig } from "@teyik0/furin-electrobun";
-import type { DesktopBackend, DesktopCapabilities } from "@teyik0/furin-electrobun/host";
 import {
+  type DesktopBackend,
+  type DesktopCapabilities,
   getDesktopDevelopment,
-  resolveDesktopDataDir,
-  runStandardDesktopHost,
+  type NativeActionContext,
+  type OpenEvent,
+  type ReadyContext,
 } from "@teyik0/furin-electrobun/host";
-// biome-ignore lint/performance/noNamespaceImport: The SDK namespace is passed to the standard native host as required by its API.
+// biome-ignore lint/performance/noNamespaceImport: Native server windows share the canonical SDK namespace.
 import * as sdk from "electrobun/main";
 import { type SavedServer, ServerCatalog } from "./catalog";
 import { nativeControl } from "./control";
 import { discoverLocalServers } from "./discovery";
 import type { NativeServerAction } from "./model";
+import { RemoteThreads } from "./remote-threads";
 
 const WHITESPACE = /\s+/;
 const CREDENTIAL_FAILURE = /identity|revoked|expired|Incompatible|cookie/;
 const SERVER_ID = /^[a-f0-9-]{36}$/;
 
-// This entry has no static backend/database/worker import. The standard host alone owns loading it.
+// Furin loads this native customization before the backend, after resolving its data directory.
 const identity = await sdk.Updater.getLocalInfo();
 const development = await getDesktopDevelopment();
 const config: DesktopConfig =
   development?.config ?? (await Bun.file(join(dirname(Bun.main), "furin-host.json")).json());
-const root = development?.root ?? dirname(Bun.main);
-const dataDir =
-  typeof config.dataDir === "string"
-    ? config.dataDir
-    : await resolveDesktopDataDir(config.dataDir ?? { developmentName: "Tofu-dev", name: "Tofu" }, {
-        channel: identity.channel,
-        mode: development ? "dev" : "build",
-        root,
-      });
+const dataDir = process.env.FURIN_APP_DATA_DIR;
+if (!dataDir) {
+  throw new Error("The native customization requires Furin's resolved data directory");
+}
 const catalog = new ServerCatalog(join(dataDir, "native"));
 await catalog.read();
 const service = `app.tofu.torrents.servers${identity.channel === "dev" ? ".dev" : ""}`;
@@ -48,7 +45,6 @@ const statuses = new Map<string, string>();
 const opening = new Set<string>();
 let desktop: DesktopCapabilities;
 let backend: DesktopBackend | undefined;
-let hostInitialized = false;
 let serverAction = Promise.resolve();
 let message = "";
 let discovered: Awaited<ReturnType<typeof discoverLocalServers>>["servers"] = [];
@@ -420,19 +416,24 @@ async function command(
     catalog.value.servers.push(saved);
     await catalog.save();
     pairing.delete(attemptKey);
+    nativeControl.tofuNativeThreads?.start(saved.serverId);
     message = `Connected to ${saved.name}.`;
     await openSaved(saved);
     return;
   }
   if (server && action === "reconnect") {
+    await nativeControl.tofuNativeThreads?.stop(server.serverId);
+    nativeControl.tofuNativeThreads?.start(server.serverId);
     const current = windows.get(server.serverId);
     const path = current?.path;
     current?.window.close();
     windows.delete(server.serverId);
     await openSaved(server, path);
   } else if (server && action === "open") {
+    nativeControl.tofuNativeThreads?.start(server.serverId);
     await openSaved(server);
   } else if (server && action === "disconnect") {
+    await nativeControl.tofuNativeThreads?.stop(server.serverId);
     windows.get(server.serverId)?.window.close();
     statuses.set(server.serverId, "Disconnected");
   } else if (server && action === "save-server") {
@@ -443,11 +444,14 @@ async function command(
       throw new Error("Enter between one and four HTTPS addresses");
     }
     await Promise.all(origins.map((origin) => descriptor(origin, server.serverId)));
+    await nativeControl.tofuNativeThreads?.stop(server.serverId);
     server.origins = origins;
     server.alias = (input.alias ?? "").trim().slice(0, 64);
     await catalog.save();
     message = "Server details saved on this computer.";
+    nativeControl.tofuNativeThreads?.start(server.serverId);
   } else if (server && action === "forget") {
+    await nativeControl.tofuNativeThreads?.stop(server.serverId);
     let revoked = false;
     try {
       const token = await credential(server);
@@ -529,28 +533,17 @@ function openConnections(invitation?: string) {
   }
 }
 
+nativeControl.tofuNativeThreads = new RemoteThreads({
+  catalog,
+  memory,
+  service,
+});
+
 nativeControl.tofuNativeServers = { read: nativeServerSnapshot, run: runNativeServerAction };
 
-await runStandardDesktopHost(sdk, {
-  config,
-  dataDir,
-  load: () =>
-    import(
-      pathToFileURL(development?.serverEntry ?? join(dirname(Bun.main), "../furin/app.js")).href
-    ),
-  manager(context) {
-    ({ desktop, backend } = context);
-    if (context.startupError || !backend) {
-      throw new Error(context.startupError ?? "The local server could not start");
-    }
-    if (hostInitialized) {
-      openConnections();
-    }
-    hostInitialized = true;
-  },
-  mode: development ? "dev" : "build",
+export const nativeHost = {
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Trusted native commands validate and act in one auditable capability boundary.
-  async onOpen({ event }) {
+  async onOpen({ event }: NativeActionContext & { event: OpenEvent }) {
     if (event.type !== "url") {
       return false;
     }
@@ -599,8 +592,14 @@ await runStandardDesktopHost(sdk, {
     }
     return false;
   },
-  root,
-  testScript: process.env.FURIN_NATIVE_TEST_SCRIPT
-    ? await Bun.file(process.env.FURIN_NATIVE_TEST_SCRIPT).text()
-    : undefined,
-});
+  onReady(context: ReadyContext) {
+    if (context.runtime.kind === "desktop") {
+      ({ desktop } = context.runtime);
+      // The native host supplies the full backend, including single-use window bootstrap URLs.
+      backend = context.backend as DesktopBackend;
+    }
+  },
+  openConnections,
+};
+
+nativeControl.tofuNativeHost = nativeHost;

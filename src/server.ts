@@ -11,11 +11,12 @@ import { runtime } from "./api/lib/runtime";
 import { writeServerInfo } from "./api/lib/server-info";
 import { accessPlugin } from "./api/modules/access/plugin";
 import { desktopServicePlugin } from "./api/modules/desktop/service";
+import { nativeControl } from "./native/control";
 import { sync } from "./sync";
 
-export let { port } = instance;
+let { port } = instance;
 
-// Furin initializes the process logger during composition; restore Tofu's explicit-event drain.
+// Furin configures the process logger during composition; restore Tofu's drain before listening.
 initLogger({ ...loggerConfig, drain: logs });
 
 const app = new Elysia({
@@ -24,20 +25,18 @@ const app = new Elysia({
 })
   .use(accessPlugin)
   .use(desktopServicePlugin)
-  .use((server) =>
-    server.decorate((dependencies) => {
-      const { access, connections, desktopHooks, torrents, updates } = dependencies;
-
+  .use((app) =>
+    app.decorate(({ access, connections, desktopHooks, torrents, updates }) => {
       ({ port } = connections.listenOptions());
 
       // Install the desktop host before API and page wrappers.
-      server.use(
+      app.use(
         desktopApp({
           ...desktopHooks,
           admission: access.admit.bind(access),
           listen: connections.listenOptions.bind(connections),
 
-          async onReady({ backend, signal }) {
+          async onReady({ backend, signal, runtime: applicationRuntime }) {
             signal.throwIfAborted();
 
             connections.listened(Number(new URL(backend.origin).port));
@@ -51,6 +50,11 @@ const app = new Elysia({
             signal.throwIfAborted();
 
             await writeServerInfo(instance, torrents, backend.origin, backend.cookie);
+            nativeControl.tofuNativeHost?.onReady({
+              backend,
+              runtime: applicationRuntime,
+              signal,
+            });
           },
 
           onStartup(context) {
@@ -85,7 +89,7 @@ const app = new Elysia({
         })
       );
 
-      return dependencies;
+      return { access, connections, desktopHooks, torrents, updates }
     })
   )
   .use(httpPolicyPlugin)
@@ -100,3 +104,5 @@ const shutdown = async () => {
 };
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
+
+export default app;

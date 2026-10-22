@@ -11,7 +11,7 @@ const urlCredentials = /(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi;
 const urlQuery = /([?&](?:[^\s=&#]*(?:token|key|secret|password|cookie)[^\s=&#]*)=)[^\s&#]*/gi;
 
 const mediaLinkPath = /\/media\/x\/[^/\s?#]+/g;
-const invitationFragment = /([#&]i=)[A-Za-z0-9_-]+/g;
+const invitationFragment = /([#&](?:i|transfer)=)[A-Za-z0-9_-]+/g;
 
 export function sanitizeLog(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
   if (depth > 6) {

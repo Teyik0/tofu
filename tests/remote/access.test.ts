@@ -61,6 +61,111 @@ test("an invitation grants device access and revocation invalidates its session"
   );
 });
 
+test("public login pages render without exposing the library or protected endpoints", async () => {
+  await using app = await application();
+  const { client, url } = await app.start();
+  success(
+    await client.connections.put({
+      enabled: true,
+      proxyOrigin: "https://tofu.example.test",
+      transport: "proxy",
+    })
+  );
+  await Promise.all(
+    [
+      "/pair",
+      "/signed-out",
+      "/session-transfer",
+      "/pair?_furin=data",
+      "/signed-out?_furin=data",
+      "/session-transfer?_furin=data",
+    ].map(async (path) => {
+      const response = await fetch(`${url}${path}`);
+      expect(response.status).toBe(200);
+      const document = await response.text();
+      expect(document).toContain('"dashboard":null');
+      expect(document).not.toContain('"torrents":');
+      expect(document).not.toContain('"destinations":');
+      expect(document).not.toContain(app.directory);
+      if (!path.includes("?")) {
+        expect(document).toContain('class="login-page"');
+        expect(document).not.toContain('class="app-shell');
+        const assets = [...document.matchAll(/(?:src|href)="([^"#]+\.(?:js|css))"/g)]
+          .map((match) => match[1])
+          .filter(
+            (asset): asset is string =>
+              asset !== undefined && (asset.startsWith("/_client/") || asset.startsWith("/_bun/"))
+          );
+        expect(assets.length).toBeGreaterThan(0);
+        const responses = await Promise.all(assets.map((asset) => fetch(`${url}${asset}`)));
+        await Promise.all(
+          responses.map(async (asset) => {
+            expect(asset.status).toBe(200);
+            await asset.arrayBuffer();
+          })
+        );
+      }
+    })
+  );
+  expect((await client.session.get()).status).toBe(401);
+  expect((await client.state.get()).status).toBe(401);
+  expect((await client.access.devices.get()).status).toBe(401);
+  const privatePage = await fetch(`${url}/`, {
+    headers: { accept: "text/html" },
+    redirect: "manual",
+  });
+  expect(privatePage.status).toBe(302);
+  expect(privatePage.headers.get("location")).toBe("/signed-out");
+}, 30_000);
+
+test("a persistent HTTPS browser session survives a new client and a server restart", async () => {
+  await using app = await application();
+  const { client, stop, url } = await app.start();
+  const origin = "https://tofu.example.test";
+  const forwarded = { origin, "x-forwarded-host": "tofu.example.test" };
+  const invitation = success(
+    await client.access.invitations.post({
+      canDeleteFiles: false,
+      expiresInMinutes: 10,
+      label: "Safari on iPhone",
+      role: "playback",
+    })
+  );
+  success(await client.connections.put({ enabled: true, proxyOrigin: origin, transport: "proxy" }));
+  const paired = await client.auth.pair.post(
+    {
+      kind: "browser",
+      label: "Safari on iPhone",
+      nonce: crypto.randomUUID().replaceAll("-", ""),
+      secret: invitation.secret,
+    },
+    { headers: forwarded }
+  );
+  const pairing = success(paired);
+  if (!("device" in pairing)) {
+    throw new Error("The invitation was not redeemed");
+  }
+  const header = paired.response.headers.get("set-cookie");
+  expect(header).toStartWith("__Host-tofu-");
+  expect(header).toContain("Max-Age=31536000");
+  expect(header).toContain("Path=/");
+  expect(header).toContain("HttpOnly");
+  expect(header).toContain("Secure");
+  expect(header).toContain("SameSite=Strict");
+  expect(header).not.toContain("Domain=");
+  const cookie = sessionCookie(paired.response);
+  const reopened = treaty<Api>(url, { headers: { ...forwarded, cookie } }).api;
+  expect(success(await reopened.session.get()).caller.id).toBe(pairing.device.id);
+
+  await stop();
+  const restarted = await app.start();
+  const phone = treaty<Api>(restarted.url, { headers: { ...forwarded, cookie } }).api;
+  expect(success(await phone.session.get()).caller.id).toBe(pairing.device.id);
+  success(await phone.state.get());
+  success(await phone.auth.logout.post());
+  expect((await phone.session.get()).status).toBe(401);
+}, 20_000);
+
 test("remote grants restrict management, file deletion and access outside storage roots", async () => {
   await using source = await peer();
   await using app = await application();

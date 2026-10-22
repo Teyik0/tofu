@@ -26,6 +26,9 @@ export const route = defineRoute("/options/appearance")
   .page(() => {
     const { dashboard } = getRouteApi("/options/appearance").useLoaderData();
     const [theme, setTheme] = useAtom(themeAtom);
+    if (!dashboard) {
+      return null;
+    }
     return (
       <div>
         <FieldSet>

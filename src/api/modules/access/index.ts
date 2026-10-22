@@ -1,10 +1,17 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
+import { createLogger } from "evlog";
 import { sync } from "../../../sync";
 import { runtime } from "../../lib/runtime";
 import { connectionsServicePlugin } from "../connections/plugin";
 import { cookieName } from "./admission";
-import { deviceChangeSchema, invitationSchema, pairSchema, serverNameSchema } from "./model";
+import {
+  deviceChangeSchema,
+  invitationSchema,
+  pairSchema,
+  serverNameSchema,
+  sessionTransferSchema,
+} from "./model";
 import { accessPlugin } from "./plugin";
 
 const SESSION_COOKIE_MAX_AGE = 365 * 86_400;
@@ -54,7 +61,49 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
         secure,
         value: paired.session.token,
       });
+      const log = createLogger({
+        component: "access",
+        context: { deviceId: paired.device.id, origin, secure },
+        operation: "browser-paired",
+      });
+      log.emit();
       return { ...result, token: null };
+    }
+  )
+  .post(
+    "/auth/session-transfers",
+    { idempotent: false, personal: true },
+    ({ access, caller, set }) => {
+      set.headers["cache-control"] = "private, no-store";
+      return access.createSessionTransfer(caller);
+    }
+  )
+  .post(
+    "/auth/session-transfers/redeem",
+    { body: sessionTransferSchema, idempotent: false, public: true },
+    ({ access, body, caller, cookie, request, set }) => {
+      set.headers["cache-control"] = "no-store";
+      const origin = caller.kind === "in-process" ? new URL(request.url).origin : caller.origin;
+      const transferred = access.redeemSessionTransfer(body.secret, origin);
+      if (transferred instanceof ElysiaStatus) {
+        return transferred;
+      }
+      const secure = origin.startsWith("https:");
+      cookie[cookieName(access.identity().serverId, secure)]?.set({
+        httpOnly: true,
+        maxAge: Math.max(0, Math.floor((transferred.session.expiresAt - Date.now()) / 1000)),
+        path: "/",
+        sameSite: "strict",
+        secure,
+        value: transferred.session.token,
+      });
+      const log = createLogger({
+        component: "access",
+        context: { deviceId: transferred.deviceId, origin },
+        operation: "browser-session-transferred",
+      });
+      log.emit();
+      return { transferred: true as const };
     }
   )
   .post("/auth/logout", { idempotent: false, personal: true }, ({ access, caller, cookie }) => {

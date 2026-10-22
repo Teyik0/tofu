@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { holds } from "../../../api/modules/access/grants";
 import type { DeviceRole } from "../../../api/modules/access/model";
+import { OptionSelect } from "../../../components/option-select";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
@@ -12,13 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../../components/ui/dialog";
-import { Field, FieldLabel } from "../../../components/ui/field";
+import { Field, FieldLabel, FieldTitle } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
 import { RadioGroup, RadioGroupItem } from "../../../components/ui/radio-group";
 import { api } from "../../../lib/client";
 import { errorMessage } from "../../../lib/errors";
 import type { ServerSession } from "../../../state/workspace";
 import { type DeviceSummary, roleNames } from "./_authorized-devices";
+import { QrCode } from "./_qr-code";
+import { serverAddresses } from "./_server-addresses";
+import type { ConnectionsState } from "./index";
 
 /**
  * Edits one device's name and grants, or revokes it; with no device, revokes every device the
@@ -27,14 +31,19 @@ import { type DeviceSummary, roleNames } from "./_authorized-devices";
 export function DeviceDialog({
   device,
   session,
+  state,
   close,
   onChanged,
 }: {
   device: DeviceSummary | null;
   session: ServerSession;
+  state: ConnectionsState | null;
   close: () => void;
   onChanged: () => Promise<void>;
 }) {
+  const [selectedAddress, setSelectedAddress] = useState("");
+  const addresses = state ? serverAddresses(state) : [];
+  const address = addresses.find((item) => item.url === selectedAddress) ?? addresses[0];
   const [label, setLabel] = useState(device?.label ?? "");
   const [role, setRole] = useState<DeviceRole>(device?.role ?? "playback");
   const [canDeleteFiles, setCanDeleteFiles] = useState(device?.canDeleteFiles ?? false);
@@ -117,6 +126,37 @@ export function DeviceDialog({
             Changes apply to {session.server.name} as soon as they are saved.
           </DialogDescription>
         </DialogHeader>
+        <Field>
+          <FieldTitle>Open on your device</FieldTitle>
+          {address ? (
+            <div className="connections-invitation">
+              {addresses.length > 1 ? (
+                <OptionSelect
+                  ariaLabel="Server address to open"
+                  disabled={false}
+                  onValueChange={setSelectedAddress}
+                  options={addresses.map((item) => ({
+                    label: `${item.label} · ${item.url}`,
+                    value: item.url,
+                  }))}
+                  value={address.url}
+                />
+              ) : null}
+              <QrCode label={`QR code to open ${session.server.name}`} value={address.url} />
+              <code className="connections-address">{address.url}</code>
+              <p className="connections-muted">
+                Scan with the browser you paired at this address. A different browser or address, or
+                an expired session, requires a new invitation.
+              </p>
+            </div>
+          ) : (
+            <p className="connections-muted">
+              {state
+                ? "Turn on remote access to show a QR code for this server."
+                : "Server addresses are not available yet."}
+            </p>
+          )}
+        </Field>
         <div className="connections-form">
           <Field>
             <FieldLabel htmlFor="device-label">Device name</FieldLabel>

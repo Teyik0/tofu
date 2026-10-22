@@ -17,7 +17,7 @@ import { bytes } from "./format";
 import { GlobalSearchTrigger } from "./global-search";
 import { Logo } from "./icon";
 import { useDeleteDestination } from "./modal";
-import { ServerIdentity } from "./server-identity";
+import { SidebarRemoteServers, SidebarServerFilter } from "./sidebar-remote-servers";
 import { SidebarToggle } from "./sidebar-toggle";
 import { Button } from "./ui/button";
 import {
@@ -25,7 +25,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
@@ -134,6 +133,9 @@ export const DestinationSidebar = memo(
     const router = useRouter();
     const open = useSetAtom(modalAtom);
     const capabilities = useAtomValue(sessionAtom)?.capabilities;
+    const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+    const serverFilter = capabilities?.hostNative ? selectedServerId : null;
+    const showCurrentServer = serverFilter === null || serverFilter === data?.server.id;
     // Editing threads needs their host folders, which only administrators receive.
     const editable = (id: string) => data?.host?.destinations.find((item) => item.id === id);
     const [navigationError, openPlugins] = useActionState<string | null, void>(async () => {
@@ -185,7 +187,7 @@ export const DestinationSidebar = memo(
                 </SidebarMenuItem>
               ) : null}
               {data?.destinations
-                .filter((destination) => destination.pinned)
+                .filter((destination) => destination.pinned && showCurrentServer)
                 .map((destination) => (
                   <SidebarMenuItem key={destination.id}>
                     <DestinationMenu
@@ -217,20 +219,33 @@ export const DestinationSidebar = memo(
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>DESTINATIONS</SidebarGroupLabel>
-            {data?.host ? (
-              <ActionTooltip>
-                <SidebarGroupAction
-                  aria-label="Create a tab"
-                  onClick={() => open({ destination: null, type: "destination" })}
-                >
-                  <PlusIcon />
-                </SidebarGroupAction>
-              </ActionTooltip>
-            ) : null}
+            <SidebarGroupLabel>THREADS</SidebarGroupLabel>
+            <div className="absolute top-3.5 right-3 flex items-center gap-1 group-data-[collapsible=icon]:hidden">
+              {capabilities?.hostNative && data ? (
+                <SidebarServerFilter
+                  currentServer={data.server}
+                  onChange={setSelectedServerId}
+                  selectedServerId={serverFilter}
+                />
+              ) : null}
+              {data?.host && showCurrentServer ? (
+                <ActionTooltip>
+                  <Button
+                    aria-label="Create a tab"
+                    className="size-5!"
+                    onClick={() => open({ destination: null, type: "destination" })}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <PlusIcon className="size-3.5!" />
+                  </Button>
+                </ActionTooltip>
+              ) : null}
+            </div>
             <SidebarMenu aria-label="Destination tabs">
               {data?.destinations
-                .filter((destination) => !destination.pinned)
+                .filter((destination) => !destination.pinned && showCurrentServer)
                 .map((destination) => (
                   <SidebarMenuItem key={destination.id}>
                     <DestinationMenu
@@ -274,11 +289,16 @@ export const DestinationSidebar = memo(
                     ) : null}
                   </SidebarMenuItem>
                 ))}
+              {capabilities?.hostNative && data ? (
+                <SidebarRemoteServers
+                  currentServerId={data.server.id}
+                  selectedServerId={serverFilter}
+                />
+              ) : null}
             </SidebarMenu>
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-          {data ? <ServerIdentity server={data.server} /> : null}
           <div className="sidebar-disk">
             <FolderIcon />
             <div>

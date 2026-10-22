@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import type { DesktopAppOptions } from "@teyik0/furin-electrobun/server";
 import { Elysia, ElysiaStatus } from "elysia";
+import { nativeControl } from "../../../native/control";
 import { instance } from "../../lib/database-plugin";
 import { anilistServicePlugin } from "../anilist/plugin";
 import { torrentServicePlugin } from "../torrents/plugin";
@@ -18,6 +19,20 @@ export const desktopServicePlugin = new Elysia({ name: "tofu-desktop-service" })
     desktopHooks: {
       background: () => dependencies.torrents.settings.runInBackground === true,
       menus: ({ desktop, identity }) => [
+        ...(nativeControl.tofuNativeHost
+          ? [
+              {
+                label: "Servers",
+                submenu: [
+                  {
+                    accelerator: "CmdOrCtrl+Shift+S",
+                    label: "Servers…",
+                    onSelect: () => nativeControl.tofuNativeHost?.openConnections(),
+                  },
+                ],
+              },
+            ]
+          : []),
         {
           label: identity.name,
           submenu: [
@@ -77,8 +92,12 @@ export const desktopServicePlugin = new Elysia({ name: "tofu-desktop-service" })
           ],
         },
       ],
+      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep native pairing, OAuth and torrent dispatch with their error handling at the event boundary.
       async onOpen({ event, desktop, identity }) {
         try {
+          if (await nativeControl.tofuNativeHost?.onOpen({ desktop, event, identity })) {
+            return;
+          }
           if (
             event.type === "url" &&
             ["tofu:", "tofu-dev:"].includes(new URL(event.url).protocol)
@@ -126,6 +145,14 @@ export const desktopServicePlugin = new Elysia({ name: "tofu-desktop-service" })
       },
       tray: ({ desktop }) => [
         { label: "Open Tofu", onSelect: () => desktop.window.open() },
+        ...(nativeControl.tofuNativeHost
+          ? [
+              {
+                label: "Servers…",
+                onSelect: () => nativeControl.tofuNativeHost?.openConnections(),
+              },
+            ]
+          : []),
         { label: "Open in browser", onSelect: () => desktop.browser.open("/") },
         { type: "divider" },
         {

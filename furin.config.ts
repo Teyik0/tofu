@@ -17,48 +17,43 @@ const nativeDependencies = /^(webtorrent|parse-torrent|electrobun\/main)$/;
 export default defineConfig({
   desktop: defineDesktopConfig({
     app: {
+      fileAssociations: release
+        ? [{ ext: ["torrent"], name: "BitTorrent document", role: "Viewer" }]
+        : [],
       identifier: release ? "app.tofu.torrents" : "app.tofu.torrents.dev",
       name: "Tofu",
+      urlSchemes: release ? ["magnet", "tofu"] : ["tofu-dev"],
       version,
+    },
+    build: {
+      // The host has no dependency tree; only the backend packages WebTorrent addons.
+      bun: { entrypoint: "src/native/host.ts", external: ["webtorrent"] },
+      copy: {
+        [process.platform === "win32" ? "runtime/tofu-tsnet.exe" : "runtime/tofu-tsnet"]:
+          process.platform === "win32" ? "bun/tofu-tsnet.exe" : "bun/tofu-tsnet",
+        "LICENSE.md": "bun/LICENSE.md",
+        "runtime/anilist-client.json": "bun/anilist-client.json",
+        "runtime/tofu-tsnet.licenses.txt": "bun/tofu-tsnet.licenses.txt",
+        "runtime/tofu-tsnet.manifest.json": "bun/tofu-tsnet.manifest.json",
+        "src/db/drizzle": "bun/drizzle",
+      },
+      linux: { icon: "public/tofu-icon.png" },
+      mac: {
+        codesign: release || Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
+        createDmg: release,
+        icons: "public/tofu.iconset",
+        notarize: Boolean(
+          process.env.ELECTROBUN_DEVELOPER_ID &&
+            process.env.ELECTROBUN_DEVELOPER_ID !== "-" &&
+            process.env.ELECTROBUN_APPLEAPIKEYPATH
+        ),
+      },
+      win: { icon: "public/tofu.iconset/icon_256x256.png" },
     },
     dataDir: { developmentName: "Tofu-dev", env: "TOFU_DATA_DIR", name: "Tofu" },
     external: ["webtorrent", "parse-torrent"],
-    hostEntry: "src/native/host.ts",
     protocols: [release ? "tofu" : "tofu-dev"],
-    sdk: {
-      app: {
-        fileAssociations: release
-          ? [{ ext: ["torrent"], name: "BitTorrent document", role: "Viewer" }]
-          : [],
-        urlSchemes: release ? ["magnet", "tofu"] : ["tofu-dev"],
-      },
-      build: {
-        // The host has no dependency tree; only the backend packages WebTorrent addons.
-        bun: { external: ["webtorrent"] },
-        copy: {
-          [process.platform === "win32" ? "runtime/tofu-tsnet.exe" : "runtime/tofu-tsnet"]:
-            process.platform === "win32" ? "bun/tofu-tsnet.exe" : "bun/tofu-tsnet",
-          "LICENSE.md": "bun/LICENSE.md",
-          "runtime/anilist-client.json": "bun/anilist-client.json",
-          "runtime/tofu-tsnet.licenses.txt": "bun/tofu-tsnet.licenses.txt",
-          "runtime/tofu-tsnet.manifest.json": "bun/tofu-tsnet.manifest.json",
-          "src/db/drizzle": "bun/drizzle",
-        },
-        linux: { icon: "public/tofu-icon.png" },
-        mac: {
-          codesign: release || Boolean(process.env.ELECTROBUN_DEVELOPER_ID),
-          createDmg: release,
-          icons: "public/tofu.iconset",
-          notarize: Boolean(
-            process.env.ELECTROBUN_DEVELOPER_ID &&
-              process.env.ELECTROBUN_DEVELOPER_ID !== "-" &&
-              process.env.ELECTROBUN_APPLEAPIKEYPATH
-          ),
-        },
-        win: { icon: "public/tofu.iconset/icon_256x256.png" },
-      },
-      release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },
-    },
+    release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },
     tray: {
       linux: { image: "public/icon.png" },
       mac: { image: "public/tray-template.png", template: true },

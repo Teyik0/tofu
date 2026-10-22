@@ -1,11 +1,13 @@
 import { on } from "node:events";
 import { join } from "node:path";
-import { furinSync } from "@teyik0/furin/sync";
+import { furinSync, invalidateSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem, sse } from "elysia";
+import { createLogger } from "evlog";
 import { nativeControl } from "../../../native/control";
 import { nativeServerActionSchema } from "../../../native/model";
 import { sync } from "../../../sync";
 import { instance, logs } from "../../lib/database-plugin";
+import { sanitizeLog } from "../../lib/diagnostics";
 import { runtime } from "../../lib/runtime";
 import { accessPlugin } from "../access/plugin";
 import { acceptOpenedTorrentSchema } from "../torrents/model";
@@ -14,11 +16,49 @@ import { updatesServicePlugin } from "../updates/plugin";
 import { setDefaultTorrentFileApp } from "./associations";
 import { torrentOpenings } from "./service";
 
+export const remoteStateRelay = {
+  changes: null as ReturnType<typeof on> | null,
+  task: Promise.resolve(),
+};
+
 export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   .use(torrentServicePlugin)
   .use(updatesServicePlugin)
   .use(accessPlugin)
   .use(furinSync(sync))
+  .onStart(() => {
+    const remote = nativeControl.tofuNativeThreads;
+
+    if (!remote || remoteStateRelay.changes) {
+      return;
+    }
+
+    const changes = on(remote, "change");
+    remoteStateRelay.changes = changes;
+
+    remoteStateRelay.task = (async () => {
+      for await (const [serverId] of changes) {
+        if (typeof serverId !== "string") {
+          continue;
+        }
+
+        try {
+          await invalidateSync(sync, "/api/desktop/servers/:id/state", { id: serverId });
+        } catch (cause) {
+          const log = createLogger({
+            component: "desktop-sync",
+            context: { serverId },
+            dataDir: instance.dataDir,
+            error: sanitizeLog(cause),
+            operation: "invalidate-remote-state",
+          });
+          log.setLevel("error");
+          log.emit();
+        }
+      }
+    })();
+    remote.start();
+  })
   // Host paths, native windows, dialogs and file openings belong to the host's own window.
   .guard({ idempotent: false, owner: true })
   .get("/instance", () => instance)
@@ -27,6 +67,23 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
       return problem(409, { detail: "Desktop servers are managed in the native Tofu app" });
     }
     return nativeControl.tofuNativeServers.read();
+  })
+  .get("/desktop/servers/:id/threads", ({ params }) => {
+    if (!nativeControl.tofuNativeThreads) {
+      return problem(409, {
+        detail: "Remote threads are available in the native Tofu app",
+      });
+    }
+    return nativeControl.tofuNativeThreads.refresh(params.id);
+  })
+  .get("/desktop/servers/:id/state", ({ params }) => {
+    if (!nativeControl.tofuNativeThreads) {
+      return problem(409, {
+        detail: "Remote threads are available in the native Tofu app",
+      });
+    }
+
+    return nativeControl.tofuNativeThreads.snapshot(params.id);
   })
   .post("/desktop/servers", { body: nativeServerActionSchema }, async ({ body }) => {
     if (runtime.current.kind !== "desktop" || !nativeControl.tofuNativeServers) {

@@ -8,8 +8,8 @@
         "@base-ui/react": "1.9.0",
         "@elysia/eden": "2.0.0-beta.5",
         "@formisch/react": "1.1.0",
-        "@teyik0/furin": "file:vendor/furin-remote-native-f272df9.tgz",
-        "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-f272df9.tgz",
+        "@teyik0/furin": "file:vendor/furin-remote-native-4abac21.tgz",
+        "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-4abac21.tgz",
         "bun-plugin-tailwind": "0.1.2",
         "class-variance-authority": "0.7.1",
         "cn": "^0.5.0",
@@ -20,7 +20,7 @@
         "graphql-request": "7.4.0",
         "jotai": "3.0.1",
         "libvlc-wasm": "0.2.0",
-        "lucide-react": "1.60.0",
+        "lucide-react": "1.61.0",
         "parse-torrent": "11.0.24",
         "react": "19.3.1",
         "react-dom": "19.3.1",
@@ -434,9 +434,9 @@
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
 
-    "@teyik0/furin": ["@teyik0/furin@vendor/furin-remote-native-f272df9.tgz", { "dependencies": { "@elysia/eden": "2.0.0-beta.5", "@elysia/static": "2.0.0-beta.3", "@jridgewell/trace-mapping": "^0.3.31", "@vercel/functions": "^3.10.1", "cjs-module-lexer": "^2.3.0", "magic-string": "^1.4.3", "react-server-dom-webpack": "~19.3.1", "seroval": "^1.6.11", "typescript": "7.0.2", "yuku-ast": "0.12.0", "yuku-parser": "0.12.0" }, "peerDependencies": { "@types/bun": ">=1.4.0", "drizzle-orm": "^0.45.4", "elysia": "2.0.0-beta.32", "evlog": "^2.33.0", "exact-mirror": ">=1.2.6", "react": "^19.3.1", "react-dom": "^19.3.1", "typebox": "1.3.34" }, "optionalPeers": ["@types/bun", "drizzle-orm"], "bin": { "furin": "./src/cli/index.ts", "furin-sync-postgres-migrate": "./dist/server/sync/postgres/migrate.js" } }, "sha512-ewfkxEvYW5X6Ney0O8Yn9WtlxfJtTg5iniYTFDZ9Am3FHGaakayrp4yy/vPQ9FyS4ZzYNeFvbIxsG3z8js5HwA=="],
+    "@teyik0/furin": ["@teyik0/furin@vendor/furin-remote-native-4abac21.tgz", { "dependencies": { "@elysia/eden": "2.0.0-beta.5", "@elysia/static": "2.0.0-beta.3", "@jridgewell/trace-mapping": "^0.3.31", "@vercel/functions": "^3.10.1", "cjs-module-lexer": "^2.3.0", "magic-string": "^1.4.3", "react-server-dom-webpack": "~19.3.1", "seroval": "^1.6.11", "typescript": "7.0.2", "yuku-ast": "0.12.0", "yuku-parser": "0.12.0" }, "peerDependencies": { "@types/bun": ">=1.4.0", "drizzle-orm": "^0.45.4", "elysia": "2.0.0-beta.32", "evlog": "^2.33.0", "exact-mirror": ">=1.2.6", "react": "^19.3.1", "react-dom": "^19.3.1", "typebox": "1.3.34" }, "optionalPeers": ["@types/bun", "drizzle-orm"], "bin": { "furin": "./src/cli/index.ts", "furin-sync-postgres-migrate": "./dist/server/sync/postgres/migrate.js" } }, "sha512-pA2IykSy1fYTEVU27U6oo0Db7plah35ipnMTIYQhXGoBPmjdWXGj5ICiE9hSZGXhZhQhi1whDc5kQZwVnMSK8w=="],
 
-    "@teyik0/furin-electrobun": ["@teyik0/furin-electrobun@vendor/furin-electrobun-pr163-f272df9.tgz", { "optionalDependencies": { "electrobun": "2.0.2" }, "peerDependencies": { "@teyik0/furin": ">=0.8.0-alpha.0 <0.9.0", "elysia": "2.0.0-beta.32" }, "bin": { "furin-electrobun": "./src/cli.ts" } }, "sha512-jUa8SACHf24gRkZBeWF31cDKyv6OtWxHFRnJ4ED/EScAkLU3aPOn0ICE1la//H6J1XriNbbfE8b44clBPlydsg=="],
+    "@teyik0/furin-electrobun": ["@teyik0/furin-electrobun@vendor/furin-electrobun-pr163-4abac21.tgz", { "optionalDependencies": { "electrobun": "2.0.2" }, "peerDependencies": { "@teyik0/furin": ">=0.8.0-alpha.0 <0.9.0", "elysia": "2.0.0-beta.32" }, "bin": { "furin-electrobun": "./src/cli.ts" } }, "sha512-73ZVUb9CwRoTXXwzty/sSp2+fcw2I1jiCTLa2qehh6DfKJoA7vUC7iYyfuxS1tttQ79lrMCgXyiwbbEh5+Yq5Q=="],
 
     "@thaunknown/simple-peer": ["@thaunknown/simple-peer@10.1.2", "", { "dependencies": { "debug": "^4.4.3", "err-code": "^3.0.1", "streamx": "^2.28.0", "uint8-util": "^2.3.2", "webrtc-polyfill": "^1.2.2" } }, "sha512-pcG35e815X43Crr/HVmOWlbsx9Jz3KD27HOhy/BwIjQkDlafzJFl0NKb8B+bf+bsnfQL/BB6Z44cMZPQaYHLYQ=="],
 
@@ -1208,7 +1208,7 @@
 
     "lt_donthave": ["lt_donthave@2.0.7", "", { "dependencies": { "debug": "^4.2.0", "unordered-array-remove": "^1.0.2" } }, "sha512-FdfetmgzUr0IC2ZXHaOhAMEsvw8BFo7kDM7JzfYsJ5pO5+xzjfZIPdLSQWE4+/UTlQA7D8IU5ZJ0LTuLE4BRBQ=="],
 
-    "lucide-react": ["lucide-react@1.60.0", "", { "peerDependencies": { "@types/react": "*", "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-UqxOW0FgAfDyb9VmjKb6/BkOzW6yfhf/QNboKtS2NDsscnNRW2CDzlyhbMKBQ1ontmcxuIDqHJ2AVgFR3NI+GA=="],
+    "lucide-react": ["lucide-react@1.61.0", "", { "peerDependencies": { "@types/react": "*", "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-v2SQPPPNjnr+BlhL9Spuzmo5yR+hLkftfuE4E3jaxdNPgSH0hJKPcLJBP7yAta87jQNPsSERS59PJjCJ/CorBA=="],
 
     "magic-string": ["magic-string@1.4.3", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.6.0" } }, "sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ=="],
 

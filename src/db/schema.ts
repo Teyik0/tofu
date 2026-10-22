@@ -102,6 +102,15 @@ export const deviceSessions = sqliteTable("device_sessions", {
   tokenHash: text().notNull().unique(),
 });
 
+/** Short-lived browser handoffs; only the digest is persisted. */
+export const sessionTransfers = sqliteTable("session_transfers", {
+  expiresAt: integer().notNull(),
+  grantVersion: integer().notNull(),
+  origin: text().notNull(),
+  sourceSessionId: text().notNull().unique(),
+  tokenHash: text().primaryKey(),
+});
+
 export const pairingInvitations = sqliteTable("invitations", {
   canDeleteFiles: integer({ mode: "boolean" }).notNull(),
   codeHash: text().notNull().unique(),
@@ -219,6 +228,7 @@ export const schema = {
   playbackPositions,
   playbackSequences,
   serverIdentity,
+  sessionTransfers,
   storageRoots,
   torrentConfig,
   torrentDestinations,

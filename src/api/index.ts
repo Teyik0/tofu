@@ -1,6 +1,7 @@
 import { createLogger } from "evlog";
 import "@teyik0/furin/server-only";
 import { Elysia, ValidationError } from "elysia";
+import { nativeControl } from "../native/control";
 import { db, instance, lease, logs } from "./lib/database-plugin";
 import { sanitizeLog } from "./lib/diagnostics";
 import { httpPolicyPlugin } from "./lib/http-policy";
@@ -14,7 +15,7 @@ import { releaseAutomationPlugin } from "./modules/automation/plugin";
 import { connectionsPlugin } from "./modules/connections";
 import { connectionsServicePlugin } from "./modules/connections/plugin";
 import { dashboardPlugin } from "./modules/dashboard";
-import { desktopPlugin } from "./modules/desktop";
+import { desktopPlugin, remoteStateRelay } from "./modules/desktop";
 import { destinationsPlugin } from "./modules/destinations";
 import { storageRootsPlugin } from "./modules/destinations/storage";
 import { discoveryPlugin } from "./modules/discovery";
@@ -75,6 +76,14 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
 
         // Stop producers before the services they depend on.
         const phases = [
+          [
+            async () => {
+              await nativeControl.tofuNativeThreads?.close();
+              await remoteStateRelay.changes?.return?.();
+              await remoteStateRelay.task;
+              remoteStateRelay.changes = null;
+            },
+          ],
           [
             updates.close.bind(updates),
             anilist.close.bind(anilist),

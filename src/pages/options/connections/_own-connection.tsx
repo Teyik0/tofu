@@ -85,6 +85,11 @@ export function OwnConnection({ session }: { session: ServerSession }) {
       ) : null}
       {caller.kind === "device" ? (
         <div className="connections-actions">
+          {caller.deviceKind === "browser" ? (
+            <Button nativeButton={false} render={<a href="/session-transfer" />} variant="outline">
+              Move connection to another browser
+            </Button>
+          ) : null}
           <Button disabled={busy} onClick={() => void signOut()} variant="outline">
             {busy ? "Signing out…" : "Sign out"}
           </Button>

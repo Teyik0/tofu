@@ -3,6 +3,7 @@ import { useAtomValue } from "jotai";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsSkeleton } from "../../../components/access-required";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
+import { Button } from "../../../components/ui/button";
 import { api } from "../../../lib/client";
 import { errorMessage } from "../../../lib/errors";
 import { sessionAtom } from "../../../state/workspace";
@@ -65,6 +66,11 @@ export const route = defineRoute("/options/connections")
         ) : (
           <SettingsSkeleton label="Loading network access" />
         )}
+        {session.caller.kind === "device" && session.caller.deviceKind === "browser" ? (
+          <Button nativeButton={false} render={<a href="/session-transfer" />} variant="outline">
+            Move connection to another browser
+          </Button>
+        ) : null}
         <AuthorizedDevices session={session} state={state} />
         {session.capabilities.hostNative ? <DesktopServers /> : null}
         <LinkedLibraries />

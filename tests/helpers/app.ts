@@ -3,9 +3,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { treaty } from "@elysia/eden";
 import type { Api } from "../../src/api";
+import type { SavedServer } from "../../src/native/catalog";
 import { waitFor } from "./poll";
 
-export async function application(options?: { provider?: string }) {
+export interface RemoteServerFixture {
+  server: SavedServer;
+  token: string;
+}
+
+export async function application(options?: {
+  provider?: string;
+  remoteServers?: RemoteServerFixture[];
+}) {
   const directory = await mkdtemp(join(tmpdir(), "tofu-integration-"));
   const dataDir = join(directory, "state");
   const downloadPath = join(directory, "downloads");
@@ -15,7 +24,7 @@ export async function application(options?: { provider?: string }) {
   return {
     directory,
     downloadPath,
-    async start() {
+    async start(listen?: { port?: number }) {
       const shutdownPath = join(directory, `shutdown-${crypto.randomUUID()}`);
       const child = Bun.spawn(
         [process.execPath, "--preload", join(import.meta.dir, "preload.ts"), "src/server.ts"],
@@ -28,10 +37,13 @@ export async function application(options?: { provider?: string }) {
             TOFU_DISCOVERY: "0",
             TOFU_DOWNLOAD_DIR: downloadPath,
             TOFU_MODE: "server",
-            TOFU_PORT: "0",
+            TOFU_PORT: String(listen?.port ?? 0),
             TOFU_PROFILE: "dev",
             TOFU_TAILSCALE_CLI: join(directory, "tailscale-not-installed"),
             TOFU_TEST_PROVIDER: options?.provider,
+            TOFU_TEST_REMOTE_SERVERS: options?.remoteServers
+              ? JSON.stringify(options.remoteServers)
+              : undefined,
             TOFU_TEST_SHUTDOWN: process.platform === "win32" ? shutdownPath : undefined,
           },
           stderr: "pipe",

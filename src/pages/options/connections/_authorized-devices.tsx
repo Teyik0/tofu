@@ -181,6 +181,7 @@ export function AuthorizedDevices({
           device={selected}
           onChanged={reload}
           session={session}
+          state={state}
         />
       ) : null}
       {confirmingOthers ? (
@@ -189,6 +190,7 @@ export function AuthorizedDevices({
           device={null}
           onChanged={reload}
           session={session}
+          state={state}
         />
       ) : null}
     </section>

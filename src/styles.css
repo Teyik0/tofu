@@ -5437,3 +5437,18 @@ h2 {
     display: none;
   }
 }
+
+.login-page {
+  width: min(100%, 465px);
+  min-height: 100dvh;
+  margin-inline: auto;
+  padding: 40px 24px 48px;
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 28px;
+  font-size: 18px;
+  font-weight: 650;
+}
