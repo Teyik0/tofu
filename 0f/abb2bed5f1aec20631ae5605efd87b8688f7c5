@@ -1,0 +1,276 @@
+src/api/modules/connections/index.ts
+  s_d0dca1c38de126::t_b7999c65194232 7,64-65,71-74
+  s_d0dca1c38de126::t_af52833e390f0c 95
+src/pages/root.tsx
+  s_65ddd3405b3853::t_d3ebb60bcc12fb 10-15
+src/components/workspace-layout.tsx
+  s_b745b789b07917::t_cbd43dd92ede65 5,33,43-47,50
+furin.config.ts
+  s_d0dca1c38de126::t_b7999c65194232 36
+  s_d0dca1c38de126::t_4e9ee79dfcc7c8 29-30,35
+src/api/modules/access/model.ts
+  s_65ddd3405b3853::t_d3ebb60bcc12fb 62-74,76
+  s_65ddd3405b3853::t_01c1374bb07104 75
+src/pages/options/connections/_browser-reconnection.tsx
+  s_65ddd3405b3853::t_7b1ec37c30848a 1-10,13-17,19-83,85,88,90-92,95,98-100,102-154,156,158-187
+  s_65ddd3405b3853::t_9706b44c0c6120 11-12,18,84,86-87,89,93-94,96-97,101,155,157
+src/api/modules/automation/plugin.ts
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 13-20,22,24-25
+src/api/lib/database-plugin.ts
+  s_d0dca1c38de126::t_32350ab1b46e4c 9,12,53
+  s_d0dca1c38de126::t_82f61878cbaba8 7,13-14,17,20,22-25,30,32,44-52
+src/api/modules/access/devices.ts
+  s_65ddd3405b3853::t_d3ebb60bcc12fb 3,9,24-37,43-44,157-159,161-195,197-257,259,261-278,280-331
+  s_65ddd3405b3853::t_5c4319acab9270 160,196,258,260,279,332
+tests/remote/access.test.ts
+  s_b745b789b07917::t_8a8b718f79ea58 223-231
+  s_b745b789b07917::t_88a4d56235673e 79,83
+tests/plugins/automation.test.ts
+  s_d0dca1c38de126::t_748c43099c8048 68-102
+  s_d0dca1c38de126::t_c470903d8a204c 59-67,103-104
+src/api/modules/jev/plugin.ts
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 10-11,15-18
+src/native/host.ts
+  s_d0dca1c38de126::t_b7999c65194232 3,195,527
+  s_d0dca1c38de126::t_4e9ee79dfcc7c8 1,19,204,479,508,510-511,514-518,525-526,528-530
+  s_d0dca1c38de126::t_de8029adee9acf 520-523
+  s_d0dca1c38de126::t_4eef1e430e939c 519
+src/server.ts
+  s_d0dca1c38de126::t_27218e2d93769b 5-6,17-30
+  s_d0dca1c38de126::t_3be47c2b6193f3 8,15,48,97,112
+  s_d0dca1c38de126::t_b7999c65194232 41-42,44-45,49-54,56-64,66-68,70-80,82,85-93,104-110,113-174,176
+  s_d0dca1c38de126::t_61ab31b7f94e1e 3,55,83,175,180-185,188
+  s_819d3327b669c8::t_47abaca9f5ac45 1,11
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 14,16,31-33,43,94-96,98-103
+  s_d0dca1c38de126::t_fa838e094f7092 34
+  s_d0dca1c38de126::t_38201164816202 40
+  s_d0dca1c38de126::t_0459cb1209a732 46-47
+  s_d0dca1c38de126::t_90c101914724e0 84
+  s_d0dca1c38de126::t_a94df7392ce07d 186-187
+src/api/modules/discovery/plugin.ts
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 14-15,20-23
+src/pages/servers/[serverId]/thread/[id]/index.tsx
+  s_b745b789b07917::t_57b1cda55de82a 22,71-73
+  s_b745b789b07917::t_cbd43dd92ede65 1-2,5-14,16-21,23,25-26,28-39,47-48,58-59,61-70,74-76,78-88,90-103,109,179,181-183
+  s_b745b789b07917::t_dc2f4bcc2c96db 60,77
+  s_b745b789b07917::t_3ef4c1922450aa 154
+  s_b745b789b07917::t_4bcec7f2ef803f 3-4,15,24,27,40-46,49-57,89,104-108,110-153,155-178,180
+src/native/remote-threads.ts
+  s_b745b789b07917::t_c0d7e9b5330532 506-510,578-582
+  s_b745b789b07917::t_034a7f7f4d6738 276-277,296-300,303
+  s_b745b789b07917::t_80a66b25556515 227
+  s_b745b789b07917::t_32a5c848c5eaef 228-231,471-479
+  s_b745b789b07917::t_12d65dd1c591a4 262
+  s_b745b789b07917::t_77d0e06836ad12 282-283,286-292,294,301-302,304-306,308,310-312,314-318,320-326,328-331,333,335-342,345-356,358-362
+  s_b745b789b07917::t_fe2a62c643645d 284-285
+  s_b745b789b07917::t_3b4a65173b693a 378-401,403-429,431-444,480
+  s_b745b789b07917::t_7a9a6d524cbcdf 272,278-281,363-366,372-375
+  s_b745b789b07917::t_9da6a6843bbd3a 376-377
+  s_b745b789b07917::t_080d6d772c6532 481
+tests/lifecycle/startup.test.ts
+  s_d0dca1c38de126::t_7e20197718a447 1-6,9-40,42-45,61-64
+  s_d0dca1c38de126::t_748c43099c8048 48,52-59
+  s_d0dca1c38de126::t_332cf403c9d892 7-8,41
+  s_d0dca1c38de126::t_207a0ab8ecdc8b 46-47,49-51,60
+src/api/lib/native-opening.ts
+  s_d0dca1c38de126::t_b7999c65194232 5
+  s_d0dca1c38de126::t_4c1c8248d37e92 1
+src/api/lib/diagnostics.ts
+  s_d0dca1c38de126::t_633e665e8ab00a 49-52
+  s_65ddd3405b3853::t_d3ebb60bcc12fb 14
+tests/remote/reconnection.test.ts
+  s_65ddd3405b3853::t_e2101d26c4029c 7,95
+  s_65ddd3405b3853::t_25e8f75b966ee2 1-6,8-18,20-24,26-28,30-35,37-41,43-91,93-94,96-104,106-117,119-144,146-150,152-170,172-181,183-189,191-208,210-222,224-228,230-232,234-240,242-255,257-269
+  s_65ddd3405b3853::t_9e7ca7dea39d39 19,25,29,36,42,92,105,118,145,151,171,182,190,209,223,229,233,241,256
+tests/helpers/preload.ts
+  s_b745b789b07917::t_8df2536753d949 26-39,42-43
+  s_b745b789b07917::t_e225b5c9a8333a 25,40-41
+  s_d0dca1c38de126::t_4c41ae8b2891ad 12-16,62-67,72-73,75
+  s_b745b789b07917::t_bdf24009c18b7e 22
+src/api/modules/anilist/plugin.ts
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 3,23-29,43,46-49
+  s_d0dca1c38de126::t_32350ab1b46e4c 13
+src/api/modules/access/index.ts
+  s_65ddd3405b3853::t_d3ebb60bcc12fb 12-15,113-143,145-149,186-191,194-195,198,200-212,215-216,220,228-229
+  s_65ddd3405b3853::t_d4d8ca260c2c08 144,192-193,196-197,199,213-214,217-219,221-227
+src/api/index.ts
+  s_d0dca1c38de126::t_4e9ee79dfcc7c8 4,18
+  s_819d3327b669c8::t_7c7a9c7a8a6549 9,47
+  s_d0dca1c38de126::t_8b5b5edfe2bc80 39-46
+src/api/modules/torrents/plugin.ts
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 4,9,13,22,25-28,39
+  s_d0dca1c38de126::t_32350ab1b46e4c 8,30-34,36-38
+src/api/modules/discovery/service.ts
+  s_d0dca1c38de126::t_27218e2d93769b 203-210,212
+src/api/modules/torrents/folders.ts
+  s_d0dca1c38de126::t_b7999c65194232 8
+  s_d0dca1c38de126::t_a28a6d49fdb568 262-263
+src/api/modules/updates/plugin.ts
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 4,8,12,22
+  s_d0dca1c38de126::t_32350ab1b46e4c 7,23-26
+src/api/modules/plugins/service.ts
+  s_d0dca1c38de126::t_27218e2d93769b 370,375
+tests/remote/threads.test.ts
+  s_b745b789b07917::t_2769942cc3cc94 256
+  s_b745b789b07917::t_8a8b718f79ea58 226-255,257-274,448-456
+  s_b745b789b07917::t_8a20e158bc18f7 439
+  s_b745b789b07917::t_93d24ccb317d3c 85,362-368,378
+  s_b745b789b07917::t_eb81ceef77e98b 44,124,156-157
+  s_b745b789b07917::t_8df2536753d949 377
+  s_b745b789b07917::t_e225b5c9a8333a 10,18,109-121,369-376,379-394
+  s_b745b789b07917::t_1d70d2c3af0538 36
+  s_b745b789b07917::t_57b1cda55de82a 123
+  s_b745b789b07917::t_daf1753ba8e131 208-211,213-223
+  s_b745b789b07917::t_9bc5423c4d8961 1,158,396-438
+  s_b745b789b07917::t_c2a9687b636d6a 336-361
+  s_b745b789b07917::t_0d279e1afdc260 122
+  s_b745b789b07917::t_c5551aba524c91 224-225
+  s_b745b789b07917::t_4790bb38e5e2ba 395
+src/native/control.ts
+  s_d0dca1c38de126::t_4e9ee79dfcc7c8 5
+  s_d0dca1c38de126::t_a78baba6668ffb 4
+src/api/modules/automation/integration.ts
+  s_d0dca1c38de126::t_748c43099c8048 31
+  s_d0dca1c38de126::t_27218e2d93769b 216-217,220
+src/api/lib/server-info.ts
+  s_d0dca1c38de126::t_4e9ee79dfcc7c8 11
+src/api/modules/plugins/plugin.ts
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 7-8,11-14
+src/api/modules/access/admission.ts
+  s_65ddd3405b3853::t_d3ebb60bcc12fb 15,26-30,32
+  s_65ddd3405b3853::t_f56985af00e47c 31
+tests/helpers/app.ts
+  s_b745b789b07917::t_e225b5c9a8333a 27,49,119
+src/api/lib/lifecycle-plugin.ts
+  s_d0dca1c38de126::t_3be47c2b6193f3 5,17-24
+  s_d0dca1c38de126::t_633e665e8ab00a 1-4,6-16,25-30
+tests/helpers/failed-startup.ts
+  s_d0dca1c38de126::t_7e20197718a447 1-16
+src/api/modules/anilist/opening.ts
+  s_d0dca1c38de126::t_b7999c65194232 4
+  s_d0dca1c38de126::t_c91a3554d92dee 23,33,36-37
+src/pages/options/connections/_device-dialog.tsx
+  s_65ddd3405b3853::t_24d7b3ddfe25b9 155-160
+  s_65ddd3405b3853::t_7b1ec37c30848a 23,154,161
+  s_65ddd3405b3853::t_e2101d26c4029c 147,151-152
+  s_65ddd3405b3853::t_8741cd1ff700dc 146,148
+tsconfig.json
+  s_d0dca1c38de126::t_17adac1a54d5f0 39-40
+  s_d0dca1c38de126::t_a606421231a065 23-25
+README.md
+  s_d0dca1c38de126::t_a79a82b061f2d5 129-131
+  s_d0dca1c38de126::t_7e20197718a447 85-87
+  s_d0dca1c38de126::t_b1261005bc9f64 142
+src/desktop.ts
+  s_d0dca1c38de126::t_b7999c65194232 5-120
+  s_d0dca1c38de126::t_a7507e89252874 1-4,121-122
+src/api/modules/updates/service.ts
+  s_d0dca1c38de126::t_b7999c65194232 16,147-151,371
+  s_d0dca1c38de126::t_748c43099c8048 184
+  s_d0dca1c38de126::t_4c41ae8b2891ad 117,152,163,200,229,258,274,289,324,342,353,367,380,401
+  s_d0dca1c38de126::t_27218e2d93769b 90,118-119,153-155,176,180-183,185-191,199,201-202,204,208,213,223,230-231,259-260,275-276,290-291,315-317,325-326,343-344,354-355,368-369,381-382,402-403,428-431
+  s_d0dca1c38de126::t_3d4105058ff8ec 3-4,15,116,157,226,228,341,345,370,378,383
+src/api/modules/desktop/index.ts
+  s_b745b789b07917::t_8622a70573e1c2 37-40,42,46-49,51,53-56,58,60-81,85-88
+  s_b745b789b07917::t_3b4a65173b693a 120-132
+  s_b745b789b07917::t_e09e9e116a0705 52,57,59
+  s_d0dca1c38de126::t_32350ab1b46e4c 11,84,91
+  s_d0dca1c38de126::t_b7999c65194232 191-192
+  s_b745b789b07917::t_583882efe3fec8 20,30,35,89-90,144-145,149,185-186,189-190,195,198-199,206,209-210,217,229-230,232,242
+src/api/modules/plugins/index.ts
+  s_d0dca1c38de126::t_b7999c65194232 4
+  s_d0dca1c38de126::t_d502345d2f7d7d 20,26,29-30
+src/lib/navigation.ts
+  s_b745b789b07917::t_cbd43dd92ede65 8,11-24
+  s_b745b789b07917::t_dc2f4bcc2c96db 6,9
+  s_b745b789b07917::t_57b1cda55de82a 10
+  s_b745b789b07917::t_52413df283996a 7
+src/api/modules/connections/plugin.ts
+  s_d0dca1c38de126::t_9bdc0ee3bf8570 10-11,14-27
+tests/helpers/remote-relay.ts
+  s_b745b789b07917::t_e225b5c9a8333a 1-6,8-11,16-28,31-35,37-41
+  s_b745b789b07917::t_c2a9687b636d6a 7,12-15,36
+  s_b745b789b07917::t_8df2536753d949 29-30
+src/pages/(login)/reconnect/index.tsx
+  s_65ddd3405b3853::t_e2101d26c4029c 10-63
+  s_819d3327b669c8::t_0773e63e37d1bd 65,67-69,75-76,78-80,83-84,87-89,91-94,96-98,101-141
+  s_65ddd3405b3853::t_739aa1a5a99ace 1-9,64,66,70-74,77,81-82,85-86,90,95,99-100,142-173
+src/components/sidebar-remote-servers.tsx
+  s_b745b789b07917::t_cbd43dd92ede65 2,7,24,30,87-89,93,96-99,102-103,119,135,141,161
+  s_b745b789b07917::t_57b1cda55de82a 90-92,95,101
+  s_b745b789b07917::t_69b94b626ec7fc 21-22,27-28,33-34,37-45,100,106-110,138-139,144-145,162,164
+package.json
+  s_d0dca1c38de126::t_17adac1a54d5f0 20,27,33-34,68
+  s_d0dca1c38de126::t_efb564493d724d 26
+src/api/lib/db.ts
+  s_d0dca1c38de126::t_633e665e8ab00a 25,27-31
+  s_d0dca1c38de126::t_3be47c2b6193f3 11,13,16-18
+src/pages/servers/[serverId]/thread/[id]/_torrent-detail.tsx
+  s_b745b789b07917::t_12f90b40cd62d5 3,19
+  s_b745b789b07917::t_4bcec7f2ef803f 1-2,4-18,20-84
+src/components/destination-sidebar.tsx
+  s_b745b789b07917::t_57b1cda55de82a 189
+  s_b745b789b07917::t_69b94b626ec7fc 4-10,12,150-165,167-186,259-264,311-315,317,328-332,335-337,339-342,366-367
+  s_b745b789b07917::t_cbd43dd92ede65 17,138,142,188,207,219,285,364,423-424
+  s_b745b789b07917::t_60d6fc0cdab78e 316
+  s_b745b789b07917::t_36db8e5e77f589 11,166,338
+AGENTS.md
+  s_d0dca1c38de126::t_ed1f5deb499c5d 9,12-18
+  s_d0dca1c38de126::t_c5131e58533ede 19
+bun.lock
+  s_d0dca1c38de126::t_62c3d2de47500e 11-12,46,437,439,853
+src/api/modules/connections/service.ts
+  s_d0dca1c38de126::t_7dcb331bb9d143 587-594
+src/api/modules/desktop/associations.ts
+  s_d0dca1c38de126::t_43cc2657e21717 1,5
+tests/helpers/provider.ts
+  s_d0dca1c38de126::t_ee7b6e536aec24 44-46
+tests/plugins/sources.test.ts
+  s_d0dca1c38de126::t_a82ba5992f25d6 28-30
+src/db/drizzle/meta/0004_snapshot.json
+  s_b745b789b07917::t_5711ea23270111 384,463,549,723,728,794,844,938,982,1142
+src/db/drizzle/meta/_journal.json
+  s_b745b789b07917::t_7722782af79bf5 41
+tests/library/destinations.test.ts
+  s_b745b789b07917::t_f30db36c2cfa99 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0fabb2bed5f1aec20631ae5605efd87b8688f7c5",
+  "prompts": {},
+  "sessions": {
+    "s_65ddd3405b3853": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16073-ba16-7e23-860d-fe10c9b4784c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_819d3327b669c8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a162a1-0ec5-7740-89d3-daa98115e551",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_b745b789b07917": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ef6-3b14-7e02-b002-2f2bce924ee3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_d0dca1c38de126": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a163e2-fee1-71a2-92c4-0951b77943d3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
