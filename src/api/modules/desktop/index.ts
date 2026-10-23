@@ -8,6 +8,7 @@ import { nativeServerActionSchema } from "../../../native/model";
 import { sync } from "../../../sync";
 import { instance, logs } from "../../lib/database-plugin";
 import { sanitizeLog } from "../../lib/diagnostics";
+import { resources } from "../../lib/lifecycle-plugin";
 import { runtime } from "../../lib/runtime";
 import { accessPlugin } from "../access/plugin";
 import { acceptOpenedTorrentSchema } from "../torrents/model";
@@ -16,10 +17,7 @@ import { updatesServicePlugin } from "../updates/plugin";
 import { setDefaultTorrentFileApp } from "./associations";
 import { torrentOpenings } from "./service";
 
-export const remoteStateRelay = {
-  changes: null as ReturnType<typeof on> | null,
-  task: Promise.resolve(),
-};
+let remoteStateChanges: ReturnType<typeof on> | null = null;
 
 export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   .use(torrentServicePlugin)
@@ -29,34 +27,68 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   .onStart(() => {
     const remote = nativeControl.tofuNativeThreads;
 
-    if (!remote || remoteStateRelay.changes) {
+    if (!remote || remoteStateChanges) {
       return;
     }
 
     const changes = on(remote, "change");
-    remoteStateRelay.changes = changes;
+    remoteStateChanges = changes;
 
-    remoteStateRelay.task = (async () => {
+    const pending = new Map<string, { version: number; task: Promise<void> }>();
+    let closing = false;
+
+    const task = (async () => {
       for await (const [serverId] of changes) {
-        if (typeof serverId !== "string") {
+        if (closing || typeof serverId !== "string") {
           continue;
         }
 
-        try {
-          await invalidateSync(sync, "/api/desktop/servers/:id/state", { id: serverId });
-        } catch (cause) {
-          const log = createLogger({
-            component: "desktop-sync",
-            context: { serverId },
-            dataDir: instance.dataDir,
-            error: sanitizeLog(cause),
-            operation: "invalidate-remote-state",
-          });
-          log.setLevel("error");
-          log.emit();
+        const existing = pending.get(serverId);
+        if (existing) {
+          existing.version += 1;
+          continue;
         }
+
+        const entry = { task: Promise.resolve(), version: 0 };
+        pending.set(serverId, entry);
+        entry.task = (async () => {
+          let failures = 0;
+          while (!closing) {
+            const { version } = entry;
+            try {
+              // biome-ignore lint/performance/noAwaitInLoops: Each server retries its own invalidation after the previous attempt finishes.
+              await invalidateSync(sync, "/api/desktop/servers/:id/state", { id: serverId });
+              failures = 0;
+              if (entry.version === version) {
+                break;
+              }
+            } catch (cause) {
+              const log = createLogger({
+                component: "desktop-sync",
+                context: { serverId },
+                dataDir: instance.dataDir,
+                error: sanitizeLog(cause),
+                operation: "invalidate-remote-state",
+              });
+              log.setLevel("error");
+              log.emit();
+              const delay = Math.min(2000, 250 * 2 ** Math.min(failures, 3));
+              failures += 1;
+              await Bun.sleep(delay);
+            }
+          }
+          pending.delete(serverId);
+        })();
       }
     })();
+    resources.defer(async () => {
+      closing = true;
+      await changes.return?.();
+      await task;
+      await Promise.all([...pending.values()].map((entry) => entry.task));
+      remoteStateChanges = null;
+    });
+    resources.defer(remote.close.bind(remote));
     remote.start();
   })
   // Host paths, native windows, dialogs and file openings belong to the host's own window.
@@ -85,6 +117,19 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
 
     return nativeControl.tofuNativeThreads.snapshot(params.id);
   })
+  .get("/desktop/servers/:id/threads/:threadId/torrents/:torrentId", ({ params, request }) => {
+    if (!nativeControl.tofuNativeThreads) {
+      return problem(409, {
+        detail: "Remote torrents are available in the native Tofu app",
+      });
+    }
+    return nativeControl.tofuNativeThreads.readTorrent(
+      params.id,
+      params.threadId,
+      params.torrentId,
+      request.signal
+    );
+  })
   .post("/desktop/servers", { body: nativeServerActionSchema }, async ({ body }) => {
     if (runtime.current.kind !== "desktop" || !nativeControl.tofuNativeServers) {
       return problem(409, { detail: "Desktop servers are managed in the native Tofu app" });
@@ -96,11 +141,12 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
     return result.state;
   })
   .post("/desktop/logs/open", async () => {
-    if (runtime.current.kind !== "desktop") {
+    const sdk = nativeControl.tofuNativeSdk;
+    if (runtime.current.kind !== "desktop" || !sdk) {
       return problem(409, { detail: "The logs folder is on the machine hosting Tofu" });
     }
     await logs.flush();
-    return { opened: runtime.current.desktop.shell.openPath(join(instance.dataDir, "logs")) };
+    return { opened: sdk.Utils.openPath(join(instance.dataDir, "logs")) };
   })
   .get("/desktop/openings", async function* ({ request }) {
     // Register before the first list so no torrent opened in between is missed.
@@ -136,33 +182,39 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
     return setDefaultTorrentFileApp(instance.profile, runtime.current.desktop);
   })
   .post("/directory", async ({ torrents }) => {
-    if (runtime.current.kind !== "desktop") {
+    const sdk = nativeControl.tofuNativeSdk;
+    if (runtime.current.kind !== "desktop" || !sdk) {
       return problem(409, { detail: "Enter the folder path on the server" });
     }
-    const path = await runtime.current.desktop.dialogs.selectDirectory({
+    const [path] = await sdk.Utils.openFileDialog({
+      allowsMultipleSelection: false,
+      canChooseDirectory: true,
+      canChooseFiles: false,
       startingFolder: torrents.settings.downloadPath,
     });
-    return { path };
+    return { path: path ?? null };
   })
   .post("/torrents/:id/reveal", async ({ torrents, params }) => {
-    if (runtime.current.kind !== "desktop") {
+    const sdk = nativeControl.tofuNativeSdk;
+    if (runtime.current.kind !== "desktop" || !sdk) {
       return problem(409, { detail: "The folder is on the machine hosting Tofu" });
     }
     const detail = await torrents.detail(params.id);
     if (detail instanceof ElysiaStatus) {
       return detail;
     }
-    return { opened: runtime.current.desktop.shell.openPath(detail.savePath) };
+    return { opened: sdk.Utils.openPath(detail.savePath) };
   })
   .post("/torrents/:id/files/:index/open", async ({ torrents, params }) => {
-    if (runtime.current.kind !== "desktop") {
+    const sdk = nativeControl.tofuNativeSdk;
+    if (runtime.current.kind !== "desktop" || !sdk) {
       return problem(409, { detail: "The file is on the machine hosting Tofu" });
     }
     const file = await torrents.file(params.id, Number(params.index));
     if (file instanceof ElysiaStatus) {
       return file;
     }
-    return { opened: runtime.current.desktop.shell.openPath(file.path) };
+    return { opened: sdk.Utils.openPath(file.path) };
   })
   .get("/desktop", () => {
     if (runtime.current.kind !== "desktop") {
@@ -174,9 +226,10 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
     if (runtime.current.kind !== "desktop") {
       return problem(409, { detail: "This action requires the desktop app" });
     }
-    return runtime.current.desktop.window.open();
+    runtime.current.desktop.open();
+    return { ok: true };
   })
-  .post("/desktop/background", async ({ torrents }) => {
+  .post("/desktop/background", ({ torrents }) => {
     if (runtime.current.kind !== "desktop") {
       return problem(409, { detail: "This action requires the desktop app" });
     }
@@ -186,7 +239,7 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
     if (!runtime.current.desktop.snapshot().trayVisible) {
       return problem(503, { detail: "The menu bar icon is unavailable; the window stays open" });
     }
-    await runtime.current.desktop.window.background();
+    runtime.current.desktop.window?.close();
     return { ok: true };
   })
   .post("/updates/open-download", ({ updates }) => {

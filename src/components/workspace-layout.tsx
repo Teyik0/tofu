@@ -2,7 +2,7 @@ import { Provider, useAtomValue } from "jotai";
 import type { ReactNode } from "react";
 import { type CSSProperties, useState } from "react";
 import type { LibraryState } from "../api/modules/dashboard/projection";
-import { destinationFromPath, isPreferencesPath } from "../lib/navigation";
+import { destinationFromPath, isPreferencesPath, remoteThreadFromPath } from "../lib/navigation";
 import { createTofuStore, dashboardAtom, sessionAtom } from "../state/workspace";
 import { DestinationSidebar } from "./destination-sidebar";
 import { GlobalSearch } from "./global-search";
@@ -30,6 +30,7 @@ export function WorkspaceLayout({
   };
   const capabilities = useAtomValue(sessionAtom, { store })?.capabilities;
   const activeDestination = destinationFromPath(path);
+  const remoteThread = remoteThreadFromPath(path);
   return (
     <Provider store={store}>
       <TofuStateSync dashboard={loaded} path={path} />
@@ -39,10 +40,14 @@ export function WorkspaceLayout({
           style={{ "--sidebar-width": "190px", "--sidebar-width-icon": "52px" } as CSSProperties}
         >
           {dashboard && !isPreferencesPath(path) && (
-            <DestinationSidebar active={activeDestination} data={dashboard} />
+            <DestinationSidebar
+              active={activeDestination}
+              data={dashboard}
+              remoteThread={remoteThread}
+            />
           )}
           <SidebarInset className="min-w-0 overflow-hidden">{children}</SidebarInset>
-          {!!dashboard && (
+          {!!dashboard && remoteThread === null && (
             <>
               <TorrentDrop activeDestination={activeDestination} />
               <WorkspaceDialogs activeDestination={activeDestination} dashboard={dashboard} />

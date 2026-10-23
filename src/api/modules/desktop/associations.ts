@@ -1,8 +1,8 @@
-import type { DesktopCapabilities } from "@teyik0/furin-electrobun/host";
+import type { DesktopContext } from "@teyik0/furin-electrobun/host";
 import { problem } from "elysia";
 import type { InstanceProfile } from "../../lib/instance";
 
-type Associations = Pick<DesktopCapabilities, "associations">;
+type Associations = Pick<DesktopContext, "associations">;
 
 export async function setDefaultTorrentFileApp(profile: InstanceProfile, desktop: Associations) {
   if (profile !== "release") {

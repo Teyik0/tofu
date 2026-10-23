@@ -3,6 +3,25 @@ import { useCallback } from "react";
 import type { LibraryTorrent } from "../api/modules/dashboard/projection";
 
 type Router = ReturnType<typeof useRouter>;
+const REMOTE_THREAD_PATH = /^\/servers\/([^/]+)\/thread\/([^/]+)\/?$/;
+
+export function remoteThreadFromPath(path: string) {
+  const match = REMOTE_THREAD_PATH.exec(path);
+  if (!(match?.[1] && match[2])) {
+    return null;
+  }
+  // The incoming URL can contain malformed percent escapes.
+  try {
+    return {
+      serverId: decodeURIComponent(match[1]),
+      threadId: decodeURIComponent(match[2]),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type RemoteThreadSelection = NonNullable<ReturnType<typeof remoteThreadFromPath>>;
 
 export function isPreferencesPath(path: string) {
   return (

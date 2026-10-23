@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import { databasePlugin, instance } from "../../lib/database-plugin";
+import { reserveInitialization } from "../../lib/lifecycle-plugin";
 import { automationPlugin } from "../automation";
 import { releaseAutomationPlugin } from "../automation/plugin";
 import { discoveryServicePlugin } from "../discovery/plugin";
@@ -9,11 +10,7 @@ import { torrentServicePlugin } from "../torrents/plugin";
 import { readAniListClient } from "./client";
 import { AniListService } from "./service";
 
-const client = await readAniListClient(
-  instance.profile,
-  process.env.TOFU_ANILIST_CLIENT_ID,
-  process.execPath
-);
+using _initialization = reserveInitialization();
 
 export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
   .use(databasePlugin)
@@ -23,8 +20,13 @@ export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
   .use(jevServicePlugin)
   .use(pluginRegistryPlugin)
   .use(torrentServicePlugin)
-  .use((app) =>
-    app.decorate((dependencies) => {
+  .use(async (app) => {
+    const client = await readAniListClient(
+      instance.profile,
+      process.env.TOFU_ANILIST_CLIENT_ID,
+      process.execPath
+    );
+    return app.decorate((dependencies) => {
       const anilist = new AniListService(dependencies.db, {
         automation: dependencies.automation,
         client,
@@ -38,8 +40,10 @@ export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
         tokenEndpoint: "https://anilist.co/api/v2/oauth/token",
       });
 
-      app.onStart(anilist.start.bind(anilist));
+      dependencies.resources.defer(anilist.close.bind(anilist));
 
       return { ...dependencies, anilist };
-    })
-  );
+    });
+  });
+
+await anilistServicePlugin.modules;

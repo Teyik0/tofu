@@ -1,12 +1,8 @@
-import { dirname, join } from "node:path";
-import type { DesktopConfig } from "@teyik0/furin-electrobun";
+import { join } from "node:path";
 import {
-  type DesktopBackend,
-  type DesktopCapabilities,
-  getDesktopDevelopment,
+  getDesktopHost,
   type NativeActionContext,
   type OpenEvent,
-  type ReadyContext,
 } from "@teyik0/furin-electrobun/host";
 // biome-ignore lint/performance/noNamespaceImport: Native server windows share the canonical SDK namespace.
 import * as sdk from "electrobun/main";
@@ -20,11 +16,8 @@ const WHITESPACE = /\s+/;
 const CREDENTIAL_FAILURE = /identity|revoked|expired|Incompatible|cookie/;
 const SERVER_ID = /^[a-f0-9-]{36}$/;
 
-// Furin loads this native customization before the backend, after resolving its data directory.
+// Furin loads native integrations after the application, before startup hooks run.
 const identity = await sdk.Updater.getLocalInfo();
-const development = await getDesktopDevelopment();
-const config: DesktopConfig =
-  development?.config ?? (await Bun.file(join(dirname(Bun.main), "furin-host.json")).json());
 const dataDir = process.env.FURIN_APP_DATA_DIR;
 if (!dataDir) {
   throw new Error("The native customization requires Furin's resolved data directory");
@@ -43,8 +36,6 @@ const windows = new Map<
 >();
 const statuses = new Map<string, string>();
 const opening = new Set<string>();
-let desktop: DesktopCapabilities;
-let backend: DesktopBackend | undefined;
 let serverAction = Promise.resolve();
 let message = "";
 let discovered: Awaited<ReturnType<typeof discoverLocalServers>>["servers"] = [];
@@ -201,7 +192,7 @@ async function openSaved(server: SavedServer, resumePath?: string) {
         }
         const window = new sdk.BrowserWindow({
           allowedProtocols: { appData: false, views: false },
-          frame: config.window,
+          frame: { height: 940, width: 1400 },
           navigationRules: JSON.stringify(["^*"]),
           sandbox: true,
           title: `${server.alias || server.name} · Tofu`,
@@ -210,7 +201,7 @@ async function openSaved(server: SavedServer, resumePath?: string) {
         const view = new sdk.BrowserView({
           allowedProtocols: { appData: false, views: false },
           autoResize: true,
-          frame: { height: config.window.height, width: config.window.width, x: 0, y: 0 },
+          frame: { height: 940, width: 1400, x: 0, y: 0 },
           navigationRules: JSON.stringify(["^*", `${origin}/*`]),
           partition,
           sandbox: true,
@@ -485,7 +476,7 @@ async function command(
 export function nativeServerSnapshot() {
   return {
     discovered: discovered.map((server) => ({ ...server })),
-    local: !!backend,
+    local: getDesktopHost() !== null,
     message,
     servers: catalog.value.servers.map((server) => ({
       ...server,
@@ -514,23 +505,29 @@ export async function runNativeServerAction(input: NativeServerAction) {
   }
 }
 
-/** Selects the trusted local view by its backend/bootstrap origin, never a remote document. */
+/** Managed windows receive a fresh authenticated bootstrap from Furin. */
 function openConnections(invitation?: string) {
-  if (!backend) {
+  const desktop = getDesktopHost();
+  if (!desktop) {
     return;
   }
-  desktop.window.open();
-  const localView = sdk.BrowserView.getAll().find((view) => {
-    const origin = view.url ? URL.parse(view.url)?.origin : undefined;
-    return origin === backend?.origin || (!!origin && origin === backend?.bootstrapOrigin);
-  });
-  if (localView) {
-    const destination = new URL("/options/connections", backend.origin);
-    if (invitation) {
-      destination.hash = new URLSearchParams({ invitation }).toString();
-    }
-    localView.loadURL(backend.createWindowUrl(`${destination.pathname}${destination.hash}`));
+  const existing = desktop.windows.get("connections");
+  if (existing && !invitation) {
+    existing.show();
+    existing.activate();
+    return;
   }
+  if (existing) {
+    // Keep a managed window alive while replacing an invitation window.
+    desktop.open();
+    existing.close();
+  }
+  const fragment = invitation ? `#${new URLSearchParams({ invitation })}` : "";
+  desktop.windows.create("connections", {
+    frame: { height: 780, width: 1100 },
+    path: `/options/connections${fragment}`,
+    title: "Tofu · Connections",
+  });
 }
 
 nativeControl.tofuNativeThreads = new RemoteThreads({
@@ -591,13 +588,6 @@ export const nativeHost = {
       return true;
     }
     return false;
-  },
-  onReady(context: ReadyContext) {
-    if (context.runtime.kind === "desktop") {
-      ({ desktop } = context.runtime);
-      // The native host supplies the full backend, including single-use window bootstrap URLs.
-      backend = context.backend as DesktopBackend;
-    }
   },
   openConnections,
 };

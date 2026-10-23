@@ -56,3 +56,49 @@ test("an automation downloads a new matching release into its destination exactl
   expect(repeated.decisions.filter((decision) => decision.status === "added")).toHaveLength(1);
   expect(success(await client.state.get()).torrents).toHaveLength(1);
 });
+
+test("an automation preserves the evaluator's quota failure instead of returning success", async () => {
+  await using source = await peer();
+  await using upstream = provider(source);
+  await using app = await application({ provider: upstream.url });
+  const { client } = await app.start();
+  success(await client.plugins({ id: "nyaa" }).put({ enabled: true }));
+  const draft = success(
+    await client.automations.interpret.post({ destinationId: "default", query: "Example" })
+  );
+  const rule = success(
+    await client.automations.post({
+      ...draft,
+      enabled: true,
+      includeExisting: true,
+      languages: ["VOSTFR"],
+      matchMode: "jev",
+      sources: ["nyaa"],
+      title: "Example",
+    })
+  );
+  success(
+    await client.plugins({ id: "jev" }).put({
+      apiKey: "test-jev-key",
+      dailyLimit: 1,
+      enabled: true,
+    })
+  );
+  // The failed HTTP call still consumes the daily quota.
+  expect((await client.plugins({ id: "jev" }).test.post()).status).toBe(503);
+  const preview = await client.automations.preview.post(rule);
+  expect(preview.status).toBe(429);
+  const runs = await Promise.all([
+    client.automations({ id: rule.id }).run.post({}),
+    client.automations({ id: rule.id }).run.post({}),
+  ]);
+  for (const run of runs) {
+    expect(run.status).toBe(429);
+    expect(run.error?.value).toMatchObject({ detail: "Jev daily limit reached" });
+  }
+  const state = success(await client.automation.get());
+  expect(state.automations.find((entry) => entry.id === rule.id)?.error).toBe(
+    "Check interrupted; retry scheduled"
+  );
+  expect(success(await client.state.get()).torrents).toEqual([]);
+});

@@ -11,12 +11,13 @@ export const discoveryServicePlugin = new Elysia({ name: "tofu-discovery-service
   .use(jevServicePlugin)
   .use(pluginRegistryPlugin)
   .use(torrentServicePlugin)
-  .decorate((dependencies) => ({
-    ...dependencies,
-    discovery: new DiscoveryService(dependencies.db, {
+  .decorate((dependencies) => {
+    const discovery = new DiscoveryService(dependencies.db, {
       endpoints: pluginEndpoints,
       engine: dependencies.torrents,
       jev: dependencies.jev,
       plugins: dependencies.plugins,
-    }),
-  }));
+    });
+    dependencies.resources.defer(discovery.close.bind(discovery));
+    return { ...dependencies, discovery };
+  });

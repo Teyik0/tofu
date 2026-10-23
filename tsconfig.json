@@ -20,6 +20,9 @@
       "electrobun": [
         "./.furin/electrobun/.hutch/devkit/api/sdks/main/index.ts"
       ],
+      "electrobun/main/rpc": [
+        "./.furin/electrobun/.hutch/devkit/api/sdks/main/entries/rpc.ts"
+      ],
       "electrobun/main": [
         "./.furin/electrobun/.hutch/devkit/api/sdks/main/index.ts"
       ]
@@ -33,5 +36,6 @@
     ".github/scripts/**/*.ts",
     "tests/**/*.ts",
     "furin-env.d.ts"
-  ]
+  ],
+  "extends": "./.furin/electrobun/tsconfig.json"
 }

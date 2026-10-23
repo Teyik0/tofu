@@ -1,6 +1,7 @@
 import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
+import { nativeControl } from "../../../native/control";
 import { sync } from "../../../sync";
 
 import { openExternalUrl } from "../../lib/native-opening";
@@ -16,16 +17,17 @@ export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
   .use(accessPlugin)
   .guard({ administration: true })
   .post("/plugins/:id/credentials/open", { idempotent: false }, ({ caller, params }) => {
+    const sdk = nativeControl.tofuNativeSdk;
     if (params.id !== "c411" && params.id !== "jev") {
       return problem(400, { detail: "This plugin does not use an API key" });
     }
     const url = pluginCredentialPages[params.id];
     // Only the host's own window opens the host browser; remote callers open it themselves.
-    if (caller.kind !== "owner" || runtime.current.kind !== "desktop") {
+    if (caller.kind !== "owner" || runtime.current.kind !== "desktop" || !sdk) {
       return { opened: false, url };
     }
-    const { shell } = runtime.current.desktop;
-    const failed = openExternalUrl(shell, url, "Unable to open the API key page in your browser");
+    const { Utils } = sdk;
+    const failed = openExternalUrl(Utils, url, "Unable to open the API key page in your browser");
     if (failed) {
       return failed;
     }

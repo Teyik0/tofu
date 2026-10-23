@@ -7,11 +7,12 @@ import { JevService } from "./service";
 export const jevServicePlugin = new Elysia({ name: "tofu-jev-service" })
   .use(databasePlugin)
   .use(pluginRegistryPlugin)
-  .decorate((dependencies) => ({
-    ...dependencies,
-    jev: new JevService(dependencies.db, {
+  .decorate((dependencies) => {
+    const jev = new JevService(dependencies.db, {
       endpoint: pluginEndpoints.jev,
       now: Date.now,
       plugins: dependencies.plugins,
-    }),
-  }));
+    });
+    dependencies.resources.defer(jev.close.bind(jev));
+    return { ...dependencies, jev };
+  });

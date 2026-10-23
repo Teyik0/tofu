@@ -26,12 +26,14 @@ export default defineConfig({
       version,
     },
     build: {
-      // The host has no dependency tree; only the backend packages WebTorrent addons.
-      bun: { entrypoint: "src/native/host.ts", external: ["webtorrent"] },
+      // Native integrations use the same SDK as the managed host.
+      bun: { entrypoint: "src/desktop.ts", external: ["webtorrent"] },
       copy: {
         [process.platform === "win32" ? "runtime/tofu-tsnet.exe" : "runtime/tofu-tsnet"]:
           process.platform === "win32" ? "bun/tofu-tsnet.exe" : "bun/tofu-tsnet",
         "LICENSE.md": "bun/LICENSE.md",
+        "public/icon.png": "bun/tray-icon.png",
+        "public/tray-template.png": "bun/tray-template.png",
         "runtime/anilist-client.json": "bun/anilist-client.json",
         "runtime/tofu-tsnet.licenses.txt": "bun/tofu-tsnet.licenses.txt",
         "runtime/tofu-tsnet.manifest.json": "bun/tofu-tsnet.manifest.json",
@@ -54,12 +56,6 @@ export default defineConfig({
     external: ["webtorrent", "parse-torrent"],
     protocols: [release ? "tofu" : "tofu-dev"],
     release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },
-    tray: {
-      linux: { image: "public/icon.png" },
-      mac: { image: "public/tray-template.png", template: true },
-      win: { image: "public/icon.png" },
-    },
-    window: { height: 940, width: 1400 },
   }),
   pagesDir: "./src/pages",
   plugins: [

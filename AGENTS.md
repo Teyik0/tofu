@@ -6,8 +6,16 @@ Always use ponytail skills when starting a feature.
 ## Async syntax
 
 - Use `async` / `await` for all promise sequencing. Never use `.then()`.
-- Use `try` / `catch` / `finally` instead of promise `.catch()` or `.finally()` chains.
+- Never use promise `.catch()` or `.finally()` chains.
 - Preserve concurrency explicitly: reserve operation queues before the first `await`, and use `await Promise.all(...)` or `await Promise.allSettled(...)` for independent work.
+
+## No routine try/catch
+
+- Do not use `try` / `catch` in business logic or for normal control flow. Expected API failures are returned as typed `problem(...)` or `status(...)` results and propagated directly.
+- Catch an exception only at the external I/O, native SDK, worker, or process boundary that must translate it into a typed failure or report an otherwise unobserved error. Catching merely to rethrow, return a default, or hide a broken invariant is prohibited.
+- Register resource cleanup when acquiring the resource. Prefer `using`, `await using`, or `AsyncDisposableStack` over handwritten nested cleanup and error-collection loops when they preserve dependency order and concurrency.
+- Use `try` / `finally` only when it is necessary to release a resource, reservation, or listener that cannot use the disposal mechanisms above.
+- Never move exception handling into a helper, factory, class, or proxy merely to hide it. Any remaining catch must have a concrete boundary or cleanup requirement that can be explained from its call site.
 
 ## Returned API errors
 

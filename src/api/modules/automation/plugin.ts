@@ -10,18 +10,16 @@ export const releaseAutomationPlugin = new Elysia({ name: "tofu-release-automati
   .use(discoveryServicePlugin)
   .use(pluginRegistryPlugin)
   .use(torrentServicePlugin)
-  .use((app) =>
-    app.decorate((dependencies) => {
-      const releaseAutomation = new ReleaseAutomationService({
-        automation: dependencies.automation,
-        discovery: dependencies.discovery,
-        engine: dependencies.torrents,
-        now: Date.now,
-        plugins: dependencies.plugins,
-      });
+  .decorate((dependencies) => {
+    const releaseAutomation = new ReleaseAutomationService({
+      automation: dependencies.automation,
+      discovery: dependencies.discovery,
+      engine: dependencies.torrents,
+      now: Date.now,
+      plugins: dependencies.plugins,
+    });
 
-      app.onStart(releaseAutomation.start.bind(releaseAutomation));
+    dependencies.resources.defer(releaseAutomation.close.bind(releaseAutomation));
 
-      return { ...dependencies, releaseAutomation };
-    })
-  );
+    return { ...dependencies, releaseAutomation };
+  });

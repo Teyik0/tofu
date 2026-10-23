@@ -41,6 +41,9 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
           headers: { "content-type": "application/rss+xml" },
         });
       }
+      if (new URL(request.url).pathname === "/jev") {
+        return new Response("Provider unavailable", { status: 503 });
+      }
       const { query, variables } = (await request.json()) as {
         query: string;
         variables: Record<string, unknown>;

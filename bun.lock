@@ -8,8 +8,8 @@
         "@base-ui/react": "1.9.0",
         "@elysia/eden": "2.0.0-beta.5",
         "@formisch/react": "1.1.0",
-        "@teyik0/furin": "file:vendor/furin-remote-native-4abac21.tgz",
-        "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-4abac21.tgz",
+        "@teyik0/furin": "file:vendor/furin-pr163-67a0115.tgz",
+        "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-67a0115.tgz",
         "bun-plugin-tailwind": "0.1.2",
         "class-variance-authority": "0.7.1",
         "cn": "^0.5.0",
@@ -43,7 +43,7 @@
         "@types/react-dom": "19.3.0",
         "@types/webtorrent": "3.0.0",
         "drizzle-kit": "0.31.11",
-        "electrobun": "2.0.4",
+        "electrobun": "2.0.2",
         "lefthook": "2.2.2",
         "shadcn": "4.22.1",
         "typescript": "7.0.2",
@@ -434,9 +434,9 @@
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
 
-    "@teyik0/furin": ["@teyik0/furin@vendor/furin-remote-native-4abac21.tgz", { "dependencies": { "@elysia/eden": "2.0.0-beta.5", "@elysia/static": "2.0.0-beta.3", "@jridgewell/trace-mapping": "^0.3.31", "@vercel/functions": "^3.10.1", "cjs-module-lexer": "^2.3.0", "magic-string": "^1.4.3", "react-server-dom-webpack": "~19.3.1", "seroval": "^1.6.11", "typescript": "7.0.2", "yuku-ast": "0.12.0", "yuku-parser": "0.12.0" }, "peerDependencies": { "@types/bun": ">=1.4.0", "drizzle-orm": "^0.45.4", "elysia": "2.0.0-beta.32", "evlog": "^2.33.0", "exact-mirror": ">=1.2.6", "react": "^19.3.1", "react-dom": "^19.3.1", "typebox": "1.3.34" }, "optionalPeers": ["@types/bun", "drizzle-orm"], "bin": { "furin": "./src/cli/index.ts", "furin-sync-postgres-migrate": "./dist/server/sync/postgres/migrate.js" } }, "sha512-pA2IykSy1fYTEVU27U6oo0Db7plah35ipnMTIYQhXGoBPmjdWXGj5ICiE9hSZGXhZhQhi1whDc5kQZwVnMSK8w=="],
+    "@teyik0/furin": ["@teyik0/furin@vendor/furin-pr163-67a0115.tgz", { "dependencies": { "@elysia/eden": "2.0.0-beta.5", "@elysia/static": "2.0.0-beta.3", "@jridgewell/trace-mapping": "^0.3.31", "@vercel/functions": "^3.10.1", "cjs-module-lexer": "^2.3.0", "magic-string": "^1.4.3", "react-server-dom-webpack": "~19.3.1", "seroval": "^1.6.11", "typescript": "7.0.2", "yuku-ast": "0.12.0", "yuku-parser": "0.12.0" }, "peerDependencies": { "@types/bun": ">=1.4.0", "drizzle-orm": "^0.45.4", "elysia": "2.0.0-beta.32", "evlog": "^2.33.0", "exact-mirror": ">=1.2.6", "react": "^19.3.1", "react-dom": "^19.3.1", "typebox": "1.3.34" }, "optionalPeers": ["@types/bun", "drizzle-orm"], "bin": { "furin": "./src/cli/index.ts", "furin-sync-postgres-migrate": "./dist/server/sync/postgres/migrate.js" } }, "sha512-PoHD6FUwxkonl5PhiVjmPqIGO8nwD/rh1oQzbkxbRfRVsRxCR4odmivrj4XoUhzRo4tDi7mdFv1bOZDkYbYeeA=="],
 
-    "@teyik0/furin-electrobun": ["@teyik0/furin-electrobun@vendor/furin-electrobun-pr163-4abac21.tgz", { "optionalDependencies": { "electrobun": "2.0.2" }, "peerDependencies": { "@teyik0/furin": ">=0.8.0-alpha.0 <0.9.0", "elysia": "2.0.0-beta.32" }, "bin": { "furin-electrobun": "./src/cli.ts" } }, "sha512-73ZVUb9CwRoTXXwzty/sSp2+fcw2I1jiCTLa2qehh6DfKJoA7vUC7iYyfuxS1tttQ79lrMCgXyiwbbEh5+Yq5Q=="],
+    "@teyik0/furin-electrobun": ["@teyik0/furin-electrobun@vendor/furin-electrobun-pr163-67a0115.tgz", { "optionalDependencies": { "electrobun": "2.0.2" }, "peerDependencies": { "@teyik0/furin": ">=0.8.0-alpha.0 <0.9.0", "elysia": "2.0.0-beta.32" }, "bin": { "furin-electrobun": "./src/cli.ts" } }, "sha512-dY1N8QguqWQLvoG79s1O6Ld5vNjZNcCPggYBSy/meExem6072V0Yj2XfCxI0d5yJUM+2n4EKMIk2uQTjAFRdkQ=="],
 
     "@thaunknown/simple-peer": ["@thaunknown/simple-peer@10.1.2", "", { "dependencies": { "debug": "^4.4.3", "err-code": "^3.0.1", "streamx": "^2.28.0", "uint8-util": "^2.3.2", "webrtc-polyfill": "^1.2.2" } }, "sha512-pcG35e815X43Crr/HVmOWlbsx9Jz3KD27HOhy/BwIjQkDlafzJFl0NKb8B+bf+bsnfQL/BB6Z44cMZPQaYHLYQ=="],
 
@@ -850,7 +850,7 @@
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
-    "electrobun": ["electrobun@2.0.4", "", { "bin": { "electrobun": "bin/electrobun.cjs" } }, "sha512-xuH4sE9A9eySgOjF+9mi9WuTv+Sa05cYY6eU5A4Rkkfek2zd59kzhWvwrb9xfJN4VPL+zM4FyTvFoH8j00DLMw=="],
+    "electrobun": ["electrobun@2.0.2", "", { "bin": { "electrobun": "bin/electrobun.cjs" } }, "sha512-UDs2iTNs6qYCzdWiFch/0DtxrsijNDr1WFDQfRmSA3Iouv0iEzyCF5mh4uDxkwNnAbuwFyow36EiVTYP4DRzig=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.444", "", {}, "sha512-5ss/uJfoDYDHT0lfJzT6FbcskIzROIOPf0BbbFkGcvDzoJU7i//9GDrwwIHQVmIsrAGiF3ihpADBRIsrEFt1rQ=="],
 
@@ -1785,8 +1785,6 @@
     "@graphql-tools/wrap/@whatwg-node/promise-helpers": ["@whatwg-node/promise-helpers@1.3.2", "", { "dependencies": { "tslib": "^2.6.3" } }, "sha512-Nst5JdK47VIl9UcGwtv2Rcgyn5lWtZ0/mhRQ4G8NN2isxpq2TO30iqHzmwoJycjWuyUfg3GFXqP/gFHXeV57IA=="],
 
     "@shadcn/registry/cn": ["cn@0.2.6", "", { "bin": { "cn": "bin/cn.mjs" } }, "sha512-+i4L0zUGgRcEnhsxueVrP7iBGxBx5iD0WOTYg1MwFEu2ZyCmH5Ov2V1cul2Ht5UchRQQgftCf4be/RxspuW6QQ=="],
-
-    "@teyik0/furin-electrobun/electrobun": ["electrobun@2.0.2", "", { "bin": { "electrobun": "bin/electrobun.cjs" } }, "sha512-UDs2iTNs6qYCzdWiFch/0DtxrsijNDr1WFDQfRmSA3Iouv0iEzyCF5mh4uDxkwNnAbuwFyow36EiVTYP4DRzig=="],
 
     "@vercel/cli-config/zod": ["zod@4.1.11", "", {}, "sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg=="],
 

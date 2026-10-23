@@ -8,25 +8,27 @@ import { initializeDatabase } from "../../db/migrations";
 import { schema } from "../../db/schema";
 
 export function createDatabase(path: string) {
+  using startup = new DisposableStack();
   const client = new Database(path, { create: true, strict: true });
+  startup.defer(client.close.bind(client, true));
   // The worker and API own separate handles to the same WAL database.
   client.run("PRAGMA busy_timeout = 5000");
-  return drizzle({ client, schema });
+  const connection = drizzle({ client, schema });
+  startup.move();
+  return connection;
 }
 
 export async function openDatabase(directory: string) {
   await mkdir(directory, { mode: 0o700, recursive: true });
   await chmod(directory, 0o700);
   const path = join(directory, "feeds.sqlite");
+  await using startup = new AsyncDisposableStack();
   const connection = createDatabase(path);
-  try {
-    initializeDatabase(connection);
-    await chmod(path, 0o600);
-    return connection;
-  } catch (error) {
-    connection.$client.close(true);
-    throw error;
-  }
+  startup.defer(connection.$client.close.bind(connection.$client, true));
+  initializeDatabase(connection);
+  await chmod(path, 0o600);
+  startup.move();
+  return connection;
 }
 
 export function assertDatabaseReady(connection: TofuDatabase) {

@@ -1,12 +1,12 @@
 import { createLogger } from "evlog";
 import "@teyik0/furin/server-only";
 import { Elysia, ValidationError } from "elysia";
-import { nativeControl } from "../native/control";
-import { db, instance, lease, logs } from "./lib/database-plugin";
+import { instance } from "./lib/database-plugin";
 import { sanitizeLog } from "./lib/diagnostics";
 import { httpPolicyPlugin } from "./lib/http-policy";
 import { accessRoutesPlugin } from "./modules/access";
 import { publicDocumentsPlugin } from "./modules/access/documents";
+import { accessPlugin } from "./modules/access/plugin";
 import { anilistPlugin } from "./modules/anilist";
 import { anilistOpeningPlugin } from "./modules/anilist/opening";
 import { anilistServicePlugin } from "./modules/anilist/plugin";
@@ -15,7 +15,7 @@ import { releaseAutomationPlugin } from "./modules/automation/plugin";
 import { connectionsPlugin } from "./modules/connections";
 import { connectionsServicePlugin } from "./modules/connections/plugin";
 import { dashboardPlugin } from "./modules/dashboard";
-import { desktopPlugin, remoteStateRelay } from "./modules/desktop";
+import { desktopPlugin } from "./modules/desktop";
 import { destinationsPlugin } from "./modules/destinations";
 import { storageRootsPlugin } from "./modules/destinations/storage";
 import { discoveryPlugin } from "./modules/discovery";
@@ -36,6 +36,15 @@ import { updatesPlugin } from "./modules/updates";
 import { updatesServicePlugin } from "./modules/updates/plugin";
 
 export const apiPlugin = new Elysia({ name: "tofu-api" })
+  .use(anilistServicePlugin)
+  .use(releaseAutomationPlugin)
+  .use(connectionsServicePlugin)
+  .use(discoveryServicePlugin)
+  .use(jevServicePlugin)
+  .use(pluginRegistryPlugin)
+  .use(torrentServicePlugin)
+  .use(updatesServicePlugin)
+  .use(accessPlugin)
   .onError("global", ({ request, error }) => {
     const log = createLogger({
       component: "api",
@@ -49,78 +58,6 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
     log.setLevel("error");
     log.emit();
   })
-  .use(anilistServicePlugin)
-  .use(releaseAutomationPlugin)
-  .use(connectionsServicePlugin)
-  .use(discoveryServicePlugin)
-  .use(jevServicePlugin)
-  .use(pluginRegistryPlugin)
-  .use(torrentServicePlugin)
-  .use(updatesServicePlugin)
-  .use((app) =>
-    app.decorate((dependencies) => {
-      const {
-        anilist,
-        connections,
-        discovery,
-        jev,
-        plugins,
-        releaseAutomation,
-        torrentFolders,
-        torrents,
-        updates,
-      } = dependencies;
-
-      app.onStop(async () => {
-        const errors: unknown[] = [];
-
-        // Stop producers before the services they depend on.
-        const phases = [
-          [
-            async () => {
-              await nativeControl.tofuNativeThreads?.close();
-              await remoteStateRelay.changes?.return?.();
-              await remoteStateRelay.task;
-              remoteStateRelay.changes = null;
-            },
-          ],
-          [
-            updates.close.bind(updates),
-            anilist.close.bind(anilist),
-            torrentFolders.close.bind(torrentFolders),
-          ],
-          [releaseAutomation.close.bind(releaseAutomation)],
-          [discovery.close.bind(discovery)],
-          [jev.close.bind(jev)],
-          [plugins.close.bind(plugins)],
-          [connections.close.bind(connections)],
-          [torrents.close.bind(torrents)],
-          [db.$client.close.bind(db.$client, true)],
-          [logs.flush.bind(logs)],
-          [lease.close.bind(lease)],
-        ];
-
-        for (const phase of phases) {
-          // biome-ignore lint/performance/noAwaitInLoops: Shutdown phases must preserve dependency order.
-          await Promise.all(
-            phase.map(async (close) => {
-              try {
-                await close();
-              } catch (error) {
-                errors.push(error);
-              }
-            })
-          );
-        }
-
-        if (errors.length > 0) {
-          throw new AggregateError(errors, "Tofu could not stop every API service");
-        }
-      });
-
-      return dependencies;
-    })
-  )
   .use(publicDocumentsPlugin)
   .use(mediaLinksPlugin)
   .use(httpPolicyPlugin)

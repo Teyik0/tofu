@@ -8,14 +8,12 @@ import type { InstanceProfile } from "./instance";
 export async function writeServerInfo(
   instance: typeof databaseInstance,
   engine: WorkerTorrentEngine,
-  url: string,
-  cookie: string | undefined
+  url: string
 ) {
   const { dataDir } = instance;
   await Bun.write(
     join(dataDir, "server.json.tmp"),
     JSON.stringify({
-      cookie,
       mode: engine.mode,
       pid: process.pid,
       profile: instance.profile,
@@ -35,8 +33,6 @@ export async function writeServerInfo(
 }
 
 export interface ServerInfo {
-  /** Private native session; stored only in the owner's descriptor. */
-  cookie?: string;
   mode: "desktop" | "server";
   pid: number;
   profile: InstanceProfile;

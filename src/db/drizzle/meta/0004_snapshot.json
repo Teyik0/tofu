@@ -381,9 +381,7 @@
       "indexes": {
         "device_sessions_tokenHash_unique": {
           "name": "device_sessions_tokenHash_unique",
-          "columns": [
-            "tokenHash"
-          ],
+          "columns": ["tokenHash"],
           "isUnique": true
         }
       },
@@ -462,9 +460,7 @@
       "indexes": {
         "linked_servers_serverId_unique": {
           "name": "linked_servers_serverId_unique",
-          "columns": [
-            "serverId"
-          ],
+          "columns": ["serverId"],
           "isUnique": true
         }
       },
@@ -550,9 +546,7 @@
       "indexes": {
         "media_links_tokenHash_unique": {
           "name": "media_links_tokenHash_unique",
-          "columns": [
-            "tokenHash"
-          ],
+          "columns": ["tokenHash"],
           "isUnique": true
         }
       },
@@ -726,16 +720,12 @@
       "indexes": {
         "invitations_codeHash_unique": {
           "name": "invitations_codeHash_unique",
-          "columns": [
-            "codeHash"
-          ],
+          "columns": ["codeHash"],
           "isUnique": true
         },
         "invitations_secretHash_unique": {
           "name": "invitations_secretHash_unique",
-          "columns": [
-            "secretHash"
-          ],
+          "columns": ["secretHash"],
           "isUnique": true
         }
       },
@@ -801,10 +791,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "playback_positions_profileId_mediaKey_pk": {
-          "columns": [
-            "profileId",
-            "mediaKey"
-          ],
+          "columns": ["profileId", "mediaKey"],
           "name": "playback_positions_profileId_mediaKey_pk"
         }
       },
@@ -854,11 +841,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "playback_sequences_profileId_mediaKey_sessionId_pk": {
-          "columns": [
-            "profileId",
-            "mediaKey",
-            "sessionId"
-          ],
+          "columns": ["profileId", "mediaKey", "sessionId"],
           "name": "playback_sequences_profileId_mediaKey_sessionId_pk"
         }
       },
@@ -952,9 +935,7 @@
       "indexes": {
         "session_transfers_sourceSessionId_unique": {
           "name": "session_transfers_sourceSessionId_unique",
-          "columns": [
-            "sourceSessionId"
-          ],
+          "columns": ["sourceSessionId"],
           "isUnique": true
         }
       },
@@ -998,9 +979,7 @@
       "indexes": {
         "storage_roots_path_unique": {
           "name": "storage_roots_path_unique",
-          "columns": [
-            "path"
-          ],
+          "columns": ["path"],
           "isUnique": true
         }
       },

@@ -7,7 +7,12 @@ import { api } from "../lib/client";
 export const route = defineRootRoute()
   .config({ mode: "ssr" })
   .loader(async ({ path }) => {
-    if (path === "/pair" || path === "/signed-out" || path === "/session-transfer") {
+    if (
+      path === "/pair" ||
+      path === "/signed-out" ||
+      path === "/session-transfer" ||
+      path === "/reconnect"
+    ) {
       return { dashboard: null };
     }
     const { data, error } = await api.state.get({ query: { detail: "false" } });

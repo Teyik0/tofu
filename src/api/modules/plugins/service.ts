@@ -367,12 +367,12 @@ export class PluginsService {
           url.searchParams.delete("page");
           const fallback = await fetch(url, { signal: controller.signal });
           if (!fallback.ok) {
-            throw new Error(`Source unavailable (HTTP ${fallback.status})`);
+            return problem(502, { detail: `Source unavailable (HTTP ${fallback.status})` });
           }
           releases = parseNyaaHtml(await fallback.text(), url.href);
         } else {
           if (!response.ok) {
-            throw new Error(`Source unavailable (HTTP ${response.status})`);
+            return problem(502, { detail: `Source unavailable (HTTP ${response.status})` });
           }
           const text = await response.text();
           releases = sourceId === "tsundere" ? parseTsundere(text) : parseRss(text, sourceId);

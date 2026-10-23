@@ -76,9 +76,11 @@ test("public login pages render without exposing the library or protected endpoi
       "/pair",
       "/signed-out",
       "/session-transfer",
+      "/reconnect",
       "/pair?_furin=data",
       "/signed-out?_furin=data",
       "/session-transfer?_furin=data",
+      "/reconnect?_furin=data",
     ].map(async (path) => {
       const response = await fetch(`${url}${path}`);
       expect(response.status).toBe(200);
@@ -218,6 +220,15 @@ test("remote grants restrict management, file deletion and access outside storag
   expect((await phone.torrents({ id: source.id }).pause.post({})).status).toBe(403);
   expect((await phone.torrents({ id: source.id }).host.get()).status).toBe(403);
   expect((await phone.access.devices.get()).status).toBe(403);
+  expect(
+    (
+      await phone.desktop
+        .servers({ id: crypto.randomUUID() })
+        .threads({ threadId: "default" })
+        .torrents({ torrentId: source.id })
+        .get()
+    ).status
+  ).toBe(403);
 
   success(await owner.access.devices({ id: device.id }).patch({ role: "management" }));
   success(await phone.torrents({ id: source.id }).pause.post({}));

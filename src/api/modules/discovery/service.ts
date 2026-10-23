@@ -200,10 +200,16 @@ export class DiscoveryService {
       [...new Set(sources)].map(async (sourceId) => {
         try {
           const releases = await this.options.plugins.fetchSource(sourceId, query);
-          // A returned problem means the plugin service is closing: nothing to report.
-          if (!(releases instanceof ElysiaStatus)) {
-            result.releases.push(...releases);
+          if (releases instanceof ElysiaStatus) {
+            if (!this.options.plugins.plugin(sourceId).enabled || this.lifecycle.closed) {
+              return;
+            }
+            const message = releases.response.detail;
+            result.errors.push({ message, sourceId });
+            this.options.plugins.recordFailure(sourceId, message);
+            return;
           }
+          result.releases.push(...releases);
         } catch (cause) {
           if (!this.options.plugins.plugin(sourceId).enabled || this.lifecycle.closed) {
             return;

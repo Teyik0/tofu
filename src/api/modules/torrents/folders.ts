@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { createLogger } from "evlog";
 import parseTorrent from "parse-torrent";
 import { watchedTorrentFiles } from "../../../db/schema";
+import { nativeControl } from "../../../native/control";
 import type { TofuDatabase } from "../../lib/db";
 import { sanitizeLog } from "../../lib/diagnostics";
 import { runtime } from "../../lib/runtime";
@@ -258,8 +259,8 @@ export class TorrentFolders {
         operation: "add",
       });
       log.emit();
-      if (runtime.current.kind === "desktop") {
-        runtime.current.desktop.notifications.show({
+      if (runtime.current.kind === "desktop" && nativeControl.tofuNativeSdk) {
+        nativeControl.tofuNativeSdk.Utils.showNotification({
           body: `${[parsed.name].flat()[0] || infoHash} was added to ${destination.name}`,
           title: "Torrent added",
         });

@@ -59,3 +59,18 @@ export type SessionKind = "browser" | "native" | "window" | "link";
 export const sessionTransferSchema = object({
   secret: pipe(string(), minLength(43), maxLength(43)),
 });
+
+export const reconnectionSchema = object({ origin: pipe(string(), minLength(1), maxLength(256)) });
+export const reconnectionClaimSchema = object({
+  browserSecret: pipe(string(), minLength(43), maxLength(43)),
+  label,
+  secret: pipe(string(), minLength(43), maxLength(43)),
+});
+export const reconnectionCompleteSchema = object({
+  browserSecret: pipe(string(), minLength(43), maxLength(43)),
+  id: pipe(string(), minLength(36), maxLength(36)),
+});
+export const reconnectionDecisionSchema = object({
+  approve: boolean(),
+  code: pipe(string(), maxLength(9)),
+});

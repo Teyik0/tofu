@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
+import { nativeControl } from "../../../native/control";
 import { sync } from "../../../sync";
 import { instance } from "../../lib/database-plugin";
 import { runtime } from "../../lib/runtime";
@@ -60,13 +61,17 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
     return readFileSync(join(instance.dataDir, "tls/ca.pem"), "utf8");
   })
   .post("/connections/certificate/download", { owner: true }, async () => {
-    if (runtime.current.kind !== "desktop") {
+    const sdk = nativeControl.tofuNativeSdk;
+    if (runtime.current.kind !== "desktop" || !sdk) {
       return problem(409, { detail: "Use the browser download to save the installation CA" });
     }
     if (!localCertificate()) {
       return problem(404, { detail: "Create the local network certificate first" });
     }
-    const folder = await runtime.current.desktop.dialogs.selectDirectory({
+    const [folder] = await sdk.Utils.openFileDialog({
+      allowsMultipleSelection: false,
+      canChooseDirectory: true,
+      canChooseFiles: false,
       startingFolder: join(homedir(), "Downloads"),
     });
     if (!folder) {
@@ -87,7 +92,7 @@ export const connectionsPlugin = new Elysia({ name: "tofu-connections-api" })
     } catch {
       return problem(503, { detail: "The installation CA could not be saved in this folder" });
     }
-    runtime.current.desktop.shell.showItemInFolder(path);
+    sdk.Utils.showItemInFolder(path);
     return { path };
   })
   .post("/connections/tailscale/enroll", { owner: true }, async ({ access, embeddedTailscale }) => {

@@ -584,28 +584,14 @@ export class ConnectionsService {
   /** Lifecycle cleanup continues through failures and waits for any configuration change. */
   async close() {
     const turn = this.reserve();
-    const errors: unknown[] = [];
-    try {
-      await turn.previous;
-      try {
-        const closed = await this.closeLan();
-        if (closed instanceof ElysiaStatus) {
-          errors.push(new Error(closed.response.detail));
-        }
-      } catch (error) {
-        errors.push(error);
-      }
-      try {
-        await this.options.embeddedTailscale[Symbol.asyncDispose]();
-      } catch (error) {
-        errors.push(error);
-      }
-      this.closed("tailscale");
-    } finally {
-      turn.release();
-    }
-    if (errors.length > 0) {
-      throw new AggregateError(errors, "Tofu could not stop every connection service");
+    await using cleanup = new AsyncDisposableStack();
+    cleanup.defer(turn.release);
+    await turn.previous;
+    cleanup.defer(() => this.closed("tailscale"));
+    cleanup.use(this.options.embeddedTailscale);
+    const closed = await this.closeLan();
+    if (closed instanceof ElysiaStatus) {
+      throw new Error(closed.response.detail);
     }
   }
 

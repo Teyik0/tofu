@@ -7,28 +7,21 @@ import { ConnectionsService } from "./service";
 
 export const connectionsServicePlugin = new Elysia({ name: "tofu-connections-service" })
   .use(databasePlugin)
-  .decorate((dependencies) => ({
-    ...dependencies,
-    embeddedTailscale: new EmbeddedTailscale(
+  .decorate((dependencies) => {
+    const embeddedTailscale = new EmbeddedTailscale(
       join(instance.dataDir, "tailscale"),
       join(instance.dataDir, "tls")
-    ),
-  }))
-  .use((app) =>
-    app.decorate((dependencies) => {
-      const defaultPort = instance.profile === "dev" ? 3030 : 3031;
-      const connections = new ConnectionsService({
-        dataDir: instance.dataDir,
-        db: dependencies.db,
-        defaultLanPort: instance.profile === "dev" ? 3442 : 3443,
-        defaultPort: process.env.TOFU_PORT === undefined ? defaultPort : instance.port,
-        embeddedTailscale: dependencies.embeddedTailscale,
-        fixedPort: instance.desktop ? null : instance.port,
-        now: Date.now,
-      });
-
-      app.onStart(connections.start.bind(connections));
-
-      return { ...dependencies, connections };
-    })
-  );
+    );
+    const defaultPort = instance.profile === "dev" ? 3030 : 3031;
+    const connections = new ConnectionsService({
+      dataDir: instance.dataDir,
+      db: dependencies.db,
+      defaultLanPort: instance.profile === "dev" ? 3442 : 3443,
+      defaultPort: process.env.TOFU_PORT === undefined ? defaultPort : instance.port,
+      embeddedTailscale,
+      fixedPort: instance.desktop ? null : instance.port,
+      now: Date.now,
+    });
+    dependencies.resources.defer(connections.close.bind(connections));
+    return { ...dependencies, connections, embeddedTailscale };
+  });

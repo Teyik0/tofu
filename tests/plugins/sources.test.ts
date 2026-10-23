@@ -25,6 +25,9 @@ test("source configuration persists, releases are searchable and provider failur
     sourceId: "nyaa",
   });
   upstream.state.failSource = true;
+  const tested = await server.client.plugins({ id: "nyaa" }).test.post();
+  expect(tested.status).toBe(502);
+  expect(tested.error?.value).toMatchObject({ detail: "Source unavailable (HTTP 503)" });
   const failed = success(
     await server.client.discover.post({ query: "Example", sources: ["nyaa"] })
   );

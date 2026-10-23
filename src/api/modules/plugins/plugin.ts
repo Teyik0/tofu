@@ -4,10 +4,11 @@ import { PluginsService, pluginEndpoints } from "./service";
 
 export const pluginRegistryPlugin = new Elysia({ name: "tofu-plugin-registry-service" })
   .use(databasePlugin)
-  .decorate((dependencies) => ({
-    ...dependencies,
-    plugins: new PluginsService(dependencies.db, {
+  .decorate((dependencies) => {
+    const plugins = new PluginsService(dependencies.db, {
       endpoints: pluginEndpoints,
       now: Date.now,
-    }),
-  }));
+    });
+    dependencies.resources.defer(plugins.close.bind(plugins));
+    return { ...dependencies, plugins };
+  });

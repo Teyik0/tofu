@@ -9,19 +9,37 @@ const remoteServers = process.env.TOFU_TEST_REMOTE_SERVERS;
 
 if (remoteServers) {
   const fixtures = JSON.parse(remoteServers) as RemoteServerFixture[];
-  const catalog = new ServerCatalog(join(process.env.TOFU_DATA_DIR!, "native"));
+  const dataDir = process.env.TOFU_DATA_DIR;
+  if (!dataDir) {
+    throw new Error("Remote server fixtures require a test data directory");
+  }
+  const catalog = new ServerCatalog(join(dataDir, "native"));
 
   catalog.value.servers.push(...fixtures.map((fixture) => fixture.server));
 
   nativeControl.tofuNativeThreads = new RemoteThreads({
     catalog,
-    memory: new Map(
-      fixtures.map((fixture) => [
-        fixture.server.serverId,
-        fixture.token,
-      ])
-    ),
+    memory: new Map(fixtures.map((fixture) => [fixture.server.serverId, fixture.token])),
     service: "tofu-integration",
+  });
+
+  process.on("message", async (command: { type: string; serverId: string; origins?: string[] }) => {
+    if (command.type !== "remote-catalog") {
+      return;
+    }
+    await nativeControl.tofuNativeThreads?.stop(command.serverId);
+    const server = catalog.value.servers.find(
+      (candidate) => candidate.serverId === command.serverId
+    );
+    if (server && command.origins) {
+      server.origins = command.origins;
+      nativeControl.tofuNativeThreads?.start(command.serverId);
+    } else {
+      catalog.value.servers = catalog.value.servers.filter(
+        (candidate) => candidate.serverId !== command.serverId
+      );
+    }
+    process.send?.({ changed: command.serverId });
   });
 }
 
@@ -41,13 +59,20 @@ if (shutdownPath) {
 const provider = process.env.TOFU_TEST_PROVIDER;
 if (provider) {
   const originalFetch = globalThis.fetch;
+  const paths: Record<string, string> = {
+    "anilist.co": "/anilist",
+    "api.typesafe.ai": "/jev",
+    "graphql.anilist.co": "/anilist",
+    "nyaa.si": "/nyaa",
+  };
   globalThis.fetch = Object.assign(
     async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const request = new Request(input, init);
       const url = new URL(request.url);
-      if (["graphql.anilist.co", "anilist.co", "nyaa.si"].includes(url.hostname)) {
+      const path = paths[url.hostname];
+      if (path) {
         const target = new URL(provider);
-        target.pathname = url.hostname === "nyaa.si" ? "/nyaa" : "/anilist";
+        target.pathname = path;
         target.search = url.search;
         return await originalFetch(new Request(target, request));
       }

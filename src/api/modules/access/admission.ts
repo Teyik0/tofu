@@ -12,6 +12,7 @@ export function isPublicRequest(method: string, pathname: string) {
         "/pair",
         "/signed-out",
         "/session-transfer",
+        "/reconnect",
         "/favicon.ico",
         "/public/icon.png",
         "/public/apple-touch-icon.png",
@@ -22,7 +23,13 @@ export function isPublicRequest(method: string, pathname: string) {
     );
   }
   return (
-    method === "POST" && ["/api/auth/pair", "/api/auth/session-transfers/redeem"].includes(pathname)
+    method === "POST" &&
+    [
+      "/api/auth/pair",
+      "/api/auth/session-transfers/redeem",
+      "/api/auth/reconnections/claim",
+      "/api/auth/reconnections/complete",
+    ].includes(pathname)
   );
 }
 

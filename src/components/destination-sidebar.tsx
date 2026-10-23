@@ -1,11 +1,20 @@
 import { Link, useRouter } from "@teyik0/furin/link";
 import { useAtomValue, useSetAtom } from "jotai";
 import { FolderIcon, PencilIcon, PlugIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
-import { type MouseEvent, memo, startTransition, useActionState, useEffect, useState } from "react";
+import {
+  type MouseEvent,
+  memo,
+  startTransition,
+  useActionState,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import type { LiveState } from "../api/modules/dashboard/projection";
 import type { Destination } from "../api/modules/destinations/model";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { errorMessage } from "../lib/errors";
+import type { RemoteThreadSelection } from "../lib/navigation";
 import { isSupersededNavigation, showDestination } from "../lib/navigation";
 import type { ModalKind } from "../state/workspace";
 import { modalAtom, sessionAtom } from "../state/workspace";
@@ -126,9 +135,11 @@ export const DestinationSidebar = memo(
   function DestinationSidebarView({
     data,
     active,
+    remoteThread,
   }: {
     data: LiveState | null;
     active: string | null;
+    remoteThread: RemoteThreadSelection | null;
   }) {
     const router = useRouter();
     const open = useSetAtom(modalAtom);
@@ -136,8 +147,46 @@ export const DestinationSidebar = memo(
     const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
     const serverFilter = capabilities?.hostNative ? selectedServerId : null;
     const showCurrentServer = serverFilter === null || serverFilter === data?.server.id;
+    const [remoteNames, setRemoteNames] = useState<Record<string, readonly string[]>>({});
+    const reportRemoteNames = useCallback((serverId: string, names: readonly string[] | null) => {
+      setRemoteNames((previous) => {
+        const current = previous[serverId];
+        if (names === null) {
+          if (!current) {
+            return previous;
+          }
+          const next = { ...previous };
+          delete next[serverId];
+          return next;
+        }
+        if (
+          current?.length === names.length &&
+          current.every((name, index) => name === names[index])
+        ) {
+          return previous;
+        }
+        return { ...previous, [serverId]: names };
+      });
+    }, []);
+    const nameCounts = new Map<string, number>();
+    if (capabilities?.hostNative && serverFilter === null) {
+      const sources = [
+        data?.destinations.map((destination) => destination.name) ?? [],
+        ...Object.values(remoteNames),
+      ];
+      for (const names of sources) {
+        // Several matching threads on one server count as one origin.
+        for (const name of new Set(names)) {
+          nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+        }
+      }
+    }
+    const duplicateNames = new Set(
+      [...nameCounts].filter(([, count]) => count > 1).map(([name]) => name)
+    );
     // Editing threads needs their host folders, which only administrators receive.
-    const editable = (id: string) => data?.host?.destinations.find((item) => item.id === id);
+    const editable = (id: string) =>
+      remoteThread === null ? data?.host?.destinations.find((item) => item.id === id) : undefined;
     const [navigationError, openPlugins] = useActionState<string | null, void>(async () => {
       try {
         await router.navigate({ to: "/plugins" });
@@ -155,7 +204,7 @@ export const DestinationSidebar = memo(
         <SidebarHeader>
           <div className="sidebar-brand-row">
             <Link
-              aria-current={active === null ? "page" : undefined}
+              aria-current={active === null && remoteThread === null ? "page" : undefined}
               aria-label="All torrents"
               className="sidebar-brand"
               resetScroll={false}
@@ -167,7 +216,7 @@ export const DestinationSidebar = memo(
             </Link>
             <SidebarToggle />
           </div>
-          <GlobalSearchTrigger />
+          {remoteThread === null ? <GlobalSearchTrigger /> : null}
           <nav aria-label="Sidebar shortcuts">
             <SidebarMenu className="sidebar-shortcuts">
               {capabilities?.administer ? (
@@ -207,7 +256,12 @@ export const DestinationSidebar = memo(
                             to="/thread/:id"
                           />
                         }
-                        tooltip={{ children: destination.name, hidden: false }}
+                        tooltip={{
+                          children: duplicateNames.has(destination.name)
+                            ? `${destination.name} · This computer`
+                            : destination.name,
+                          hidden: false,
+                        }}
                       >
                         <DestinationIcon name={destination.icon} />
                       </SidebarMenuButton>
@@ -228,7 +282,7 @@ export const DestinationSidebar = memo(
                   selectedServerId={serverFilter}
                 />
               ) : null}
-              {data?.host && showCurrentServer ? (
+              {data?.host && showCurrentServer && remoteThread === null ? (
                 <ActionTooltip>
                   <Button
                     aria-label="Create a tab"
@@ -254,8 +308,13 @@ export const DestinationSidebar = memo(
                       open={open}
                     >
                       <SidebarMenuButton
-                        aria-label={destination.name}
-                        className="sidebar-thread-link"
+                        aria-label={
+                          duplicateNames.has(destination.name)
+                            ? `${destination.name} · This computer`
+                            : destination.name
+                        }
+                        className="sidebar-thread-link data-[ambiguous=true]:h-auto! data-[ambiguous=true]:min-h-11 group-data-[collapsible=icon]:h-9! group-data-[collapsible=icon]:min-h-0!"
+                        data-ambiguous={duplicateNames.has(destination.name)}
                         isActive={active === destination.id}
                         render={
                           <Link
@@ -266,10 +325,21 @@ export const DestinationSidebar = memo(
                           />
                         }
                         title={editable(destination.id)?.downloadPath ?? destination.name}
-                        tooltip={destination.name}
+                        tooltip={
+                          duplicateNames.has(destination.name)
+                            ? `${destination.name} · This computer`
+                            : destination.name
+                        }
                       >
                         <DestinationIcon name={destination.icon} />
-                        <span>{destination.name}</span>
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="truncate">{destination.name}</span>
+                          {duplicateNames.has(destination.name) ? (
+                            <small className="truncate font-normal text-[10px] text-muted-foreground">
+                              This computer
+                            </small>
+                          ) : null}
+                        </span>
                       </SidebarMenuButton>
                     </DestinationMenu>
                     <SidebarMenuBadge>
@@ -291,7 +361,10 @@ export const DestinationSidebar = memo(
                 ))}
               {capabilities?.hostNative && data ? (
                 <SidebarRemoteServers
+                  activeRemoteThread={remoteThread}
                   currentServerId={data.server.id}
+                  duplicateNames={duplicateNames}
+                  onNamesChange={reportRemoteNames}
                   selectedServerId={serverFilter}
                 />
               ) : null}
@@ -347,6 +420,8 @@ export const DestinationSidebar = memo(
   },
   (previous, next) =>
     previous.active === next.active &&
+    previous.remoteThread?.serverId === next.remoteThread?.serverId &&
+    previous.remoteThread?.threadId === next.remoteThread?.threadId &&
     previous.data?.destinations === next.data?.destinations &&
     previous.data?.host === next.data?.host &&
     previous.data?.server === next.data?.server &&

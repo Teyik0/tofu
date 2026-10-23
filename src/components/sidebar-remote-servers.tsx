@@ -1,8 +1,10 @@
 import { useQuery } from "@teyik0/furin/client";
+import { Link } from "@teyik0/furin/link";
 import { ListFilterIcon, ServerIcon } from "lucide-react";
 import { useEffect } from "react";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
+import type { RemoteThreadSelection } from "../lib/navigation";
 import { DestinationIcon } from "./destination-icon";
 import { Button } from "./ui/button";
 import {
@@ -16,19 +18,34 @@ import {
 import { SidebarMenuItem } from "./ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
+type SidebarNameReporter = (serverId: string, names: readonly string[] | null) => void;
+
 function SidebarRemoteServer({
+  activeRemoteThread,
   server,
   visible,
+  duplicateNames,
+  onNamesChange,
 }: {
+  activeRemoteThread: RemoteThreadSelection | null;
   server: { alias: string; name: string; serverId: string };
   visible: boolean;
+  duplicateNames: ReadonlySet<string>;
+  onNamesChange: SidebarNameReporter;
 }) {
   const { data, error } = useQuery(api.desktop.servers({ id: server.serverId }).state.get.live());
+  const state = error ? null : data;
+  const snapshot = state?.connection === "ready" ? state.snapshot : null;
+
+  useEffect(() => {
+    onNamesChange(server.serverId, snapshot ? snapshot.threads.map((thread) => thread.name) : null);
+  }, [onNamesChange, server.serverId, snapshot]);
+
+  useEffect(() => () => onNamesChange(server.serverId, null), [onNamesChange, server.serverId]);
+
   if (!visible) {
     return null;
   }
-  const state = error ? null : data;
-  const snapshot = state?.connection === "ready" ? state.snapshot : null;
   const name = server.alias || state?.server.name || server.name;
 
   if (!snapshot) {
@@ -67,15 +84,30 @@ function SidebarRemoteServer({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
-              aria-disabled="true"
+            <Link
+              aria-current={
+                activeRemoteThread?.serverId === server.serverId &&
+                activeRemoteThread.threadId === thread.id
+                  ? "page"
+                  : undefined
+              }
               aria-label={`${thread.name} · ${name}`}
-              className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-foreground text-xs outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:justify-center"
-              type="button"
+              className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sidebar-foreground text-xs outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[ambiguous=true]:h-auto data-[ambiguous=true]:min-h-11 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground group-data-[collapsible=icon]:h-9! group-data-[collapsible=icon]:min-h-0! group-data-[collapsible=icon]:justify-center"
+              data-active={
+                activeRemoteThread?.serverId === server.serverId &&
+                activeRemoteThread.threadId === thread.id
+              }
+              data-ambiguous={duplicateNames.has(thread.name)}
+              params={{ id: thread.id, serverId: server.serverId }}
+              resetScroll={false}
+              to="/servers/:serverId/thread/:id"
             >
               <DestinationIcon name={thread.icon} />
-              <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">
-                {thread.name}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
+                <span className="truncate">{thread.name}</span>
+                {duplicateNames.has(thread.name) ? (
+                  <small className="truncate text-[10px] text-muted-foreground">{name}</small>
+                ) : null}
               </span>
               <ServerIcon
                 aria-hidden="true"
@@ -84,7 +116,7 @@ function SidebarRemoteServer({
               <span className="text-[10px] text-muted-foreground tabular-nums group-data-[collapsible=icon]:hidden">
                 {counts.get(thread.id) ?? 0}
               </span>
-            </button>
+            </Link>
           }
         />
         <TooltipContent side="right" sideOffset={10}>
@@ -92,7 +124,6 @@ function SidebarRemoteServer({
             <strong className="block">{thread.name}</strong>
             <p>{name}</p>
             <p>{role} · Connected</p>
-            <p className="text-muted-foreground">Opening remote threads is not available yet.</p>
           </div>
         </TooltipContent>
       </Tooltip>
@@ -101,11 +132,17 @@ function SidebarRemoteServer({
 }
 
 export function SidebarRemoteServers({
+  activeRemoteThread,
   currentServerId,
   selectedServerId,
+  duplicateNames,
+  onNamesChange,
 }: {
+  activeRemoteThread: RemoteThreadSelection | null;
   currentServerId: string;
   selectedServerId: string | null;
+  duplicateNames: ReadonlySet<string>;
+  onNamesChange: SidebarNameReporter;
 }) {
   const { data, error } = useQuery(api.desktop.servers.get.live());
   if (error) {
@@ -121,7 +158,10 @@ export function SidebarRemoteServers({
     .filter((server) => server.serverId !== currentServerId)
     .map((server) => (
       <SidebarRemoteServer
+        activeRemoteThread={activeRemoteThread}
+        duplicateNames={duplicateNames}
         key={server.serverId}
+        onNamesChange={onNamesChange}
         server={server}
         visible={selectedServerId === null || selectedServerId === server.serverId}
       />

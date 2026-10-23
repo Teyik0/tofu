@@ -20,6 +20,7 @@ import { api } from "../../../lib/client";
 import { errorMessage } from "../../../lib/errors";
 import type { ServerSession } from "../../../state/workspace";
 import { type DeviceSummary, roleNames } from "./_authorized-devices";
+import { BrowserReconnection } from "./_browser-reconnection";
 import { QrCode } from "./_qr-code";
 import { serverAddresses } from "./_server-addresses";
 import type { ConnectionsState } from "./index";
@@ -142,12 +143,22 @@ export function DeviceDialog({
                   value={address.url}
                 />
               ) : null}
-              <QrCode label={`QR code to open ${session.server.name}`} value={address.url} />
+              {device?.kind === "browser" ? null : (
+                <QrCode label={`QR code to open ${session.server.name}`} value={address.url} />
+              )}
               <code className="connections-address">{address.url}</code>
               <p className="connections-muted">
-                Scan with the browser you paired at this address. A different browser or address, or
-                an expired session, requires a new invitation.
+                Open this address in a browser that is already connected. To connect another
+                browser, request authorization below.
               </p>
+              {device?.kind === "browser" ? (
+                <BrowserReconnection
+                  device={device}
+                  key={address.url}
+                  onChanged={onChanged}
+                  origin={address.url}
+                />
+              ) : null}
             </div>
           ) : (
             <p className="connections-muted">

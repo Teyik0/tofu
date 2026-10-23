@@ -224,11 +224,11 @@ export class RemoteThreads extends EventEmitter {
       (candidate) => candidate.serverId === serverId
     );
 
-    if (
-      this.#generations.get(serverId) !== generation ||
-      !current ||
-      JSON.stringify([current.deviceId, current.origins]) !== configuration
-    ) {
+    if (!current || JSON.stringify([current.deviceId, current.origins]) !== configuration) {
+      return problem(409, { detail: "The saved connection changed during this read" });
+    }
+
+    if (this.#generations.get(serverId) !== generation) {
       return result;
     }
 
@@ -259,6 +259,7 @@ export class RemoteThreads extends EventEmitter {
     return result;
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep ordered address fallback and credential admission in one boundary.
   async #open(serverId: string, signal: AbortSignal) {
     const { catalog, memory, service } = this.#options;
     const server = catalog.value.servers.find((candidate) => candidate.serverId === serverId);
@@ -268,98 +269,179 @@ export class RemoteThreads extends EventEmitter {
     }
 
     const saved = { ...server, origins: [...server.origins] };
-    const [origin] = saved.origins;
-    if (!origin) {
+    if (saved.origins.length === 0) {
       return problem(409, { detail: "This server has no saved address" });
     }
 
-    try {
-      const token = server.temporary
-        ? memory.get(server.serverId)
-        : await Bun.secrets.get({
-            name: `${server.serverId}/${server.deviceId}`,
-            service,
+    const deadline = performance.now() + 8000;
+    for (const [index, origin] of saved.origins.entries()) {
+      if (signal.aborted) {
+        break;
+      }
+      try {
+        const token = server.temporary
+          ? memory.get(server.serverId)
+          : // biome-ignore lint/performance/noAwaitInLoops: Each saved address is tried only after the previous attempt failed.
+            await Bun.secrets.get({
+              name: `${server.serverId}/${server.deviceId}`,
+              service,
+            });
+
+        if (!token) {
+          return problem(401, {
+            detail: "This connection has no credential. Pair it again",
           });
-
-      if (!token) {
-        return problem(401, {
-          detail: "This connection has no credential. Pair it again",
-        });
-      }
-
-      const request = {
-        redirect: "error" as const,
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
-      };
-      const publicClient = treaty<typeof publicDocumentsPlugin>(origin, {
-        fetch: request,
-      });
-      const { data: descriptor, error } = await publicClient[".well-known"].tofu.get();
-
-      if (error) {
-        return problem(502, { detail: "This address did not identify a Tofu server" });
-      }
-
-      if (descriptor?.product !== "tofu" || descriptor.serverId !== server.serverId) {
-        return problem(409, {
-          detail: "Server identity changed. No credential was sent",
-        });
-      }
-
-      if (
-        descriptor.protocol?.major !== 1 ||
-        descriptor.protocol.minClient > 1 ||
-        descriptor.protocol.maxClient < 1
-      ) {
-        return problem(409, { detail: "This server uses an incompatible Tofu version" });
-      }
-
-      const native = treaty<typeof accessRoutesPlugin>(`${origin}/api`, {
-        fetch: request,
-        headers: { authorization: `Bearer ${token}` },
-      });
-
-      const windowSession = await native.auth["window-sessions"].post();
-
-      if (windowSession.error) {
-        if (windowSession.status === 401) {
-          return problem(401, { detail: "This connection expired or was revoked" });
         }
-        if (windowSession.error.status === 403) {
-          return problem(403, { detail: "This connection cannot open a desktop session" });
+
+        const remaining = Math.floor(deadline - performance.now());
+        if (remaining <= 0) {
+          break;
         }
-        return problem(502, { detail: "The server could not create a desktop session" });
-      }
+        const timeout = Math.max(1, Math.floor(remaining / (saved.origins.length - index)));
+        const request = {
+          redirect: "error" as const,
+          signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
+        };
+        const publicClient = treaty<typeof publicDocumentsPlugin>(origin, {
+          fetch: request,
+        });
+        const { data: descriptor, error } = await publicClient[".well-known"].tofu.get();
 
-      const headers = {
-        cookie: `${windowSession.data.cookie}=${windowSession.data.value}`,
-        origin,
-      };
-      const access = treaty<typeof accessRoutesPlugin>(`${origin}/api`, {
-        fetch: { redirect: "error" },
-        headers,
-      });
-      const library = treaty<typeof dashboardPlugin>(`${origin}/api`, {
-        fetch: { redirect: "error" },
-        headers,
-      });
+        if (error) {
+          continue;
+        }
 
-      const stream = treaty<typeof torrentPlugin>(`${origin}/api`, {
-        fetch: { redirect: "error" },
-        headers,
-      });
-      return { access, library, server: saved, stream };
-    } catch (cause) {
-      if (!signal.aborted) {
+        if (descriptor?.product !== "tofu" || descriptor.serverId !== server.serverId) {
+          return problem(409, {
+            detail: "Server identity changed. No credential was sent",
+          });
+        }
+
+        if (
+          descriptor.protocol?.major !== 1 ||
+          descriptor.protocol.minClient > 1 ||
+          descriptor.protocol.maxClient < 1
+        ) {
+          return problem(409, { detail: "This server uses an incompatible Tofu version" });
+        }
+
+        const native = treaty<typeof accessRoutesPlugin>(`${origin}/api`, {
+          fetch: request,
+          headers: { authorization: `Bearer ${token}` },
+        });
+
+        const windowSession = await native.auth["window-sessions"].post();
+
+        if (windowSession.error) {
+          if (windowSession.status === 401) {
+            return problem(401, { detail: "This connection expired or was revoked" });
+          }
+          if (windowSession.error.status === 403) {
+            return problem(403, { detail: "This connection cannot open a desktop session" });
+          }
+          continue;
+        }
+
+        const headers = {
+          cookie: `${windowSession.data.cookie}=${windowSession.data.value}`,
+          origin,
+        };
+        const access = treaty<typeof accessRoutesPlugin>(`${origin}/api`, {
+          fetch: { redirect: "error" },
+          headers,
+        });
+        const library = treaty<typeof dashboardPlugin>(`${origin}/api`, {
+          fetch: { redirect: "error" },
+          headers,
+        });
+
+        const stream = treaty<typeof torrentPlugin>(`${origin}/api`, {
+          fetch: { redirect: "error" },
+          headers,
+        });
+        return { access, library, server: saved, stream };
+      } catch (cause) {
+        if (signal.aborted) {
+          break;
+        }
         console.error("Unable to open remote threads", {
           error: cause instanceof Error ? cause.name : "UnknownError",
           serverId,
         });
       }
-      return problem(503, {
-        detail: "The server or its saved credential is unavailable",
-      });
     }
+    return problem(503, {
+      detail: "The server or its saved credential is unavailable",
+    });
+  }
+
+  async readTorrent(
+    serverId: string,
+    threadId: string,
+    torrentId: string,
+    requestSignal: AbortSignal
+  ) {
+    const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(10_000)]);
+    const opened = await this.#open(serverId, signal);
+    if (opened instanceof ElysiaStatus) {
+      return opened;
+    }
+
+    const { access, stream, server } = opened;
+    let reads: [
+      Awaited<ReturnType<typeof access.session.get>>,
+      Awaited<ReturnType<ReturnType<typeof stream.torrents>["get"]>>,
+    ];
+    let signedOut: Awaited<ReturnType<typeof access.auth.logout.post>> | undefined;
+    {
+      await using resources = new AsyncDisposableStack();
+      resources.defer(async () => {
+        signedOut = await access.auth.logout.post(undefined, {
+          fetch: { signal: AbortSignal.timeout(2000) },
+        });
+      });
+      reads = await Promise.all([
+        access.session.get({ fetch: { signal } }),
+        stream.torrents({ id: torrentId }).get({ fetch: { signal } }),
+      ]);
+    }
+
+    const current = this.#options.catalog.value.servers.find(
+      (candidate) => candidate.serverId === serverId
+    );
+    if (
+      !current ||
+      current.deviceId !== server.deviceId ||
+      JSON.stringify(current.origins) !== JSON.stringify(server.origins)
+    ) {
+      return problem(409, { detail: "The saved connection changed during this read" });
+    }
+
+    const [session, torrent] = reads;
+    const failure = session.error ?? torrent.error ?? signedOut?.error;
+    if (failure?.status === 401) {
+      return problem(401, { detail: "This connection expired or was revoked" });
+    }
+    if (failure?.status === 403) {
+      return problem(403, { detail: "This connection cannot read this torrent" });
+    }
+    if (torrent.error?.status === 404) {
+      return problem(404, { detail: "This torrent does not exist on this server" });
+    }
+    if (failure || !session.data || !torrent.data) {
+      return problem(502, { detail: "The server could not complete the torrent read" });
+    }
+    if (session.data.server.id !== serverId) {
+      return problem(409, { detail: "The response belongs to another server" });
+    }
+    if (torrent.data.destinationId !== threadId) {
+      return problem(404, { detail: "This torrent does not belong to this thread" });
+    }
+    return {
+      capabilities: session.data.capabilities,
+      server: session.data.server,
+      torrent: torrent.data,
+    };
   }
 
   async read(serverId: string) {
@@ -386,6 +468,17 @@ export class RemoteThreads extends EventEmitter {
       });
     }
 
+    const current = this.#options.catalog.value.servers.find(
+      (candidate) => candidate.serverId === serverId
+    );
+    if (
+      !current ||
+      current.deviceId !== server.deviceId ||
+      JSON.stringify(current.origins) !== JSON.stringify(server.origins)
+    ) {
+      return problem(409, { detail: "The saved connection changed during this read" });
+    }
+
     const [session, state] = reads;
     const failure = session.error ?? state.error ?? signedOut.error;
 
@@ -410,6 +503,11 @@ export class RemoteThreads extends EventEmitter {
       torrents: state.data.torrents.map((torrent) => ({
         destinationId: torrent.destinationId,
         id: torrent.id,
+        length: torrent.length,
+        name: torrent.name,
+        progress: torrent.progress,
+        status: torrent.status,
+        storageIssue: torrent.storageIssue,
       })),
     };
   }
@@ -477,6 +575,11 @@ export class RemoteThreads extends EventEmitter {
               torrents: state.torrents.map((torrent) => ({
                 destinationId: torrent.destinationId,
                 id: torrent.id,
+                length: torrent.length,
+                name: torrent.name,
+                progress: torrent.progress,
+                status: torrent.status,
+                storageIssue: torrent.storageIssue,
               })),
             };
             const projection = JSON.stringify(snapshot);

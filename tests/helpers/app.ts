@@ -24,7 +24,7 @@ export async function application(options?: {
   return {
     directory,
     downloadPath,
-    async start(listen?: { port?: number }) {
+    async start(listen?: { port?: number; onMessage?: (message: unknown) => void }) {
       const shutdownPath = join(directory, `shutdown-${crypto.randomUUID()}`);
       const child = Bun.spawn(
         [process.execPath, "--preload", join(import.meta.dir, "preload.ts"), "src/server.ts"],
@@ -46,6 +46,7 @@ export async function application(options?: {
               : undefined,
             TOFU_TEST_SHUTDOWN: process.platform === "win32" ? shutdownPath : undefined,
           },
+          ipc: listen?.onMessage,
           stderr: "pipe",
           stdout: "pipe",
         }
@@ -115,7 +116,7 @@ export async function application(options?: {
             }
           },
         }).api;
-        return { client, stop, url };
+        return { child, client, stop, url };
       } catch (error) {
         if (child.exitCode === null) {
           child.kill("SIGKILL");

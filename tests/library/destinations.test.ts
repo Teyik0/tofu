@@ -63,9 +63,7 @@ test("a Playback desktop window can read existing threads", async () => {
     role: "playback",
   });
 
-  const state = success(
-    await windowClient.state.get({ query: { detail: "false" } })
-  );
+  const state = success(await windowClient.state.get({ query: { detail: "false" } }));
   expect(state.server).toEqual(pairing.server);
   expect(state.destinations).toContainEqual(
     expect.objectContaining({ id: destination.id, name: "Anime" })

@@ -28,7 +28,7 @@ export class ReleaseAutomationService {
     closed: false,
     started: false,
   };
-  private readonly runs = new Map<string, Promise<AutomationState>>();
+  private readonly runs = new Map<string, ReturnType<ReleaseAutomationService["execute"]>>();
   private readonly replacements = new Map<string, Promise<void>>();
   private readonly additions = new Map<string, Promise<void>>();
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -213,18 +213,11 @@ export class ReleaseAutomationService {
     }
     // Reserve the run before its first await so concurrent requests share it.
     const task = (async () => {
-      try {
-        const executed = await this.execute(rule);
-        if (!(executed instanceof ElysiaStatus)) {
-          return executed;
-        }
-      } catch {
-        // Unexpected failures are recorded like rejected checks; the next tick retries.
-      }
-      if (this.current(rule)) {
+      const result = await this.execute(rule);
+      if (result instanceof ElysiaStatus && this.current(rule)) {
         this.options.automation.recordFailure(id, rule.revision);
       }
-      return this.snapshot();
+      return result;
     })();
     this.runs.set(id, task);
     try {

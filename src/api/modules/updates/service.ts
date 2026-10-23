@@ -1,6 +1,7 @@
 import { chmod, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
-import type { DesktopCapabilities } from "@teyik0/furin-electrobun/host";
+import type { DesktopContext } from "@teyik0/furin-electrobun/host";
+import type { Updater } from "electrobun/main";
 import { problem } from "elysia";
 import { desktopTarget, installerName } from "../../../../.github/scripts/platform";
 
@@ -11,7 +12,8 @@ interface UpdateOptions {
   apiOrigin: string;
   arch: string;
   dataDir: string;
-  native?: DesktopCapabilities["updates"];
+  install?: DesktopContext["updates"]["install"];
+  native?: typeof Updater;
   notify: (version: string) => void;
   platform: string;
   version: string;
@@ -85,13 +87,12 @@ export class UpdatesService {
   private readonly options: UpdateOptions;
   private readonly path: string;
   private readonly state: State;
+  private readonly lifetime = new AbortController();
   private asset: ReleaseAsset | null = null;
   private pending: Promise<UpdateState> | null = null;
-  private mutations: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | undefined;
   private preparation: Promise<void> | null = null;
   private restart: ReturnType<typeof setTimeout> | undefined;
-  private unsubscribe: (() => void) | undefined;
   private readonly snapshotState: UpdateState;
 
   private constructor(options: UpdateOptions, state: State) {
@@ -112,7 +113,10 @@ export class UpdatesService {
     this.observeNative();
   }
   private observeNative() {
-    this.unsubscribe ??= this.options.native?.subscribe((entry) => {
+    this.options.native?.onStatusChange((entry) => {
+      if (this.lifetime.signal.aborted) {
+        return;
+      }
       if (entry.status === "download-progress" && this.snapshotState.status === "downloading") {
         this.snapshotState.progress = entry.details?.progress ?? null;
       }
@@ -140,16 +144,23 @@ export class UpdatesService {
   snapshot(): UpdateState {
     return { ...this.snapshotState };
   }
-  attachNative(native: DesktopCapabilities["updates"], notify: (version: string) => void) {
-    this.unsubscribe?.();
-    this.unsubscribe = undefined;
+  attachNative(
+    native: typeof Updater,
+    install: DesktopContext["updates"]["install"],
+    notify: (version: string) => void
+  ) {
+    if (this.lifetime.signal.aborted) {
+      return;
+    }
+    this.options.native?.onStatusChange(null);
     this.options.native = native;
+    this.options.install = install;
     this.options.notify = notify;
     this.snapshotState.automatic = true;
     this.observeNative();
   }
   start() {
-    if (this.timer) {
+    if (this.lifetime.signal.aborted || this.timer) {
       return;
     }
     this.observeNative();
@@ -162,12 +173,22 @@ export class UpdatesService {
     );
     this.timer.unref();
   }
-  close() {
+  async close() {
     clearInterval(this.timer);
     clearTimeout(this.restart);
-    this.unsubscribe?.();
-    this.unsubscribe = undefined;
     this.timer = undefined;
+    this.lifetime.abort();
+    this.options.native?.onStatusChange(null);
+
+    // Installation initiates shutdown itself; awaiting it here would deadlock.
+    const settled = await Promise.allSettled([this.pending, this.preparation]);
+    const failures = settled.filter((result) => result.status === "rejected");
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        "Unable to finish pending update operations"
+      );
+    }
   }
   private async persist() {
     const temporary = `${this.path}.tmp`;
@@ -175,34 +196,21 @@ export class UpdatesService {
     await chmod(temporary, 0o600);
     await rename(temporary, this.path);
   }
-  /** Runs after every earlier mutation; the queue slot is reserved before any await. */
-  private serial<T>(action: () => Promise<T>): Promise<T> {
-    const previous = this.mutations;
-    const next = (async () => {
-      await previous;
-      return await action();
-    })();
-    this.mutations = (async () => {
-      try {
-        await next;
-      } catch {
-        // The caller of `next` observes its failure; the queue continues.
-      }
-    })();
-    return next;
-  }
-  check(): Promise<UpdateState> {
+  async check() {
+    if (this.lifetime.signal.aborted) {
+      return problem(409, { detail: "The update service is shutting down" });
+    }
     if (["downloading", "ready", "restarting"].includes(this.snapshotState.status)) {
-      return Promise.resolve(this.snapshot());
+      return this.snapshot();
     }
     this.pending ??= (async () => {
       try {
-        return await this.serial(() => this.readLatest());
+        return await this.readLatest();
       } finally {
         this.pending = null;
       }
     })();
-    return this.pending;
+    return await this.pending;
   }
   private github(path: string, accept: string) {
     return fetch(`${this.options.apiOrigin}/repos/${repository}${path}`, {
@@ -212,12 +220,15 @@ export class UpdatesService {
         "X-GitHub-Api-Version": "2022-11-28",
       },
       redirect: "manual",
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(30_000)]),
     });
   }
-  private async readNativeLatest(native: DesktopCapabilities["updates"]) {
+  private async readNativeLatest(native: typeof Updater) {
     // Electrobun checks the public manifest without using GitHub's REST API quota.
-    const info = await native.check();
+    const info = await native.checkForUpdate();
+    if (this.lifetime.signal.aborted) {
+      return this.snapshot();
+    }
     this.snapshotState.checkedAt = Date.now();
     if (info.error) {
       this.snapshotState.status = "error";
@@ -244,6 +255,9 @@ export class UpdatesService {
     return this.snapshot();
   }
   private async readLatest() {
+    if (this.lifetime.signal.aborted) {
+      return this.snapshot();
+    }
     this.asset = null;
     Object.assign(this.snapshotState, {
       downloadName: null,
@@ -257,6 +271,9 @@ export class UpdatesService {
         return await this.readNativeLatest(this.options.native);
       }
       const response = await this.github("/releases/latest", "application/vnd.github+json");
+      if (this.lifetime.signal.aborted) {
+        return this.snapshot();
+      }
       this.snapshotState.checkedAt = Date.now();
       if (response.status === 401 || response.status === 403) {
         throw new Error(`GitHub rejected the update check (HTTP ${response.status})`);
@@ -269,6 +286,9 @@ export class UpdatesService {
         throw new Error(`GitHub is unavailable (HTTP ${response.status})`);
       }
       const latest = release(await response.json());
+      if (this.lifetime.signal.aborted) {
+        return this.snapshot();
+      }
       if (latest.draft || latest.prerelease) {
         throw new Error("No stable release available");
       }
@@ -292,12 +312,18 @@ export class UpdatesService {
         await this.persist();
       }
     } catch (error) {
+      if (this.lifetime.signal.aborted) {
+        return this.snapshot();
+      }
       this.snapshotState.status = "error";
       this.snapshotState.error = error instanceof Error ? error.message : "Unable to verify";
     }
     return this.snapshot();
   }
   prepare() {
+    if (this.lifetime.signal.aborted) {
+      return problem(409, { detail: "The update service is shutting down" });
+    }
     const { native } = this.options;
     if (!native) {
       return problem(409, { detail: "In-app updates require the installed desktop app" });
@@ -312,8 +338,11 @@ export class UpdatesService {
     // The download continues after this response; its outcome is published in the snapshot.
     this.preparation = (async () => {
       try {
-        await native.download();
-        const info = native.snapshot();
+        await native.downloadUpdate();
+        if (this.lifetime.signal.aborted) {
+          return;
+        }
+        const info = native.updateInfo();
         if (info.error || !info.updateReady || info.version !== this.snapshotState.latestVersion) {
           this.snapshotState.status = "available";
           this.snapshotState.error = info.error || "The update could not be prepared";
@@ -321,6 +350,9 @@ export class UpdatesService {
           this.snapshotState.status = "ready";
         }
       } catch (error) {
+        if (this.lifetime.signal.aborted) {
+          return;
+        }
         this.snapshotState.status = "available";
         this.snapshotState.error =
           error instanceof Error ? error.message : "Unable to prepare update";
@@ -332,17 +364,23 @@ export class UpdatesService {
     return this.snapshot();
   }
   install() {
-    const { native } = this.options;
-    if (!native || this.preparation || this.snapshotState.status !== "ready") {
+    if (this.lifetime.signal.aborted) {
+      return problem(409, { detail: "The update service is shutting down" });
+    }
+    const { native, install: installUpdate } = this.options;
+    if (!(native && installUpdate) || this.preparation || this.snapshotState.status !== "ready") {
       return problem(409, { detail: "Download an update before restarting" });
     }
     this.snapshotState.status = "restarting";
     this.snapshotState.error = null;
     const install = async () => {
       try {
-        await native.install();
+        await installUpdate();
       } catch (error) {
-        this.snapshotState.status = native.snapshot().updateReady ? "ready" : "available";
+        if (this.lifetime.signal.aborted) {
+          return;
+        }
+        this.snapshotState.status = native.updateInfo().updateReady ? "ready" : "available";
         this.snapshotState.error =
           error instanceof Error ? error.message : "Unable to install update";
       }
@@ -360,6 +398,9 @@ export class UpdatesService {
     return latest.assets.find((item) => item.name === name) ?? null;
   }
   async download() {
+    if (this.lifetime.signal.aborted) {
+      return problem(409, { detail: "The update service is shutting down" });
+    }
     if (!(this.asset && this.snapshotState.status === "available")) {
       return problem(409, { detail: "Check for updates before downloading the installer" });
     }
@@ -384,7 +425,10 @@ export class UpdatesService {
         return problem(502, { detail: "GitHub returned an invalid download URL" });
       }
       // The signed asset URL needs no GitHub credential; never forward stale headers there.
-      response = await fetch(target, { redirect: "error", signal: AbortSignal.timeout(120_000) });
+      response = await fetch(target, {
+        redirect: "error",
+        signal: AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(120_000)]),
+      });
     }
     if (!response.ok) {
       return problem(502, { detail: `Download unavailable (HTTP ${response.status})` });

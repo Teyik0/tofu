@@ -9,6 +9,10 @@ import {
   deviceChangeSchema,
   invitationSchema,
   pairSchema,
+  reconnectionClaimSchema,
+  reconnectionCompleteSchema,
+  reconnectionDecisionSchema,
+  reconnectionSchema,
   serverNameSchema,
   sessionTransferSchema,
 } from "./model";
@@ -106,6 +110,43 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
       return { transferred: true as const };
     }
   )
+  .post(
+    "/auth/reconnections/claim",
+    { body: reconnectionClaimSchema, idempotent: false, public: true },
+    ({ body, caller, devices, request, set }) => {
+      set.headers["cache-control"] = "no-store";
+      const origin = caller.kind === "in-process" ? new URL(request.url).origin : caller.origin;
+      return devices.claimReconnection(body.secret, body.browserSecret, body.label, origin);
+    }
+  )
+  .post(
+    "/auth/reconnections/complete",
+    { body: reconnectionCompleteSchema, idempotent: false, public: true },
+    ({ access, body, caller, cookie, devices, request, set }) => {
+      set.headers["cache-control"] = "no-store";
+      const origin = caller.kind === "in-process" ? new URL(request.url).origin : caller.origin;
+      const result = devices.completeReconnection(body.id, body.browserSecret, origin);
+      if (result instanceof ElysiaStatus || "pending" in result) {
+        return result;
+      }
+      const secure = origin.startsWith("https:");
+      cookie[cookieName(access.identity().serverId, secure)]?.set({
+        httpOnly: true,
+        maxAge: SESSION_COOKIE_MAX_AGE,
+        path: "/",
+        sameSite: "strict",
+        secure,
+        value: result.session.token,
+      });
+      const log = createLogger({
+        component: "access",
+        context: { deviceId: result.deviceId, origin },
+        operation: "browser-reconnected",
+      });
+      log.emit();
+      return { connected: true as const };
+    }
+  )
   .post("/auth/logout", { idempotent: false, personal: true }, ({ access, caller, cookie }) => {
     const result = access.signOut(caller);
     if (result instanceof ElysiaStatus) {
@@ -141,6 +182,50 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
   })
   .delete("/access/invitations/:id", ({ caller, invitations, params }) =>
     invitations.revoke(caller, params.id)
+  )
+  .post(
+    "/access/devices/:id/reconnections",
+    { body: reconnectionSchema },
+    ({ body, caller, connections, devices, params, set }) => {
+      set.headers["cache-control"] = "private, no-store";
+      if (
+        !(
+          connections.policy().enabled &&
+          [caller.origin, ...connections.policy().proxiedOrigins].includes(body.origin)
+        )
+      ) {
+        return problem(400, { detail: "Choose an enabled server address" });
+      }
+      return devices.createReconnection(caller, params.id, body.origin);
+    }
+  )
+  .get("/access/devices/:id/reconnections/:requestId", ({ caller, devices, params, set }) => {
+    set.headers["cache-control"] = "private, no-store";
+    const request = devices.reconnection(caller, params.id, params.requestId);
+    if (request instanceof ElysiaStatus) {
+      return request;
+    }
+    return {
+      approved: request.approved,
+      code: request.code,
+      completed: request.completed,
+      expiresAt: request.expiresAt,
+      label: request.label,
+    };
+  })
+  .post(
+    "/access/devices/:id/reconnections/:requestId",
+    { body: reconnectionDecisionSchema },
+    ({ body, caller, devices, params, set }) => {
+      set.headers["cache-control"] = "private, no-store";
+      return devices.decideReconnection(
+        caller,
+        params.id,
+        params.requestId,
+        body.code,
+        body.approve
+      );
+    }
   )
   .get("/access/devices", ({ devices }) => devices.list())
   .patch("/access/devices/:id", { body: deviceChangeSchema }, ({ body, caller, devices, params }) =>
