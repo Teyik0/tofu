@@ -1,0 +1,430 @@
+src/api/modules/desktop/index.ts
+  s_476f93fda7b6cc::t_42b5d616df40f9 3,5,12-13
+  s_476f93fda7b6cc::t_9f0864c64e5716 89-95,97-99,102,104-106
+  s_476f93fda7b6cc::t_38499545d46dd1 88
+  s_476f93fda7b6cc::t_f9317d5522e09e 6
+  s_aaa5154173e09f::t_b1e07969dd5094 140,151
+  s_476f93fda7b6cc::t_22f35446c0fad0 96
+  s_32c65c71c9ec7c::t_b89b29d476a27d 4,22,31,67,77,116-117,120,122,135,146,157-158,161,163-164,167,170-171,177,180,183-184,190
+  s_476f93fda7b6cc::t_4fab527619587b 27
+  s_476f93fda7b6cc::t_1cb9a7768161b3 7,82
+  s_32c65c71c9ec7c::t_ca1db2297e7891 32,68,79,124,137,148
+src/api/modules/torrents/index.ts
+  s_aaa5154173e09f::t_a92f804278fc1f 70-83,125,143-145
+  s_aaa5154173e09f::t_d255abf8c8e02a 35,43,60,87,90,93,96,99,104,109,118,126,133,138,157,170,229
+src/api/modules/media-links/service.ts
+  s_476f93fda7b6cc::t_eef249163a5a4d 11
+  s_aaa5154173e09f::t_8980a5c5147198 64,94
+  s_476f93fda7b6cc::t_c6b5f8e1185f50 5
+tests/lifecycle/startup.test.ts
+  s_476f93fda7b6cc::t_23171cb684a9b1 48-49
+src/api/modules/torrents/plugin.ts
+  s_476f93fda7b6cc::t_22605d0c90f4d6 1-3,5,7
+  s_476f93fda7b6cc::t_0582a884f973e7 9-12
+src/api/modules/torrents/crypto-diagnostics.ts
+  s_476f93fda7b6cc::t_1de4de79943280 2,40-41,43,45,47
+  s_476f93fda7b6cc::t_2695d464bbb563 32-39,42
+src/api/modules/anilist/opening.ts
+  s_32c65c71c9ec7c::t_b89b29d476a27d 2,16,22,34
+src/api/modules/access/index.ts
+  s_476f93fda7b6cc::t_9f0864c64e5716 270-275,277,306-322,347-352,354-358,378-382,384
+  s_476f93fda7b6cc::t_45c267309363ba 7,268-269,323,326-328,345-346,376-377
+  s_32c65c71c9ec7c::t_b89b29d476a27d 6,35,38,41,288,389,405
+  s_32c65c71c9ec7c::t_ca1db2297e7891 290
+src/api/modules/automation/integration.ts
+  s_476f93fda7b6cc::t_8f37b86e948c51 223-224,226-227,286-287,289-290,359-360,362-363
+  s_476f93fda7b6cc::t_424e576ae0046b 449-456
+  s_476f93fda7b6cc::t_c89aff6410befa 314-327,329-337,375-404,406-408,457-462,464,466-478
+  s_476f93fda7b6cc::t_45973eff05a44d 1
+  s_476f93fda7b6cc::t_b07762a13b43e9 4
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 463
+src/api/modules/access/sharing.ts
+  s_476f93fda7b6cc::t_9f0864c64e5716 40-108,110-112,115-124,127-128,130-140,142-143,145-150,152-155,157-164,166-177,179-193,195-212,215
+  s_476f93fda7b6cc::t_45c267309363ba 38-39
+src/api/modules/access/devices.ts
+  s_476f93fda7b6cc::t_ed532494530c60 5
+  s_476f93fda7b6cc::t_e7a73af5b48a8b 20
+src/api/modules/settings/index.ts
+  s_e16c9be6bdc090::t_fb62e4e97eceb3 18,27,34,42
+  s_aaa5154173e09f::t_14645966bfc44e 22,38
+src/api/modules/jev/plugin.ts
+  s_476f93fda7b6cc::t_05b600bb344b97 1,4-5,11
+tests/helpers/failed-torrent-startup.ts
+  s_476f93fda7b6cc::t_6458f38de48676 2-3,6-7,12
+src/api/lib/state-journals.ts
+  s_476f93fda7b6cc::t_f9334daf071738 1-8,10-18,37,52-53,79,91-92,119-120,135-137,145-146,152,158-159,164-167,170-172
+  s_476f93fda7b6cc::t_4fab527619587b 19-36,38-51,54-78,80-86,88-90,96-98,101-102,105-118,121-134,138-144,147-151,153-157,160-163,168-169
+  s_476f93fda7b6cc::t_2ede711bbfb8e7 9,87,93-95,99-100,103-104
+  s_476f93fda7b6cc::t_f2512c249a42b5 173-174
+src/api/modules/anilist/index.ts
+  s_476f93fda7b6cc::t_ebadf77e027a7d 3,5,50,56-57
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 46
+  s_476f93fda7b6cc::t_c89aff6410befa 42-45,47-49,51-55
+src/api/modules/destinations/index.ts
+  s_e16c9be6bdc090::t_fb62e4e97eceb3 49,58,85,94,110,137
+  s_aaa5154173e09f::t_a92f804278fc1f 99-106,119-120
+  s_e16c9be6bdc090::t_b5fec71e547dbd 68-76,124-132
+  s_aaa5154173e09f::t_cf779a5840d771 54,81,133
+tests/remote/sync.test.ts
+  s_3c50dba8b7bbbc::t_9f446b6b452194 39,44,100
+  s_3c50dba8b7bbbc::t_3db56cad171ce5 1-13
+  s_3c50dba8b7bbbc::t_98e2f174f534da 14-38,40-43,45-99,101
+src/api/modules/discovery/plugin.ts
+  s_476f93fda7b6cc::t_05b600bb344b97 1,4-5,15
+src/api/modules/access/service.ts
+  s_476f93fda7b6cc::t_d8a13f89e39188 15
+  s_476f93fda7b6cc::t_31036976887a4b 69
+tests/helpers/failed-startup.ts
+  s_476f93fda7b6cc::t_236811331a99af 23,26
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 24-25
+  s_476f93fda7b6cc::t_23171cb684a9b1 1-2,4-11,17-20,27-30
+src/api/modules/dashboard/index.ts
+  s_476f93fda7b6cc::t_4fab527619587b 18-20
+  s_aaa5154173e09f::t_5c3f3cd95e005c 39
+  s_476f93fda7b6cc::t_d697954c7fb3f1 1,3,6-7
+  s_476f93fda7b6cc::t_14801070c5df09 4
+  s_32c65c71c9ec7c::t_31c8e26f6da492 2,14,28,56
+tests/helpers/peer.ts
+  s_e16c9be6bdc090::t_d8c8d506792507 43
+src/api/lib/native-opening.ts
+  s_476f93fda7b6cc::t_611ee095a4d40f 1
+  s_476f93fda7b6cc::t_9f0864c64e5716 7-9
+src/api/modules/torrents/layer.ts
+  s_476f93fda7b6cc::t_64ee4a61e7c0b0 30-44,73-86,97-107,122-127,132,134-140,142-143,148-149,151,160
+  s_476f93fda7b6cc::t_22f35446c0fad0 131,133,150
+  s_476f93fda7b6cc::t_eb3f30ebf92ea0 27,45
+  s_476f93fda7b6cc::t_2f04697db3ef7a 3-4,6,8-26,28-29,46-59,61,63-64,67-72,87-96,108-120,128-130,144-145,147,152-153,156-157,159,161,163
+src/api/modules/plugins/plugin.ts
+  s_476f93fda7b6cc::t_05b600bb344b97 1,4-5,9
+tests/helpers/network-server.ts
+  s_476f93fda7b6cc::t_c7c2326845174a 2-3,9-10,13
+tests/anilist/account.test.ts
+  s_32c65c71c9ec7c::t_ca1db2297e7891 8-11
+  s_32c65c71c9ec7c::t_eb21edb7a67288 13-15,24-27
+tests/helpers/torrent-lifecycle-server.ts
+  s_e16c9be6bdc090::t_d8c8d506792507 49-53
+  s_aaa5154173e09f::t_279804aa2f10e3 24-27,29-33,35-36,43-46
+  s_aaa5154173e09f::t_bb545696c7b31a 48
+  s_e16c9be6bdc090::t_1d160d81559e94 17
+  s_476f93fda7b6cc::t_872f0adbcd5472 38,41
+  s_476f93fda7b6cc::t_6458f38de48676 3,5,10-11,23
+  s_aaa5154173e09f::t_854189fb738444 28,34
+  s_aaa5154173e09f::t_a92f804278fc1f 55-61
+src/api/modules/destinations/plugin.ts
+  s_476f93fda7b6cc::t_0ce38b89ea08e5 2,5-6,9,12
+AGENTS.md
+  s_476f93fda7b6cc::t_236811331a99af 12,14-19
+src/api/lib/db.ts
+  s_476f93fda7b6cc::t_9ba1eb6f53b68e 2-4
+  s_476f93fda7b6cc::t_05b600bb344b97 5,7
+  s_476f93fda7b6cc::t_0582a884f973e7 9
+src/api/index.ts
+  s_476f93fda7b6cc::t_187434ae59bc91 43
+  s_476f93fda7b6cc::t_54c349dd332d68 41-42
+src/api/modules/torrents/service.ts
+  s_476f93fda7b6cc::t_6c723e872df99a 72-73,79,651,978,2560,2755-2756
+  s_476f93fda7b6cc::t_988390b83a657e 2155-2156,2291
+  s_3c50dba8b7bbbc::t_81ea186f23913d 210,317-321,326-328,407,423,467
+  s_476f93fda7b6cc::t_d07fa065b835f7 335-340,349,352,514,517,582-583,1921-1922,1933
+  s_476f93fda7b6cc::t_f00bc8d6cf442c 1506-1507,1529,1549-1550,1556-1557,1612,1617
+  s_476f93fda7b6cc::t_d24ab0ef91fc2e 1761-1772
+  s_476f93fda7b6cc::t_6ee056ad4e3487 538-541
+  s_476f93fda7b6cc::t_2695d464bbb563 64-67,69-71,341-344,346-348,447-450,452-454,506-509,511-513,531-535,537,542-543,545-556,558-565,567-581,586-587,591-596,598-606,652,654-656,663-684,894-897,899-901,979,981-984,1103-1108,1113-1115,1122-1134,1136-1138,1140-1145,1147-1150,1152-1157,1159-1172,1174-1175,1177-1181,1183-1189,1191-1199,1201-1203,1205-1206,1208-1231,1233-1239,1278-1281,1283-1285,1307-1310,1312-1314,1498-1501,1503-1505,1541-1544,1546-1548,1604-1607,1609-1611,1760,1773-1779,1781-1787,1789,1791-1805,1858-1861,1863-1865,1873-1882,1912-1914,1916-1920,2033-2035,2037-2046,2048-2049,2074-2076,2078,2080-2107,2157-2162,2165-2172,2283-2286,2288-2290,2416-2420,2422-2425,2427-2431,2433-2437,2461-2464,2466-2504,2506-2525,2561,2563-2566,2660-2664,2666-2668,2670-2674,2689-2692,2694-2696,3085-3090,3092-3095,3097-3101,3206-3216,3224-3225,3227
+  s_476f93fda7b6cc::t_1eb654d2ecae07 505
+  s_476f93fda7b6cc::t_5c58648cb76977 657-662
+  s_476f93fda7b6cc::t_158a12a58d1a9b 1102,1109-1111,1116-1119,1121,1240,1258,1260
+  s_476f93fda7b6cc::t_86f42a59a4b864 172
+  s_476f93fda7b6cc::t_dc35279ff09e2a 2032,2050,2053,2073,2108,2113
+  s_476f93fda7b6cc::t_2b7b63cabb04ce 3189-3191,3194-3203,3205,3217-3223
+  s_476f93fda7b6cc::t_eea39b37581bc3 442-443,446,455,902,904,1286-1287,1293,1315-1316,1322,1866-1867
+  s_476f93fda7b6cc::t_6458f38de48676 1173,1182
+  s_476f93fda7b6cc::t_063edb5401d550 26
+  s_476f93fda7b6cc::t_a56727cac2c9de 585
+  s_476f93fda7b6cc::t_2b3d1ddf5b8371 1190
+  s_476f93fda7b6cc::t_a9ba1215d75cae 14,3339
+  s_476f93fda7b6cc::t_55ab6869695116 1558,2675,2677,2684-2687,2697,2701-2704,3073-3080,3102,3111,3113
+  s_476f93fda7b6cc::t_207972061f3f90 2438,2440,2452-2454,2526-2527,2533
+  s_476f93fda7b6cc::t_425edca63c416c 588-590,597,1924-1926,2079
+  s_476f93fda7b6cc::t_adbb0726980a67 32,68,345,451,510,536,557,566,898,1135,1139,1146,1151,1158,1176,1200,1204,1207,1232,1282,1311,1502,1545,1608,1780,1862,1915,2036,2077,2287,2421,2426,2432,2465,2505,2665,2669,2693,3091,3096
+src/api/modules/anilist/service.ts
+  s_476f93fda7b6cc::t_d88705ac41f9de 7
+  s_476f93fda7b6cc::t_d2faf4a45241a2 979,982,996,1378,1381-1382,1384
+  s_476f93fda7b6cc::t_ebadf77e027a7d 3,625-629,638-639,645
+  s_476f93fda7b6cc::t_acaa6e07fdf03c 172,175
+  s_aaa5154173e09f::t_a92f804278fc1f 158-159,161,1444-1447
+  s_476f93fda7b6cc::t_a339fcc5d515b6 1357,1392
+  s_476f93fda7b6cc::t_e2f7e884b3920c 5,1615,1622-1623,1629-1631
+  s_476f93fda7b6cc::t_c89aff6410befa 154-157,205-209,215-228,468-470,472-502,504-533,535-545,552-582,584-586,630-633,635-637,975-977,983-985,1374-1376,1385-1387
+  s_476f93fda7b6cc::t_c792ff76e7120c 583,587,594
+  s_476f93fda7b6cc::t_8f37b86e948c51 1139-1140,1145-1147,1449-1450,1452
+  s_476f93fda7b6cc::t_d803786663df13 160
+  s_476f93fda7b6cc::t_1d4f5cc8a53925 980-981,1379-1380,1383,1453-1455,1457
+  s_476f93fda7b6cc::t_9134349e6e884f 969-974,986-987,997-998,1368-1369,1373,1388-1390
+  s_476f93fda7b6cc::t_12c3fd3ea304fd 546-551,1616-1618,1620-1621,1624-1628
+  s_476f93fda7b6cc::t_decc564dce197e 471,503,534,634,978,1377,1619
+src/api/modules/plugins/feeds.ts
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 136
+  s_476f93fda7b6cc::t_c19d0e2e0550a8 1,140-141,143
+  s_476f93fda7b6cc::t_c89aff6410befa 132-135,137-139
+src/api/modules/library-links/service.ts
+  s_476f93fda7b6cc::t_87111fbcc97cb0 3,121,126,159,162,247,431,434
+  s_476f93fda7b6cc::t_7de00e93887608 26
+  s_476f93fda7b6cc::t_58a5caf7ede5fc 303,321
+  s_476f93fda7b6cc::t_c7fb9f1149c910 86,88-89,322-323,325-327,445-448
+  s_476f93fda7b6cc::t_431a89c4bbfe17 87,166-169
+  s_476f93fda7b6cc::t_2695d464bbb563 83-85,442-444
+  s_476f93fda7b6cc::t_9f0864c64e5716 118-120,140-158,212-225,244-246,279-299,302,304-320,324,328-336,375-394,399-403,412-430
+  s_476f93fda7b6cc::t_8584cd5702289d 163-165
+  s_476f93fda7b6cc::t_a8dc4bd336440d 7
+src/api/modules/destinations/roots.ts
+  s_476f93fda7b6cc::t_8588ce60cfe869 146,151
+  s_476f93fda7b6cc::t_611ee095a4d40f 5,30-31,41
+  s_476f93fda7b6cc::t_2695d464bbb563 147-149
+  s_476f93fda7b6cc::t_603da28738e24c 8
+  s_476f93fda7b6cc::t_932ab0d8c59ff3 14
+  s_476f93fda7b6cc::t_9f0864c64e5716 27,29,143,145
+  s_476f93fda7b6cc::t_173b0e542fcaff 28,144
+src/api/modules/access/layer.ts
+  s_476f93fda7b6cc::t_f14e7898e33fff 1-3,5-10,13-16,38-41,45,50-61,68-72,76-79,83-84,88-111,115
+  s_476f93fda7b6cc::t_e3380890b7ac55 12,26,28,33
+  s_476f93fda7b6cc::t_22f35446c0fad0 29-31
+  s_476f93fda7b6cc::t_64ee4a61e7c0b0 17-25,27,32,34-37,42-44,46-49,62-67,73-75,80-82,85-87,113
+package.json
+  s_3c50dba8b7bbbc::t_05e8386a24cdfc 34
+src/api/modules/discovery/service.ts
+  s_476f93fda7b6cc::t_8f37b86e948c51 369-370,372-373,467-468,471-474,476-496,498-506,510-513,515-516
+  s_476f93fda7b6cc::t_1d4f5cc8a53925 507,509
+  s_476f93fda7b6cc::t_ac8f234ca7fffb 5
+  s_476f93fda7b6cc::t_c8dcb6b95294cb 200-201,205,208,210,392-395,397-399
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 396,475,497
+  s_476f93fda7b6cc::t_ddef1935f17d5e 400-403
+  s_aaa5154173e09f::t_8b8552ba403033 420
+  s_476f93fda7b6cc::t_10b18425fb1c10 508
+  s_476f93fda7b6cc::t_1e3af398fe88a0 175,177
+  s_476f93fda7b6cc::t_19a48a88a79d63 1,426-427,434,436,444,458
+  s_476f93fda7b6cc::t_c89aff6410befa 440-443,445
+src/api/modules/torrents/worker-protocol.ts
+  s_aaa5154173e09f::t_79f58bdfaf3f16 34-36
+  s_aaa5154173e09f::t_bc62b21571dccb 29-32
+src/api/modules/torrents/media.ts
+  s_476f93fda7b6cc::t_2695d464bbb563 69-76,108-111,113-115,131-134,136-138,194-213,215,217,219,221,225,231,235-244,246-269,271-332,334-344
+  s_476f93fda7b6cc::t_a90e473b5c1f16 5,64-65,68,95,116-121,139,141,144,162-163,192-193,230,233-234
+  s_476f93fda7b6cc::t_425edca63c416c 106
+  s_476f93fda7b6cc::t_2beece83e6a09c 184-189,191
+  s_476f93fda7b6cc::t_1eb654d2ecae07 107
+  s_476f93fda7b6cc::t_1ffcfb96fad121 112,135,270
+src/api/lib/database-layer.ts
+  s_476f93fda7b6cc::t_74abc806711b52 2-3,22
+  s_476f93fda7b6cc::t_64ee4a61e7c0b0 26,44
+  s_476f93fda7b6cc::t_b1e3be462bcf31 1,4-12,16,18-21,24-25,27-29,31-43,45
+  s_476f93fda7b6cc::t_eb3f30ebf92ea0 30
+  s_476f93fda7b6cc::t_8fe4f44edeb355 13-15,17,23
+src/api/modules/access/invitations.ts
+  s_476f93fda7b6cc::t_562c3b68a9af4b 55
+  s_476f93fda7b6cc::t_8bc2435361cfc6 5
+src/api/modules/library-links/availability.ts
+  s_aaa5154173e09f::t_481e64569aea2c 43
+  s_aaa5154173e09f::t_719cda71d13289 47
+src/api/modules/playback/service.ts
+  s_476f93fda7b6cc::t_e89eb775dd18af 4
+  s_476f93fda7b6cc::t_024c144b874960 7,25
+src/api/modules/anilist/oauth.ts
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 99,189,248
+  s_476f93fda7b6cc::t_32aa9c4525228f 1,40-44,46-49,51-57,95,110-113,116,193-194,196,238-239,243,252-253,255
+  s_476f93fda7b6cc::t_c89aff6410befa 96-98,100-109,185-188,190-192,244-247,249-251
+src/api/modules/library-links/plugin.ts
+  s_476f93fda7b6cc::t_a3a17cf3b5194d 2,5-6,12
+src/api/modules/desktop/opening.ts
+  s_476f93fda7b6cc::t_611ee095a4d40f 5,56,61,110
+  s_476f93fda7b6cc::t_9f0864c64e5716 53-55,107,109
+  s_aaa5154173e09f::t_5278f8a4fee027 91
+  s_476f93fda7b6cc::t_58a5caf7ede5fc 97-98,108
+tests/helpers/migrated-server.ts
+  s_476f93fda7b6cc::t_23171cb684a9b1 1
+  s_3c50dba8b7bbbc::t_3db56cad171ce5 2
+src/api/modules/updates/service.ts
+  s_476f93fda7b6cc::t_56935767fe2178 374,376-380,387,425
+  s_476f93fda7b6cc::t_c1f5f71190aa48 4,208-209,211-212,270,340-341,367-371,383,394-395,420-421
+  s_476f93fda7b6cc::t_9f0864c64e5716 336,338-339,372-373,381-382,417,419
+  s_476f93fda7b6cc::t_58a5caf7ede5fc 271
+  s_476f93fda7b6cc::t_a733f222fe8904 272,329-335,337
+  s_476f93fda7b6cc::t_8ad38f30ae2cfe 273-278,280-284,287-288,291,293-302,305,308-313,315-319,321-326,328
+  s_476f93fda7b6cc::t_c4df1cd4fd3b33 426-427,452-462,472,482-491
+  s_476f93fda7b6cc::t_3fff11411badc7 375,418,492-495
+src/api/modules/plugins/credentials.ts
+  s_476f93fda7b6cc::t_c8dcb6b95294cb 50-52,54-75,77-79,95-98,100-102,104-106,108-110,112-118,120-122
+  s_476f93fda7b6cc::t_5b5770dead9ce8 1,76,80-81,103,107,119
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 53,99,111
+src/sync.ts
+  s_3c50dba8b7bbbc::t_849d4835f2a251 13-19
+  s_3c50dba8b7bbbc::t_81ea186f23913d 4,6,9-10
+src/api/modules/plugins/index.ts
+  s_32c65c71c9ec7c::t_b89b29d476a27d 3,14,20,27
+src/api/lib/tailscale/system.ts
+  s_476f93fda7b6cc::t_611ee095a4d40f 3,72,75,90,97
+  s_476f93fda7b6cc::t_9f0864c64e5716 60-71,85-89
+src/api/modules/torrents/folders.ts
+  s_e16c9be6bdc090::t_d8c8d506792507 6,48,216-218,276-277
+  s_e16c9be6bdc090::t_dbba23fc1d9e59 5,27,30-44,49,53-54,59,72-82,90,98-112,114,116,118-120,123,128,135,140-175,181-185,190-191,195-196,209,215,227,234,251-253,262,269,271-275,288,296-297,302,310,312,314-318
+  s_e16c9be6bdc090::t_346f6838c1e35a 313
+  s_e16c9be6bdc090::t_5317618f16aa3c 2,12,16-18,23-24,89,189
+  s_e16c9be6bdc090::t_d7fdd6ac44aa8f 21,25-26,28,45,50,63,66,70-71,83,125,130-131,134,136-137,178,211,255,319-320,324-325
+  s_476f93fda7b6cc::t_5787cbaea6b763 22
+  s_32c65c71c9ec7c::t_b89b29d476a27d 286
+  s_e16c9be6bdc090::t_44b3cba90c16a5 231,233
+  s_e16c9be6bdc090::t_b5fec71e547dbd 235-239,321-323
+  s_476f93fda7b6cc::t_5b385679f34678 11
+src/api/modules/jev/service.ts
+  s_476f93fda7b6cc::t_2bb571e266dd4c 436
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 387,412,423
+  s_476f93fda7b6cc::t_025bf1e14188c2 295,301
+  s_476f93fda7b6cc::t_8f37b86e948c51 350-351,353-354,390-396
+  s_476f93fda7b6cc::t_c19d0e2e0550a8 2
+  s_476f93fda7b6cc::t_77899606358e75 5
+  s_476f93fda7b6cc::t_1d4f5cc8a53925 372
+  s_476f93fda7b6cc::t_c8dcb6b95294cb 373-376,378-386,388-389,397-411,413-422,424-435
+src/api/modules/torrents/worker.ts
+  s_aaa5154173e09f::t_fcd6b13d4d3a7b 21,140
+  s_476f93fda7b6cc::t_2695d464bbb563 90-103
+  s_aaa5154173e09f::t_0c08ff2756ea9d 15,22,39,49,52,57-81,117-118,120-122,131-134,136-138,141-150,152
+  s_aaa5154173e09f::t_a92f804278fc1f 8,40,43-48,123-130,139,151
+  s_476f93fda7b6cc::t_1de4de79943280 104,108
+  s_476f93fda7b6cc::t_fcc97119acf265 1,4,20,41-42,50-51,53,116
+  s_476f93fda7b6cc::t_1eb654d2ecae07 54-56
+  s_476f93fda7b6cc::t_0433b278460210 5
+src/api/modules/health/index.ts
+  s_aaa5154173e09f::t_fcd6b13d4d3a7b 13
+src/api/lib/tailscale/index.ts
+  s_476f93fda7b6cc::t_2529129690a197 5,31-32,40,64,124,188
+  s_476f93fda7b6cc::t_9f0864c64e5716 41-63,116-123,168-187
+  s_476f93fda7b6cc::t_1f8151e457e566 65-66
+src/api/modules/access/plugin.ts
+  s_476f93fda7b6cc::t_f0f4bb0e5f8d8c 2,5,8,34
+  s_476f93fda7b6cc::t_99fab1dd038232 3
+  s_476f93fda7b6cc::t_22f35446c0fad0 7
+src/api/modules/anilist/graphql/transport.ts
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 50-58
+  s_476f93fda7b6cc::t_c89aff6410befa 26-46,48-49,59-61
+  s_476f93fda7b6cc::t_3b35d2b7d1cd12 47
+  s_476f93fda7b6cc::t_061d6c1a78e187 1,62-63,65
+src/api/modules/plugins/service.ts
+  s_476f93fda7b6cc::t_c8dcb6b95294cb 250-253,255-257,330-332,334-338,382-384,386-408,411,413-414,472-474,476-478,480-502
+  s_476f93fda7b6cc::t_bdd19ca73caddf 346-349
+  s_476f93fda7b6cc::t_88e138770aa03f 412
+  s_476f93fda7b6cc::t_25542e30a35f3e 471,479
+  s_476f93fda7b6cc::t_ddef1935f17d5e 503-504,506
+  s_476f93fda7b6cc::t_1d4f5cc8a53925 19
+  s_476f93fda7b6cc::t_5b5770dead9ce8 208
+  s_476f93fda7b6cc::t_9cc49f2a3d9ebe 254,333,385,475
+  s_476f93fda7b6cc::t_81012c2a15bea4 5
+  s_476f93fda7b6cc::t_a2df946cfcc2a3 249,258-263,267-269,339-342,350,409-410,415-419
+  s_476f93fda7b6cc::t_ff849aa5eba153 62,64
+  s_476f93fda7b6cc::t_8f37b86e948c51 242-243,248,265-266,270
+  s_476f93fda7b6cc::t_c19d0e2e0550a8 2,317-318
+src/api/lib/services-runtime.ts
+  s_476f93fda7b6cc::t_64ee4a61e7c0b0 9
+  s_476f93fda7b6cc::t_f14e7898e33fff 2-3,5,7-8,10
+src/api/modules/automation/plugin.ts
+  s_476f93fda7b6cc::t_05b600bb344b97 1,3-4,15
+tests/torrents/lifecycle.test.ts
+  s_e16c9be6bdc090::t_d8c8d506792507 11-12,56,64-68,71-73
+  s_e16c9be6bdc090::t_346f6838c1e35a 57-58,63,83-85
+  s_e16c9be6bdc090::t_23e009b6671a83 80-82
+  s_e16c9be6bdc090::t_1d160d81559e94 79,86
+  s_e16c9be6bdc090::t_4e22a9398fa6c6 59-62
+  s_e16c9be6bdc090::t_44b3cba90c16a5 2,69-70
+  s_aaa5154173e09f::t_c0682675d963c6 13-33,35-55,74-78,87-91,101-105,107-113
+  s_3c50dba8b7bbbc::t_31cfbf23089217 93-100
+  s_e16c9be6bdc090::t_936ee071705b16 92
+src/api/modules/anilist/plugin.ts
+  s_476f93fda7b6cc::t_080a03f1e7979c 1-2,4-5,21
+src/api/modules/automation/service.ts
+  s_476f93fda7b6cc::t_c413d4f6f0144d 58,63
+  s_476f93fda7b6cc::t_c19d0e2e0550a8 2,304
+  s_476f93fda7b6cc::t_24d5a155ba51c4 5
+  s_476f93fda7b6cc::t_c89aff6410befa 301-303
+src/api/modules/desktop/native-open.ts
+  s_476f93fda7b6cc::t_38499545d46dd1 2,74-75
+  s_476f93fda7b6cc::t_9f0864c64e5716 26-28,30-31,33-41,43-45,47-54,56-57,59-60,62-73
+  s_476f93fda7b6cc::t_5df71e4a685a79 29
+src/api/modules/media-links/plugin.ts
+  s_476f93fda7b6cc::t_3ae04153b756c6 2,5-6,10
+tests/remote/threads.test.ts
+  s_476f93fda7b6cc::t_e0d70f088e490c 421,423-425
+src/api/modules/automation/index.ts
+  s_476f93fda7b6cc::t_05b600bb344b97 1,4-5,11
+src/api/lib/worker-rpc.ts
+  s_aaa5154173e09f::t_9a462d98073730 16-22
+  s_aaa5154173e09f::t_79f58bdfaf3f16 6-11
+  s_aaa5154173e09f::t_1f92ba75d7e4ec 90
+  s_aaa5154173e09f::t_fcd6b13d4d3a7b 87,95,104-105,129
+  s_aaa5154173e09f::t_cd2055e91fa3cd 2-5,12-15,23-24,29-32,41-77,83-86,93-94,96-103,106,117,119-120,124-128,130-134,148-175,211-214,216-229,231-233
+  s_476f93fda7b6cc::t_1de4de79943280 1,116,118,176-180,209-210
+  s_aaa5154173e09f::t_a92f804278fc1f 25-28,33-40,78-82,88-89,91-92,107,121-123,135-147,215,230
+  s_476f93fda7b6cc::t_2695d464bbb563 108-111,113-115,181-183,185-208
+  s_476f93fda7b6cc::t_b436b6ff633e0d 112,184
+tests/helpers/interrupted-torrent-startup.ts
+  s_476f93fda7b6cc::t_c4df1cd4fd3b33 7-9
+  s_476f93fda7b6cc::t_21b9aa717446b3 2-4,21,26
+src/api/lib/services-layer.ts
+  s_476f93fda7b6cc::t_22f35446c0fad0 3
+  s_476f93fda7b6cc::t_64ee4a61e7c0b0 25-26,34-42,45-55,57,59,61-73,75,77-82,84,86-99,103-133,139-154,156-161,165-171,173-182,184,190,199
+  s_476f93fda7b6cc::t_8e9f5654197b96 17
+  s_476f93fda7b6cc::t_f14e7898e33fff 1-2,4-16,18,20-24,27-32,43,101,135,137,163,186,188-189
+  s_476f93fda7b6cc::t_f9334daf071738 19,197-198
+  s_476f93fda7b6cc::t_e3380890b7ac55 33,44,56,58,60,74,76,83,85,100,102,134,136,138,155,162,164,172,183,185,187,191-196
+bun.lock
+  s_3c50dba8b7bbbc::t_8cee03ecee2f3e 11,380
+vendor/README.md
+  s_e16c9be6bdc090::t_f82889170d3984 3,5-6,10,18-33,81-90,92-94
+vendor/furin-session.patch
+  s_3c50dba8b7bbbc::t_46a41d03a7b098 1-449
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1e09381e0ed24b2b505f61b517a669683256689",
+  "prompts": {},
+  "sessions": {
+    "s_32c65c71c9ec7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16fad-307e-7fb0-af0c-69e508b6770e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_3c50dba8b7bbbc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d86-0c82-79d2-88be-e920bcd9c753",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_476f93fda7b6cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f94-94cb-7ff1-95fc-a0a6e7f098ef",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_aaa5154173e09f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f4c-6edb-7b92-a228-e54f77247559",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_e16c9be6bdc090": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e35-6af4-75a2-b8ce-f0139e2bd2c7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
