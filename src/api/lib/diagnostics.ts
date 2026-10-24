@@ -1,6 +1,3 @@
-import type { LoggerConfig } from "evlog";
-import { version } from "../../../package.json";
-
 const sensitiveKey =
   /authorization|cookie|password|secret|token|api[-_]?key|credential|headers|body|metadata|source/i;
 const sensitiveValue =
@@ -72,22 +69,3 @@ export function sanitizeLog(value: unknown, seen = new WeakSet<object>(), depth 
     seen.delete(value);
   }
 }
-
-export const loggerConfig = {
-  env: { service: "tofu", version },
-  redact: {
-    builtins: false,
-    transform(event) {
-      event.pid = process.pid;
-      const sanitized = sanitizeLog(event);
-      if (sanitized && typeof sanitized === "object") {
-        Object.assign(event, sanitized);
-      }
-      if (Buffer.byteLength(JSON.stringify(event)) > 64 * 1024) {
-        event.context = { truncated: true };
-        event.error = { message: "Error details exceeded the log size limit" };
-      }
-    },
-  },
-  silent: true,
-} satisfies LoggerConfig;

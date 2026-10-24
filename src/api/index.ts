@@ -1,8 +1,10 @@
-import { createLogger } from "evlog";
 import "@teyik0/furin/server-only";
-import { Elysia, ValidationError } from "elysia";
+
+import { Elysia } from "elysia";
+import { toMiddlewareOptions } from "evlog";
+import { evlog, useLogger } from "evlog/elysia";
+import { config } from "../../evlog.config";
 import { instance } from "./lib/database-plugin";
-import { sanitizeLog } from "./lib/diagnostics";
 import { httpPolicyPlugin } from "./lib/http-policy";
 import { accessRoutesPlugin } from "./modules/access";
 import { publicDocumentsPlugin } from "./modules/access/documents";
@@ -16,6 +18,7 @@ import { connectionsPlugin } from "./modules/connections";
 import { connectionsServicePlugin } from "./modules/connections/plugin";
 import { dashboardPlugin } from "./modules/dashboard";
 import { desktopPlugin } from "./modules/desktop";
+import { desktopNativeOpenPlugin } from "./modules/desktop/native-open";
 import { destinationsPlugin } from "./modules/destinations";
 import { storageRootsPlugin } from "./modules/destinations/storage";
 import { discoveryPlugin } from "./modules/discovery";
@@ -36,6 +39,8 @@ import { updatesPlugin } from "./modules/updates";
 import { updatesServicePlugin } from "./modules/updates/plugin";
 
 export const apiPlugin = new Elysia({ name: "tofu-api" })
+  .use(evlog(toMiddlewareOptions(config)))
+  .derive(() => ({ log: useLogger() }))
   .use(anilistServicePlugin)
   .use(releaseAutomationPlugin)
   .use(connectionsServicePlugin)
@@ -44,23 +49,18 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
   .use(pluginRegistryPlugin)
   .use(torrentServicePlugin)
   .use(updatesServicePlugin)
+  .use(desktopNativeOpenPlugin)
   .use(accessPlugin)
-  .onError("global", ({ request, error }) => {
-    const log = createLogger({
-      component: "api",
-      context: { method: request.method, path: new URL(request.url).pathname },
-      dataDir: instance.dataDir,
-      error: sanitizeLog(
-        error instanceof ValidationError ? new Error("Request validation failed") : error
-      ),
-      operation: "request",
-    });
-    log.setLevel("error");
-    log.emit();
-  })
   .use(publicDocumentsPlugin)
   .use(mediaLinksPlugin)
   .use(httpPolicyPlugin)
+  .onBeforeHandle(({ log }) => {
+    log.set({
+      component: "api",
+      dataDir: instance.dataDir,
+      operation: "request",
+    });
+  })
   .group("/api", (app) =>
     app
       .use(accessRoutesPlugin)

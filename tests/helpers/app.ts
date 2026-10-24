@@ -11,6 +11,19 @@ export interface RemoteServerFixture {
   token: string;
 }
 
+function availablePort() {
+  const listener = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data: () => undefined,
+    },
+  });
+  const { port } = listener;
+  listener.stop();
+  return port;
+}
+
 export async function application(options?: {
   provider?: string;
   remoteServers?: RemoteServerFixture[];
@@ -26,6 +39,8 @@ export async function application(options?: {
     downloadPath,
     async start(listen?: { port?: number; onMessage?: (message: unknown) => void }) {
       const shutdownPath = join(directory, `shutdown-${crypto.randomUUID()}`);
+      const port = listen?.port ?? availablePort();
+      const origin = `http://127.0.0.1:${port}`;
       const child = Bun.spawn(
         [process.execPath, "--preload", join(import.meta.dir, "preload.ts"), "src/server.ts"],
         {
@@ -37,7 +52,7 @@ export async function application(options?: {
             TOFU_DISCOVERY: "0",
             TOFU_DOWNLOAD_DIR: downloadPath,
             TOFU_MODE: "server",
-            TOFU_PORT: String(listen?.port ?? 0),
+            TOFU_PORT: String(port),
             TOFU_PROFILE: "dev",
             TOFU_TAILSCALE_CLI: join(directory, "tailscale-not-installed"),
             TOFU_TEST_PROVIDER: options?.provider,
@@ -91,16 +106,12 @@ export async function application(options?: {
             if (child.exitCode !== null) {
               throw new Error(`Application startup failed.\n${await output}`);
             }
-            const file = Bun.file(join(dataDir, "server.json"));
-            if (!(await file.exists())) {
+            try {
+              const response = await fetch(`${origin}/.well-known/tofu`);
+              return response.ok ? origin : null;
+            } catch {
               return null;
             }
-            const info = (await file.json()) as { pid: number; url: string };
-            if (info.pid !== child.pid) {
-              return null;
-            }
-            const response = await fetch(`${info.url}/.well-known/tofu`);
-            return response.ok ? info.url : null;
           },
           (value) => value !== null,
           20_000

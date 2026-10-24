@@ -1,6 +1,7 @@
 import { ElysiaStatus, HTTPError, problem } from "elysia";
-import { createLogger, initLogger } from "evlog";
-import { loggerConfig, sanitizeLog } from "../../lib/diagnostics";
+import { createLogger, initLogger, toLoggerConfig } from "evlog";
+import { config } from "../../../../evlog.config";
+import { sanitizeLog } from "../../lib/diagnostics";
 import { TorrentEngine } from "./service";
 import type { EngineSnapshot } from "./types";
 import type { EngineFailure, EngineMessage, EngineRequest } from "./worker-protocol";
@@ -8,7 +9,7 @@ import type { EngineFailure, EngineMessage, EngineRequest } from "./worker-proto
 declare let self: Worker;
 
 initLogger({
-  ...loggerConfig,
+  ...toLoggerConfig(config),
   drain(context) {
     postMessage({ context, type: "log" } satisfies EngineMessage);
   },

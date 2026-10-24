@@ -8,6 +8,10 @@ import { nativeControl } from "./native/control";
 import "./native/host";
 
 nativeControl.tofuNativeSdk = sdk;
+if (!nativeControl.tofuNativeOpen) {
+  throw new Error("The native link handler was not initialized");
+}
+sdk.default.events.on("open-url", nativeControl.tofuNativeOpen);
 const development = await getDesktopDevelopment();
 const identity = await sdk.Updater.getLocalInfo();
 const items = [

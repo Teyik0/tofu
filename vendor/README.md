@@ -2,12 +2,18 @@
 
 Both active packages are built without local source patches from
 [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
-`4abac2186681dad92d5b56e3ec195bf78cc83d99`.
+`49a5663ddb8b038d5b784d92cb547b1f78ce8033`.
 
 | Active archive | SHA-256 |
 | --- | --- |
-| `furin-remote-native-4abac21.tgz` | `4a5eab25a52db90cd270c6d667a0785ab72ccdb955127d3fe957cdf2ef0665d2` |
-| `furin-electrobun-pr163-4abac21.tgz` | `7ab0476873b5d82e9c871155121e76293cb228f34dfb0b719eb7bb7f3329e009` |
+| `furin-pr163-49a5663.tgz` | `ac7e0593cc71f349d008b4e7440802ca6dbda608ea8585c1b16dd580a6cdbd69` |
+| `furin-electrobun-pr163-49a5663.tgz` | `97de38d285c40f328004be090fc5c40b1989a7b07f543ddfe23fd0d144be4f2e` |
+
+Commit `05cbdc8` replaces `desktopApp.onOpen` with the Electrobun SDK's `open-url`
+event. Tofu registers its existing backend link handler from the native entrypoint;
+associated files arrive as `file:` URLs. Commit `49a5663` removes Furin's global
+evlog initialization. Tofu initializes its logger once in `src/server.ts`,
+preserving its file drain and redaction throughout Furin composition.
 
 Commit `4abac21` makes the generated SDK bootstrap own native startup.
 Tofu installs `desktopApp(...)` on its root Elysia application and uses

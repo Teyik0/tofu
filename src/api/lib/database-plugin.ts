@@ -1,10 +1,8 @@
 import { chmod, mkdir, open } from "node:fs/promises";
 import { join } from "node:path";
-import { createLogger, initLogger } from "evlog";
 import "@teyik0/furin/server-only";
 import { Elysia } from "elysia";
 import { assertDatabaseReady, openDatabase } from "./db";
-import { loggerConfig } from "./diagnostics";
 import { acquireInstance, currentInstanceConfig } from "./instance";
 import { lifecyclePlugin, reserveInitialization, resources } from "./lifecycle-plugin";
 import { logDirectory, logDrain } from "./logs";
@@ -29,19 +27,6 @@ await chmod(logDirectory, 0o700);
   );
   await file.chmod(0o600);
 }
-initLogger({ ...loggerConfig, drain: logs });
-const startupLog = createLogger({
-  component: "application",
-  context: {
-    mode: instance.desktop ? "desktop" : "server",
-    platform: process.platform,
-    profile: instance.profile,
-  },
-  dataDir: instance.dataDir,
-  operation: "startup",
-});
-startupLog.emit();
-
 export const db = await openDatabase(instance.dataDir);
 startup.defer(db.$client.close.bind(db.$client, true));
 assertDatabaseReady(db);

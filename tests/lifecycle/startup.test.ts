@@ -41,7 +41,6 @@ test("a failed service initialization releases resources before the process exit
   expect(stderr).toMatch(invalidJson);
   expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
   expect(stdout).toContain("Failed startup released the database and instance lock");
-  expect(await Bun.file(join(dataDir, "server.json")).exists()).toBe(false);
 
   const logs = await Array.fromAsync(
     new Bun.Glob("*.jsonl").scan({ absolute: true, cwd: join(dataDir, "logs") })

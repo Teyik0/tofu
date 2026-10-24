@@ -164,7 +164,9 @@ import { api } from "../lib/client";
 export const route = defineRootRoute()
   .config({ mode: "ssr" })
   .loader(async () => {
-    const { data, error } = await api.state.get({ query: { detail: "false" } });
+    const { data, error } = await api.state.get.live({
+      query: { detail: "false" },
+    });
     if (error) {
       throw error;
     }
@@ -175,7 +177,7 @@ export const route = defineRootRoute()
 For a resource that should render a 404 page:
 
 ```ts
-const { data, error } = await api.torrents({ id: params.id }).get();
+const { data, error } = await api.torrents({ id: params.id }).get.live();
 if (error) {
   if (error.status === 404) {
     notFound({ message: "This torrent does not exist" });
@@ -203,3 +205,4 @@ return { torrent: data };
 - Test torrent transfers and lifecycle behavior with real peers in temporary directories. Simulate external providers only at their HTTP or native SDK boundaries.
 - Put shared fixtures, resource cleanup, and assertion helpers in `tests/helpers/`. Keep endpoint calls visible in the tests rather than wrapping them in request helpers.
 - Keep AniList tests in `tests/anilist/` and omit redundant `anilist-` filename prefixes.
+- The overall runtime codebase should not be affected by testing. Don't make the code write unnecessary export function / config files for testing purpose.

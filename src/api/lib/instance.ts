@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, realpath, unlink } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ApplicationRuntime, DesktopIdentity } from "@teyik0/furin-electrobun/host";
@@ -168,15 +168,7 @@ export async function acquireInstance(config: InstanceConfig) {
     lock.close();
     throw error;
   }
-  return {
-    async close() {
-      try {
-        await removeServerInfo(config.dataDir);
-      } finally {
-        lock.close();
-      }
-    },
-  };
+  return { close: lock.close };
 }
 
 async function claimProfile(config: InstanceConfig) {
@@ -193,7 +185,6 @@ async function claimProfile(config: InstanceConfig) {
     }
     return;
   }
-  await assertLegacyStopped(config.dataDir);
   const existing = await Promise.all(
     ["tofu.sqlite", "feeds.sqlite", "sync.sqlite", "release-access.json"].map((name) =>
       Bun.file(join(config.dataDir, name)).exists()
@@ -205,54 +196,6 @@ async function claimProfile(config: InstanceConfig) {
     );
   }
   await Bun.write(marker, JSON.stringify({ profile: config.profile }), { mode: 0o600 });
-}
-
-async function assertLegacyStopped(dataDir: string) {
-  const info = Bun.file(join(dataDir, "server.json"));
-  if (!(await info.exists())) {
-    return;
-  }
-  const metadata: unknown = await info.json();
-  if (
-    !(
-      metadata &&
-      typeof metadata === "object" &&
-      "pid" in metadata &&
-      typeof metadata.pid === "number" &&
-      Number.isInteger(metadata.pid) &&
-      metadata.pid > 0 &&
-      metadata.pid !== process.pid
-    )
-  ) {
-    return;
-  }
-  try {
-    process.kill(metadata.pid, 0);
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ESRCH") {
-      return;
-    }
-    throw error;
-  }
-  throw new Error(
-    "A legacy Tofu instance is already using this directory; quit it before starting this version"
-  );
-}
-
-async function removeServerInfo(dataDir: string) {
-  const path = join(dataDir, "server.json");
-  const info = Bun.file(path);
-  if (await info.exists()) {
-    const metadata: unknown = await info.json();
-    if (
-      metadata &&
-      typeof metadata === "object" &&
-      "pid" in metadata &&
-      metadata.pid === process.pid
-    ) {
-      await unlink(path);
-    }
-  }
 }
 
 export interface InstanceConfig {

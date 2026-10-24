@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join, normalize, sep } from "node:path";
 import { Elysia, problem, t } from "elysia";
-import { createLogger } from "evlog";
+import { useLogger } from "evlog/elysia";
 import { version } from "libvlc-wasm/package.json";
 import { databasePlugin, instance } from "../../lib/database-plugin";
 import { sanitizeLog } from "../../lib/diagnostics";
@@ -43,7 +43,8 @@ export const playerPlugin = new Elysia({ name: "tofu-player-api" })
     },
     ({ body }) => {
       const { message, operation, ...context } = body;
-      const log = createLogger({
+      const log = useLogger();
+      log.set({
         component: "player",
         context: { ...context, engineVersion: version },
         dataDir: instance.dataDir,
@@ -51,7 +52,6 @@ export const playerPlugin = new Elysia({ name: "tofu-player-api" })
         operation,
       });
       log.setLevel("error");
-      log.emit();
       return { ok: true };
     }
   )
