@@ -1,0 +1,56 @@
+src/api/modules/torrents/storage.ts
+  s_8d351ae332e53f::t_ed75193f3e91eb 73
+src/api/modules/torrents/worker.ts
+  s_8d351ae332e53f::t_ed75193f3e91eb 58,183
+src/api/modules/torrents/service.ts
+  s_8d351ae332e53f::t_ed75193f3e91eb 272,339,520,1872,1921,1973
+README.md
+  s_2ca2a02b91a3f4::t_60bef81aaf5cbf 85
+tests/helpers/failed-startup.ts
+  s_2ca2a02b91a3f4::t_60bef81aaf5cbf 10,12
+src/api/modules/torrents/media.ts
+  s_8d351ae332e53f::t_ed75193f3e91eb 245
+evlog.config.ts
+  s_8d351ae332e53f::t_9ff8de4f0f8509 2-3,5-7,9-10,12-22
+  s_8d351ae332e53f::t_fc534661b18694 1
+  s_8d351ae332e53f::t_ae815c6dcb6c7d 29-48,58
+  s_8d351ae332e53f::t_acb53aa8b5bcd2 8
+  s_8d351ae332e53f::t_71b9926f305654 11
+src/api/modules/player/index.ts
+  s_8d351ae332e53f::t_ed75193f3e91eb 50
+src/api/modules/torrents/worker-client.ts
+  s_8d351ae332e53f::t_fc534661b18694 5
+  s_8d351ae332e53f::t_ed75193f3e91eb 186
+src/api/modules/torrents/folders.ts
+  s_8d351ae332e53f::t_ed75193f3e91eb 78,93,139,230,247,278
+src/api/modules/automation/integration.ts
+  s_8d351ae332e53f::t_ed75193f3e91eb 477
+tests/lifecycle/startup.test.ts
+  s_2ca2a02b91a3f4::t_60bef81aaf5cbf 48
+src/api/modules/desktop/index.ts
+  s_8d351ae332e53f::t_ed75193f3e91eb 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a79ff8199d086b0d9917297c4df6b769c4ee2b43",
+  "prompts": {},
+  "sessions": {
+    "s_2ca2a02b91a3f4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d68-c169-72e2-b843-69ead3c4a631",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_8d351ae332e53f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16df5-4b60-7691-87ae-e7de36c89d23",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
