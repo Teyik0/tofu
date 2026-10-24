@@ -1,0 +1,36 @@
+drizzle.config.ts
+  h_a2cbd1b0e3ae6e 2-3
+src/api/lib/db.ts
+  h_a2cbd1b0e3ae6e 5,9-10
+src/api/lib/instance.ts
+  h_a2cbd1b0e3ae6e 7-9,27,29,32
+src/api/modules/torrents/service.ts
+  h_a2cbd1b0e3ae6e 19,241,1103,1187,1239,1681,1701,2121,3036,3054
+src/db/drizzle/20261010171342_initial/snapshot.json
+  h_a2cbd1b0e3ae6e 4,290,297,304,311,318,325,332,339,346,353,359
+src/db/drizzle/20261018125745_thread_torrent_files/snapshot.json
+  h_a2cbd1b0e3ae6e 4,344,351,358,365,372,379,386,393,400,407,414,420
+src/db/drizzle/20261019070207_remote_access/snapshot.json
+  h_a2cbd1b0e3ae6e 4,1278,1285,1292,1299,1306,1313,1320,1327,1334,1341,1348,1355,1362,1369,1376,1383,1390,1397,1404,1411,1418,1424
+src/db/drizzle/20261019073654_playback_sequences/snapshot.json
+  h_a2cbd1b0e3ae6e 4,1332,1339,1346,1353,1360,1367,1374,1381,1388,1395,1402,1409,1416,1423,1430,1437,1444,1451,1458,1465,1472,1479,1485
+src/db/drizzle/20261022075114_session_transfers/snapshot.json
+  h_a2cbd1b0e3ae6e 4,1400,1407,1414,1421,1428,1435,1442,1449,1456,1463,1470,1477,1484,1491,1498,1505,1512,1519,1526,1533,1540,1547,1554,1560
+src/server.ts
+  h_a2cbd1b0e3ae6e 7
+src/sync.ts
+  h_a2cbd1b0e3ae6e 5
+tests/helpers/preload.ts
+  h_a2cbd1b0e3ae6e 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c4bffef0aae2305b968dc2fe02d0145a05953fd3",
+  "prompts": {},
+  "humans": {
+    "h_a2cbd1b0e3ae6e": {
+      "author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
