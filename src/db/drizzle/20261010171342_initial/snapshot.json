@@ -1,9 +1,7 @@
 {
   "dialect": "sqlite",
   "id": "27191d1d-d36d-4afc-8368-cc95faa616b6",
-  "prevIds": [
-    "00000000-0000-0000-0000-000000000000"
-  ],
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "version": "7",
   "ddl": [
     {
@@ -289,90 +287,70 @@
     {
       "table": "anilist",
       "name": "anilist_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "decisions",
       "name": "decisions_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "judgements",
       "name": "judgements_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "plugins",
       "name": "plugins_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "preferences",
       "name": "preferences_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "releases",
       "name": "releases_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "automations",
       "name": "automations_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "config",
       "name": "config_pk",
-      "columns": [
-        "key"
-      ],
+      "columns": ["key"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "destinations",
       "name": "destinations_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "torrents",
       "name": "torrents_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     }

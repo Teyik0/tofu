@@ -4,7 +4,9 @@ import { isAbsolute, join, resolve } from "node:path";
 const homeDir = homedir();
 const development = process.env.NODE_ENV !== "production";
 const stateRoot = getStateRoot();
-const dataDir = resolve(process.env.FURIN_APP_DATA_DIR ?? join(stateRoot, development ? "Tofu-dev" : "Tofu"))
+const dataDir = resolve(
+  process.env.FURIN_APP_DATA_DIR ?? join(stateRoot, development ? "Tofu-dev" : "Tofu")
+);
 
 function getStateRoot() {
   if (process.platform === "win32") {
@@ -21,11 +23,11 @@ function getStateRoot() {
 
 export const instance = {
   dataDir,
-  desktop: Boolean(process.env.FURIN_APP_DATA_DIR),
   defaultDownloadPath: join(homeDir, "Downloads", "Tofu"),
+  desktop: Boolean(process.env.FURIN_APP_DATA_DIR),
   identifier: development ? "app.tofu.torrents.dev" : "app.tofu.torrents",
+  logDirectory: join(dataDir, "logs"),
   name: development ? "Tofu Dev" : "Tofu",
-  profile: (development ? "dev" : "release"),
   port: development ? 3030 : 3031,
-  logDirectory: join(dataDir, "logs")
+  profile: development ? "dev" : "release",
 } as const;

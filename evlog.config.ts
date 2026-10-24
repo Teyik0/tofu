@@ -20,7 +20,6 @@ const pipeline = createDrainPipeline<DrainContext>({
   retry: { initialDelayMs: 250, maxAttempts: 3, maxDelayMs: 1000 },
 });
 
-
 export const config = defineEvlog({
   drain: pipeline(async (batch) => await fileDrain.raw(batch)),
   env: { version },

@@ -1,9 +1,7 @@
 {
   "dialect": "sqlite",
   "id": "c2e7753c-482c-4557-bf78-f643f612ed48",
-  "prevIds": [
-    "843b78bb-68bd-4b62-ade9-e154c2226475"
-  ],
+  "prevIds": ["843b78bb-68bd-4b62-ade9-e154c2226475"],
   "version": "7",
   "ddl": [
     {
@@ -1277,190 +1275,147 @@
     {
       "table": "anilist",
       "name": "anilist_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "devices",
       "name": "devices_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "decisions",
       "name": "decisions_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "judgements",
       "name": "judgements_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "plugins",
       "name": "plugins_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "preferences",
       "name": "preferences_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "releases",
       "name": "releases_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "automations",
       "name": "automations_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "connection_state",
       "name": "connection_state_pk",
-      "columns": [
-        "key"
-      ],
+      "columns": ["key"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "device_sessions",
       "name": "device_sessions_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "linked_servers",
       "name": "linked_servers_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "media_links",
       "name": "media_links_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "operation_receipts",
       "name": "operation_receipts_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "invitations",
       "name": "invitations_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "playback_positions",
       "name": "playback_positions_profileId_mediaKey_pk",
-      "columns": [
-        "profileId",
-        "mediaKey"
-      ],
+      "columns": ["profileId", "mediaKey"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "server_identity",
       "name": "server_identity_pk",
-      "columns": [
-        "key"
-      ],
+      "columns": ["key"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "storage_roots",
       "name": "storage_roots_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "config",
       "name": "config_pk",
-      "columns": [
-        "key"
-      ],
+      "columns": ["key"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "destinations",
       "name": "destinations_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "torrents",
       "name": "torrents_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "watched_files",
       "name": "watched_files_pk",
-      "columns": [
-        "path"
-      ],
+      "columns": ["path"],
       "nameExplicit": false,
       "entityType": "pks"
     }

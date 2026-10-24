@@ -1,6 +1,6 @@
-import { instance } from "@/api/lib/instance";
-import { defineConfig } from "drizzle-kit";
 import { join, resolve } from "node:path";
+import { defineConfig } from "drizzle-kit";
+import { instance } from "@/api/lib/instance";
 
 export const databasePath = resolve(
   process.env.DATABASE_URL ?? join(instance.dataDir, "tofu.sqlite")

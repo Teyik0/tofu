@@ -1,8 +1,8 @@
 import "@teyik0/furin/server-only";
 import type { SyncRuntimeOptions } from "@teyik0/furin/sync";
 import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
-import { callers } from "./api/modules/access/service";
 import { db } from "./api/lib/db";
+import { callers } from "./api/modules/access/service";
 
 export const sync = {
   adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),

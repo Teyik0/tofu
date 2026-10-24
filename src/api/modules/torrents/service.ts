@@ -16,6 +16,7 @@ import { createLogger } from "evlog";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
 import type { Options as TorrentNetworkOptions } from "webtorrent";
 import WebTorrent, { type Torrent } from "webtorrent";
+import { db } from "@/api/lib/db";
 import {
   operationReceipts,
   torrentConfig,
@@ -47,7 +48,6 @@ import type {
   TrackerStats,
 } from "./types";
 import type { WorkerTorrentEngine } from "./worker-client";
-import { db } from "@/api/lib/db";
 
 interface RelocatedFile {
   source: string;
@@ -238,11 +238,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
       pinned: false,
     });
   }
-  const totals = db
-    .select()
-    .from(torrentConfig)
-    .where(eq(torrentConfig.key, "traffic"))
-    .get();
+  const totals = db.select().from(torrentConfig).where(eq(torrentConfig.key, "traffic")).get();
   if (totals) {
     const parsed: { received: number; uploaded: number } = JSON.parse(totals.value);
     state.received = parsed.received;
@@ -1104,8 +1100,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
       );
       journalId = `move:${crypto.randomUUID()}`;
       const journal = { committed: false, files: sourceIdentities, staging };
-      db
-        .insert(operationReceipts)
+      db.insert(operationReceipts)
         .values({
           createdAt: Date.now(),
           id: journalId,
@@ -1189,11 +1184,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
 
   /** Reconcile a persisted move using inode ownership before removing any old or published copy. */
   async function finishMoveJournal(id: string) {
-    const receipt = db
-      .select()
-      .from(operationReceipts)
-      .where(eq(operationReceipts.id, id))
-      .get();
+    const receipt = db.select().from(operationReceipts).where(eq(operationReceipts.id, id)).get();
     if (receipt?.status !== "pending") {
       return;
     }
@@ -1245,8 +1236,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
       })
     );
     await rm(journal.staging, { force: true, recursive: true });
-    db
-      .update(operationReceipts)
+    db.update(operationReceipts)
       .set({ completedAt: Date.now(), status: journal.committed ? "done" : "failed" })
       .where(eq(operationReceipts.id, id))
       .run();
@@ -1688,8 +1678,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
       return problem(400, { detail: "The torrent contains an unsafe or inaccessible file path" });
     }
     if (options.operationKey) {
-      db
-        .insert(operationReceipts)
+      db.insert(operationReceipts)
         .values({
           createdAt: Date.now(),
           id: options.operationKey,
@@ -1709,8 +1698,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
     }
     save(entry);
     if (options.operationKey) {
-      db
-        .update(operationReceipts)
+      db.update(operationReceipts)
         .set({ completedAt: Date.now(), status: "done" })
         .where(eq(operationReceipts.id, options.operationKey))
         .run();
@@ -2130,8 +2118,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
       return entry;
     }
     if (operationKey) {
-      db
-        .insert(operationReceipts)
+      db.insert(operationReceipts)
         .values({
           createdAt: Date.now(),
           id: operationKey,
@@ -3046,8 +3033,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
         throw new Error(recovered.response.detail);
       }
     } else if (receipt.kind === "add") {
-      db
-        .update(operationReceipts)
+      db.update(operationReceipts)
         .set({
           completedAt: Date.now(),
           status: state.entries.has(receipt.target) ? "done" : "failed",
@@ -3065,8 +3051,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
           throw new Error(removed.response.detail);
         }
       } else {
-        db
-          .update(operationReceipts)
+        db.update(operationReceipts)
           .set({
             completedAt: Date.now(),
             result: JSON.stringify({

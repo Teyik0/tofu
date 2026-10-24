@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { listen } from "../../src/api/lib/network";
 import { instance } from "../../src/api/lib/instance";
+import { listen } from "../../src/api/lib/network";
 import { ServerCatalog } from "../../src/native/catalog";
 import { nativeControl } from "../../src/native/control";
 import { RemoteThreads } from "../../src/native/remote-threads";

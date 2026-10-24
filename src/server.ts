@@ -4,9 +4,9 @@ import { Elysia } from "elysia";
 import { initLogger, toLoggerConfig, toMiddlewareOptions } from "evlog";
 import { config } from "../evlog.config";
 import { apiPlugin } from "./api";
+import { instance } from "./api/lib/instance";
 import { closeResources } from "./api/lib/lifecycle-plugin";
 import { sync } from "./sync";
-import { instance } from "./api/lib/instance";
 
 initLogger(toLoggerConfig(config));
 

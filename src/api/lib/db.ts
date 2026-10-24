@@ -1,13 +1,13 @@
 import "@teyik0/furin/server-only";
 import { join } from "node:path";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { furinSyncSchema } from "../../db/furin.schema";
-import { schema } from "../../db/schema";
 import { migrateSqliteSync } from "@teyik0/furin/sync/sqlite";
 import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import Elysia from "elysia";
 import { databasePath } from "../../../drizzle.config";
+import { furinSyncSchema } from "../../db/furin.schema";
+import { schema } from "../../db/schema";
 
 export const db = drizzle(databasePath);
 
