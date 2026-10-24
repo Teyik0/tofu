@@ -1,0 +1,57 @@
+src/api/lib/logs.ts
+  s_2ca2a02b91a3f4::t_e9b5e5368644c4 6,8
+tests/logging/requests.test.ts
+  s_2ca2a02b91a3f4::t_cff13c0f8e6e09 8-28
+tests/helpers/app.ts
+  s_2ca2a02b91a3f4::t_d9683460150a86 51
+drizzle.config.ts
+  s_2ca2a02b91a3f4::t_e9b5e5368644c4 1,6
+README.md
+  s_2ca2a02b91a3f4::t_f383bcbb3bb2e0 131
+tests/lifecycle/startup.test.ts
+  s_2ca2a02b91a3f4::t_cff13c0f8e6e09 16-36
+tests/helpers/preload.ts
+  s_2ca2a02b91a3f4::t_d9683460150a86 4,10-17,22
+src/api/lib/instance.ts
+  s_2ca2a02b91a3f4::t_49559ff707915d 1,3,32
+  s_2ca2a02b91a3f4::t_e9b5e5368644c4 6-7,23,25,27-30
+  s_6abd285f2e9943::t_e78bde9094aa65 8,10-12,14-15,17-18,20
+  s_2ca2a02b91a3f4::t_8f4c58d8668007 24
+  s_2ca2a02b91a3f4::t_063eebb98026ee 26
+  s_2ca2a02b91a3f4::t_2722a0a5461404 31
+  s_2ca2a02b91a3f4::t_8da09fac991252 33
+src/api/lib/db.ts
+  s_c2fdda007d520f::t_53d41d85631b95 27-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f574d71a8264dd92e33d233eba7b7683d9e095b0",
+  "prompts": {},
+  "sessions": {
+    "s_2ca2a02b91a3f4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d68-c169-72e2-b843-69ead3c4a631",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_6abd285f2e9943": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16dd6-3270-7fb2-863f-0ba9a2a0eba7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_c2fdda007d520f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16dbf-9b6e-7911-8315-943b5502f765",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
