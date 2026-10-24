@@ -3,7 +3,6 @@ import "@teyik0/furin/server-only";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { type Context, ElysiaStatus, problem } from "elysia";
-import { sanitizeLog } from "../../lib/diagnostics";
 import type { EnginePort } from "./service";
 
 const CHUNK = 256 * 1024;
@@ -243,7 +242,7 @@ export async function streamTorrentFile(options: {
         } catch (error) {
           const log = createLogger({
             component: "torrent-stream",
-            error: sanitizeLog(error),
+            error,
             operation: "cancel",
           });
           log.setLevel("error");

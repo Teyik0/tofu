@@ -7,7 +7,6 @@ import { nativeControl } from "../../../native/control";
 import { nativeServerActionSchema } from "../../../native/model";
 import { sync } from "../../../sync";
 import { instance, logs } from "../../lib/database-plugin";
-import { sanitizeLog } from "../../lib/diagnostics";
 import { resources } from "../../lib/lifecycle-plugin";
 import { runtime } from "../../lib/runtime";
 import { accessPlugin } from "../access/plugin";
@@ -67,7 +66,7 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
                 component: "desktop-sync",
                 context: { serverId },
                 dataDir: instance.dataDir,
-                error: sanitizeLog(cause),
+                error: cause,
                 operation: "invalidate-remote-state",
               });
               log.setLevel("error");

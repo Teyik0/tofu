@@ -3,7 +3,6 @@ import { access, realpath, stat } from "node:fs/promises";
 import { HTTPError } from "elysia";
 import { createLogger } from "evlog";
 import type { Torrent } from "webtorrent";
-import { sanitizeLog } from "../../lib/diagnostics";
 import type { FileStats, TorrentStorageIssue } from "./types";
 
 export interface StorageIdentity {
@@ -71,7 +70,7 @@ export function storageFailure(
       component: "storage",
       context: { ...fields, paths },
       dataDir,
-      error: sanitizeLog(cause),
+      error: cause,
       operation: "access",
     });
     log.setLevel("error");

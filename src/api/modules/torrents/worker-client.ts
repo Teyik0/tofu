@@ -2,9 +2,8 @@ import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { ElysiaStatus, HTTPError, problem } from "elysia";
 import { createLogger } from "evlog";
+import type { logDrain } from "../../../../evlog.config";
 import workerBundle from "../../../../runtime/engine-worker.worker" with { type: "file" };
-import { sanitizeLog } from "../../lib/diagnostics";
-import type { logDrain } from "../../lib/logs";
 import type { DestinationInput, DestinationPresentation } from "../destinations/model";
 import type { SettingsInput } from "../settings/model";
 import type { EngineOpenOptions, TorrentAddOptions } from "./service";
@@ -184,7 +183,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
           pendingOperations: [...this.pending.values()].map((operation) => operation.method),
         },
         dataDir: this.options.dataDir,
-        error: sanitizeLog(error),
+        error,
         operation: "stopped",
       });
       log.setLevel("error");

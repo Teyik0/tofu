@@ -1,7 +1,6 @@
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import type { DatabaseTransaction } from "../../lib/db";
-import { sanitizeLog } from "../../lib/diagnostics";
 import { normalizeTitle } from "../../lib/title";
 import type { DiscoveryResult, FeedRelease } from "../discovery/model";
 import type { DiscoveryService } from "../discovery/service";
@@ -475,7 +474,7 @@ export class ReleaseAutomationService {
           } catch (error) {
             const log = createLogger({
               component: "automation",
-              error: sanitizeLog(error),
+              error,
               operation: "poll",
             });
             log.setLevel("error");

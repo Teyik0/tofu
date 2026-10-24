@@ -7,7 +7,6 @@ import parseTorrent from "parse-torrent";
 import { watchedTorrentFiles } from "../../../db/schema";
 import { nativeControl } from "../../../native/control";
 import type { TofuDatabase } from "../../lib/db";
-import { sanitizeLog } from "../../lib/diagnostics";
 import { runtime } from "../../lib/runtime";
 import type { Destination } from "../destinations/model";
 import type { EnginePort } from "./service";
@@ -76,7 +75,7 @@ export class TorrentFolders {
               component: "torrent-folders",
               context: { folder },
               dataDir: this.options.dataDir,
-              error: sanitizeLog(error),
+              error,
               operation: "watch",
             });
             log.setLevel("warn");
@@ -91,7 +90,7 @@ export class TorrentFolders {
               component: "torrent-folders",
               context: { folder },
               dataDir: this.options.dataDir,
-              error: sanitizeLog(error),
+              error,
               operation: "watch",
             });
             log.setLevel("warn");
@@ -137,7 +136,7 @@ export class TorrentFolders {
           component: "torrent-folders",
           context: { path },
           dataDir: this.options.dataDir,
-          error: sanitizeLog(error),
+          error,
           operation: "add",
         });
         log.setLevel("error");
@@ -228,7 +227,7 @@ export class TorrentFolders {
         component: "torrent-folders",
         context: { path },
         dataDir,
-        error: sanitizeLog(error),
+        error,
         operation: "skip-invalid-file",
       });
       log.setLevel("warn");
@@ -245,7 +244,7 @@ export class TorrentFolders {
           component: "torrent-folders",
           context,
           dataDir,
-          error: sanitizeLog(error),
+          error,
           operation: "add",
         });
         log.setLevel("error");
@@ -276,7 +275,7 @@ export class TorrentFolders {
         component: "torrent-folders",
         context: { path },
         dataDir,
-        error: sanitizeLog(error),
+        error,
         operation: "delete-source",
       });
       log.setLevel("warn");

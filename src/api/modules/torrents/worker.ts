@@ -1,7 +1,6 @@
 import { ElysiaStatus, HTTPError, problem } from "elysia";
 import { createLogger, initLogger, toLoggerConfig } from "evlog";
 import { config } from "../../../../evlog.config";
-import { sanitizeLog } from "../../lib/diagnostics";
 import { openTorrentEngine, type TorrentEngine } from "./service";
 import type { EngineSnapshot } from "./types";
 import type { EngineFailure, EngineMessage, EngineRequest } from "./worker-protocol";
@@ -56,7 +55,7 @@ async function execute(request: EngineRequest) {
           const log = createLogger({
             component: "torrent-worker",
             dataDir,
-            error: sanitizeLog(error),
+            error,
             operation: "publish",
           });
           log.setLevel("error");
@@ -181,7 +180,7 @@ self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
         component: "torrent-worker",
         context: { torrentId },
         dataDir,
-        error: sanitizeLog(error),
+        error,
         operation: data.method,
       });
       log.setLevel("error");

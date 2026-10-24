@@ -22,7 +22,6 @@ import {
   torrentDestinations,
   torrentRecords,
 } from "../../../db/schema";
-import { sanitizeLog } from "../../lib/diagnostics";
 import type { Destination, DestinationInput, DestinationPresentation } from "../destinations/model";
 import type { Settings, SettingsInput } from "../settings/model";
 import type { ConnectionPolicy } from "./connections";
@@ -270,7 +269,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
     const log = createLogger({
       component: "torrent-engine",
       dataDir: engineOptions.dataDir,
-      error: sanitizeLog(error),
+      error,
       operation: "client",
     });
     log.setLevel("error");
@@ -337,7 +336,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
         } catch (error) {
           const log = createLogger({
             component: "storage",
-            error: sanitizeLog(error),
+            error,
             operation: "check",
           });
           log.setLevel("error");
@@ -518,7 +517,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
       } catch (error) {
         const log = createLogger({
           component: "storage",
-          error: sanitizeLog(error),
+          error,
           operation: "inspect",
         });
         log.setLevel("error");
@@ -1870,7 +1869,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
         component: "torrent-engine",
         context: { savePath: detail.savePath, torrentId: detail.id },
         dataDir: engineOptions.dataDir,
-        error: sanitizeLog(error),
+        error,
         operation: "torrent",
       });
       log.setLevel("error");
@@ -1919,7 +1918,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
             } catch (error) {
               const log = createLogger({
                 component: "storage",
-                error: sanitizeLog(error),
+                error,
                 operation: "block",
               });
               log.setLevel("error");
@@ -1971,7 +1970,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
             component: "storage",
             context: { savePath: detail.savePath, torrentId: detail.id },
             dataDir: engineOptions.dataDir,
-            error: sanitizeLog(error),
+            error,
             operation: "completed-file-identity",
           });
           log.setLevel("error");

@@ -1,28 +1,53 @@
-import { defineEvlog } from "evlog";
+import { type DrainContext, defineEvlog } from "evlog";
+import { createFsDrain } from "evlog/fs";
+import { createDrainPipeline } from "evlog/pipeline";
 import { version } from "./package.json";
-import { sanitizeLog } from "./src/api/lib/diagnostics";
-import { logDrain } from "./src/api/lib/logs";
+import { instance } from "./src/api/lib/instance";
+
+const fileDrain = createFsDrain({
+  dir: instance.logDirectory,
+  maxFiles: 4,
+  maxSizePerFile: 5 * 1024 * 1024,
+  pretty: true,
+});
+
+const pipeline = createDrainPipeline<DrainContext>({
+  batch: { intervalMs: 1000, size: 25 },
+  maxBufferSize: 1000,
+  onDropped(events) {
+    process.stderr.write(`Tofu dropped ${events.length} application log events.\n`);
+  },
+  retry: { initialDelayMs: 250, maxAttempts: 3, maxDelayMs: 1000 },
+});
+
 
 export const config = defineEvlog({
-  drain: logDrain,
+  drain: pipeline(async (batch) => await fileDrain.raw(batch)),
   env: { version },
   include: ["/api/**"],
   redact: {
-    builtins: false,
+    paths: [
+      "**.authorization",
+      "**.cookie",
+      "**.headers",
+      "**.body",
+      "**.metadata",
+      "**.source",
+      "**.*apiKey",
+      "**.*api_key",
+      "**.*api-key",
+      "**.*credential*",
+    ],
+    patterns: [
+      /\/media\/x\/[^/\s?#]+/g,
+      /[#&](?:i|transfer|reconnect)=[A-Za-z0-9_-]+/g,
+      /https?:\/\/[^\s/@]+:[^\s/@]+@/gi,
+      /[?&][^\s=&#]*(?:token|key|secret|password|cookie)[^\s=&#]*=[^\s&#]*/gi,
+      /\b(?:authorization|(?:set-)?cookie)\s*:\s*[^\r\n]*/gi,
+      /(?:password|secret|token|api[-_]?key)\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+    ],
     transform(event) {
       event.pid = process.pid;
-      if (
-        event.error &&
-        typeof event.error === "object" &&
-        "name" in event.error &&
-        event.error.name === "ValidationError"
-      ) {
-        event.error = { message: "Request validation failed", name: "ValidationError" };
-      }
-      const sanitized = sanitizeLog(event);
-      if (sanitized && typeof sanitized === "object") {
-        Object.assign(event, sanitized);
-      }
       if (Buffer.byteLength(JSON.stringify(event)) > 64 * 1024) {
         event.context = { truncated: true };
         event.error = { message: "Error details exceeded the log size limit" };
@@ -30,5 +55,5 @@ export const config = defineEvlog({
     },
   },
   service: "tofu",
-  silent: true,
+  silent: instance.profile === "release",
 });

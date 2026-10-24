@@ -4,7 +4,6 @@ import { Elysia, problem, t } from "elysia";
 import { useLogger } from "evlog/elysia";
 import { version } from "libvlc-wasm/package.json";
 import { databasePlugin, instance } from "../../lib/database-plugin";
-import { sanitizeLog } from "../../lib/diagnostics";
 import { accessPlugin } from "../access/plugin";
 
 // Builds copy the engine next to the server bundle; development and tests run from the project
@@ -48,7 +47,7 @@ export const playerPlugin = new Elysia({ name: "tofu-player-api" })
         component: "player",
         context: { ...context, engineVersion: version },
         dataDir: instance.dataDir,
-        error: sanitizeLog({ message }),
+        error: { message },
         operation,
       });
       log.setLevel("error");
