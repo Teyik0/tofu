@@ -1,0 +1,126 @@
+tests/helpers/failed-torrent-startup.ts
+  s_e16c9be6bdc090::t_fe4bdfb0bc74b0 4,6,10
+  s_9b8eda6abd5852::t_cc646802067221 12
+package.json
+  s_3c50dba8b7bbbc::t_7a4f8b86dc1ce8 34-35
+tests/helpers/preload.ts
+  s_3c50dba8b7bbbc::t_5c99a50e9282d6 1,13-20
+src/api/modules/anilist/plugin.ts
+  s_e16c9be6bdc090::t_fe4bdfb0bc74b0 1,3,14
+src/api/modules/updates/plugin.ts
+  s_e16c9be6bdc090::t_fe4bdfb0bc74b0 1,5,8
+tests/plugins/sources.test.ts
+  s_65ef651d06df4d::t_28b52db9d70ca0 12-15,17-22
+  s_65ef651d06df4d::t_4c2ea9609c92d3 32-35
+tests/helpers/app.ts
+  s_3c50dba8b7bbbc::t_5c99a50e9282d6 57
+src/components/tofu-state-sync.tsx
+  s_3c50dba8b7bbbc::t_aee8c477f0b987 2,63
+  s_3c50dba8b7bbbc::t_da527297ec383f 4,22,25,52,61-62,64-71,73-80,82-87,90-97,100-101,103,105-107
+src/api/lib/instance.ts
+  s_3c50dba8b7bbbc::t_5c99a50e9282d6 34-35
+src/api/modules/torrents/plugin.ts
+  s_9b8eda6abd5852::t_5abcce4c706ee4 22
+  s_e16c9be6bdc090::t_fe4bdfb0bc74b0 2,5,38-42
+src/api/modules/torrents/index.ts
+  s_3c50dba8b7bbbc::t_bf20eaac1b1428 2,6
+src/api/modules/dashboard/index.ts
+  s_3c50dba8b7bbbc::t_e882653a446866 1-3,5-6,10,13-15,21-36,38-66,74-75,91-105
+  s_3c50dba8b7bbbc::t_a82adfd41dd58a 37
+  s_3c50dba8b7bbbc::t_ad33d1b271325c 12
+  s_3c50dba8b7bbbc::t_a981ef65f3b032 11
+src/api/modules/torrents/service.ts
+  s_9b8eda6abd5852::t_49fbc4f75c5247 766-767,800-801,834-835
+src/api/modules/access/plugin.ts
+  s_e16c9be6bdc090::t_fe4bdfb0bc74b0 5,15
+src/api/index.ts
+  s_3c50dba8b7bbbc::t_aee8c477f0b987 8
+  s_3c50dba8b7bbbc::t_f42e62cced173d 5
+src/native/remote-threads.ts
+  s_3c50dba8b7bbbc::t_50fec5ff1c2e00 3,18-22,363,369
+  s_3c50dba8b7bbbc::t_d235ff19e2d362 527,530-540,542,548-554,558-559,635,670-671,673,676
+  s_3c50dba8b7bbbc::t_7765d072acd1b8 9,328-330,589
+  s_3c50dba8b7bbbc::t_ad33d1b271325c 555,561-565,572
+  s_3c50dba8b7bbbc::t_a82adfd41dd58a 543-544,593
+  s_3c50dba8b7bbbc::t_aee8c477f0b987 545-547,556-557,566-571,573-588,590,592,594-611,621-622,624-626,628-634,637-640,651-652,668-669
+src/api/modules/desktop/index.ts
+  s_e16c9be6bdc090::t_fe4bdfb0bc74b0 4,25,32
+src/api/lib/lifecycle-plugin.ts
+  s_e16c9be6bdc090::t_fe4bdfb0bc74b0 5-7,9-26
+  s_e16c9be6bdc090::t_0ef91ee8d4afa6 4
+  s_e16c9be6bdc090::t_7ca5a1d8ef3e34 27
+src/api/modules/access/service.ts
+  s_3c50dba8b7bbbc::t_7765d072acd1b8 2
+src/api/modules/plugins/index.ts
+  s_65ef651d06df4d::t_28b52db9d70ca0 38
+tests/torrents/lifecycle.test.ts
+  s_9b8eda6abd5852::t_5abcce4c706ee4 22
+  s_9b8eda6abd5852::t_e4f6f03db305fb 72-74,102-103
+  s_9b8eda6abd5852::t_751324db0e7001 68
+  s_9b8eda6abd5852::t_33d6c22f0ef98d 75-101
+tests/helpers/torrent-lifecycle-server.ts
+  s_9b8eda6abd5852::t_751324db0e7001 38
+  s_9b8eda6abd5852::t_5abcce4c706ee4 27-31,41
+src/api/modules/library-links/service.ts
+  s_3c50dba8b7bbbc::t_7765d072acd1b8 6
+tests/helpers/interrupted-torrent-startup.ts
+  s_9b8eda6abd5852::t_e4f6f03db305fb 1-3,5,7-8,10,12-23,25-33
+  s_e16c9be6bdc090::t_fe4bdfb0bc74b0 4,6,9
+  s_9b8eda6abd5852::t_cc646802067221 11,24
+tests/remote/threads.test.ts
+  s_3c50dba8b7bbbc::t_7765d072acd1b8 400
+src/native/host.ts
+  s_3c50dba8b7bbbc::t_7765d072acd1b8 9,86-87
+tests/helpers/remote-relay.ts
+  s_3c50dba8b7bbbc::t_7765d072acd1b8 1-5,14-15,17-24,44-66
+README.md
+  s_3c50dba8b7bbbc::t_b69dc5a316122b 131
+src/lib/protocol.ts
+  s_3c50dba8b7bbbc::t_7765d072acd1b8 1
+src/state/workspace.ts
+  s_3c50dba8b7bbbc::t_5c99a50e9282d6 13-14
+bun.lock
+  s_3c50dba8b7bbbc::t_9ce459828f8644 11-12,380,382
+vendor/README.md
+  s_3c50dba8b7bbbc::t_150d8796cbafc2 5,9-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff22ecb940727ffd5376415152640d1d587eb4c7",
+  "prompts": {},
+  "sessions": {
+    "s_3c50dba8b7bbbc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d86-0c82-79d2-88be-e920bcd9c753",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_65ef651d06df4d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e33-65b7-7c20-8b2b-baa448c04bcc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_9b8eda6abd5852": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e11-c51c-7e83-ba0a-14871cfc047d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_e16c9be6bdc090": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e35-6af4-75a2-b8ce-f0139e2bd2c7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
