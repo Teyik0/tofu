@@ -1,31 +1,21 @@
-import { on } from "node:events";
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia, ElysiaStatus, problem, sse } from "elysia";
+import { Elysia, ElysiaStatus, problem } from "elysia";
 import { sync } from "../../../sync";
 import { accessPlugin } from "../access/plugin";
 import type { Caller } from "../access/service";
-import type { LiveState } from "../dashboard/projection";
-import { hostDetail, hostState, libraryDetail, libraryState } from "../dashboard/projection";
+import { hostDetail, libraryDetail } from "../dashboard/projection";
 import { mediaReaders, streamTorrentFile } from "./media";
 import {
   addPeerSchema,
   bulkActionSchema,
   createTorrentSchema,
   filePrioritySchema,
-  liveQuerySchema,
   locateTorrentSchema,
   removeTorrentSchema,
   trackersSchema,
   uploadTorrentSchema,
 } from "./model";
 import { torrentServicePlugin } from "./plugin";
-import type { TorrentDetail } from "./types";
-
-function seesHost(caller: Caller | { kind: "in-process" }) {
-  return (
-    caller.kind === "owner" || (caller.kind === "device" && caller.device.role === "administration")
-  );
-}
 
 function mediaKey(caller: Caller) {
   return caller.kind === "device" ? caller.device.id : "owner";
@@ -56,67 +46,6 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
     }
     return hostDetail(detail);
   })
-  .get(
-    "/live",
-    { personal: true, query: liveQuerySchema },
-    async ({ access, caller, torrents, request, query }) => {
-      const reading = access.callerReader(caller, request);
-      const { signal } = reading;
-      // Register before observing so no change between the first snapshot and the loop is lost.
-      const changes = on(torrents, "change", { signal });
-      const host = seesHost(caller);
-      const identity = access.identity();
-      const observed = await torrents.setObserved(true);
-      if (observed instanceof ElysiaStatus) {
-        await changes.return?.();
-        reading.release();
-        return observed;
-      }
-      const initial = await torrents.refreshSnapshot(0);
-      if (initial instanceof ElysiaStatus) {
-        await changes.return?.();
-        reading.release();
-        return initial;
-      }
-      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep validation, state changes, and cleanup in the same lifecycle operation.
-      return (async function* () {
-        try {
-          // The first snapshot is fresh; each change then publishes the engine's latest snapshot.
-          for (let state = initial; ; state = torrents.snapshot(null, false)) {
-            let detail: TorrentDetail | null = null;
-            if (query.selected && state.torrents.some((torrent) => torrent.id === query.selected)) {
-              // The torrent can be removed between the snapshot and this read.
-              // biome-ignore lint/performance/noAwaitInLoops: Each snapshot carries the detail read after it.
-              const found = await torrents.detail(query.selected);
-              detail = found instanceof ElysiaStatus ? null : found;
-            }
-            const live: LiveState = {
-              ...libraryState(state, detail, { id: identity.serverId, name: identity.name }),
-              detailHost: host && detail ? hostDetail(detail) : null,
-              host: host ? hostState(state) : null,
-            };
-            yield sse({ data: live, event: "snapshot" });
-            const { done } = await changes.next();
-            if (done) {
-              return;
-            }
-          }
-        } catch (error) {
-          // A disconnected browser or a revoked device aborts the pending change iterator.
-          if (!signal.aborted) {
-            throw error;
-          }
-        } finally {
-          reading.release();
-          // The change iterator is read manually, so it must be closed explicitly.
-          await changes.return?.();
-          if (torrents.listenerCount("change") === 0) {
-            await torrents.setObserved(false);
-          }
-        }
-      })();
-    }
-  )
   .post(
     "/torrents",
     { body: createTorrentSchema, management: true },

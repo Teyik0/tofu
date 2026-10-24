@@ -1,6 +1,6 @@
-import { Elysia } from "elysia";
+import { createContext, Elysia } from "elysia";
 import { databasePlugin } from "../../lib/db";
-import { reserveInitialization } from "../../lib/lifecycle-plugin";
+import { lifecyclePlugin } from "../../lib/lifecycle-plugin";
 import { automationPlugin } from "../automation";
 import { releaseAutomationPlugin } from "../automation/plugin";
 import { discoveryServicePlugin } from "../discovery/plugin";
@@ -11,7 +11,7 @@ import { readAniListClient } from "./client";
 import { AniListService } from "./service";
 import { instance } from "@/api/lib/instance";
 
-using _initialization = reserveInitialization();
+using _initialization = createContext(lifecyclePlugin).prototype.reserveInitialization();
 
 export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
   .use(databasePlugin)

@@ -10,8 +10,8 @@ import type { api } from "../lib/client";
 export type ServerSession = NonNullable<Awaited<ReturnType<typeof api.session.get>>["data"]>;
 
 /**
- * Latest dashboard state, seeded from the root loader and replaced by live server snapshots.
- * Live snapshots carry the detail of the selected torrent and, for administrators, host state.
+ * Latest dashboard state, seeded from the root loader and updated by Furin live queries.
+ * Authenticated reads carry the selected torrent and, for administrators, host state.
  */
 export const dashboardAtom = atom<LiveState | null>(null);
 /** Null until the browser confirms its session; privileged controls stay hidden meanwhile. */

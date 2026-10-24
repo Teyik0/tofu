@@ -1,4 +1,5 @@
 import { createLogger } from "evlog";
+import { PROTOCOL_MAJOR } from "../../../lib/protocol";
 import "@teyik0/furin/server-only";
 import { hostname } from "node:os";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
@@ -27,7 +28,6 @@ import { hash, randomToken } from "./tokens";
 
 const LOCAL_HOST_SUFFIX = /\.local$/i;
 
-export const PROTOCOL_MAJOR = 1;
 export const DAY = 86_400_000;
 const SESSION_IDLE = 30 * DAY;
 const SESSION_ABSOLUTE = 365 * DAY;

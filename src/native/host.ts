@@ -6,6 +6,7 @@ import {
 } from "@teyik0/furin-electrobun/host";
 // biome-ignore lint/performance/noNamespaceImport: Native server windows share the canonical SDK namespace.
 import * as sdk from "electrobun/main";
+import { PROTOCOL_MAJOR } from "../lib/protocol";
 import { type SavedServer, ServerCatalog } from "./catalog";
 import { nativeControl } from "./control";
 import { discoverLocalServers } from "./discovery";
@@ -82,8 +83,8 @@ async function descriptor(origin: string, expected: string | null) {
     );
   }
   if (
-    body.protocol.major !== 1 ||
-    !(body.protocol.minClient <= 1 && body.protocol.maxClient >= 1)
+    body.protocol.major !== PROTOCOL_MAJOR ||
+    !(body.protocol.minClient <= PROTOCOL_MAJOR && body.protocol.maxClient >= PROTOCOL_MAJOR)
   ) {
     throw new Error("Incompatible Tofu version. Update this application or the server");
   }

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { problem } from "elysia";
 import { linkedServers } from "../../../db/schema";
 import type { TofuDatabase } from "../../lib/db";
-import { PROTOCOL_MAJOR } from "../access/service";
+import { PROTOCOL_MAJOR } from "../../../lib/protocol";
 import { animeEpisodeOffset, localAnimeSearch } from "../anilist/releases";
 import type { AniListEntry } from "../anilist/types";
 import type { AvailabilityQuery, EpisodeSource } from "./availability";

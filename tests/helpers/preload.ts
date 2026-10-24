@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { instance } from "../../src/api/lib/instance";
-import { listen } from "../../src/api/lib/network";
 import { ServerCatalog } from "../../src/native/catalog";
 import { nativeControl } from "../../src/native/control";
 import { RemoteThreads } from "../../src/native/remote-threads";
@@ -11,9 +10,14 @@ const [, , testPort, directory] = process.argv;
 if (!directory) {
   throw new Error("Application fixtures require a temporary directory");
 }
-instance.dataDir = join(directory, "state");
-instance.downloadPath = join(directory, "downloads");
-instance.desktop = false;
+mkdirSync(join(directory, "state"), { recursive: true });
+Object.assign(instance, {
+  dataDir: join(directory, "state"),
+  defaultDownloadPath: join(directory, "downloads"),
+  desktop: false,
+  logDirectory: join(directory, "state", "logs"),
+  port: Number(testPort),
+});
 
 const remoteServers = process.env.TOFU_TEST_REMOTE_SERVERS;
 
@@ -86,8 +90,4 @@ if (provider) {
     },
     { preconnect: originalFetch.preconnect }
   );
-}
-
-if (testPort !== undefined) {
-  listen.port = Number(testPort);
 }

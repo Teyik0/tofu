@@ -54,6 +54,7 @@ export async function application(options?: {
           cwd: join(import.meta.dir, "../.."),
           env: {
             ...process.env,
+            DATABASE_URL: join(directory, "state", "tofu.sqlite"),
             FURIN_APP_DATA_DIR: undefined,
             NODE_ENV: "development",
             TOFU_DISCOVERY: "0",

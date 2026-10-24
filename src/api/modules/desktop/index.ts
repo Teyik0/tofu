@@ -1,13 +1,12 @@
 import { on } from "node:events";
 import { join } from "node:path";
 import { furinSync, invalidateSync } from "@teyik0/furin/sync";
-import { Elysia, ElysiaStatus, problem, sse } from "elysia";
+import { createContext, Elysia, ElysiaStatus, problem, sse } from "elysia";
 import { createLogger } from "evlog";
 import { nativeControl } from "../../../native/control";
 import { nativeServerActionSchema } from "../../../native/model";
 import { sync } from "../../../sync";
 import { instance } from "../../lib/instance";
-import { resources } from "../../lib/lifecycle-plugin";
 import { runtime } from "../../lib/runtime";
 import { accessPlugin } from "../access/plugin";
 import { acceptOpenedTorrentSchema } from "../torrents/model";
@@ -23,13 +22,14 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   .use(updatesServicePlugin)
   .use(accessPlugin)
   .use(furinSync(sync))
-  .onStart(() => {
+  .onStart((app) => {
     const remote = nativeControl.tofuNativeThreads;
 
     if (!remote || remoteStateChanges) {
       return;
     }
 
+    const { resources } = createContext(app).prototype;
     const changes = on(remote, "change");
     remoteStateChanges = changes;
 

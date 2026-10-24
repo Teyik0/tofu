@@ -397,7 +397,7 @@ test("saved servers keep their threads and permissions independent when one goes
   expect(beforeResponse.status).toBe(200);
   const before = (await beforeResponse.json()) as { cursor: string };
   {
-    using database = new Database(join(desktopApp.directory, "state", "feeds.sqlite"));
+    using database = new Database(join(desktopApp.directory, "state", "tofu.sqlite"));
     database.exec("BEGIN IMMEDIATE");
     using transaction = new DisposableStack();
     transaction.defer(() => database.exec("ROLLBACK"));

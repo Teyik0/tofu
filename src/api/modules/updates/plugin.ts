@@ -1,11 +1,11 @@
-import { Elysia } from "elysia";
+import { createContext, Elysia } from "elysia";
 import { version } from "../../../../package.json";
 import { databasePlugin } from "../../lib/db";
 import { instance } from "../../lib/instance";
-import { reserveInitialization } from "../../lib/lifecycle-plugin";
+import { lifecyclePlugin } from "../../lib/lifecycle-plugin";
 import { UpdatesService } from "./service";
 
-using _initialization = reserveInitialization();
+using _initialization = createContext(lifecyclePlugin).prototype.reserveInitialization();
 
 export const updatesServicePlugin = new Elysia({ name: "tofu-updates-service" })
   .use(databasePlugin)

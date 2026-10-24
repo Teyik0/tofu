@@ -1,6 +1,7 @@
 import { useRouter } from "@teyik0/furin/link";
+import { createSyncClient } from "@teyik0/furin/sync/client";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { LibraryState } from "../api/modules/dashboard/projection";
 import type { ThemePreference } from "../api/modules/settings/model";
 import { api } from "../lib/client";
@@ -18,9 +19,10 @@ const THEMES = new Set<string>(["system", "light", "dark"]);
 
 /**
  * The single owner of this workspace's connection to its server: it confirms the session,
- * follows live snapshots, and retries with jittered backoff. Views only read its atoms.
+ * follows Furin live queries. Views only read its atoms.
  */
 export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; path: string }) {
+  const authorization = useRef<string | null>(null);
   const theme = useAtomValue(themeAtom);
   const setTheme = useSetAtom(themeAtom);
   const setBackPath = useSetAtom(settingsBackPathAtom);
@@ -47,7 +49,7 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
   }, [serverId, serverTheme, setTheme]);
 
   useEffect(() => {
-    // Fresh loader data replaces the shared library until the stream sends the next snapshot.
+    // Fresh loader data replaces the shared library until the live query completes.
     setDashboard((current) => ({
       ...dashboard,
       detailHost: current?.detailHost ?? null,
@@ -56,87 +58,53 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
   }, [dashboard, setDashboard]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
-    let authorization: string | null = null;
-    let wake: (() => void) | undefined;
-    const retryNow = () => wake?.();
-    const visible = () => {
-      if (document.visibilityState === "visible") {
-        retryNow();
+    const client = createSyncClient({
+      fetch: { cache: "no-store", credentials: "include" },
+      url: window.location.origin,
+    });
+    const connection = client.subscribeConnection(({ status }) => {
+      if (status === "unauthorized") {
+        setSession(null);
+        setDashboard(null);
+        window.location.assign("/signed-out?reason=expired");
+      } else if (status !== "closed") {
+        setConnection(status === "connected" ? "connected" : "reconnecting");
       }
-    };
-    window.addEventListener("online", retryNow);
-    document.addEventListener("visibilitychange", visible);
-    const signedOut = () => {
-      window.location.assign("/signed-out?reason=expired");
-    };
-    const confirmSession = async () => {
-      const { data, error } = await api.session.get({ fetch: { signal } });
-      if (error) {
-        if (error.status === 401) {
-          signedOut();
-        }
-        return false;
-      }
-      // New grants invalidate everything this page learned under the previous ones.
-      if (authorization !== null && authorization !== data.caller.authorizationVersion) {
-        window.location.reload();
-        return false;
-      }
-      authorization = data.caller.authorizationVersion;
-      setSession(data);
-      return true;
-    };
-    const follow = async () => {
-      let failures = 0;
-      while (!signal.aborted) {
-        let connected = false;
-        try {
-          // biome-ignore lint/performance/noAwaitInLoops: Each attempt waits for the previous stream to end.
-          if (await confirmSession()) {
-            const { data, error } = await api.live.get({
-              fetch: { signal },
-              query: { selected: selected ?? undefined },
-            });
-            if (error?.status === 401) {
-              signedOut();
-              return;
-            }
-            if (data) {
-              for await (const event of data) {
-                connected = true;
-                failures = 0;
-                setConnection("connected");
-                setDashboard(event.data);
-              }
-            }
-          }
-        } catch {
-          // Network failures fall through to the backoff below unless the layout unmounted.
-        }
-        if (signal.aborted) {
+    });
+    const subscription = client.subscribe(
+      api.state.get.live({
+        query: { detail: selected ? "true" : "false", selected: selected ?? undefined },
+      }),
+      ({ data, error }) => {
+        if (error || !data?.viewer) {
           return;
         }
-        failures = connected ? 1 : failures + 1;
-        setConnection("reconnecting");
-        // Full jitter, capped at 30 seconds; network and foreground events retry at once.
-        const delay = Math.random() * Math.min(30_000, 500 * 2 ** Math.min(failures, 6));
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, delay);
-          wake = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-        });
-        wake = undefined;
+        const version = data.viewer.caller.authorizationVersion;
+        if (authorization.current !== null && authorization.current !== version) {
+          client.close();
+          setSession(null);
+          setDashboard(null);
+          window.location.reload();
+          return;
+        }
+        authorization.current = version;
+        setSession(data.viewer);
+        setDashboard(data);
+      }
+    );
+    const visible = () => {
+      if (document.visibilityState === "visible") {
+        client.reconnect();
       }
     };
-    void follow();
+    window.addEventListener("online", client.reconnect);
+    document.addEventListener("visibilitychange", visible);
     return () => {
-      controller.abort();
-      window.removeEventListener("online", retryNow);
+      window.removeEventListener("online", client.reconnect);
       document.removeEventListener("visibilitychange", visible);
+      subscription();
+      connection();
+      client.close();
     };
   }, [selected, setConnection, setDashboard, setSession]);
 

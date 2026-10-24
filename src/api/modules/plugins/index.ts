@@ -35,6 +35,7 @@ export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
   })
   // Plugin changes alter the dashboard, the plugin pages and the AniList library.
   .onBeforeHandle(({ invalidate }) => {
+    invalidate("/api/automation");
     invalidate({ path: "/", type: "layout" });
     invalidate({ path: "/plugins", type: "layout" });
     invalidate({ path: "/anilist", type: "page" });

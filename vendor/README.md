@@ -2,12 +2,23 @@
 
 Both active packages are built without local source patches from
 [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
-`2ce23218e9b84023796d0635f110fd342cb0a458`.
+`ce5d778f91925464a75e84ca15365edf1f8e572d`.
 
 | Active archive | SHA-256 |
 | --- | --- |
-| `furin-pr163-2ce2321.tgz` | `1553e3081cee062caa54bc7c7f78c3462f067eddcaaeeae7c83e7359749b5f3a` |
-| `furin-electrobun-pr163-2ce2321.tgz` | `ad331d2bcfe997b862157ef8090de3334b40806c75caedb53304ab12deae29b8` |
+| `furin-pr163-ce5d778.tgz` | `cd621a4b97d2b89810f272ce4c083613ff2a327f3692e5913a25098a16814708` |
+| `furin-electrobun-pr163-ce5d778.tgz` | `424811d675b30284de7fccbee5437cc9495ad260433807c6364e17ab76e37d65` |
+
+Commit `ce5d778` adds `createSyncClient` through `@teyik0/furin/sync/client`
+for continuous live queries outside React, plus `createLocalSyncClient` through
+`@teyik0/furin/sync` for direct in-process Eden subscriptions. Both clients share
+query recovery and cancellation behavior. Commit `636cef7` lets background
+invalidations declare their principal provenance, preserving targeted recovery
+without exposing another principal's journal entries. Existing Tofu consumers
+still use `/live`; updating the packages does not migrate those subscriptions.
+
+Commit `4aa5fec` derives native window origins from the application's actual
+listener, including its hostname, port and TLS configuration.
 
 Commit `b156c07` preserves API plugin types in desktop composition, including
 request-aware macros. Commit `2ce2321` restores `background` as a callback;

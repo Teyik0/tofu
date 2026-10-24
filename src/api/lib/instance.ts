@@ -31,3 +31,5 @@ export const instance = {
   port: development ? 3030 : 3031,
   profile: development ? "dev" : "release",
 } as const;
+
+export type InstanceProfile = typeof instance.profile;

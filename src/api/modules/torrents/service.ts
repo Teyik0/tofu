@@ -763,7 +763,8 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
   ) {
     const database = connection ?? db;
     const serialized = JSON.stringify(value);
-    database.insert(torrentConfig)
+    database
+      .insert(torrentConfig)
       .values({ key, value: serialized })
       .onConflictDoUpdate({ set: { value: serialized }, target: torrentConfig.key })
       .run();
@@ -796,7 +797,8 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
     if (state.persistedEntries.get(entry) === value) {
       return value;
     }
-    database.insert(torrentRecords)
+    database
+      .insert(torrentRecords)
       .values({ id: detail.id, value })
       .onConflictDoUpdate({ set: { value }, target: torrentRecords.id })
       .run();
@@ -829,7 +831,8 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
   function writeDestination(destination: Destination, connection?: DatabaseConnection) {
     const database = connection ?? db;
     const { id, ...presentation } = destination;
-    database.insert(torrentDestinations)
+    database
+      .insert(torrentDestinations)
       .values(destination)
       .onConflictDoUpdate({ set: presentation, target: torrentDestinations.id })
       .run();

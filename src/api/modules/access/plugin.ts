@@ -2,7 +2,7 @@ import "@teyik0/furin/server-only";
 import { createContext, Elysia, ElysiaStatus, problem } from "elysia";
 import { databasePlugin } from "../../lib/db";
 import {instance} from '../../lib/instance'
-import { reserveInitialization } from "../../lib/lifecycle-plugin";
+import { lifecyclePlugin } from "../../lib/lifecycle-plugin";
 import { runtime } from "../../lib/runtime";
 import { tailscale } from "../../lib/tailscale";
 import { closeLan, openLan } from "../../lib/tailscale/lan";
@@ -12,7 +12,7 @@ import { rank } from "./grants";
 import { Invitations } from "./invitations";
 import { AccessService, type Caller, callers } from "./service";
 
-using _initialization = reserveInitialization();
+using _initialization = createContext(lifecyclePlugin).prototype.reserveInitialization();
 
 type Member = Exclude<Caller, { kind: "anonymous" }>;
 

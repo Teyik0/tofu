@@ -19,7 +19,7 @@ test("the torrent runtime transfers real bytes and releases its worker on shutdo
       FURIN_APP_DATA_DIR: directory.directory,
     },
     ipc(message: { port: number }) {
-      port = message.port;
+      ({ port } = message);
     },
     stderr: "pipe",
     stdout: "pipe",
@@ -65,36 +65,39 @@ test("the torrent runtime transfers real bytes and releases its worker on shutdo
   using deadline = new DisposableStack();
   const timeout = setTimeout(() => child.kill("SIGKILL"), 8000);
   deadline.defer(() => clearTimeout(timeout));
-  child.kill("SIGTERM");
+  child.send({ type: "shutdown" });
   expect(await child.exited, await output).toBe(0);
 });
 
-test("failed torrent restoration releases the worker without opening the application", async () => {
-  await using directory = await application();
-  const child = Bun.spawn([process.execPath, "tests/helpers/failed-torrent-startup.ts"], {
-    cwd: join(import.meta.dir, "../.."),
-    env: {
-      ...process.env,
-      DATABASE_URL: join(directory.directory, "tofu.sqlite"),
-      FURIN_APP_DATA_DIR: directory.directory,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  await using cleanup = new AsyncDisposableStack();
-  cleanup.defer(async () => {
-    if (child.exitCode === null) {
-      child.kill("SIGKILL");
-    }
-    await child.exited;
-  });
-  const deadline = setTimeout(() => child.kill("SIGKILL"), 8000);
-  cleanup.defer(() => clearTimeout(deadline));
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
-  expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
-  expect(stdout).toContain("Failed torrent startup released its resources");
-});
+test.each(["failed", "interrupted"] as const)(
+  "%s torrent startup releases the worker without opening the application",
+  async (scenario) => {
+    await using directory = await application();
+    const child = Bun.spawn([process.execPath, `tests/helpers/${scenario}-torrent-startup.ts`], {
+      cwd: join(import.meta.dir, "../.."),
+      env: {
+        ...process.env,
+        DATABASE_URL: join(directory.directory, "tofu.sqlite"),
+        FURIN_APP_DATA_DIR: directory.directory,
+      },
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+    await using cleanup = new AsyncDisposableStack();
+    cleanup.defer(async () => {
+      if (child.exitCode === null) {
+        child.kill("SIGKILL");
+      }
+      await child.exited;
+    });
+    const deadline = setTimeout(() => child.kill("SIGKILL"), 8000);
+    cleanup.defer(() => clearTimeout(deadline));
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
+    expect(stdout).toContain("torrent startup released its resources");
+  }
+);
