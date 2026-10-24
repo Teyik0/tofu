@@ -2,13 +2,13 @@ import "@teyik0/furin/server-only";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { authorizedDevices, mediaLinks } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 import type { EnginePort } from "../torrents/service";
 
 const DEFAULT_TTL = 6 * 3_600_000;
 
 interface MediaLinksOptions {
-  db: TofuDatabase;
+  db: Database;
   now: () => number;
 }
 
@@ -61,7 +61,7 @@ export class MediaLinks {
     engine: EnginePort,
     input: { deviceId: string | null; fileIndex: number; torrentId: string }
   ) {
-    const detail = await engine.detail(input.torrentId);
+    const detail = await engine.call("detail", [input.torrentId]);
     if (detail instanceof ElysiaStatus) {
       return detail;
     }
@@ -91,7 +91,7 @@ export class MediaLinks {
     if (!link) {
       return problem(404, { detail: "This playback link expired or was revoked" });
     }
-    const detail = await engine.detail(link.torrentId);
+    const detail = await engine.call("detail", [link.torrentId]);
     if (detail instanceof ElysiaStatus) {
       return detail;
     }

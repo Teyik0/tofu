@@ -9,13 +9,14 @@ Always use ponytail skills when starting a feature.
 - Never use promise `.catch()` or `.finally()` chains.
 - Preserve concurrency explicitly: reserve operation queues before the first `await`, and use `await Promise.all(...)` or `await Promise.allSettled(...)` for independent work.
 
-## No routine try/catch
+## Effect in services; no JavaScript try/catch
 
-- Do not use `try` / `catch` in business logic or for normal control flow. Expected API failures are returned as typed `problem(...)` or `status(...)` results and propagated directly.
-- Catch an exception only at the external I/O, native SDK, worker, or process boundary that must translate it into a typed failure or report an otherwise unobserved error. Catching merely to rethrow, return a default, or hide a broken invariant is prohibited.
-- Register resource cleanup when acquiring the resource. Prefer `using`, `await using`, or `AsyncDisposableStack` over handwritten nested cleanup and error-collection loops when they preserve dependency order and concurrency.
-- Use `try` / `finally` only when it is necessary to release a resource, reservation, or listener that cannot use the disposal mechanisms above.
-- Never move exception handling into a helper, factory, class, or proxy merely to hide it. Any remaining catch must have a concrete boundary or cleanup requirement that can be explained from its call site.
+- Do not use JavaScript `try` / `catch` / `finally` blocks in backend services or their API adapters. Use Effect for service construction, scoped resource ownership, and failures at external I/O, native SDK, worker, or process boundaries.
+- Expected API failures remain typed `problem(...)` or `status(...)` results and must be propagated directly. Do not turn a returned API failure into a rejected promise or erase its inferred status/body type.
+- Keep Effect in the service layer. Elysia owns routes and HTTP composition; do not convert the server entry point or route declarations into Effect programs.
+- Use `Effect.try` / `Effect.tryPromise` at the concrete external boundary. Do not wrap an entire business workflow just to reproduce a removed catch, return a default, or hide a broken invariant. Background-task boundaries must report otherwise unobserved failures.
+- Register cleanup when acquiring a resource, using `Effect.acquireRelease` / scoped finalizers for service lifetimes and `using`, `await using`, or disposable stacks for local reservations and listeners.
+- Never move exception handling into a helper, factory, class, or proxy merely to hide it. Every failure conversion must have a concrete boundary that can be explained from its call site.
 
 ## Returned API errors
 

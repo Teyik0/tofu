@@ -1,9 +1,10 @@
 import "@teyik0/furin/server-only";
 import { eq } from "drizzle-orm";
+import { Effect, Result } from "effect";
 import { problem } from "elysia";
 import { linkedServers } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
 import { PROTOCOL_MAJOR } from "../../../lib/protocol";
+import type { Database } from "../../lib/database-layer";
 import { animeEpisodeOffset, localAnimeSearch } from "../anilist/releases";
 import type { AniListEntry } from "../anilist/types";
 import type { AvailabilityQuery, EpisodeSource } from "./availability";
@@ -22,7 +23,7 @@ export type LinkAvailability =
   | { state: "revoked" | "identity-changed" | "incompatible"; checkedAt: number; sources: [] };
 
 interface LinkedLibrariesOptions {
-  db: TofuDatabase;
+  db: Database;
   now: () => number;
   /** This server's own identity, which it must never link to. */
   serverId: () => string;
@@ -79,7 +80,13 @@ export class LinkedLibraries {
     if (!response.ok) {
       return null;
     }
-    const body = (await response.json()) as {
+    const decoded = await Effect.runPromise(
+      Effect.result(Effect.tryPromise(() => response.json()))
+    );
+    if (Result.isFailure(decoded) || !decoded.success || typeof decoded.success !== "object") {
+      return null;
+    }
+    const body = decoded.success as {
       name?: unknown;
       product?: unknown;
       protocol?: { major?: unknown };
@@ -108,14 +115,15 @@ export class LinkedLibraries {
     if (!origin) {
       return problem(400, { detail: "Enter the server's HTTPS address" });
     }
-    let descriptor: Awaited<ReturnType<LinkedLibraries["descriptor"]>>;
-    try {
-      descriptor = await this.descriptor(origin);
-    } catch {
+    const described = await Effect.runPromise(
+      Effect.result(Effect.tryPromise(() => this.descriptor(origin)))
+    );
+    if (Result.isFailure(described)) {
       return problem(502, {
         detail: "This server could not be reached securely. Check its address and certificate",
       });
     }
+    const descriptor = described.success;
     if (!descriptor) {
       return problem(502, { detail: "This address is not a Tofu server" });
     }
@@ -129,25 +137,36 @@ export class LinkedLibraries {
       return problem(409, { detail: `${descriptor.name} is already linked` });
     }
     const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url");
-    let response: Response;
-    try {
-      response = await fetch(`${origin}/api/auth/pair`, {
-        body: JSON.stringify({
-          code: input.code,
-          kind: "server",
-          label: input.label,
-          nonce,
-          secret: input.secret,
-        }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-        redirect: "error",
-        signal: AbortSignal.timeout(DEADLINE * 2),
-      });
-    } catch {
+    const paired = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise(() =>
+          fetch(`${origin}/api/auth/pair`, {
+            body: JSON.stringify({
+              code: input.code,
+              kind: "server",
+              label: input.label,
+              nonce,
+              secret: input.secret,
+            }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+            redirect: "error",
+            signal: AbortSignal.timeout(DEADLINE * 2),
+          })
+        )
+      )
+    );
+    if (Result.isFailure(paired)) {
       return problem(502, { detail: `${descriptor.name} did not answer. Try again` });
     }
-    const body = (await response.json()) as {
+    const response = paired.success;
+    const decoded = await Effect.runPromise(
+      Effect.result(Effect.tryPromise(() => response.json()))
+    );
+    if (Result.isFailure(decoded) || !decoded.success || typeof decoded.success !== "object") {
+      return problem(502, { detail: "The server returned an unreadable invitation response" });
+    }
+    const body = decoded.success as {
       detail?: string;
       device?: { id: string };
       server?: { id: string };
@@ -190,18 +209,20 @@ export class LinkedLibraries {
     if (!link) {
       return problem(404, { detail: "Linked server not found" });
     }
-    let revokedRemotely = false;
-    try {
-      const response = await fetch(`${link.origin}/api/auth/logout`, {
-        headers: { authorization: `Bearer ${link.credential}` },
-        method: "POST",
-        redirect: "error",
-        signal: AbortSignal.timeout(DEADLINE),
-      });
-      revokedRemotely = response.ok || response.status === 401;
-    } catch {
-      revokedRemotely = false;
-    }
+    const revoked = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise(() =>
+          fetch(`${link.origin}/api/auth/logout`, {
+            headers: { authorization: `Bearer ${link.credential}` },
+            method: "POST",
+            redirect: "error",
+            signal: AbortSignal.timeout(DEADLINE),
+          })
+        )
+      )
+    );
+    const revokedRemotely =
+      Result.isSuccess(revoked) && (revoked.success.ok || revoked.success.status === 401);
     this.options.db.delete(linkedServers).where(eq(linkedServers.id, id)).run();
     return { removed: true as const, revokedRemotely };
   }
@@ -220,7 +241,10 @@ export class LinkedLibraries {
 
   /** Confirms the address still serves the linked identity before any credential is sent. */
   private async verify(link: LinkedServer) {
-    const descriptor = await this.descriptor(link.origin);
+    const described = await Effect.runPromise(
+      Effect.result(Effect.tryPromise(() => this.descriptor(link.origin)))
+    );
+    const descriptor = Result.isSuccess(described) ? described.success : null;
     if (!descriptor) {
       return "offline" as const;
     }
@@ -252,44 +276,64 @@ export class LinkedLibraries {
     if (link.state !== "active") {
       return { checkedAt: link.lastCheckedAt ?? now, sources: [], state: link.state };
     }
-    try {
-      const verified = await this.verify(link);
-      if (verified !== "ok") {
-        return verified === "offline"
-          ? offline()
-          : { checkedAt: now, sources: [], state: verified };
-      }
-      const response = await fetch(`${link.origin}/api/library/availability`, {
-        body: JSON.stringify({ queries: [query] }),
-        headers: {
-          authorization: `Bearer ${link.credential}`,
-          "content-type": "application/json",
-        },
-        method: "POST",
-        redirect: "error",
-        signal: AbortSignal.timeout(DEADLINE),
-      });
-      if (response.status === 401 || response.status === 403) {
-        this.mark(link, "revoked");
-        return { checkedAt: now, sources: [], state: "revoked" };
-      }
-      if (!response.ok) {
-        return offline();
-      }
-      const body = (await response.json()) as { results: { sources: EpisodeSource[] }[] };
-      const sources = body.results[0]?.sources ?? [];
-      if (this.cache.size >= 1024) {
-        const first = this.cache.keys().next().value;
-        if (first) {
-          this.cache.delete(first);
-        }
-      }
-      this.cache.set(key, { at: now, sources });
-      this.mark(link, "active");
-      return { checkedAt: now, sources, state: sources.length ? "available" : "none" };
-    } catch {
+    const verified = await this.verify(link);
+    if (verified !== "ok") {
+      return verified === "offline" ? offline() : { checkedAt: now, sources: [], state: verified };
+    }
+    const queried = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise(() =>
+          fetch(`${link.origin}/api/library/availability`, {
+            body: JSON.stringify({ queries: [query] }),
+            headers: {
+              authorization: `Bearer ${link.credential}`,
+              "content-type": "application/json",
+            },
+            method: "POST",
+            redirect: "error",
+            signal: AbortSignal.timeout(DEADLINE),
+          })
+        )
+      )
+    );
+    if (Result.isFailure(queried)) {
       return offline();
     }
+    const response = queried.success;
+    if ([401, 403].includes(response.status)) {
+      this.mark(link, "revoked");
+      return { checkedAt: now, sources: [], state: "revoked" };
+    }
+    if (!response.ok) {
+      return offline();
+    }
+    const decoded = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise(
+          () => response.json() as Promise<{ results: { sources: EpisodeSource[] }[] }>
+        )
+      )
+    );
+    if (Result.isFailure(decoded)) {
+      return offline();
+    }
+    const body = decoded.success;
+    if (!Array.isArray(body?.results)) {
+      return offline();
+    }
+    const sources = body.results[0]?.sources ?? [];
+    if (!Array.isArray(sources)) {
+      return offline();
+    }
+    if (this.cache.size >= 1024) {
+      const first = this.cache.keys().next().value;
+      if (first) {
+        this.cache.delete(first);
+      }
+    }
+    this.cache.set(key, { at: now, sources });
+    this.mark(link, "active");
+    return { checkedAt: now, sources, state: sources.length ? "available" : "none" };
   }
 
   /** One request per linked server for a whole anime, never one per episode card. */
@@ -328,26 +372,35 @@ export class LinkedLibraries {
     if (link?.state !== "active") {
       return problem(404, { detail: "Linked server not found" });
     }
-    try {
-      if ((await this.verify(link)) !== "ok") {
-        return problem(503, { detail: "The linked server is unavailable" });
-      }
-      const response = await fetch(`${link.origin}/api/media-links/revoke`, {
-        body: JSON.stringify({ id: playbackId }),
-        headers: { authorization: `Bearer ${link.credential}`, "content-type": "application/json" },
-        method: "POST",
-        redirect: "error",
-        signal: AbortSignal.timeout(DEADLINE),
-      });
-      if (!response.ok) {
-        return problem(409, { detail: "The linked server could not revoke this playback link" });
-      }
-      return { revoked: true as const };
-    } catch {
+    if ((await this.verify(link)) !== "ok") {
+      return problem(503, { detail: "The linked server is unavailable" });
+    }
+    const revoked = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise(() =>
+          fetch(`${link.origin}/api/media-links/revoke`, {
+            body: JSON.stringify({ id: playbackId }),
+            headers: {
+              authorization: `Bearer ${link.credential}`,
+              "content-type": "application/json",
+            },
+            method: "POST",
+            redirect: "error",
+            signal: AbortSignal.timeout(DEADLINE),
+          })
+        )
+      )
+    );
+    if (Result.isFailure(revoked)) {
       return problem(503, {
         detail: "The linked server is unreachable. The playback link will expire automatically",
       });
     }
+    const response = revoked.success;
+    if (!response.ok) {
+      return problem(409, { detail: "The linked server could not revoke this playback link" });
+    }
+    return { revoked: true as const };
   }
 
   /** Asks the linked server for a file-scoped playback link the viewing player reads directly. */
@@ -356,24 +409,29 @@ export class LinkedLibraries {
     if (link?.state !== "active") {
       return problem(404, { detail: "Linked server not found" });
     }
-    let response: Response;
-    try {
-      if ((await this.verify(link)) !== "ok") {
-        return problem(503, { detail: `${link.name} is not available` });
-      }
-      response = await fetch(`${link.origin}/api/media-links`, {
-        body: JSON.stringify({ fileIndex, torrentId }),
-        headers: {
-          authorization: `Bearer ${link.credential}`,
-          "content-type": "application/json",
-        },
-        method: "POST",
-        redirect: "error",
-        signal: AbortSignal.timeout(DEADLINE),
-      });
-    } catch {
+    if ((await this.verify(link)) !== "ok") {
+      return problem(503, { detail: `${link.name} is not available` });
+    }
+    const played = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise(() =>
+          fetch(`${link.origin}/api/media-links`, {
+            body: JSON.stringify({ fileIndex, torrentId }),
+            headers: {
+              authorization: `Bearer ${link.credential}`,
+              "content-type": "application/json",
+            },
+            method: "POST",
+            redirect: "error",
+            signal: AbortSignal.timeout(DEADLINE),
+          })
+        )
+      )
+    );
+    if (Result.isFailure(played)) {
       return problem(503, { detail: `${link.name} is not reachable` });
     }
+    const response = played.success;
     if (response.status === 401 || response.status === 403) {
       this.mark(link, "revoked");
       return problem(403, { detail: `${link.name} removed access for this server` });
@@ -381,7 +439,13 @@ export class LinkedLibraries {
     if (!response.ok) {
       return problem(404, { detail: "This file is no longer available" });
     }
-    const body = (await response.json()) as {
+    const decoded = await Effect.runPromise(
+      Effect.result(Effect.tryPromise(() => response.json()))
+    );
+    if (Result.isFailure(decoded) || !decoded.success || typeof decoded.success !== "object") {
+      return problem(502, { detail: "The linked server returned an unreadable playback response" });
+    }
+    const body = decoded.success as {
       expiresAt: number;
       id: string;
       url: string;

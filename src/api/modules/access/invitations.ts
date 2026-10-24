@@ -2,7 +2,7 @@ import "@teyik0/furin/server-only";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { problem } from "elysia";
 import { authorizedDevices, deviceSessions, pairingInvitations } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 import { grantsOf, holds } from "./grants";
 import type { DeviceKind, DeviceRole, SessionKind } from "./model";
 import { type AccessService, type Caller, DAY, type Device, type Invitation } from "./service";
@@ -52,7 +52,7 @@ export function normalizeCode(code: string) {
 
 interface InvitationsOptions {
   access: AccessService;
-  db: TofuDatabase;
+  db: Database;
   now: () => number;
 }
 

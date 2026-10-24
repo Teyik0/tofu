@@ -1,11 +1,13 @@
 import { furinSync } from "@teyik0/furin/sync";
+import { Context } from "effect";
 import { Elysia } from "elysia";
+import { Updates } from "@/api/lib/services-layer";
+import { services } from "@/api/lib/services-runtime";
 import { sync } from "../../../sync";
 import { accessPlugin } from "../access/plugin";
-import { updatesServicePlugin } from "./plugin";
 
 export const updatesPlugin = new Elysia({ name: "tofu-updates-api", prefix: "/updates" })
-  .use(updatesServicePlugin)
+  .decorate("updates", Context.get(services, Updates))
   .use(accessPlugin)
   .use(furinSync(sync))
   .guard({ administration: true, idempotent: false })

@@ -582,11 +582,9 @@ export class RemoteThreads extends EventEmitter {
         })
       );
       let previous = "";
-      let authorization: string | null = null;
       resources.defer(
         client.subscribe(
           library.state.get.live({ query: { detail: "false" } }),
-          // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep validation and publication in the same subscription callback.
           ({ data, error }) => {
             if (signal.aborted) {
               return;
@@ -625,14 +623,6 @@ export class RemoteThreads extends EventEmitter {
               completed.resolve(problem(409, { detail: "The response belongs to another server" }));
               return;
             }
-            const version = data.viewer.caller.authorizationVersion;
-            if (authorization !== null && authorization !== version) {
-              authorization = version;
-              previous = "";
-              client.reconnect();
-              return;
-            }
-            authorization = version;
             const snapshot = {
               capabilities: data.viewer.capabilities,
               server: data.server,

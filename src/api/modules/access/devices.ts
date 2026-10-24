@@ -2,7 +2,7 @@ import "@teyik0/furin/server-only";
 import { and, eq, isNull } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { authorizedDevices, deviceSessions, pairingInvitations } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 import { grantsOf, holds } from "./grants";
 import type { DeviceRole } from "./model";
 import type { AccessService, Caller, Device } from "./service";
@@ -17,7 +17,7 @@ export interface GrantChange {
 
 interface DevicesOptions {
   access: AccessService;
-  db: TofuDatabase;
+  db: Database;
   now: () => number;
 }
 

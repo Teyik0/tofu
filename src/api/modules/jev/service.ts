@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
+import { Effect, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import { automationJudgements } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 import type { AniListMedia } from "../anilist/types";
 import type { AutomationCriterion, AutomationDraft } from "../automation/model";
 import type { FeedRelease } from "../discovery/model";
@@ -291,13 +292,13 @@ export function parseJevResponse(value: unknown, questions: JevQuestions): JevRe
 }
 
 export class JevService {
-  private readonly db: TofuDatabase;
+  private readonly db: Database;
   private readonly lifecycle: { closed: boolean } = { closed: false };
   private readonly evaluations = new Map<string, ReturnType<JevService["requestEvaluation"]>>();
   private readonly requests = new Set<AbortController>();
   private readonly options: { plugins: PluginsService; now: () => number; endpoint: string };
   constructor(
-    db: TofuDatabase,
+    db: Database,
     options: { plugins: PluginsService; now: () => number; endpoint: string }
   ) {
     this.db = db;
@@ -346,11 +347,11 @@ export class JevService {
       return result;
     })();
     this.evaluations.set(key, task);
-    try {
-      return await task;
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       this.evaluations.delete(key);
-    }
+    });
+    return await task;
   }
 
   private async requestEvaluation(state: object, questions: JevQuestions) {
@@ -368,40 +369,71 @@ export class JevService {
       }
       return status === 409 ? problem(409, { detail }) : problem(503, { detail });
     };
-    try {
-      return await this.options.plugins.request("jev", 15_000, null, async (controller) => {
-        this.requests.add(controller);
-        try {
-          if (this.lifecycle.closed) {
-            controller.abort();
-          }
-          controller.signal.throwIfAborted();
-          const response = await fetch(this.options.endpoint, {
-            body: JSON.stringify({ model: "jev-latest", questions, state }),
-            headers: {
-              authorization: `Bearer ${plugin.apiKey}`,
-              "content-type": "application/json",
-            },
-            method: "POST",
-            signal: controller.signal,
-          });
-          if (!response.ok) {
-            return unavailable(`Jev unavailable (HTTP ${response.status})`, 503);
-          }
-          const result = parseJevResponse(await response.json(), questions);
-          if (!this.options.plugins.plugin("jev").enabled) {
-            return unavailable("Jev plugin disabled", 409);
-          }
-          this.options.plugins.recordSuccess("jev");
-          return result;
-        } finally {
-          this.requests.delete(controller);
-        }
+    return await this.options.plugins.request("jev", 15_000, null, async (controller) => {
+      this.requests.add(controller);
+      using cleanup = new DisposableStack();
+      cleanup.defer(() => {
+        this.requests.delete(controller);
       });
-    } catch {
-      // Aborts, timeouts, transport failures and malformed answers.
-      return unavailable("Unable to connect to Jev", 503);
-    }
+      if (this.lifecycle.closed) {
+        controller.abort();
+      }
+      if (controller.signal.aborted) {
+        return unavailable("Jev plugin disabled", 409);
+      }
+      const fetched = await Effect.runPromise(
+        Effect.result(
+          Effect.tryPromise({
+            catch: (cause) => cause,
+            try: () =>
+              fetch(this.options.endpoint, {
+                body: JSON.stringify({ model: "jev-latest", questions, state }),
+                headers: {
+                  authorization: `Bearer ${plugin.apiKey}`,
+                  "content-type": "application/json",
+                },
+                method: "POST",
+                signal: controller.signal,
+              }),
+          })
+        )
+      );
+      if (Result.isFailure(fetched)) {
+        return unavailable("Unable to connect to Jev", 503);
+      }
+      const response = fetched.success;
+      if (!response.ok) {
+        return unavailable(`Jev unavailable (HTTP ${response.status})`, 503);
+      }
+      const decoded = await Effect.runPromise(
+        Effect.result(
+          Effect.tryPromise({
+            catch: (cause) => cause,
+            try: () => response.json(),
+          })
+        )
+      );
+      if (Result.isFailure(decoded)) {
+        return unavailable("Unable to connect to Jev", 503);
+      }
+      const parsed = Effect.runSync(
+        Effect.result(
+          Effect.try({
+            catch: (cause) => cause,
+            try: () => parseJevResponse(decoded.success, questions),
+          })
+        )
+      );
+      if (Result.isFailure(parsed)) {
+        return unavailable("Unable to connect to Jev", 503);
+      }
+      const result = parsed.success;
+      if (!this.options.plugins.plugin("jev").enabled) {
+        return unavailable("Jev plugin disabled", 409);
+      }
+      this.options.plugins.recordSuccess("jev");
+      return result;
+    });
   }
   async close() {
     this.lifecycle.closed = true;

@@ -1,15 +1,11 @@
+import { Context } from "effect";
 import { Elysia } from "elysia";
 import { databasePlugin } from "../../lib/db";
+import { Automation } from "../../lib/services-layer";
+import { services } from "../../lib/services-runtime";
 import { jevServicePlugin } from "../jev/plugin";
-import { AutomationService } from "./service";
 
 export const automationPlugin = new Elysia({ name: "tofu-automation-service" })
   .use(databasePlugin)
   .use(jevServicePlugin)
-  .decorate((dependencies) => ({
-    ...dependencies,
-    automation: new AutomationService(dependencies.db, {
-      jev: dependencies.jev,
-      now: Date.now,
-    }),
-  }));
+  .decorate("automation", Context.get(services, Automation));

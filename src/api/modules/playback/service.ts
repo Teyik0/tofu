@@ -1,10 +1,10 @@
 import "@teyik0/furin/server-only";
 import { and, eq } from "drizzle-orm";
 import { playbackPositions, playbackSequences } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 import type { PositionInput } from "./model";
 
-export function readPosition(db: TofuDatabase, profileId: string, mediaKey: string) {
+export function readPosition(db: Database, profileId: string, mediaKey: string) {
   const row = db
     .select()
     .from(playbackPositions)
@@ -22,7 +22,7 @@ export function readPosition(db: TofuDatabase, profileId: string, mediaKey: stri
  * across sessions the latest write wins, so seeking backwards on purpose is kept.
  */
 export function recordPosition(
-  db: TofuDatabase,
+  db: Database,
   profileId: string,
   mediaKey: string,
   input: PositionInput

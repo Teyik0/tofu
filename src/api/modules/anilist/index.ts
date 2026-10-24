@@ -1,6 +1,8 @@
 import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
+import { Effect, Result } from "effect";
 import { Elysia, ElysiaStatus, problem } from "elysia";
+import { createLogger } from "evlog";
 import { sync } from "../../../sync";
 import { accessPlugin } from "../access/plugin";
 import { automationPlugin } from "../automation";
@@ -37,10 +39,22 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
   .get("/", {}, ({ anilist, defer }) => {
     if (anilist.needsRefresh()) {
       defer(async () => {
-        try {
-          await anilist.refresh();
-        } catch {
-          /* Refresh status is shown by the AniList service. */
+        const refreshed = await Effect.runPromise(
+          Effect.result(
+            Effect.tryPromise({
+              catch: (cause) => cause,
+              try: () => anilist.refresh(),
+            })
+          )
+        );
+        if (Result.isFailure(refreshed)) {
+          const log = createLogger({
+            component: "anilist",
+            error: refreshed.failure,
+            operation: "refresh",
+          });
+          log.setLevel("error");
+          log.emit();
         }
       });
     }

@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { createContext } from "elysia";
-import { db } from "../../src/api/lib/db";
-import { lifecyclePlugin } from "../../src/api/lib/lifecycle-plugin";
+import { Layer, ManagedRuntime } from "effect";
+import { databaseLayer } from "../../src/api/lib/database-layer";
+import { TorrentClient, torrentClientLayer } from "../../src/api/modules/torrents/layer";
 
 await using cleanup = new AsyncDisposableStack();
-const { resources } = createContext(lifecyclePlugin).prototype;
-cleanup.defer(() => db.$client.close());
-cleanup.defer(() => resources.disposeAsync());
-migrate(db, { migrationsFolder: join(import.meta.dir, "../../src/db/drizzle") });
+const runtime = cleanup.use(
+  ManagedRuntime.make(torrentClientLayer.pipe(Layer.provide(databaseLayer)))
+);
 
 const NativeWorker = globalThis.Worker;
 cleanup.defer(() => {
@@ -21,12 +18,12 @@ globalThis.Worker = class extends NativeWorker {
   constructor(...args: ConstructorParameters<typeof NativeWorker>) {
     super(...args);
     queueMicrotask(() => {
-      shutdown = resources.disposeAsync();
+      shutdown = runtime.dispose();
     });
   }
 };
 
-const [startup] = await Promise.allSettled([import("../../src/api/modules/torrents/plugin")]);
+const [startup] = await Promise.allSettled([runtime.runPromise(TorrentClient)]);
 assert.ok(shutdown, "Startup must reach the native worker before shutdown");
 await shutdown;
 assert.equal(startup?.status, "rejected");

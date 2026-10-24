@@ -1,5 +1,6 @@
 import "@teyik0/furin/server-only";
 import { existsSync } from "node:fs";
+import { Effect, Result } from "effect";
 
 const DNS_TRAILING_DOT = /\.$/;
 
@@ -56,12 +57,22 @@ export async function checkTailscale(port: number): Promise<TailscaleState> {
   if (!status) {
     return { state: "not-installed" };
   }
-  let parsed: { BackendState?: string; CertDomains?: string[]; Self?: { DNSName?: string } };
-  try {
-    parsed = JSON.parse(status.stdout);
-  } catch {
+  const parsedResult = Effect.runSync(
+    Effect.result(
+      Effect.try(
+        () =>
+          JSON.parse(status.stdout) as {
+            BackendState?: string;
+            CertDomains?: string[];
+            Self?: { DNSName?: string };
+          }
+      )
+    )
+  );
+  if (Result.isFailure(parsedResult)) {
     return { state: "signed-out" };
   }
+  const parsed = parsedResult.success;
   if (parsed.BackendState !== "Running" || !parsed.Self?.DNSName) {
     return { state: "signed-out" };
   }
@@ -71,16 +82,19 @@ export async function checkTailscale(port: number): Promise<TailscaleState> {
   }
   const origin = `https://${hostname}`;
   const serve = await run(["serve", "status", "--json"]);
-  let config: ServeConfig = {};
-  try {
-    config = serve?.stdout.trim() ? JSON.parse(serve.stdout) : {};
-  } catch {
+  const configResult = Effect.runSync(
+    Effect.result(
+      Effect.try(() => (serve?.stdout.trim() ? JSON.parse(serve.stdout) : {}) as ServeConfig)
+    )
+  );
+  if (Result.isFailure(configResult)) {
     return {
       detail: "Tailscale Serve returned an unreadable configuration",
       origin,
       state: "conflict",
     };
   }
+  const config = configResult.success;
   const site = config.Web?.[`${hostname}:443`];
   if (config.AllowFunnel?.[`${hostname}:443`]) {
     return {

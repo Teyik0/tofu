@@ -1,3 +1,4 @@
+import { Effect, Result } from "effect";
 import type { FeedRelease } from "../discovery/model";
 import type { SourcePluginId } from "./model";
 
@@ -128,12 +129,18 @@ export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] 
   if (body.length > 8 * 1024 * 1024) {
     throw new Error("Invalid RSS feed");
   }
-  let document: RssDocument;
-  try {
-    document = Bun.XML.parse(body) as RssDocument;
-  } catch (cause) {
-    throw new Error("Invalid RSS feed", { cause });
+  const parsed = Effect.runSync(
+    Effect.result(
+      Effect.try({
+        catch: (cause) => cause,
+        try: () => Bun.XML.parse(body) as RssDocument,
+      })
+    )
+  );
+  if (Result.isFailure(parsed)) {
+    throw new Error("Invalid RSS feed", { cause: parsed.failure });
   }
+  const document = parsed.success;
   if (document.rss?.channel === undefined) {
     throw new Error("RSS feed missing");
   }

@@ -1,29 +1,30 @@
 import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
+import { desktopContext } from "@teyik0/furin-electrobun/server";
 import { Elysia, ElysiaStatus, problem } from "elysia";
 import { nativeControl } from "../../../native/control";
 import { sync } from "../../../sync";
 
 import { openExternalUrl } from "../../lib/native-opening";
-import { runtime } from "../../lib/runtime";
 import { accessPlugin } from "../access/plugin";
 import { anilistServicePlugin } from "../anilist/plugin";
 import { pluginConfigurationSchema, pluginCredentialPages } from "./model";
 
 export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
+  .use(desktopContext)
   .use(furinSync(sync))
   .use(anilistServicePlugin)
   .use(furinInvalidate())
   .use(accessPlugin)
   .guard({ administration: true })
-  .post("/plugins/:id/credentials/open", { idempotent: false }, ({ caller, params }) => {
+  .post("/plugins/:id/credentials/open", { idempotent: false }, ({ caller, desktop, params }) => {
     const sdk = nativeControl.tofuNativeSdk;
     if (params.id !== "c411" && params.id !== "jev") {
       return problem(400, { detail: "This plugin does not use an API key" });
     }
     const url = pluginCredentialPages[params.id];
     // Only the host's own window opens the host browser; remote callers open it themselves.
-    if (caller.kind !== "owner" || runtime.current.kind !== "desktop" || !sdk) {
+    if (caller.kind !== "owner" || !desktop || !sdk) {
       return { opened: false, url };
     }
     const { Utils } = sdk;

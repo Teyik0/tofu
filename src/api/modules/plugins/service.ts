@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
+import { Effect, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import { automationPlugins } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 import type { FeedRelease } from "../discovery/model";
 import { normalizePluginCredential, validatePluginCredential } from "./credentials";
 import { parseNyaaHtml, parseRss, parseTsundere } from "./feeds";
@@ -15,6 +16,7 @@ export const pluginEndpoints = {
 };
 export type PluginEndpoints = typeof pluginEndpoints & { anilist?: string; anilistToken?: string };
 const namespacedSourceId = /^[a-z0-9][a-z0-9._-]*\.[a-z0-9._-]+$/;
+const feedFailure = /^(Source unavailable|Invalid RSS feed|RSS feed missing|Invalid JSON feed)/;
 export const plugins: Pick<PluginState, "id" | "name" | "description">[] = [
   {
     description: "Browse your anime library, sync watched episodes, and customize download rules.",
@@ -57,9 +59,9 @@ export class PluginsService {
   private readonly plugins = new Map<PluginId, StoredPlugin>();
   private readonly sources = new Map<SourcePluginId, SourceRegistration>();
   private readonly lifecycle: { closed: boolean } = { closed: false };
-  private readonly db: TofuDatabase;
+  private readonly db: Database;
   private readonly options: PluginsOptions;
-  constructor(db: TofuDatabase, options: PluginsOptions) {
+  constructor(db: Database, options: PluginsOptions) {
     this.db = db;
     this.options = options;
     for (const plugin of plugins) {
@@ -203,15 +205,7 @@ export class PluginsService {
     if (!plugin || this.lifecycle.closed) {
       return problem(409, { detail: "Plugin unavailable" });
     }
-    let apiKey: Awaited<ReturnType<PluginsService["validateCredential"]>>;
-    try {
-      apiKey = await this.validateCredential(id, input.apiKey ?? "", plugin);
-    } catch {
-      // Network and malformed responses are unexpected here; report a retryable gateway failure.
-      return problem(502, {
-        detail: `Unable to validate your ${id === "c411" ? "C411" : "TypeSafe"} API key. Check your connection and try again.`,
-      });
-    }
+    const apiKey = await this.validateCredential(id, input.apiKey ?? "", plugin);
     if (apiKey instanceof ElysiaStatus) {
       return apiKey;
     }
@@ -245,19 +239,35 @@ export class PluginsService {
     active.add(controller);
     this.requests.set(id, active);
     let timer: ReturnType<typeof setTimeout> | null = null;
-    try {
-      await reserve?.(controller);
-      controller.signal.throwIfAborted();
-      timer = setTimeout(() => controller.abort(), timeoutMs);
-      const result = await run(controller);
-      controller.signal.throwIfAborted();
-      return result;
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       if (timer !== null) {
         clearTimeout(timer);
       }
       active.delete(controller);
+    });
+    if (reserve) {
+      const reserved = await Effect.runPromise(
+        Effect.result(
+          Effect.tryPromise({
+            catch: (cause) => cause,
+            try: () => reserve(controller),
+          })
+        )
+      );
+      if (Result.isFailure(reserved) && !controller.signal.aborted) {
+        throw reserved.failure;
+      }
     }
+    if (controller.signal.aborted) {
+      return problem(409, { detail: "Plugin request cancelled" });
+    }
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+    const result = await run(controller);
+    if (controller.signal.aborted && !(result instanceof ElysiaStatus)) {
+      return problem(409, { detail: "Plugin request cancelled" });
+    }
+    return result;
   }
 
   /** Counts one call against the daily budget, or returns 429 once it is spent. */
@@ -304,11 +314,8 @@ export class PluginsService {
       this.c411NextAt = Date.now() + 4100;
     })();
     this.c411Queue = (async () => {
-      try {
-        await reservation;
-      } catch {
-        // An aborted reservation releases its slot; its caller observes the abort.
-      }
+      // An aborted reservation releases its slot; its caller observes the abort.
+      await Promise.allSettled([reservation]);
     })();
     return reservation;
   }
@@ -320,16 +327,27 @@ export class PluginsService {
     const registered = this.sources.get(sourceId);
     if (registered) {
       return this.request(sourceId, 12_000, null, async (controller) => {
-        const releases = await registered.search({
-          apiKey: plugin.apiKey,
-          query,
-          signal: controller.signal,
-        });
+        const fetched = await Effect.runPromise(
+          Effect.result(
+            Effect.tryPromise({
+              catch: (cause) => cause,
+              try: () =>
+                registered.search({ apiKey: plugin.apiKey, query, signal: controller.signal }),
+            })
+          )
+        );
+        if (Result.isFailure(fetched)) {
+          return problem(502, { detail: "Unable to connect to the source" });
+        }
+        const releases = fetched.success;
         if (this.plugins.get(sourceId) !== plugin || !plugin.enabled || this.lifecycle.closed) {
           return [];
         }
-        if (releases.some((release) => release.sourceId !== sourceId || !release.id)) {
-          throw new Error("Invalid source release identity");
+        if (
+          !Array.isArray(releases) ||
+          releases.some((release) => !release || release.sourceId !== sourceId || !release.id)
+        ) {
+          return problem(502, { detail: "Invalid source release identity" });
         }
         this.recordSuccess(sourceId);
         return releases.map((release) => ({
@@ -361,21 +379,44 @@ export class PluginsService {
       12_000,
       sourceId === "c411" ? (controller) => this.reserveC411(controller) : null,
       async (controller) => {
-        const response = await fetch(url, { signal: controller.signal });
-        let releases: FeedRelease[];
-        if (sourceId === "nyaa" && !response.ok) {
-          url.searchParams.delete("page");
-          const fallback = await fetch(url, { signal: controller.signal });
-          if (!fallback.ok) {
-            return problem(502, { detail: `Source unavailable (HTTP ${fallback.status})` });
-          }
-          releases = parseNyaaHtml(await fallback.text(), url.href);
-        } else {
-          if (!response.ok) {
-            return problem(502, { detail: `Source unavailable (HTTP ${response.status})` });
-          }
-          const text = await response.text();
-          releases = sourceId === "tsundere" ? parseTsundere(text) : parseRss(text, sourceId);
+        const fetched = await Effect.runPromise(
+          Effect.result(
+            Effect.tryPromise({
+              catch: (cause) => cause,
+              try: async () => {
+                const response = await fetch(url, { signal: controller.signal });
+                let releases: FeedRelease[];
+                if (sourceId === "nyaa" && !response.ok) {
+                  url.searchParams.delete("page");
+                  const fallback = await fetch(url, { signal: controller.signal });
+                  if (!fallback.ok) {
+                    return problem(502, { detail: `Source unavailable (HTTP ${fallback.status})` });
+                  }
+                  releases = parseNyaaHtml(await fallback.text(), url.href);
+                } else {
+                  if (!response.ok) {
+                    return problem(502, { detail: `Source unavailable (HTTP ${response.status})` });
+                  }
+                  const text = await response.text();
+                  releases =
+                    sourceId === "tsundere" ? parseTsundere(text) : parseRss(text, sourceId);
+                }
+                return releases;
+              },
+            })
+          )
+        );
+        if (Result.isFailure(fetched)) {
+          const cause = fetched.failure;
+          const message =
+            cause instanceof Error && feedFailure.test(cause.message)
+              ? cause.message
+              : "Unable to connect to the source";
+          return problem(502, { detail: message });
+        }
+        const releases = fetched.success;
+        if (releases instanceof ElysiaStatus) {
+          return releases;
         }
         if (!this.plugins.get(sourceId)?.enabled || this.lifecycle.closed) {
           return [];
@@ -427,26 +468,42 @@ export class PluginsService {
   downloadFile(release: FeedRelease) {
     return this.request(release.sourceId, 15_000, null, async (controller) => {
       const registered = this.sources.get(release.sourceId);
-      if (registered?.download) {
-        const bytes = await registered.download({
-          apiKey: this.plugin(release.sourceId).apiKey,
-          release,
-          signal: controller.signal,
-        });
-        if (bytes.byteLength > 8 * 1024 * 1024) {
-          return problem(400, { detail: "Torrent file too large" });
-        }
-        return bytes;
+      const apiKey = registered?.download ? this.plugin(release.sourceId).apiKey : undefined;
+      const downloaded = await Effect.runPromise(
+        Effect.result(
+          Effect.tryPromise({
+            catch: (cause) => cause,
+            try: async () => {
+              if (registered?.download) {
+                const bytes = await registered.download({
+                  apiKey: apiKey ?? "",
+                  release,
+                  signal: controller.signal,
+                });
+                if (bytes.byteLength > 8 * 1024 * 1024) {
+                  return problem(400, { detail: "Torrent file too large" });
+                }
+                return bytes;
+              }
+              const response = await fetch(release.downloadUrl, { signal: controller.signal });
+              if (!response.ok) {
+                return problem(502, {
+                  detail: `Torrent file unavailable (HTTP ${response.status})`,
+                });
+              }
+              const bytes = new Uint8Array(await response.arrayBuffer());
+              if (bytes.byteLength > 8 * 1024 * 1024) {
+                return problem(400, { detail: "Torrent file too large" });
+              }
+              return bytes;
+            },
+          })
+        )
+      );
+      if (Result.isFailure(downloaded)) {
+        return problem(502, { detail: "Unable to download the torrent file" });
       }
-      const response = await fetch(release.downloadUrl, { signal: controller.signal });
-      if (!response.ok) {
-        return problem(502, { detail: `Torrent file unavailable (HTTP ${response.status})` });
-      }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > 8 * 1024 * 1024) {
-        return problem(400, { detail: "Torrent file too large" });
-      }
-      return bytes;
+      return downloaded.success;
     });
   }
 

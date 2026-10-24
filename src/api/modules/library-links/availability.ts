@@ -40,11 +40,11 @@ const MEDIA = /\.(?:avi|m2ts|m4v|mkv|mov|mp4|mpe?g|ogm|ts|webm|wmv)$/i;
  */
 export async function findEpisodeSources(engine: EnginePort, queries: AvailabilityQuery[]) {
   const { torrents } = engine.snapshot(null, false);
-  const details = new Map<string, ReturnType<EnginePort["detail"]>>();
+  const details = new Map<string, ReturnType<typeof engine.call<"detail">>>();
   const detail = (id: string) => {
     let value = details.get(id);
     if (!value) {
-      value = engine.detail(id);
+      value = engine.call("detail", [id]);
       details.set(id, value);
     }
     return value;

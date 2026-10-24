@@ -32,7 +32,7 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
       playback: true,
     },
     async ({ torrents, params }) => {
-      const detail = await torrents.detail(params.id);
+      const detail = await torrents.call("detail", [params.id]);
       if (detail instanceof ElysiaStatus) {
         return detail;
       }
@@ -40,7 +40,7 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
     }
   )
   .get("/torrents/:id/host", { administration: true }, async ({ torrents, params }) => {
-    const detail = await torrents.detail(params.id);
+    const detail = await torrents.call("detail", [params.id]);
     if (detail instanceof ElysiaStatus) {
       return detail;
     }
@@ -57,7 +57,7 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
       const operationKey = key
         ? new Bun.CryptoHasher("sha256").update(`${caller.principal}:add:${key}`).digest("hex")
         : undefined;
-      return torrents.add(body.source, { ...body, operationKey });
+      return torrents.call("add", [body.source, { ...body, operationKey }]);
     }
   )
   .post(
@@ -67,43 +67,46 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
       if (body.downloadPath !== undefined && caller.kind !== "owner") {
         return problem(403, { detail: "Choose one of the server's threads" });
       }
-      return torrents.add(new Uint8Array(await body.file.arrayBuffer()), {
-        destinationId: body.destinationId,
-        downloadPath: body.downloadPath,
-        operationKey: request.headers.has("idempotency-key")
-          ? new Bun.CryptoHasher("sha256")
-              .update(`${caller.principal}:add:${request.headers.get("idempotency-key")}`)
-              .digest("hex")
-          : undefined,
-        paused: body.paused === "true",
-        trackers: body.trackers?.split("\n"),
-      });
+      return torrents.call("add", [
+        new Uint8Array(await body.file.arrayBuffer()),
+        {
+          destinationId: body.destinationId,
+          downloadPath: body.downloadPath,
+          operationKey: request.headers.has("idempotency-key")
+            ? new Bun.CryptoHasher("sha256")
+                .update(`${caller.principal}:add:${request.headers.get("idempotency-key")}`)
+                .digest("hex")
+            : undefined,
+          paused: body.paused === "true",
+          trackers: body.trackers?.split("\n"),
+        },
+      ]);
     }
   )
   .post("/torrents/:id/pause", { management: true }, ({ torrents, params }) =>
-    torrents.pause(params.id)
+    torrents.call("pause", [params.id])
   )
   .post("/torrents/:id/resume", { management: true }, ({ torrents, params }) =>
-    torrents.resume(params.id)
+    torrents.call("resume", [params.id])
   )
   .post("/torrents/:id/announce", { management: true }, ({ torrents, params }) =>
-    torrents.reannounce(params.id)
+    torrents.call("reannounce", [params.id])
   )
   .post("/torrents/:id/verify", { management: true }, ({ torrents, params }) =>
-    torrents.verify(params.id)
+    torrents.call("verify", [params.id])
   )
   .post("/torrents/:id/repair", { management: true }, ({ torrents, params }) =>
-    torrents.repair(params.id)
+    torrents.call("repair", [params.id])
   )
   .post(
     "/torrents/:id/locate",
     { body: locateTorrentSchema, owner: true },
-    ({ torrents, params, body }) => torrents.locate(params.id, body.downloadPath)
+    ({ torrents, params, body }) => torrents.call("locate", [params.id, body.downloadPath])
   )
   .put(
     "/torrents/:id/trackers",
     { administration: true, body: trackersSchema },
-    ({ torrents, params, body }) => torrents.replaceTrackers(params.id, body.urls)
+    ({ torrents, params, body }) => torrents.call("replaceTrackers", [params.id, body.urls])
   )
   .delete(
     "/torrents/:id",
@@ -112,32 +115,34 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
       if (body.deleteFiles && !(caller.kind === "owner" || caller.device.canDeleteFiles)) {
         return problem(403, { detail: "Deleting downloaded files is not allowed for this device" });
       }
-      return torrents.remove(
+      return torrents.call("remove", [
         params.id,
         body.deleteFiles,
         request.headers.has("idempotency-key")
           ? new Bun.CryptoHasher("sha256")
               .update(`${caller.principal}:remove:${request.headers.get("idempotency-key")}`)
               .digest("hex")
-          : undefined
-      );
+          : undefined,
+      ]);
     }
   )
   .put(
     "/torrents/:id/files/:index",
     { body: filePrioritySchema, management: true },
     ({ torrents, params, body }) =>
-      torrents.priority(params.id, Number(params.index), body.priority)
+      torrents.call("priority", [params.id, Number(params.index), body.priority])
   )
   .post(
     "/torrents/:id/peers",
     { administration: true, body: addPeerSchema },
-    ({ torrents, params, body }) => torrents.addPeer(params.id, body.peer)
+    ({ torrents, params, body }) => torrents.call("addPeer", [params.id, body.peer])
   )
   .post("/bulk", { body: bulkActionSchema, management: true }, async ({ torrents, body }) => {
     const ids = body.ids ?? torrents.snapshot(null, false).torrents.map((torrent) => torrent.id);
     const results = await Promise.all(
-      ids.map((id) => (body.action === "pause" ? torrents.pause(id) : torrents.resume(id)))
+      ids.map((id) =>
+        body.action === "pause" ? torrents.call("pause", [id]) : torrents.call("resume", [id])
+      )
     );
     const failed = results.find((result) => result instanceof ElysiaStatus);
     if (failed) {
@@ -149,7 +154,7 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
     "/torrents/:id/files/:index/availability",
     { personal: true },
     async ({ torrents, params }) => {
-      const result = await torrents.file(params.id, Number(params.index));
+      const result = await torrents.call("file", [params.id, Number(params.index)]);
       if (result instanceof ElysiaStatus) {
         return result;
       }
@@ -162,7 +167,7 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
     { personal: true },
     async ({ torrents, params }) => {
       // The size comes from torrent metadata, so this answers before any piece arrives.
-      const detail = await torrents.detail(params.id);
+      const detail = await torrents.call("detail", [params.id]);
       if (detail instanceof ElysiaStatus) {
         return detail;
       }
@@ -221,7 +226,7 @@ export const torrentPlugin = new Elysia({ name: "tofu-torrent-api" })
         reserved();
       };
       // Saving requires the complete file; the read itself is the same bounded stream as playback.
-      const file = await torrents.file(params.id, Number(params.index));
+      const file = await torrents.call("file", [params.id, Number(params.index)]);
       if (file instanceof ElysiaStatus) {
         release();
         return file;

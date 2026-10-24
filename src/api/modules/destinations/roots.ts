@@ -2,15 +2,16 @@ import "@teyik0/furin/server-only";
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { eq } from "drizzle-orm";
+import { Effect, Result } from "effect";
 import { problem } from "elysia";
 import { storageRoots } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 
 const PATH_SEGMENTS = /[\\/]+/;
 const WINDOWS_DRIVE = /^[a-z]:/i;
 
 interface StorageRootsOptions {
-  db: TofuDatabase;
+  db: Database;
   /** Current download folder, offered as the first root when none exists. */
   defaultPath: () => string;
   now: () => number;
@@ -23,9 +24,11 @@ function within(path: string, root: string) {
 
 /** Real path of `path`, resolving the nearest existing ancestor so new folders can be checked. */
 async function canonical(path: string): Promise<string> {
-  try {
-    return await realpath(path);
-  } catch (error) {
+  const result = await Effect.runPromise(
+    Effect.result(Effect.tryPromise({ catch: (error) => error, try: () => realpath(path) }))
+  );
+  if (Result.isFailure(result)) {
+    const error = result.failure;
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
       throw error;
     }
@@ -35,6 +38,7 @@ async function canonical(path: string): Promise<string> {
     }
     return join(await canonical(parent), basename(path));
   }
+  return result.success;
 }
 
 /**
@@ -136,10 +140,14 @@ export class StorageRoots {
       return false;
     }
     // A dangling symbolic link at the target would be followed when the folder is created.
-    try {
-      return !(await lstat(resolve(path))).isSymbolicLink();
-    } catch {
-      return true;
+    const info = await Effect.runPromise(
+      Effect.result(Effect.tryPromise({ catch: (error) => error, try: () => lstat(resolve(path)) }))
+    );
+    if (Result.isFailure(info)) {
+      return (
+        info.failure instanceof Error && "code" in info.failure && info.failure.code === "ENOENT"
+      );
     }
+    return !info.success.isSymbolicLink();
   }
 }

@@ -13,9 +13,9 @@ const app = new Elysia({ name: "tofu" })
   .use(apiPlugin)
   .use(
     desktopApp(({ access, torrents }) => ({
-      restrictWebToLoopback: true,
       admission: access.admit.bind(access),
       background: () => torrents.settings.runInBackground === true,
+      restrictWebToLoopback: true,
       window: {
         frame: { height: 940, width: 1400 },
         renderer: "native",

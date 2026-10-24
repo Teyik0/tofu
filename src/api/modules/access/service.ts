@@ -12,7 +12,7 @@ import {
   serverIdentity,
   sessionTransfers,
 } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 import {
   cookieName,
   isPublicRequest,
@@ -66,7 +66,7 @@ export interface RemoteAccessPolicy {
 }
 
 interface AccessServiceOptions {
-  db: TofuDatabase;
+  db: Database;
   defaultLanPort: number;
   /** The host runs headless; with remote access off its loopback clients act as owner. */
   headless: () => boolean;

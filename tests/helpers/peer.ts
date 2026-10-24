@@ -40,6 +40,7 @@ export async function peer(length?: number, filename?: string) {
       filename: name,
       id: torrent.infoHash,
       magnet: `${torrent.magnetURI}&x.pe=127.0.0.1:${client.torrentPort}`,
+      torrentFile: torrent.torrentFile,
       [Symbol.asyncDispose]: resources.disposeAsync.bind(resources),
     };
   } catch (error) {

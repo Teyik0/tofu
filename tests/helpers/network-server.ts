@@ -1,20 +1,16 @@
 import { desktopApp } from "@teyik0/furin-electrobun/server";
-import { createContext, Elysia } from "elysia";
-import { closeResources } from "../../src/api/lib/lifecycle-plugin";
-import { listen } from "../../src/api/lib/network";
+import { Elysia } from "elysia";
+import { instance } from "../../src/api/lib/instance";
 import { accessRoutesPlugin } from "../../src/api/modules/access";
 import { publicDocumentsPlugin } from "../../src/api/modules/access/documents";
 import { accessPlugin } from "../../src/api/modules/access/plugin";
 
-await accessPlugin.modules;
-const { access } = createContext(accessPlugin).prototype;
-
 const app = new Elysia({ name: "tofu-network-integration" })
-  .use(desktopApp({ admission: access.admit.bind(access) }))
-  .onStop(closeResources)
+  .use(accessPlugin)
+  .use(desktopApp(({ access }) => ({ admission: access.admit.bind(access) })))
   .use(publicDocumentsPlugin)
   .group("/api", (api) => api.use(accessRoutesPlugin))
-  .listen(listen);
+  .listen({ hostname: "127.0.0.1", port: instance.port });
 
 process.once("SIGTERM", async () => {
   await app.stop(true);

@@ -1,11 +1,11 @@
 import { furinSync } from "@teyik0/furin/sync";
+import { desktopContext } from "@teyik0/furin-electrobun/server";
 import { Elysia, problem } from "elysia";
 import { maxLength, object, pipe, string } from "valibot";
 import { nativeControl } from "../../../native/control";
 import { sync } from "../../../sync";
 
 import { openExternalUrl } from "../../lib/native-opening";
-import { runtime } from "../../lib/runtime";
 import { accessPlugin } from "../access/plugin";
 
 const animePath = /^\/anime\/[1-9]\d*(?:\/[^/]+)?\/?$/;
@@ -13,12 +13,13 @@ export const anilistOpeningPlugin = new Elysia({
   name: "tofu-anilist-opening",
   prefix: "/anilist",
 })
+  .use(desktopContext)
   .use(accessPlugin)
   .use(furinSync(sync))
   .post(
     "/open",
     { body: object({ url: pipe(string(), maxLength(2000)) }), idempotent: false, personal: true },
-    ({ body, caller }) => {
+    ({ body, caller, desktop }) => {
       const url = URL.canParse(body.url) ? new URL(body.url) : null;
       const sdk = nativeControl.tofuNativeSdk;
       if (
@@ -30,7 +31,7 @@ export const anilistOpeningPlugin = new Elysia({
         return problem(400, { detail: "Invalid AniList URL" });
       }
       // Only the host's own window opens the host browser; remote callers open it themselves.
-      if (caller.kind !== "owner" || runtime.current.kind !== "desktop" || !sdk) {
+      if (caller.kind !== "owner" || !desktop || !sdk) {
         return { opened: false, url: url.href };
       }
       const { Utils } = sdk;

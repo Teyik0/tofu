@@ -1,0 +1,449 @@
+diff --git a/packages/core/src/client/sync-client.ts b/packages/core/src/client/sync-client.ts
+index 72edeb5..061bdff 100644
+--- a/packages/core/src/client/sync-client.ts
++++ b/packages/core/src/client/sync-client.ts
+@@ -106,6 +106,7 @@ export interface SyncClient {
+ 
+ interface SyncTransportSubscription {
+   headers: Headers;
++  onContextChange: () => void;
+   onCursor: () => void;
+   onError: (error: unknown) => void;
+ }
+@@ -147,7 +148,7 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
+       url.searchParams.set("after", after ?? "0");
+       return (options.fetcher ?? globalThis.fetch)(url, { ...options.fetch, headers, signal });
+     },
+-    subscribe: async ({ headers, onCursor, onError: fail }) => {
++    subscribe: async ({ headers, onContextChange, onCursor, onError: fail }) => {
+       const connection: SyncSocket = options.createWebSocket
+         ? await options.createWebSocket(eventsUrl.href, headers)
+         : new WebSocket(eventsUrl.href);
+@@ -167,6 +168,10 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
+         }
+       };
+       const onClose = (event: SyncSocketEvents["close"]) => {
++        if (event.code === 4409) {
++          onContextChange();
++          return;
++        }
+         let status: number | undefined;
+         if (event.code === 1008 || event.code === 4401) {
+           status = 401;
+@@ -303,6 +308,7 @@ export function createSyncClientRuntime(
+       connection = current;
+       const stop = await transport.subscribe({
+         headers: requestHeaders,
++        onContextChange: client.reconnect,
+         onCursor: () => {
+           recovery
+             .catchUp()
+@@ -343,7 +349,7 @@ export function createSyncClientRuntime(
+     }
+   };
+ 
+-  return {
++  const client: SyncClient = {
+     subscribe(query, listener) {
+       if (state.status === "closed") {
+         throw new SyncClientError("Sync client is closed", undefined);
+@@ -460,4 +466,5 @@ export function createSyncClientRuntime(
+       queries.dispose();
+     },
+   };
++  return client;
+ }
+diff --git a/packages/core/src/server/browser-events/plugin.ts b/packages/core/src/server/browser-events/plugin.ts
+index 4e674e4..e572db5 100644
+--- a/packages/core/src/server/browser-events/plugin.ts
++++ b/packages/core/src/server/browser-events/plugin.ts
+@@ -35,6 +35,7 @@ interface ConnectionState {
+   close: () => void;
+   closed: boolean;
+   heartbeat: ReturnType<typeof setInterval>;
++  lifetime: DisposableStack;
+   release: () => void;
+   server: Bun.Server<unknown>;
+   subscriptions: BrowserEventSubscription[];
+@@ -42,6 +43,7 @@ interface ConnectionState {
+ 
+ /** Who holds a connection: a verified principal, or the peer address without one. */
+ interface BrowserEventPeer {
++  context: Context;
+   key: string;
+   sync: boolean;
+ }
+@@ -104,6 +106,7 @@ function releaseConnection(state: ConnectionState): void {
+     subscription.unsubscribe();
+   }
+   state.subscriptions.length = 0;
++  state.lifetime.dispose();
+ }
+ 
+ function forbiddenBrowserRequest(
+@@ -157,8 +160,8 @@ export function createBrowserEventsPlugin(options: BrowserEventsPluginOptions):
+           return new Response("Unauthorized", { status: 401 });
+         }
+         const peer: BrowserEventPeer = principal
+-          ? { key: `principal:${principal}`, sync: true }
+-          : { key: peerAddressKey(request, server), sync: false };
++          ? { context: context as Context, key: `principal:${principal}`, sync: true }
++          : { context: context as Context, key: peerAddressKey(request, server), sync: false };
+         if (capacity.full(peer.key)) {
+           return Response.json({ code: "FURIN_BROWSER_EVENTS_CAPACITY" }, { status: 503 });
+         }
+@@ -175,6 +178,7 @@ export function createBrowserEventsPlugin(options: BrowserEventsPluginOptions):
+       message(ws) {
+         ws.close(1008, "Furin browser events are server-to-client only");
+       },
++      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep acquisition and cleanup ordered within the socket boundary.
+       async open(ws) {
+         const peer = peers.get(ws.request);
+         if (!peer) {
+@@ -197,6 +201,7 @@ export function createBrowserEventsPlugin(options: BrowserEventsPluginOptions):
+             () => (ws as unknown as { ping: () => number }).ping(),
+             HEARTBEAT_INTERVAL_MS
+           ),
++          lifetime: new DisposableStack(),
+           release: capacity.acquire(peer.key),
+           server: ws.server as Bun.Server<unknown>,
+           subscriptions: [],
+@@ -214,6 +219,27 @@ export function createBrowserEventsPlugin(options: BrowserEventsPluginOptions):
+ 
+         try {
+           if (sync !== undefined && peer.sync) {
++            const connection = await sync.connection?.(peer.context);
++            if (state.closed) {
++              connection?.release();
++              return;
++            }
++            if (connection) {
++              state.lifetime.defer(connection.release);
++              const interrupted = () => {
++                releaseConnection(state);
++                connections.delete(ws.id);
++                ws.close(4409, "Session changed or expired");
++              };
++              connection.signal.addEventListener("abort", interrupted, { once: true });
++              state.lifetime.defer(() =>
++                connection.signal.removeEventListener("abort", interrupted)
++              );
++              if (connection.signal.aborted) {
++                interrupted();
++                return;
++              }
++            }
+             const subscription = await subscribeSyncCursor(sync, development, (cursor) =>
+               send({
+                 channel: "sync",
+@@ -293,8 +319,9 @@ export function createSseBrowserEventsPlugin({
+         cancel() {
+           release();
+         },
+-        start(controller) {
++        async start(controller) {
+           let closed = false;
++          const resources = new DisposableStack();
+           let subscription: BrowserEventSubscription | undefined;
+           let lifetime: ReturnType<typeof setTimeout> | undefined;
+           const send = (event: BrowserEventEnvelope): void => {
+@@ -329,29 +356,44 @@ export function createSseBrowserEventsPlugin({
+             request.signal.removeEventListener("abort", onAbort);
+             subscription?.unsubscribe();
+             releaseCapacity();
++            resources.dispose();
+           };
+           request.signal.addEventListener("abort", onAbort, { once: true });
+           if (request.signal.aborted) {
+             finish();
+             return;
+           }
+-          // Platforms invoking app.handle() may not expose request cancellation; bound the subscription.
+-          lifetime = setTimeout(finish, SSE_CONNECTION_LIFETIME_MS);
+-          lifetime.unref?.();
+-          controller.enqueue(SSE_ENCODER.encode(": connected\n\n"));
+-          subscribeSyncCursor(sync, development, (cursor) =>
+-            send({ channel: "sync", data: { cursor }, version: BROWSER_EVENT_PROTOCOL_VERSION })
+-          )
+-            .then((next) => {
+-              if (closed) {
+-                next.unsubscribe();
+-              } else {
+-                subscription = next;
++          try {
++            const connection = await sync.connection?.(context as Context);
++            if (closed) {
++              connection?.release();
++              return;
++            }
++            if (connection) {
++              resources.defer(connection.release);
++              connection.signal.addEventListener("abort", finish, { once: true });
++              resources.defer(() => connection.signal.removeEventListener("abort", finish));
++              if (connection.signal.aborted) {
++                finish();
++                return;
+               }
+-            })
+-            .catch(() => {
+-              finish();
+-            });
++            }
++            // Platforms invoking app.handle() may not expose request cancellation; bound the subscription.
++            lifetime = setTimeout(finish, SSE_CONNECTION_LIFETIME_MS);
++            lifetime.unref?.();
++            controller.enqueue(SSE_ENCODER.encode(": connected\n\n"));
++            const next = await subscribeSyncCursor(sync, development, (cursor) =>
++              send({ channel: "sync", data: { cursor }, version: BROWSER_EVENT_PROTOCOL_VERSION })
++            );
++            if (closed) {
++              next.unsubscribe();
++            } else {
++              subscription = next;
++            }
++          } catch {
++            // Event-source acquisition failed after the response started; terminate the stream.
++            finish();
++          }
+         },
+       });
+       return new Response(stream, {
+diff --git a/packages/core/src/server/sync/adapter.ts b/packages/core/src/server/sync/adapter.ts
+index eb75681..76f2028 100644
+--- a/packages/core/src/server/sync/adapter.ts
++++ b/packages/core/src/server/sync/adapter.ts
+@@ -132,6 +132,10 @@ export type SyncMutation<Adapter> = <T>(
+ 
+ export interface SyncRuntimeOptions<Adapter extends SyncAdapter = SyncAdapter> {
+   adapter: Adapter;
++  /** Acquires a session lifetime for each authenticated event connection, not each query. */
++  connection?: (
++    context: Context
++  ) => SyncConnection | undefined | Promise<SyncConnection | undefined>;
+   notifier?: SyncNotifier;
+   /** Authenticate the request and return its verified identity, including for journal recovery. */
+   principal: (context: Context) => Promise<string> | string;
+@@ -142,4 +146,11 @@ export interface SyncRuntimeOptions<Adapter extends SyncAdapter = SyncAdapter> {
+   secret?: string;
+ }
+ 
++export interface SyncConnection {
++  /** Called once when the transport closes, including failed startup. */
++  release: () => void;
++  /** Aborting closes the transport so recovery reauthenticates subsequent reads. */
++  signal: AbortSignal;
++}
++
+ import type { Context } from "elysia";
+diff --git a/packages/core/src/server/sync/index.ts b/packages/core/src/server/sync/index.ts
+index 23400a7..6913fe7 100644
+--- a/packages/core/src/server/sync/index.ts
++++ b/packages/core/src/server/sync/index.ts
+@@ -27,6 +27,7 @@ export type {
+   StoredResponse,
+   SyncAdapter,
+   SyncChange,
++  SyncConnection,
+   SyncInvalidation,
+   SyncMutation,
+   SyncNotifier,
+diff --git a/packages/core/tests/client/sync/standalone-sync.test.ts b/packages/core/tests/client/sync/standalone-sync.test.ts
+index ba16d78..f3207b9 100644
+--- a/packages/core/tests/client/sync/standalone-sync.test.ts
++++ b/packages/core/tests/client/sync/standalone-sync.test.ts
+@@ -3,6 +3,7 @@ import { afterEach, expect, test } from "bun:test";
+ import { treaty } from "@elysia/eden";
+ import { Elysia } from "elysia";
+ import { createBrowserEventsPlugin } from "../../../src/server/browser-events/plugin.ts";
++import type { SyncRuntimeOptions } from "../../../src/server/sync/adapter.ts";
+ import { furinSync as serverSync } from "../../../src/server/sync/plugin.ts";
+ import { migrateSqliteSync, sqliteSyncAdapter } from "../../../src/server/sync/sqlite/index.ts";
+ import { closeSyncCursorStates, createSyncChangesPlugin } from "../../../src/server/sync/stream.ts";
+@@ -30,11 +31,15 @@ afterEach(async () => {
+   }
+ });
+ 
+-function fixture(onRead?: (value: number) => Promise<void>) {
++function fixture(
++  onRead?: (value: number) => Promise<void>,
++  connection?: SyncRuntimeOptions["connection"]
++) {
+   const database = new Database(":memory:");
+   migrateSqliteSync(database);
+   const sync = {
+     adapter: sqliteSyncAdapter({ database, namespace: "standalone" }),
++    connection,
+     principal: ({ headers }: { headers: { [name: string]: string | undefined } }) =>
+       headers.authorization === "deny" ? "" : (headers.authorization ?? "alice"),
+   };
+@@ -80,6 +85,40 @@ function fixture(onRead?: (value: number) => Promise<void>) {
+   return { api, client, url, reads, sync, routes };
+ }
+ 
++test("a session change refreshes cached queries without a journal write and rechecks revoked access", async () => {
++  let session = new AbortController();
++  let released = 0;
++  const { api, url } = fixture(undefined, () => ({
++    signal: session.signal,
++    release() {
++      released += 1;
++    },
++  }));
++  let token = "alice";
++  const client = createSyncClient({
++    url,
++    headers: () => ({ authorization: token }),
++    createWebSocket: (address, headers) => new RuntimeWebSocket(address, { headers }),
++  });
++  cleanup.push(client.close);
++  let principal: string | undefined;
++  client.subscribe(api.identity.get.live(), ({ data }) => {
++    principal = data?.principal;
++  });
++  await until(() => principal === "alice");
++  const old = session;
++  session = new AbortController();
++  token = "bob";
++  old.abort();
++  await until(() => principal === "bob");
++  expect(released).toBe(1);
++  token = "deny";
++  session.abort();
++  await until(() => client.getConnectionState().status === "unauthorized");
++  expect(principal).toBeUndefined();
++  expect(released).toBe(2);
++});
++
+ test("a standalone subscriber receives the initial value and subsequent journaled changes", async () => {
+   const { api, client } = fixture();
+   const values: number[] = [];
+diff --git a/packages/core/tests/runtime/browser-events/browser-events-plugin.test.ts b/packages/core/tests/runtime/browser-events/browser-events-plugin.test.ts
+index a9db4a1..5887625 100644
+--- a/packages/core/tests/runtime/browser-events/browser-events-plugin.test.ts
++++ b/packages/core/tests/runtime/browser-events/browser-events-plugin.test.ts
+@@ -27,6 +27,97 @@ const notifier: SyncNotifier = {
+   subscribe: () => Promise.resolve({ unsubscribe: () => Promise.resolve() }),
+ };
+ 
++test("a session signal closes its socket and releases its connection once", async () => {
++  const session = new AbortController();
++  let released = 0;
++  const app = new Elysia()
++    .use(
++      createBrowserEventsPlugin({
++        development: true,
++        sync: {
++          adapter,
++          notifier,
++          principal: () => "test",
++          connection: () => ({
++            signal: session.signal,
++            release() {
++              released += 1;
++            },
++          }),
++        },
++      })
++    )
++    .listen(0);
++  await app.modules;
++  await using cleanup = new AsyncDisposableStack();
++  cleanup.defer(async () => {
++    await app.stop(true);
++  });
++  const socket = new WebSocket(`ws://127.0.0.1:${app.server?.port}/_furin/events`);
++  cleanup.defer(() => socket.close());
++  const closed = Promise.withResolvers<CloseEvent>();
++  const timeout = setTimeout(() => closed.resolve(new CloseEvent("close", { code: 1000 })), 1500);
++  cleanup.defer(() => clearTimeout(timeout));
++  socket.addEventListener("close", closed.resolve, { once: true });
++  socket.addEventListener(
++    "error",
++    (event) => closed.reject(new Error(`Socket failed: ${JSON.stringify(event)}`)),
++    { once: true }
++  );
++  socket.addEventListener("message", () => session.abort(), { once: true });
++  expect((await closed.promise).code).toBe(4409);
++  expect(released).toBe(1);
++});
++
++test.each([false, true])(
++  "SSE releases its session when already aborted: %s",
++  async (alreadyAborted) => {
++    const session = new AbortController();
++    let released = 0;
++    if (alreadyAborted) {
++      session.abort();
++    }
++    const app = new Elysia().use(
++      createSseBrowserEventsPlugin({
++        development: true,
++        sync: {
++          adapter,
++          notifier,
++          principal: () => "test",
++          connection: () => ({
++            signal: session.signal,
++            release() {
++              released += 1;
++            },
++          }),
++        },
++      })
++    );
++    const response = await app.handle(new Request("http://localhost/_furin/events"));
++    const reader = response.body?.getReader();
++    if (!reader) {
++      throw new Error("Expected an SSE response body");
++    }
++    await using cleanup = new AsyncDisposableStack();
++    cleanup.defer(async () => {
++      await reader.cancel();
++    });
++    if (!alreadyAborted) {
++      await reader.read();
++      await reader.read();
++      session.abort();
++    }
++    const deadline = Promise.withResolvers<ReadableStreamReadResult<Uint8Array>>();
++    const timer = setTimeout(
++      () => deadline.resolve({ done: false, value: new Uint8Array() }),
++      1500
++    );
++    cleanup.defer(() => clearTimeout(timer));
++    expect((await Promise.race([reader.read(), deadline.promise])).done).toBe(true);
++    expect(released).toBe(1);
++  }
++);
++
+ test("SSE delivers sync cursors through app.handle without a listening server", async () => {
+   let notify: ((cursor: string) => void) | undefined;
+   let unsubscribed = false;
+@@ -388,12 +479,19 @@ test("browser event socket remains available when notifier subscription fails",
+ 
+ test("browser event socket releases notifier subscriptions when the tab closes", async () => {
+   let unsubscribed = 0;
++  let released = 0;
+   const app = new Elysia()
+     .use(
+       createBrowserEventsPlugin({
+         development: true,
+         sync: {
+           adapter,
++          connection: () => ({
++            signal: new AbortController().signal,
++            release() {
++              released += 1;
++            },
++          }),
+           notifier: {
+             publish: () => Promise.resolve(),
+             subscribe: () =>
+@@ -430,6 +528,7 @@ test("browser event socket releases notifier subscriptions when the tab closes",
+     await Bun.sleep(10);
+ 
+     expect(unsubscribed).toBe(1);
++    expect(released).toBe(1);
+   } finally {
+     await app.stop();
+   }

@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { unlink } from "node:fs/promises";
 import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Effect, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import parseTorrent from "parse-torrent";
 import type { EnginePort, TorrentAddOptions } from "../torrents/service";
@@ -49,14 +50,15 @@ export class TorrentOpenings extends EventEmitter<{ change: [] }> {
     } else {
       return problem(400, { detail: "Only magnet links and .torrent files can be opened" });
     }
-    let parsed: Awaited<ReturnType<typeof parseTorrent>>;
-    try {
-      parsed = await parseTorrent(source);
-    } catch {
+    const parsedResult = await Effect.runPromise(
+      Effect.result(Effect.tryPromise(() => parseTorrent(source)))
+    );
+    if (Result.isFailure(parsedResult)) {
       return problem(400, {
         detail: "Invalid magnet link or .torrent file (BitTorrent v1 required)",
       });
     }
+    const parsed = parsedResult.success;
     const waiting = [...this.staged.values()].find(
       (item) => item.opened.infoHash === parsed.infoHash
     );
@@ -86,13 +88,14 @@ export class TorrentOpenings extends EventEmitter<{ change: [] }> {
     if (!staged) {
       return problem(404, { detail: "This torrent is no longer waiting to be added" });
     }
-    const result = await engine.add(staged.source, options);
+    const result = await engine.call("add", [staged.source, options]);
     if (result instanceof ElysiaStatus) {
       return result;
     }
     this.staged.delete(id);
     this.emit("change");
-    if (staged.sourcePath === null) {
+    const { sourcePath } = staged;
+    if (sourcePath === null) {
       return result;
     }
     const destination = engine
@@ -101,9 +104,10 @@ export class TorrentOpenings extends EventEmitter<{ change: [] }> {
     if (!(destination?.deleteTorrentFileAfterAdd ?? engine.settings.deleteTorrentFileAfterAdd)) {
       return result;
     }
-    try {
-      await unlink(staged.sourcePath);
-    } catch {
+    const removed = await Effect.runPromise(
+      Effect.result(Effect.tryPromise(() => unlink(sourcePath)))
+    );
+    if (Result.isFailure(removed)) {
       return problem(500, {
         detail: "Torrent added, but the original .torrent file could not be deleted",
       });

@@ -9,7 +9,6 @@ export type EngineOperations = Pick<
   | "waitForRange"
   | "cancelRange"
   | "cancelRanges"
-  | "close"
   | "connectionDiagnostics"
   | "detail"
   | "file"
@@ -24,40 +23,14 @@ export type EngineOperations = Pick<
   | "replaceTrackers"
   | "resume"
   | "saveDestination"
-  | "setObserved"
   | "updateDestinationPresentation"
   | "updateSettings"
   | "verify"
->;
+> & {
+  open: (options: EngineOpenOptions) => Promise<void>;
+  close: () => Promise<void>;
+};
 
-export type EngineRequest =
-  | {
-      [Method in keyof EngineOperations]: {
-        id: number;
-        method: Method;
-        args: Parameters<EngineOperations[Method]>;
-      };
-    }[keyof EngineOperations]
-  | { id: number; method: "open"; args: [EngineOpenOptions] };
-
-export type EngineFailure =
-  | { kind: "http"; code: string; message: string; status: number }
-  | { kind: "internal"; message: string };
-
-type EngineReturnedStatus = Extract<
-  Awaited<ReturnType<EngineOperations[keyof EngineOperations]>>,
-  { status: number; response: unknown }
->;
-
-export type EngineMessage =
-  | { type: "ready" }
-  | { type: "snapshot"; snapshot: EngineSnapshot }
-  | { type: "result"; id: number; value: unknown; snapshot: EngineSnapshot | null }
-  | { type: "error"; id: number; failure: EngineFailure }
-  | {
-      type: "failure";
-      id: number;
-      status: EngineReturnedStatus["status"];
-      body: EngineReturnedStatus["response"];
-      headers: EngineReturnedStatus["headers"];
-    };
+export interface EngineEvents {
+  snapshot: EngineSnapshot;
+}

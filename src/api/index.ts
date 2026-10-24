@@ -2,10 +2,11 @@ import "@teyik0/furin/server-only";
 
 import { Elysia } from "elysia";
 import { toMiddlewareOptions } from "evlog";
-import { evlog } from "evlog/elysia";
+import { evlog, useLogger } from "evlog/elysia";
 import { config } from "../../evlog.config";
 import { httpPolicyPlugin } from "./lib/http-policy";
 import { instance } from "./lib/instance";
+import { servicesRuntime } from "./lib/services-runtime";
 import { accessRoutesPlugin } from "./modules/access";
 import { publicDocumentsPlugin } from "./modules/access/documents";
 import { accessPlugin } from "./modules/access/plugin";
@@ -34,17 +35,18 @@ import { settingsPlugin } from "./modules/settings";
 import { torrentPlugin } from "./modules/torrents";
 import { torrentServicePlugin } from "./modules/torrents/plugin";
 import { updatesPlugin } from "./modules/updates";
-import { updatesServicePlugin } from "./modules/updates/plugin";
 
 export const apiPlugin = new Elysia({ name: "tofu-api" })
   .use(evlog(toMiddlewareOptions(config)))
+  .derive(() => ({
+    log: useLogger(),
+  }))
   .use(anilistServicePlugin)
   .use(releaseAutomationPlugin)
   .use(discoveryServicePlugin)
   .use(jevServicePlugin)
   .use(pluginRegistryPlugin)
   .use(torrentServicePlugin)
-  .use(updatesServicePlugin)
   .use(desktopNativeOpenPlugin)
   .use(accessPlugin)
   .use(publicDocumentsPlugin)
@@ -59,6 +61,7 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
   })
   .group("/api", (app) =>
     app
+      .onStop(() => servicesRuntime.dispose())
       .use(accessRoutesPlugin)
       .use(mediaLinksApiPlugin)
       .use(libraryAvailabilityPlugin)

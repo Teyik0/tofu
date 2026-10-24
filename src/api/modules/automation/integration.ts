@@ -1,6 +1,7 @@
+import { Effect, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
-import type { DatabaseTransaction } from "../../lib/db";
+import type { DatabaseTransaction } from "../../lib/database-layer";
 import { normalizeTitle } from "../../lib/title";
 import type { DiscoveryResult, FeedRelease } from "../discovery/model";
 import type { DiscoveryService } from "../discovery/service";
@@ -219,11 +220,11 @@ export class ReleaseAutomationService {
       return result;
     })();
     this.runs.set(id, task);
-    try {
-      return await task;
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       this.runs.delete(id);
-    }
+    });
+    return await task;
   }
 
   private async execute(rule: AutomationRule) {
@@ -282,11 +283,11 @@ export class ReleaseAutomationService {
     }
     const task = this.finishReplacements(rule);
     this.replacements.set(rule.id, task);
-    try {
-      await task;
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       this.replacements.delete(rule.id);
-    }
+    });
+    await task;
   }
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep validation, state changes, and cleanup in the same lifecycle operation.
   private async finishReplacements(rule: AutomationRule) {
@@ -310,34 +311,30 @@ export class ReleaseAutomationService {
           other.id !== decision.id &&
           (other.torrentId === oldId || other.supersedes?.torrentId === oldId)
       );
-      try {
-        if (
-          oldId !== decision.torrentId &&
-          !shared &&
-          torrents.some((torrent) => torrent.id === oldId)
-        ) {
-          // biome-ignore lint/performance/noAwaitInLoops: finish each persisted replacement before the next.
-          const removed = await this.options.engine.remove(
-            oldId,
-            rule.deleteReplacedFiles === true
-          );
-          if (removed instanceof ElysiaStatus) {
-            decision.status = "error";
-            decision.reason = removed.response.detail;
-            continue;
-          }
+      if (
+        oldId !== decision.torrentId &&
+        !shared &&
+        torrents.some((torrent) => torrent.id === oldId)
+      ) {
+        // biome-ignore lint/performance/noAwaitInLoops: finish each persisted replacement before the next.
+        const removed = await this.options.engine.call("remove", [
+          oldId,
+          rule.deleteReplacedFiles === true,
+        ]);
+        if (removed instanceof ElysiaStatus) {
+          decision.status = "error";
+          decision.reason = removed.response.detail;
+          continue;
         }
-        decision.supersedes = null;
-        if (shared) {
-          decision.reason = "Better version downloaded · old version used by another rule";
-        } else {
-          decision.reason =
-            rule.deleteReplacedFiles === true
-              ? "Better version downloaded · old files deleted"
-              : "Better version downloaded · old files kept";
-        }
-      } catch {
-        decision.reason = "Better version downloaded · retry removing the old version";
+      }
+      decision.supersedes = null;
+      if (shared) {
+        decision.reason = "Better version downloaded · old version used by another rule";
+      } else {
+        decision.reason =
+          rule.deleteReplacedFiles === true
+            ? "Better version downloaded · old files deleted"
+            : "Better version downloaded · old files kept";
       }
       if (!this.lifecycle.closed) {
         this.options.automation.writeDecisionResult({
@@ -359,11 +356,11 @@ export class ReleaseAutomationService {
     }
     const task = this.executeAddition(decision, rule);
     this.additions.set(decision.id, task);
-    try {
-      await task;
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       this.additions.delete(decision.id);
-    }
+    });
+    await task;
   }
   private async executeAddition(decision: AutomationDecision, rule: AutomationRule) {
     if (
@@ -375,49 +372,41 @@ export class ReleaseAutomationService {
     ) {
       return;
     }
-    try {
-      const existing = this.options.engine
-        .snapshot(null, false)
-        .torrents.find((item) => item.id === decision.release.infoHash);
-      const torrent =
-        existing ??
-        (await this.options.discovery.addRelease(
-          decision.release.sourceId,
-          decision.release.id,
-          rule.destinationId,
-          rule.paused,
-          () =>
-            this.current(rule) &&
-            this.options.automation
-              .decisionRecords()
-              .some(
-                (current) =>
-                  current.id === decision.id &&
-                  current.status === "adding" &&
-                  current.release.id === decision.release.id &&
-                  current.release.sourceId === decision.release.sourceId
-              )
-        ));
-      if (torrent instanceof ElysiaStatus) {
-        decision.status = "error";
-        decision.reason = torrent.response.detail;
-      } else {
-        decision.torrentId = torrent.id;
-        decision.status = "added";
-        if (existing) {
-          decision.reason = "Already in the library";
-        } else {
-          decision.reason = decision.supersedes
-            ? "Better version added · old version kept until the download completes"
-            : "Added to the thread folder";
-        }
-      }
-    } catch {
-      if (decision.status === "ignored") {
-        return;
-      }
+    const existing = this.options.engine
+      .snapshot(null, false)
+      .torrents.find((item) => item.id === decision.release.infoHash);
+    const torrent =
+      existing ??
+      (await this.options.discovery.addRelease(
+        decision.release.sourceId,
+        decision.release.id,
+        rule.destinationId,
+        rule.paused,
+        () =>
+          this.current(rule) &&
+          this.options.automation
+            .decisionRecords()
+            .some(
+              (current) =>
+                current.id === decision.id &&
+                current.status === "adding" &&
+                current.release.id === decision.release.id &&
+                current.release.sourceId === decision.release.sourceId
+            )
+      ));
+    if (torrent instanceof ElysiaStatus) {
       decision.status = "error";
-      decision.reason = "Unable to add the torrent; retrying on the next check";
+      decision.reason = torrent.response.detail;
+    } else {
+      decision.torrentId = torrent.id;
+      decision.status = "added";
+      if (existing) {
+        decision.reason = "Already in the library";
+      } else {
+        decision.reason = decision.supersedes
+          ? "Better version added · old version kept until the download completes"
+          : "Added to the thread folder";
+      }
     }
     if (!this.lifecycle.closed) {
       this.options.automation.writeDecisionResult({
@@ -457,33 +446,36 @@ export class ReleaseAutomationService {
       return;
     }
     this.lifecycle.started = true;
-    try {
-      await Promise.all(
-        this.options.automation
-          .snapshot()
-          .automations.filter(
-            (rule) => rule.enabled && (!rule.executorId || rule.executorId === "tofu.releases")
+    await Promise.all(
+      this.options.automation
+        .snapshot()
+        .automations.filter(
+          (rule) => rule.enabled && (!rule.executorId || rule.executorId === "tofu.releases")
+        )
+        .map((rule) => this.run(rule.id))
+    );
+    if (!this.lifecycle.closed) {
+      const poll = async () => {
+        const ticked = await Effect.runPromise(
+          Effect.result(
+            Effect.tryPromise({
+              catch: (cause) => cause,
+              try: () => this.tick(),
+            })
           )
-          .map((rule) => this.run(rule.id))
-      );
-    } finally {
-      if (!this.lifecycle.closed) {
-        const poll = async () => {
-          try {
-            await this.tick();
-          } catch (error) {
-            const log = createLogger({
-              component: "automation",
-              error,
-              operation: "poll",
-            });
-            log.setLevel("error");
-            log.emit();
-          }
-        };
-        this.timer = setInterval(() => void poll(), 15_000);
-        this.timer.unref();
-      }
+        );
+        if (Result.isFailure(ticked)) {
+          const log = createLogger({
+            component: "automation",
+            error: ticked.failure,
+            operation: "poll",
+          });
+          log.setLevel("error");
+          log.emit();
+        }
+      };
+      this.timer = setInterval(() => void poll(), 15_000);
+      this.timer.unref();
     }
   }
   async tick() {

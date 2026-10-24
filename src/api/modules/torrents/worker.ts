@@ -1,26 +1,28 @@
-import { ElysiaStatus, HTTPError, problem } from "elysia";
+import { Effect, ManagedRuntime, Result } from "effect";
 import { createLogger, initLogger, toLoggerConfig } from "evlog";
 import { config } from "../../../../evlog.config";
+import { Database, databaseLayer } from "../../lib/database-layer";
+import { serveWorker } from "../../lib/worker-rpc";
 import { openTorrentEngine, type TorrentEngine } from "./service";
 import type { EngineSnapshot } from "./types";
-import type { EngineFailure, EngineMessage, EngineRequest } from "./worker-protocol";
+import type { EngineEvents, EngineOperations } from "./worker-protocol";
 
 declare let self: Worker;
 
 initLogger({
   ...toLoggerConfig(config),
   drain(context) {
-    postMessage({ context, type: "log" } satisfies EngineMessage);
+    postMessage({ context, type: "log" });
   },
 });
-let dataDir = "";
-const torrentIdPattern = /^[a-f0-9]{40}$/;
 
 let engine: TorrentEngine | null = null;
+const databaseRuntime = ManagedRuntime.make(databaseLayer);
+const torrentIdPattern = /^[a-f0-9]{40}$/;
+let dataDir = "";
 let unsubscribe: (() => void) | undefined;
 let posting = false;
 let closing = false;
-const operations = new Set<Promise<void>>();
 
 function snapshot(): EngineSnapshot | null {
   if (!engine || closing) {
@@ -34,10 +36,49 @@ function snapshot(): EngineSnapshot | null {
   };
 }
 
-async function execute(request: EngineRequest) {
-  if (request.method === "open") {
-    ({ dataDir } = request.args[0]);
-    engine = await openTorrentEngine(request.args[0]);
+const methods: Partial<EngineOperations> = {
+  async close() {
+    await using lifetime = new AsyncDisposableStack();
+    lifetime.use(databaseRuntime);
+    closing = true;
+    unsubscribe?.();
+    engine?.cancelRanges();
+    await rpc.drain();
+    await engine?.close();
+  },
+  async open(options) {
+    await using startup = new AsyncDisposableStack();
+    startup.use(databaseRuntime);
+    ({ dataDir } = options);
+    const db = await databaseRuntime.runPromise(Database);
+    const opened = await openTorrentEngine(options, db);
+    engine = opened;
+    startup.defer(opened.close);
+    Object.assign(methods, {
+      add: engine.add,
+      addPeer: engine.addPeer,
+      assertReady: engine.assertReady,
+      cancelRange: engine.cancelRange,
+      cancelRanges: engine.cancelRanges,
+      connectionDiagnostics: engine.connectionDiagnostics,
+      detail: engine.detail,
+      file: engine.file,
+      locate: engine.locate,
+      pause: engine.pause,
+      priority: engine.priority,
+      reannounce: engine.reannounce,
+      refreshSnapshot: engine.refreshSnapshot,
+      remove: engine.remove,
+      removeDestination: engine.removeDestination,
+      repair: engine.repair,
+      replaceTrackers: engine.replaceTrackers,
+      resume: engine.resume,
+      saveDestination: engine.saveDestination,
+      updateDestinationPresentation: engine.updateDestinationPresentation,
+      updateSettings: engine.updateSettings,
+      verify: engine.verify,
+      waitForRange: engine.waitForRange,
+    } satisfies Omit<EngineOperations, "open" | "close">);
     unsubscribe = engine.subscribeChanges(() => {
       // Coalesce synchronous bursts of engine changes into one snapshot message.
       if (posting) {
@@ -46,16 +87,25 @@ async function execute(request: EngineRequest) {
       posting = true;
       queueMicrotask(() => {
         posting = false;
-        try {
-          const current = snapshot();
-          if (current) {
-            postMessage({ snapshot: current, type: "snapshot" } satisfies EngineMessage);
-          }
-        } catch (error) {
+        const published = Effect.runSync(
+          Effect.result(
+            Effect.try({
+              catch: (error) => error,
+              // Structured cloning and publishing cross the worker transport boundary.
+              try: () => {
+                const current = snapshot();
+                if (current) {
+                  rpc.emit("snapshot", current);
+                }
+              },
+            })
+          )
+        );
+        if (Result.isFailure(published)) {
           const log = createLogger({
             component: "torrent-worker",
             dataDir,
-            error,
+            error: published.failure,
             operation: "publish",
           });
           log.setLevel("error");
@@ -63,150 +113,40 @@ async function execute(request: EngineRequest) {
         }
       });
     });
-    return;
-  }
-  if (!engine || closing) {
-    return problem(503, { detail: "The torrent engine has stopped" });
-  }
-  // biome-ignore-start lint/suspicious/noUnnecessaryConditions: Biome cannot narrow this mapped request union after the open branch.
-  switch (request.method) {
-    case "refreshSnapshot":
-      await engine.refreshSnapshot(...request.args);
-      return;
-    case "setObserved":
-      return engine.setObserved(request.args[0]);
-    case "assertReady":
-      return engine.assertReady();
-    case "connectionDiagnostics":
-      return engine.connectionDiagnostics();
-    case "add":
-      return engine.add(...request.args);
-    case "addPeer":
-      return engine.addPeer(...request.args);
-    case "detail":
-      return engine.detail(...request.args);
-    case "file":
-      return engine.file(...request.args);
-    case "waitForRange":
-      return engine.waitForRange(...request.args);
-    case "cancelRange":
-      return engine.cancelRange(...request.args);
-    case "cancelRanges":
-      return engine.cancelRanges(...request.args);
-    case "locate":
-      return engine.locate(...request.args);
-    case "pause":
-      return engine.pause(...request.args);
-    case "priority":
-      return engine.priority(...request.args);
-    case "reannounce":
-      return engine.reannounce(...request.args);
-    case "repair":
-      return engine.repair(...request.args);
-    case "remove":
-      return engine.remove(...request.args);
-    case "removeDestination":
-      return engine.removeDestination(...request.args);
-    case "replaceTrackers":
-      return engine.replaceTrackers(...request.args);
-    case "resume":
-      return engine.resume(...request.args);
-    case "saveDestination":
-      return engine.saveDestination(...request.args);
-    case "updateDestinationPresentation":
-      return engine.updateDestinationPresentation(...request.args);
-    case "updateSettings":
-      return engine.updateSettings(...request.args);
-    case "verify":
-      return engine.verify(...request.args);
-    case "close": {
-      closing = true;
-      unsubscribe?.();
-      engine.cancelRanges();
-      await Promise.allSettled([...operations]);
-      return engine.close();
-    }
-    default:
-      throw new Error("Unsupported torrent command", { cause: request satisfies never });
-  }
-  // biome-ignore-end lint/suspicious/noUnnecessaryConditions: Mapped request union ends here.
-}
-
-// Commands must wait until imports have loaded and the listener is installed.
-self.onmessage = ({ data }: MessageEvent<EngineRequest>) => {
-  // Reserve the operation before executing it, including commands that finish synchronously.
-  const pending = Promise.withResolvers<void>();
-  const operation = pending.promise;
-  if (data.method !== "close") {
-    operations.add(operation);
-  }
-  const argument = data.method === "waitForRange" ? data.args[1] : data.args[0];
-  const torrentId =
-    typeof argument === "string" && torrentIdPattern.test(argument) ? argument : undefined;
-  const run = async () => {
-    try {
-      const value = await execute(data);
-      if (value instanceof ElysiaStatus) {
-        postMessage({
-          body: value.response,
-          headers: value.headers,
-          id: data.id,
-          status: value.status,
-          type: "failure",
-        } satisfies EngineMessage);
-        return;
-      }
-      if (engine) {
-        const readOnly = [
-          "assertReady",
-          "connectionDiagnostics",
-          "detail",
-          "file",
-          "waitForRange",
-          "cancelRange",
-          "cancelRanges",
-          "close",
-        ].includes(data.method);
-        const current = readOnly ? null : snapshot();
-        postMessage({
-          id: data.id,
-          snapshot: current,
-          type: "result",
-          value,
-        } satisfies EngineMessage);
-      }
-    } catch (error) {
-      const log = createLogger({
-        component: "torrent-worker",
-        context: { torrentId },
-        dataDir,
-        error,
-        operation: data.method,
-      });
-      log.setLevel("error");
-      log.emit();
-      const failure: EngineFailure =
-        error instanceof HTTPError && typeof error.status === "number"
-          ? {
-              code: error.code ?? error.type,
-              kind: "http",
-              message: error.message,
-              status: error.status,
-            }
-          : {
-              kind: "internal",
-              message: error instanceof Error ? error.message : "Torrent engine failure",
-            };
-      postMessage({
-        failure,
-        id: data.id,
-        type: "error",
-      } satisfies EngineMessage);
-    } finally {
-      operations.delete(operation);
-      pending.resolve();
-    }
-  };
-  void run();
+    startup.move();
+  },
 };
-postMessage({ type: "ready" } satisfies EngineMessage);
+
+const rpc = serveWorker<EngineOperations, EngineEvents>(self, methods, {
+  after(method) {
+    const readOnly = [
+      "assertReady",
+      "connectionDiagnostics",
+      "detail",
+      "file",
+      "waitForRange",
+      "cancelRange",
+      "cancelRanges",
+      "close",
+    ].includes(method);
+    const current = readOnly ? null : snapshot();
+    if (current) {
+      rpc.emit("snapshot", current);
+    }
+  },
+  onError(error, method, args) {
+    const argument = method === "waitForRange" ? args[1] : args[0];
+    const torrentId =
+      typeof argument === "string" && torrentIdPattern.test(argument) ? argument : undefined;
+    const log = createLogger({
+      component: "torrent-worker",
+      context: { torrentId },
+      dataDir,
+      error,
+      operation: method,
+    });
+    log.setLevel("error");
+    log.emit();
+  },
+  shutdownMethod: "close",
+});

@@ -1,3 +1,4 @@
+import { Effect, Result } from "effect";
 import { problem } from "elysia";
 import { parseJevResponse } from "../jev/service";
 import { parseRss } from "./feeds";
@@ -45,22 +46,39 @@ export async function validatePluginCredential(options: {
     url.searchParams.set("t", "search");
     url.searchParams.set("limit", "1");
   }
-  const response = await fetch(url, {
-    ...(id === "jev"
-      ? {
-          body: JSON.stringify({
-            model: "jev-latest",
-            questions,
-            state: { message: "connection test" },
-          }),
-          headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-          method: "POST",
-        }
-      : {}),
-    redirect: "error",
-    signal,
-  });
   const name = id === "c411" ? "C411" : "TypeSafe";
+  const fetched = await Effect.runPromise(
+    Effect.result(
+      Effect.tryPromise({
+        catch: (cause) => cause,
+        try: () =>
+          fetch(url, {
+            ...(id === "jev"
+              ? {
+                  body: JSON.stringify({
+                    model: "jev-latest",
+                    questions,
+                    state: { message: "connection test" },
+                  }),
+                  headers: {
+                    authorization: `Bearer ${apiKey}`,
+                    "content-type": "application/json",
+                  },
+                  method: "POST",
+                }
+              : {}),
+            redirect: "error",
+            signal,
+          }),
+      })
+    )
+  );
+  if (Result.isFailure(fetched)) {
+    return problem(502, {
+      detail: `Unable to validate your ${name} API key. Check your connection and try again.`,
+    });
+  }
+  const response = fetched.success;
   if ([401, 403].includes(response.status)) {
     return problem(400, {
       detail: `${name} rejected this API key. Generate a new key and try again.`,
@@ -74,10 +92,34 @@ export async function validatePluginCredential(options: {
       detail: `Unable to validate your ${name} API key (HTTP ${response.status})`,
     });
   }
-  if (id === "c411") {
-    parseRss(await response.text(), "c411");
-  } else {
-    parseJevResponse(await response.json(), questions);
+  const decoded = await Effect.runPromise(
+    Effect.result(
+      Effect.tryPromise({
+        catch: (cause) => cause,
+        try: () => (id === "c411" ? response.text() : response.json()),
+      })
+    )
+  );
+  if (Result.isFailure(decoded)) {
+    return problem(502, {
+      detail: `Unable to validate your ${name} API key. Check your connection and try again.`,
+    });
+  }
+  const parsed = Effect.runSync(
+    Effect.result(
+      Effect.try({
+        catch: (cause) => cause,
+        try: () =>
+          id === "c411"
+            ? parseRss(decoded.success as string, "c411")
+            : parseJevResponse(decoded.success, questions),
+      })
+    )
+  );
+  if (Result.isFailure(parsed)) {
+    return problem(502, {
+      detail: `Unable to validate your ${name} API key. Check your connection and try again.`,
+    });
   }
   return null;
 }

@@ -1,17 +1,14 @@
-import { createContext, Elysia } from "elysia";
+import { Context } from "effect";
+import { Elysia } from "elysia";
 import { databasePlugin } from "../../lib/db";
-import { lifecyclePlugin } from "../../lib/lifecycle-plugin";
+import { AniList } from "../../lib/services-layer";
+import { services } from "../../lib/services-runtime";
 import { automationPlugin } from "../automation";
 import { releaseAutomationPlugin } from "../automation/plugin";
 import { discoveryServicePlugin } from "../discovery/plugin";
 import { jevServicePlugin } from "../jev/plugin";
 import { pluginRegistryPlugin } from "../plugins/plugin";
 import { torrentServicePlugin } from "../torrents/plugin";
-import { readAniListClient } from "./client";
-import { AniListService } from "./service";
-import { instance } from "@/api/lib/instance";
-
-using _initialization = createContext(lifecyclePlugin).prototype.reserveInitialization();
 
 export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
   .use(databasePlugin)
@@ -21,30 +18,4 @@ export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
   .use(jevServicePlugin)
   .use(pluginRegistryPlugin)
   .use(torrentServicePlugin)
-  .use(async (app) => {
-    const client = await readAniListClient(
-      instance.profile,
-      process.env.TOFU_ANILIST_CLIENT_ID,
-      process.execPath
-    );
-    return app.decorate((dependencies) => {
-      const anilist = new AniListService(dependencies.db, {
-        automation: dependencies.automation,
-        client,
-        discovery: dependencies.discovery,
-        endpoint: "https://graphql.anilist.co",
-        engine: dependencies.torrents,
-        jev: dependencies.jev,
-        now: Date.now,
-        plugins: dependencies.plugins,
-        releaseAutomation: dependencies.releaseAutomation,
-        tokenEndpoint: "https://anilist.co/api/v2/oauth/token",
-      });
-
-      dependencies.resources.defer(anilist.close.bind(anilist));
-
-      return { ...dependencies, anilist };
-    });
-  });
-
-await anilistServicePlugin.modules;
+  .decorate("anilist", Context.get(services, AniList));

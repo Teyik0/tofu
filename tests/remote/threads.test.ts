@@ -418,11 +418,11 @@ test("saved servers keep their threads and permissions independent when one goes
         const contents = await Promise.all(files.map((file) => Bun.file(file).text()));
         return contents.some((content) =>
           content
-            .split("\n")
+            .split("\n{")
             .some(
-              (line) =>
-                line.includes('"invalidate-remote-state"') &&
-                line.includes(secondFixture.identity.id)
+              (event) =>
+                event.includes('"invalidate-remote-state"') &&
+                event.includes(secondFixture.identity.id)
             )
         );
       },

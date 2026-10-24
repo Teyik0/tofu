@@ -1,8 +1,10 @@
 import { isAbsolute, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
+import { Effect, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
+import { createLogger } from "evlog";
 import { anilistState } from "../../../db/schema";
-import type { DatabaseConnection, TofuDatabase } from "../../lib/db";
+import type { Database, DatabaseConnection } from "../../lib/database-layer";
 import { refreshRecords } from "../../lib/persisted-cache";
 import type { ReleaseAutomationService } from "../automation/integration";
 import type { AutomationDraft } from "../automation/model";
@@ -149,8 +151,14 @@ export class AniListService {
   private readonly episodeRuns = new Map<number, Promise<void>>();
   private listRevision = 0;
   private readonly subscriptions = new Map<string, AniListSubscription>();
-  private readonly runs = new Map<string, Promise<AniListState>>();
-  private readonly destinationRuns = new Map<string, ReturnType<EnginePort["saveDestination"]>>();
+  private readonly runs = new Map<
+    string,
+    Promise<Awaited<ReturnType<AniListService["reconcile"]>>>
+  >();
+  private readonly destinationRuns = new Map<
+    string,
+    Promise<Awaited<ReturnType<typeof this.options.engine.call<"saveDestination">>>>
+  >();
   private readonly requests = new Set<AbortController>();
   private readonly lifecycle: { closed: boolean; started: boolean } = {
     closed: false,
@@ -161,10 +169,10 @@ export class AniListService {
   private callbackTimeout: ReturnType<typeof setTimeout> | null = null;
   private oauthState: string | null = null;
   private readonly authorization: AniListAuthorization;
-  private readonly db: TofuDatabase;
+  private readonly db: Database;
   private readonly options: AniListOptions;
   private readonly sdk: ReturnType<typeof createAniListSdk>;
-  constructor(db: TofuDatabase, options: AniListOptions) {
+  constructor(db: Database, options: AniListOptions) {
     this.db = db;
     this.options = options;
     this.sdk = createAniListSdk(options.endpoint, () => options.plugins.plugin("anilist").apiKey);
@@ -194,37 +202,30 @@ export class AniListService {
   private async animeSearch(entry: AniListMedia) {
     const interpretation = animeSearchQuestions(entry);
     const fallback = localAnimeSearch(entry);
-    try {
-      const result = await this.options.jev.evaluate(
-        { anime: { aliases: entry.aliases, titles: interpretation.titles } },
-        interpretation.questions
-      );
-      if (result instanceof ElysiaStatus) {
-        return {
-          ...fallback,
-          warning: "Jev search interpretation unavailable; searching with local title matching.",
-        };
-      }
-      if (!result) {
-        return fallback;
-      }
-      const season = fallback.season ?? confidentAnimeNumber(result.answers.season);
-      const titles = interpretation.prefixes.map((values, index) => {
-        const answer = result.answers[`title_${index}`];
-        const original = fallback.seriesTitles[index] ?? fallback.seriesTitles[0] ?? entry.title;
-        // Equivalent prefixes can split confidence; manual searches still verify each release.
-        return answer?.confidence !== undefined && answer.confidence >= 0.5
-          ? animeSeriesTitle(values[Number(answer.choice)] ?? original, season)
-          : original;
-      });
-      const part = fallback.part ?? confidentAnimeNumber(result.answers.part);
-      return animeSearchPlan(entry, titles, season, part);
-    } catch {
+    const result = await this.options.jev.evaluate(
+      { anime: { aliases: entry.aliases, titles: interpretation.titles } },
+      interpretation.questions
+    );
+    if (result instanceof ElysiaStatus) {
       return {
         ...fallback,
         warning: "Jev search interpretation unavailable; searching with local title matching.",
       };
     }
+    if (!result) {
+      return fallback;
+    }
+    const season = fallback.season ?? confidentAnimeNumber(result.answers.season);
+    const titles = interpretation.prefixes.map((values, index) => {
+      const answer = result.answers[`title_${index}`];
+      const original = fallback.seriesTitles[index] ?? fallback.seriesTitles[0] ?? entry.title;
+      // Equivalent prefixes can split confidence; manual searches still verify each release.
+      return answer?.confidence !== undefined && answer.confidence >= 0.5
+        ? animeSeriesTitle(values[Number(answer.choice)] ?? original, season)
+        : original;
+    });
+    const part = fallback.part ?? confidentAnimeNumber(result.answers.part);
+    return animeSearchPlan(entry, titles, season, part);
   }
   async releases(mediaId: number) {
     const original = await this.media(mediaId);
@@ -464,82 +465,133 @@ export class AniListService {
     const redirect = new URL(config.redirectUri);
     const state = crypto.randomUUID();
     this.oauthState = state;
-    try {
-      this.callbackServer = Bun.serve({
-        fetch: async (request) => {
-          const url = new URL(request.url);
-          if (
-            url.pathname !== redirect.pathname ||
-            url.searchParams.get("state") !== this.oauthState ||
-            this.oauthState !== state ||
-            !url.searchParams.get("code")
-          ) {
-            return new Response(
-              "Invalid or expired OAuth callback. Restart the connection from Tofu.",
-              { headers: { "cache-control": "no-store" }, status: 400 }
-            );
-          }
-          this.oauthState = null;
-          const controller = new AbortController();
-          this.requests.add(controller);
-          const timeout = setTimeout(
-            () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-            15_000
-          );
-          try {
-            const response = await fetch(this.options.tokenEndpoint, {
-              body: JSON.stringify({
-                client_id: config.clientId,
-                client_secret: config.clientSecret,
-                code: url.searchParams.get("code"),
-                grant_type: "authorization_code",
-                redirect_uri: config.redirectUri,
-              }),
-              headers: { accept: "application/json", "content-type": "application/json" },
-              method: "POST",
-              signal: controller.signal,
-            });
-            const token = (await response.json()) as { access_token?: string };
-            if (
-              !(response.ok && token.access_token) ||
-              this.lifecycle.closed ||
-              this.config.clientId !== config.clientId
-            ) {
-              throw new Error("Exchange rejected");
-            }
-            this.options.plugins.configure("anilist", {
-              apiKey: token.access_token,
-              enabled: true,
-            });
-            return new Response(
-              "AniList connected successfully. You can close this tab and return to Tofu.",
-              {
-                headers: {
-                  "cache-control": "no-store",
-                  "content-type": "text/plain; charset=utf-8",
-                  "referrer-policy": "no-referrer",
-                },
-              }
-            );
-          } catch {
-            return new Response("Unable to connect AniList. Restart the connection from Tofu.", {
-              status: 502,
-            });
-          } finally {
-            clearTimeout(timeout);
-            this.requests.delete(controller);
-          }
-        },
-        hostname: "127.0.0.1",
-        port: Number(redirect.port),
-      });
-    } catch {
+    const server = Effect.runSync(
+      Effect.result(
+        Effect.try({
+          catch: (cause) => cause,
+          try: () =>
+            Bun.serve({
+              fetch: async (request) => {
+                const url = new URL(request.url);
+                if (
+                  url.pathname !== redirect.pathname ||
+                  url.searchParams.get("state") !== this.oauthState ||
+                  this.oauthState !== state ||
+                  !url.searchParams.get("code")
+                ) {
+                  return new Response(
+                    "Invalid or expired OAuth callback. Restart the connection from Tofu.",
+                    { headers: { "cache-control": "no-store" }, status: 400 }
+                  );
+                }
+                this.oauthState = null;
+                const controller = new AbortController();
+                this.requests.add(controller);
+                const timeout = setTimeout(
+                  () =>
+                    controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+                  15_000
+                );
+                using cleanup = new DisposableStack();
+                cleanup.defer(() => {
+                  clearTimeout(timeout);
+                  this.requests.delete(controller);
+                });
+                const exchanged = await Effect.runPromise(
+                  Effect.result(
+                    Effect.tryPromise({
+                      catch: (cause) => cause,
+                      try: () =>
+                        fetch(this.options.tokenEndpoint, {
+                          body: JSON.stringify({
+                            client_id: config.clientId,
+                            client_secret: config.clientSecret,
+                            code: url.searchParams.get("code"),
+                            grant_type: "authorization_code",
+                            redirect_uri: config.redirectUri,
+                          }),
+                          headers: {
+                            accept: "application/json",
+                            "content-type": "application/json",
+                          },
+                          method: "POST",
+                          signal: controller.signal,
+                        }),
+                    })
+                  )
+                );
+                if (Result.isFailure(exchanged)) {
+                  return new Response(
+                    "Unable to connect AniList. Restart the connection from Tofu.",
+                    { status: 502 }
+                  );
+                }
+                const response = exchanged.success;
+                const decoded = await Effect.runPromise(
+                  Effect.result(
+                    Effect.tryPromise({
+                      catch: (cause) => cause,
+                      try: () => response.json(),
+                    })
+                  )
+                );
+                if (Result.isFailure(decoded)) {
+                  return new Response(
+                    "Unable to connect AniList. Restart the connection from Tofu.",
+                    { status: 502 }
+                  );
+                }
+                const token = decoded.success as { access_token?: string };
+                if (
+                  !(
+                    response.ok &&
+                    token &&
+                    typeof token.access_token === "string" &&
+                    token.access_token
+                  ) ||
+                  this.lifecycle.closed ||
+                  this.config.clientId !== config.clientId
+                ) {
+                  return new Response(
+                    "Unable to connect AniList. Restart the connection from Tofu.",
+                    { status: 502 }
+                  );
+                }
+                const configured = this.options.plugins.configure("anilist", {
+                  apiKey: token.access_token,
+                  enabled: true,
+                });
+                if (configured instanceof ElysiaStatus) {
+                  return new Response(
+                    "Unable to connect AniList. Restart the connection from Tofu.",
+                    { status: configured.status }
+                  );
+                }
+                return new Response(
+                  "AniList connected successfully. You can close this tab and return to Tofu.",
+                  {
+                    headers: {
+                      "cache-control": "no-store",
+                      "content-type": "text/plain; charset=utf-8",
+                      "referrer-policy": "no-referrer",
+                    },
+                  }
+                );
+              },
+              hostname: "127.0.0.1",
+              port: Number(redirect.port),
+            }),
+        })
+      )
+    );
+    if (Result.isFailure(server)) {
       this.oauthState = null;
       return problem(409, {
         detail:
           "The OAuth callback port is busy. Choose the same available port in Tofu and your AniList client.",
       });
     }
+    this.callbackServer = server.success;
     this.callbackTimeout = setTimeout(() => this.stopCallback(), 600_000);
     this.callbackTimeout.unref();
     const url = new URL("https://anilist.co/api/v2/oauth/authorize");
@@ -570,17 +622,27 @@ export class AniListService {
       () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
       15_000
     );
-    try {
-      return await run(controller.signal);
-    } catch (error) {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
+      clearTimeout(timeout);
+      this.requests.delete(controller);
+    });
+    const response = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => run(controller.signal),
+        })
+      )
+    );
+    if (Result.isFailure(response)) {
+      const error = response.failure;
       if (error instanceof AniListUnavailable) {
         return problem(502, { detail: error.message });
       }
       throw error;
-    } finally {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
     }
+    return response.success;
   }
   async media(mediaId: number) {
     if (this.lifecycle.closed) {
@@ -904,8 +966,25 @@ export class AniListService {
     const reservation = Promise.withResolvers<AniListState | ListFailure>();
     this.listFlight = { key, promise: reservation.promise };
     const load = async () => {
-      try {
-        const failed = await this.loadList(key, this.options.plugins.plugin("anilist").apiKey);
+      using cleanup = new DisposableStack();
+      cleanup.defer(() => {
+        if (this.listFlight?.promise === reservation.promise) {
+          this.listFlight = null;
+        }
+      });
+      const loaded = await Effect.runPromise(
+        Effect.result(
+          Effect.tryPromise({
+            catch: (cause) => cause,
+            try: async () => {
+              const list = await this.loadList(key, this.options.plugins.plugin("anilist").apiKey);
+              return list instanceof ElysiaStatus ? list : this.snapshot();
+            },
+          })
+        )
+      );
+      if (Result.isSuccess(loaded)) {
+        const failed = loaded.success;
         if (failed instanceof ElysiaStatus) {
           if (key === this.cacheKey() && !this.lifecycle.closed) {
             this.refreshError = failed.response.detail;
@@ -914,17 +993,14 @@ export class AniListService {
           reservation.resolve(failed);
           return;
         }
-        reservation.resolve(this.snapshot());
-      } catch (error) {
+        reservation.resolve(failed);
+      } else {
+        const error = loaded.failure;
         if (key === this.cacheKey() && !this.lifecycle.closed) {
           this.refreshError = error instanceof Error ? error.message : "Unable to refresh AniList";
           this.retryAt = this.options.now() + 30_000;
         }
         reservation.reject(error);
-      } finally {
-        if (this.listFlight?.promise === reservation.promise) {
-          this.listFlight = null;
-        }
       }
     };
     void load();
@@ -1060,19 +1136,15 @@ export class AniListService {
     const previous = this.episodeRuns.get(mediaId);
     const reservation = Promise.withResolvers<void>();
     this.episodeRuns.set(mediaId, reservation.promise);
-    try {
-      try {
-        await previous;
-      } catch {
-        /* Earlier operations report their own failures. */
-      }
-      return await run();
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       if (this.episodeRuns.get(mediaId) === reservation.promise) {
         this.episodeRuns.delete(mediaId);
       }
       reservation.resolve();
-    }
+    });
+    await previous;
+    return await run();
   }
   private async updateEpisode(
     mediaId: number,
@@ -1282,7 +1354,7 @@ export class AniListService {
     if (!subscription) {
       return Promise.resolve(problem(404, { detail: "Unknown AniList tracking" }));
     }
-    const reservation = Promise.withResolvers<AniListState>();
+    const reservation = Promise.withResolvers<Awaited<ReturnType<AniListService["reconcile"]>>>();
     this.runs.set(id, reservation.promise);
     const interrupted = () => {
       if (!this.lifecycle.closed && this.subscriptions.get(id) === subscription) {
@@ -1293,16 +1365,31 @@ export class AniListService {
       return this.snapshot();
     };
     const reconcile = async () => {
-      try {
-        const reconciled = await this.reconcile(subscription);
-        reservation.resolve(reconciled instanceof ElysiaStatus ? interrupted() : reconciled);
-      } catch {
-        reservation.resolve(interrupted());
-      } finally {
+      using cleanup = new DisposableStack();
+      cleanup.defer(() => {
         if (this.runs.get(id) === reservation.promise) {
           this.runs.delete(id);
         }
+      });
+      const reconciled = await Effect.runPromise(
+        Effect.result(
+          Effect.tryPromise({
+            catch: (cause) => cause,
+            try: async () => {
+              const state = await this.reconcile(subscription);
+              if (state instanceof ElysiaStatus) {
+                interrupted();
+              }
+              return state;
+            },
+          })
+        )
+      );
+      if (Result.isFailure(reconciled)) {
+        reservation.reject(reconciled.failure);
+        return;
       }
+      reservation.resolve(reconciled.success);
     };
     void reconcile();
     return reservation.promise;
@@ -1354,17 +1441,20 @@ export class AniListService {
       }
       return destination.id;
     }
-    const task = this.options.engine.saveDestination(null, { downloadPath, name: proposal.name });
+    const task = this.options.engine.call("saveDestination", [
+      null,
+      { downloadPath, name: proposal.name },
+    ]);
     this.destinationRuns.set(downloadPath, task);
-    try {
-      const destination = await task;
-      if (destination instanceof ElysiaStatus) {
-        return destination;
-      }
-      return destination.id;
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       this.destinationRuns.delete(downloadPath);
+    });
+    const created = await task;
+    if (created instanceof ElysiaStatus) {
+      return created;
     }
+    return created.id;
   }
   private async follow(subscription: AniListSubscription, entry: AniListEntry) {
     const binding = subscription.bindings.find((item) => item.mediaId === entry.mediaId);
@@ -1522,7 +1612,23 @@ export class AniListService {
     await this.tick(true);
     if (!this.lifecycle.closed) {
       this.timer = setInterval(async () => {
-        await this.tick(false);
+        const ticked = await Effect.runPromise(
+          Effect.result(
+            Effect.tryPromise({
+              catch: (cause) => cause,
+              try: () => this.tick(false),
+            })
+          )
+        );
+        if (Result.isFailure(ticked)) {
+          const log = createLogger({
+            component: "anilist",
+            error: ticked.failure,
+            operation: "poll",
+          });
+          log.setLevel("error");
+          log.emit();
+        }
       }, 15_000);
       this.timer.unref();
     }

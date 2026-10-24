@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
+import { Effect, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import { automationDecisions, automationPreferences, automationRules } from "../../../db/schema";
-import type { DatabaseConnection, DatabaseTransaction, TofuDatabase } from "../../lib/db";
+import type { Database, DatabaseConnection, DatabaseTransaction } from "../../lib/database-layer";
 import { refreshRecords } from "../../lib/persisted-cache";
 import type { FeedRelease } from "../discovery/model";
 import {
@@ -54,12 +55,12 @@ export interface IngestionInput {
 
 // The core persists decisions; integrations own discovery, scheduling and execution.
 export class AutomationService {
-  readonly db: TofuDatabase;
+  readonly db: Database;
   private readonly rules = new Map<string, AutomationRule>();
   private readonly decisions = new Map<string, AutomationDecision>();
   private preferences: AutomationPreferences = defaultAutomationPreferences;
   private readonly options: AutomationOptions;
-  constructor(db: TofuDatabase, options: AutomationOptions) {
+  constructor(db: Database, options: AutomationOptions) {
     this.options = options;
     this.db = db;
     const storedPreferences = this.db
@@ -297,9 +298,10 @@ export class AutomationService {
       if (draft.title.length > 256) {
         return problem(400, { detail: "Pattern too long" });
       }
-      try {
-        new RegExp(draft.title, "iu").test("");
-      } catch {
+      const pattern = Effect.runSync(
+        Effect.result(Effect.try(() => new RegExp(draft.title, "iu")))
+      );
+      if (Result.isFailure(pattern)) {
         return problem(400, { detail: "Invalid pattern" });
       }
     }

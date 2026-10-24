@@ -15,9 +15,11 @@ export function remoteRelay(origin: string) {
     async fetch(request, listener) {
       const url = new URL(request.url);
       if (url.pathname === "/_furin/events" && request.headers.get("upgrade") === "websocket") {
-        if (listener.upgrade(request, {
-          data: { cookie: request.headers.get("cookie") ?? "", upstream: null },
-        })) {
+        if (
+          listener.upgrade(request, {
+            data: { cookie: request.headers.get("cookie") ?? "", upstream: null },
+          })
+        ) {
           return;
         }
         return new Response("WebSocket upgrade failed", { status: 502 });

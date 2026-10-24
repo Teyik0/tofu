@@ -1,7 +1,8 @@
+import { Effect, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import parseTorrent from "parse-torrent";
 import { automationReleases } from "../../../db/schema";
-import type { TofuDatabase } from "../../lib/db";
+import type { Database } from "../../lib/database-layer";
 import { normalizeTitle } from "../../lib/title";
 import type { JevService } from "../jev/service";
 import { discoveryMatchQuestions, discoveryTitleQuestions, safeReleaseState } from "../jev/service";
@@ -11,8 +12,6 @@ import type { PluginEndpoints, PluginsService } from "../plugins/service";
 import type { EnginePort } from "../torrents/service";
 import type { DiscoveryResult, DiscoverySearch, FeedRelease } from "./model";
 import { collectSourceQueries, uniqueReleases } from "./sources";
-
-const feedExpression = /^(Source unavailable|Invalid RSS feed|RSS feed missing|Invalid JSON feed)/;
 
 const combinedEpisode = /\bs(\d{1,3})\s*e(\d{1,4})\b/gi;
 const seasonNumber = /\b(?:saison|season|s)\s*(\d{1,3})\b|\b(\d{1,3})(?:st|nd|rd|th)\s+season\b/gi;
@@ -173,9 +172,9 @@ export class DiscoveryService {
   private readonly lifecycle: { closed: boolean } = { closed: false };
   private readonly releases = new Map<string, FeedRelease>();
   private readonly additions = new Map<string, ReturnType<DiscoveryService["downloadRelease"]>>();
-  private readonly db: TofuDatabase;
+  private readonly db: Database;
   private readonly options: DiscoveryOptions;
-  constructor(db: TofuDatabase, options: DiscoveryOptions) {
+  constructor(db: Database, options: DiscoveryOptions) {
     this.db = db;
     this.options = options;
     for (const row of this.db.select().from(automationReleases).all()) {
@@ -198,29 +197,17 @@ export class DiscoveryService {
     const result: DiscoveryResult = { errors: [], releases: [] };
     await Promise.all(
       [...new Set(sources)].map(async (sourceId) => {
-        try {
-          const releases = await this.options.plugins.fetchSource(sourceId, query);
-          if (releases instanceof ElysiaStatus) {
-            if (!this.options.plugins.plugin(sourceId).enabled || this.lifecycle.closed) {
-              return;
-            }
-            const message = releases.response.detail;
-            result.errors.push({ message, sourceId });
-            this.options.plugins.recordFailure(sourceId, message);
-            return;
-          }
-          result.releases.push(...releases);
-        } catch (cause) {
+        const releases = await this.options.plugins.fetchSource(sourceId, query);
+        if (releases instanceof ElysiaStatus) {
           if (!this.options.plugins.plugin(sourceId).enabled || this.lifecycle.closed) {
             return;
           }
-          const message =
-            cause instanceof Error && feedExpression.test(cause.message)
-              ? cause.message
-              : "Unable to connect to the source";
+          const message = releases.response.detail;
           result.errors.push({ message, sourceId });
           this.options.plugins.recordFailure(sourceId, message);
+          return;
         }
+        result.releases.push(...releases);
       })
     );
     if (this.lifecycle.closed) {
@@ -379,11 +366,11 @@ export class DiscoveryService {
     }
     const task = this.downloadRelease(release, destinationId, paused, allowed);
     this.additions.set(key, task);
-    try {
-      return await task;
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       this.additions.delete(key);
-    }
+    });
+    return await task;
   }
   private async downloadRelease(
     release: FeedRelease,
@@ -402,7 +389,18 @@ export class DiscoveryService {
       }
       input = file;
     }
-    const parsed = await parseTorrent(input);
+    const parsedTorrent = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => parseTorrent(input),
+        })
+      )
+    );
+    if (Result.isFailure(parsedTorrent)) {
+      return problem(400, { detail: "Invalid torrent file" });
+    }
+    const parsed = parsedTorrent.success;
     if (parsed.infoHash && release.infoHash !== parsed.infoHash) {
       release.infoHash = parsed.infoHash;
       this.storeRelease(release);
@@ -419,30 +417,32 @@ export class DiscoveryService {
     if (existing) {
       return { id: existing.id };
     }
-    return this.options.engine.add(input, { destinationId, paused });
+    return this.options.engine.call("add", [input, { destinationId, paused }]);
   }
   private readonly cache = new Map<string, { expires: number; media: AnimeTitle[] }>();
   private readonly requests = new Set<AbortController>();
 
   private async resolve(search: DiscoverySearch, endpoint: string) {
-    try {
-      resolveTitles(search, await this.media(search.title, endpoint));
-    } catch {
+    const media = await this.media(search.title, endpoint);
+    if (media instanceof ElysiaStatus) {
       search.warning = [
         search.warning,
         "Alternative titles unavailable; searching with the entered title.",
       ]
         .filter(Boolean)
         .join(" ");
+      return;
     }
+    resolveTitles(search, media);
   }
 
   async titleAliases(title: string): Promise<string[]> {
-    try {
-      const best = bestTitle(
-        title,
-        await this.media(title, this.options.endpoints.anilist ?? "https://graphql.anilist.co")
-      );
+    const media = await this.media(
+      title,
+      this.options.endpoints.anilist ?? "https://graphql.anilist.co"
+    );
+    if (!(media instanceof ElysiaStatus)) {
+      const best = bestTitle(title, media);
       if (best) {
         const canonical = [best.title.romaji, best.title.english].filter(
           (name): name is string => typeof name === "string" && Boolean(name.trim())
@@ -451,13 +451,11 @@ export class DiscoveryService {
           return uniqueTitles(canonical);
         }
       }
-    } catch {
-      // Keep the user's title usable during catalogue outages.
     }
     return [title];
   }
 
-  private async media(title: string, endpoint: string): Promise<AnimeTitle[]> {
+  private async media(title: string, endpoint: string) {
     const key = normalizeTitle(title);
     const cached = this.cache.get(key);
     if (cached && cached.expires > Date.now()) {
@@ -466,33 +464,56 @@ export class DiscoveryService {
     const controller = new AbortController();
     this.requests.add(controller);
     const timeout = setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(endpoint, {
-        body: JSON.stringify({ query: catalogQuery, variables: { search: title } }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error("Catalogue unavailable");
-      }
-      const result = (await response.json()) as {
-        data?: { Page?: { media?: AnimeTitle[] } };
-        errors?: unknown[];
-      };
-      const media = result.data?.Page?.media;
-      if (!Array.isArray(media) || result.errors?.length) {
-        throw new Error("Invalid catalogue");
-      }
-      if (this.cache.size >= 100) {
-        this.cache.clear();
-      }
-      this.cache.set(key, { expires: Date.now() + 3_600_000, media });
-      return media;
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       clearTimeout(timeout);
       this.requests.delete(controller);
+    });
+    const fetched = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () =>
+            fetch(endpoint, {
+              body: JSON.stringify({ query: catalogQuery, variables: { search: title } }),
+              headers: { "content-type": "application/json" },
+              method: "POST",
+              signal: controller.signal,
+            }),
+        })
+      )
+    );
+    if (Result.isFailure(fetched)) {
+      return problem(502, { detail: "Catalogue unavailable" });
     }
+    const response = fetched.success;
+    if (!response.ok) {
+      return problem(502, { detail: "Catalogue unavailable" });
+    }
+    const decoded = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => response.json(),
+        })
+      )
+    );
+    if (Result.isFailure(decoded)) {
+      return problem(502, { detail: "Invalid catalogue" });
+    }
+    const result = decoded.success as {
+      data?: { Page?: { media?: AnimeTitle[] } };
+      errors?: unknown[];
+    } | null;
+    const media = result?.data?.Page?.media;
+    if (!Array.isArray(media) || result?.errors?.length) {
+      return problem(502, { detail: "Invalid catalogue" });
+    }
+    if (this.cache.size >= 100) {
+      this.cache.clear();
+    }
+    this.cache.set(key, { expires: Date.now() + 3_600_000, media });
+    return media;
   }
 
   async close() {

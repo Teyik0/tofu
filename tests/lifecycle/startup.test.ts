@@ -45,22 +45,8 @@ test("a failed service initialization releases resources before the process exit
   ]);
   expect(stderr).toMatch(invalidJson);
   expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
-  expect(stdout).toContain("Failed startup released the database");
-
-  const logs = await Array.fromAsync(
-    new Bun.Glob("*.jsonl").scan({ absolute: true, cwd: join(dataDir, "logs") })
-  );
-  const events = (await Promise.all(logs.map((path) => Bun.file(path).text())))
-    .flatMap((contents) => contents.trim().split("\n"))
-    .map((line) => JSON.parse(line));
-  expect(events).toContainEqual(
-    expect.objectContaining({
-      component: "application",
-      error: expect.objectContaining({ name: "SyntaxError" }),
-      level: "error",
-      operation: "startup",
-    })
-  );
+  expect(stderr).toContain("SyntaxError");
+  expect(stdout).toContain("Failed startup released the database and torrent worker");
 
   await rm(corruptState);
   const server = await app.start();

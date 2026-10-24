@@ -46,16 +46,16 @@ export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
       body: createDestinationSchema,
       owner: true,
     },
-    async ({ caller, storageRoots, torrents, torrentFolders, body }) => {
+    async ({ caller, storageRoots, torrents, torrentFolders, torrentFoldersRuntime, body }) => {
       const denied = await remoteDestinationProblem(storageRoots, caller, body);
       if (denied) {
         return denied;
       }
-      const destination = await torrents.saveDestination(null, body);
+      const destination = await torrents.call("saveDestination", [null, body]);
       if (destination instanceof ElysiaStatus) {
         return destination;
       }
-      torrentFolders.sync();
+      torrentFoldersRuntime.runSync(torrentFolders.sync);
       return destination;
     }
   )
@@ -65,16 +65,24 @@ export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
       body: updateDestinationSchema,
       owner: true,
     },
-    async ({ caller, storageRoots, torrents, torrentFolders, params, body }) => {
+    async ({
+      caller,
+      storageRoots,
+      torrents,
+      torrentFolders,
+      torrentFoldersRuntime,
+      params,
+      body,
+    }) => {
       const denied = await remoteDestinationProblem(storageRoots, caller, body);
       if (denied) {
         return denied;
       }
-      const destination = await torrents.saveDestination(params.id, body);
+      const destination = await torrents.call("saveDestination", [params.id, body]);
       if (destination instanceof ElysiaStatus) {
         return destination;
       }
-      torrentFolders.sync();
+      torrentFoldersRuntime.runSync(torrentFolders.sync);
       return destination;
     }
   )
@@ -83,20 +91,23 @@ export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
     {
       body: destinationWithinRootSchema,
     },
-    async ({ storageRoots, torrents, torrentFolders, body }) => {
+    async ({ storageRoots, torrents, torrentFolders, torrentFoldersRuntime, body }) => {
       const downloadPath = await storageRoots.resolveFolder(body.rootId, body.folder);
       if (downloadPath instanceof ElysiaStatus) {
         return downloadPath;
       }
-      const destination = await torrents.saveDestination(body.id ?? null, {
-        downloadPath,
-        moveFiles: body.moveFiles,
-        name: body.name,
-      });
+      const destination = await torrents.call("saveDestination", [
+        body.id ?? null,
+        {
+          downloadPath,
+          moveFiles: body.moveFiles,
+          name: body.name,
+        },
+      ]);
       if (destination instanceof ElysiaStatus) {
         return destination;
       }
-      torrentFolders.sync();
+      torrentFoldersRuntime.runSync(torrentFolders.sync);
       return destination;
     }
   )
@@ -105,16 +116,25 @@ export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
     {
       body: destinationPresentationSchema,
     },
-    ({ torrents, params, body }) => torrents.updateDestinationPresentation(params.id, body)
+    ({ torrents, params, body }) =>
+      torrents.call("updateDestinationPresentation", [params.id, body])
   )
   .delete(
     "/destinations/:id",
-    async ({ torrents, torrentFolders, db, automation, anilist, params }) => {
-      const result = await torrents.removeDestination(params.id);
+    async ({
+      torrents,
+      torrentFolders,
+      torrentFoldersRuntime,
+      db,
+      automation,
+      anilist,
+      params,
+    }) => {
+      const result = await torrents.call("removeDestination", [params.id]);
       if (result instanceof ElysiaStatus) {
         return result;
       }
-      torrentFolders.sync();
+      torrentFoldersRuntime.runSync(torrentFolders.sync);
       db.transaction((tx) => {
         automation.reassignDestination(tx, result.removed);
         anilist.reassignDestination(result.removed, tx);

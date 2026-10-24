@@ -1,3 +1,4 @@
+import { Effect, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 
 interface AuthorizationAttempt {
@@ -36,19 +37,24 @@ function callbackPage() {
   };
   history.replaceState(null, "", location.pathname);
   const status = document.getElementById("status");
-  try {
-    if (!payload.state || !(payload.access_token || payload.error)) {
-      throw new Error("Invalid or expired connection. Restart the connection from Tofu.");
-    }
-    const response = await fetch(location.pathname, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail ?? result.title ?? "Unable to connect AniList");
-    status.textContent = "AniList connected successfully. You can close this tab and return to Tofu.";
-  } catch (error) {
-    status.textContent = error instanceof Error ? error.message : "Unable to connect AniList. Return to Tofu and try again.";
+  if (!payload.state || !(payload.access_token || payload.error)) {
+    status.textContent = "Invalid or expired connection. Restart the connection from Tofu.";
+    return;
   }
+  const [request] = await Promise.allSettled([fetch(location.pathname, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
+  })]);
+  if (request.status === "rejected") {
+    status.textContent = "Unable to connect AniList. Return to Tofu and try again.";
+    return;
+  }
+  const response = request.value;
+  const [decoded] = await Promise.allSettled([response.json()]);
+  status.textContent = decoded.status === "rejected"
+    ? "Unable to connect AniList. Return to Tofu and try again."
+    : response.ok
+      ? "AniList connected successfully. You can close this tab and return to Tofu."
+      : decoded.value?.detail ?? decoded.value?.title ?? "Unable to connect AniList";
 })();
 </script></body></html>`,
     {
@@ -86,20 +92,28 @@ export class AniListAuthorization {
     const redirect = new URL(redirectUri);
     const attempt = { deviceId, processing: false, redirect, state: crypto.randomUUID() };
     this.attempt = attempt;
-    try {
-      if (redirect.protocol === "http:") {
-        this.server = Bun.serve({
-          fetch: (request) => this.callback(request, redirect, attempt),
-          hostname: "127.0.0.1",
-          maxRequestBodySize: 16_384,
-          port: Number(redirect.port),
+    if (redirect.protocol === "http:") {
+      const server = Effect.runSync(
+        Effect.result(
+          Effect.try({
+            catch: (cause) => cause,
+            try: () =>
+              Bun.serve({
+                fetch: (request) => this.callback(request, redirect, attempt),
+                hostname: "127.0.0.1",
+                maxRequestBodySize: 16_384,
+                port: Number(redirect.port),
+              }),
+          })
+        )
+      );
+      if (Result.isFailure(server)) {
+        this.attempt = null;
+        return problem(409, {
+          detail: `AniList connection needs local port ${redirect.port}. Close the app using that port and try again.`,
         });
       }
-    } catch {
-      this.attempt = null;
-      return problem(409, {
-        detail: `AniList connection needs local port ${redirect.port}. Close the app using that port and try again.`,
-      });
+      this.server = server.success;
     }
     this.timeout = setTimeout(() => {
       if (this.pending) {
@@ -168,13 +182,18 @@ export class AniListAuthorization {
     ) {
       return callbackProblem("Invalid callback origin", 403);
     }
-    let body: unknown = null;
-    try {
-      body = await request.json();
-    } catch {
-      /* The callback validates a missing body below. */
+    const body = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => request.json(),
+        })
+      )
+    );
+    if (Result.isFailure(body)) {
+      return callbackProblem("Invalid OAuth callback body", 400);
     }
-    return this.accept(body, attempt);
+    return this.accept(body.success, attempt);
   }
 
   private async accept(body: unknown, attempt: AuthorizationAttempt) {
@@ -216,19 +235,24 @@ export class AniListAuthorization {
         502
       );
     };
-    try {
-      const completed = await this.complete(body.access_token, () => this.attempt === attempt);
-      if (completed instanceof ElysiaStatus) {
-        return failed();
-      }
-      return Response.json({ connected: true }, { headers });
-    } catch {
-      return failed();
-    } finally {
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       if (this.attempt === attempt) {
         this.attempt = null;
       }
+    });
+    const completed = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => this.complete(body.access_token as string, () => this.attempt === attempt),
+        })
+      )
+    );
+    if (Result.isFailure(completed) || completed.success instanceof ElysiaStatus) {
+      return failed();
     }
+    return Response.json({ connected: true }, { headers });
   }
 
   close() {

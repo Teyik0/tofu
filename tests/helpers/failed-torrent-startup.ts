@@ -1,20 +1,15 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { createContext } from "elysia";
-import { db } from "../../src/api/lib/db";
-import { lifecyclePlugin } from "../../src/api/lib/lifecycle-plugin";
+import { ManagedRuntime } from "effect";
+import { Database, databaseLayer } from "../../src/api/lib/database-layer";
 import { torrentRecords } from "../../src/db/schema";
 
-await using cleanup = new AsyncDisposableStack();
-const { resources } = createContext(lifecyclePlugin).prototype;
-cleanup.defer(() => db.$client.close());
-cleanup.defer(() => resources.disposeAsync());
-migrate(db, { migrationsFolder: join(import.meta.dir, "../../src/db/drizzle") });
+const seedRuntime = ManagedRuntime.make(databaseLayer);
+const db = await seedRuntime.runPromise(Database);
 // Restoration reads this record after the worker has allocated its torrent client.
 db.insert(torrentRecords)
   .values({ id: "a".repeat(40), value: "{" })
   .run();
+await seedRuntime.dispose();
 
 const [startup] = await Promise.allSettled([import("../../src/api/modules/torrents/plugin")]);
 assert.equal(startup?.status, "rejected");

@@ -10,5 +10,5 @@ export const healthPlugin = new Elysia({ name: "tofu-health-api" })
   .use(furinSync(sync))
   .get("/health", { idempotent: false, playback: true }, () => ({ ready: true }))
   .get("/diagnostics/connections", { administration: true, idempotent: false }, ({ torrents }) =>
-    torrents.connectionDiagnostics()
+    torrents.call("connectionDiagnostics", [])
   );

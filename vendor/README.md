@@ -1,12 +1,13 @@
 # Furin packages and Remote Servers integration
 
-Both active packages are built without local source patches from
+Both active packages are based on
 [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
-`ce5d778f91925464a75e84ca15365edf1f8e572d`.
+`ce5d778f91925464a75e84ca15365edf1f8e572d`. The core package additionally
+includes [furin-session.patch](furin-session.patch); Electrobun is unmodified.
 
 | Active archive | SHA-256 |
 | --- | --- |
-| `furin-pr163-ce5d778.tgz` | `cd621a4b97d2b89810f272ce4c083613ff2a327f3692e5913a25098a16814708` |
+| `furin-pr163-ce5d778-session-v1.tgz` | `4e2d24f3efcb2d256701caa189ac0f83e7bafbf3d823806524f6876b15dbb44b` |
 | `furin-electrobun-pr163-ce5d778.tgz` | `424811d675b30284de7fccbee5437cc9495ad260433807c6364e17ab76e37d65` |
 
 Commit `ce5d778` adds `createSyncClient` through `@teyik0/furin/sync/client`
@@ -14,8 +15,22 @@ for continuous live queries outside React, plus `createLocalSyncClient` through
 `@teyik0/furin/sync` for direct in-process Eden subscriptions. Both clients share
 query recovery and cancellation behavior. Commit `636cef7` lets background
 invalidations declare their principal provenance, preserving targeted recovery
-without exposing another principal's journal entries. Existing Tofu consumers
-still use `/live`; updating the packages does not migrate those subscriptions.
+without exposing another principal's journal entries. Tofu's browser and native
+consumers now subscribe to `/api/state` through the standalone client.
+
+The local patch adds `sync.connection(context)`, returning an optional
+`{ signal, release }` session resource. Furin closes the event connection when
+the signal aborts and releases the resource on disconnect or failed startup,
+for both WebSocket and SSE. WebSocket close code `4409` means the session
+context changed: the standalone client cancels old reads, clears its cache and
+reauthenticates. A grant change can reconnect; a revoked or expired session
+receives an HTTP denial. Codes `1008`, `4401` and `4403` retain their existing
+terminal-denial meaning.
+
+Tofu connects its existing `callerReader()` in `src/sync.ts`. Torrent telemetry
+no longer depends on connected readers: a one-second engine tick samples
+transfers and their final zero-speed point, publishing only changed values.
+There is no custom event-route hook in `src/server.ts`.
 
 Commit `4aa5fec` derives native window origins from the application's actual
 listener, including its hostname, port and TLS configuration.
@@ -63,14 +78,20 @@ while the protected isomorphic Eden client keeps direct in-process dispatch to
 
 ## Rebuilding
 
-Use an isolated Furin checkout at the exact upstream commit above. Install dependencies
-with Bun 1.4.4 and run each package's
-`build.ts`, core first. Pack each package with `bun pm pack` from its package directory
-and copy the resulting archives to the names above. Packing resolves workspace catalog
-references to published ranges. Archives contain their upstream MIT licenses.
+Use an isolated Furin checkout at the exact upstream commit above. Apply
+`git apply /absolute/path/to/Tofu/vendor/furin-session.patch` from its root.
+Install dependencies with Bun 1.4.4, then run `bun run build.ts` in
+`packages/core`. Pack it with `bun pm pack --filename
+/absolute/path/to/Tofu/vendor/furin-pr163-ce5d778-session-v1.tgz`.
+The patch also includes the transport and standalone-client regression tests;
+run them with `bun test --isolate` to avoid cross-file framework state.
+Packing resolves workspace catalog references to published ranges. Archives
+contain their upstream MIT licenses. The existing Electrobun archive does not
+need rebuilding for this core-only change.
 
-Only the two active archives are kept here.
-Historical archives and superseded or unapplied patches are not shipped.
+The unmodified `furin-pr163-ce5d778.tgz` archive is retained as the upstream
+reference. The local patch is already included in the active archive; Bun does
+not apply it again during installation.
 
 The separate `../patches/libvlc-wasm@0.2.0.patch` is applied by Bun through
 `package.json`. It bounds VLC worker shutdown and the HTTP source chunk cache;

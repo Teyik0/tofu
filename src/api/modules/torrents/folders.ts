@@ -1,95 +1,93 @@
 import { type FSWatcher, watch } from "node:fs";
-import { readdir, stat, unlink } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { eq } from "drizzle-orm";
+import { Cause, Context, Effect, Layer, Result, Scope } from "effect";
+import { ElysiaStatus } from "elysia";
 import { createLogger } from "evlog";
 import parseTorrent from "parse-torrent";
 import { watchedTorrentFiles } from "../../../db/schema";
 import { nativeControl } from "../../../native/control";
-import { runtime } from "../../lib/runtime";
+import { Database } from "../../lib/database-layer";
+import { instance } from "../../lib/instance";
 import type { Destination } from "../destinations/model";
 import type { EnginePort } from "./service";
-import { db } from "@/api/lib/db";
 
-interface TorrentFoldersOptions {
-  dataDir: string;
-  engine: EnginePort;
-  /** Interval of the full rescan that catches events missed by the file system. */
-  rescanMs?: number;
-}
+const RESCAN_MS = 30_000;
+
+export const TorrentFolderEngine = Context.Service<EnginePort>("tofu/torrent-folders/engine");
 
 /** Adds the .torrent files that appear in the folder of each thread that opted in. */
-export class TorrentFolders {
-  private readonly options: TorrentFoldersOptions;
-  private readonly watchers = new Map<string, FSWatcher | null>();
-  private readonly scheduled = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly processing = new Map<string, Promise<void>>();
-  private readonly timer: ReturnType<typeof setInterval>;
-  private readonly lifetime = new AbortController();
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const engine = yield* TorrentFolderEngine;
+  const { dataDir } = instance;
+  const watchers = new Map<string, FSWatcher | null>();
+  const scheduled = new Map<string, ReturnType<typeof setTimeout>>();
+  const processing = new Set<string>();
+  const lifetime = new AbortController();
 
-  constructor(options: TorrentFoldersOptions) {
-    this.options = options;
-    this.timer = setInterval(() => this.sync(), options.rescanMs ?? 30_000);
-    this.timer.unref();
-    this.sync();
-  }
+  const tasks = yield* Scope.fork(yield* Effect.scope, "parallel");
+  const runFork = Effect.runForkWith(yield* Effect.context<never>());
+
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      lifetime.abort();
+      for (const timer of scheduled.values()) {
+        clearTimeout(timer);
+      }
+      scheduled.clear();
+      for (const watcher of watchers.values()) {
+        watcher?.close();
+      }
+      watchers.clear();
+    })
+  );
 
   /** Follows the current thread folders and checks each watched folder for new files. */
-  sync() {
-    if (this.lifetime.signal.aborted) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Reconcile native watchers and retry failed folders before scanning.
+  const syncFolders = Effect.fn("TorrentFolders.sync")(function* () {
+    if (lifetime.signal.aborted) {
       return;
     }
-    let destinations: Destination[];
-    try {
-      ({ destinations } = this.options.engine.snapshot(null, false));
-    } catch {
+    const snapshot = yield* Effect.result(Effect.try(() => engine.snapshot(null, false)));
+    if (Result.isFailure(snapshot)) {
       // The engine stopped; its failure is reported by the engine itself.
       return;
     }
     const folders = new Set(
-      destinations
+      snapshot.success.destinations
         .filter((destination) => destination.autoAddTorrentFilesSince !== null)
         .map((destination) => destination.downloadPath)
     );
-    for (const [folder, watcher] of this.watchers) {
+    for (const [folder, watcher] of watchers) {
       if (!folders.has(folder)) {
         watcher?.close();
-        this.watchers.delete(folder);
+        watchers.delete(folder);
       }
     }
     for (const folder of folders) {
-      if (!this.watchers.get(folder)) {
-        const retrying = this.watchers.has(folder);
-        try {
-          // Only the folder itself is watched: torrent contents may include .torrent files.
-          const watcher = watch(folder, (_event, name) => {
-            if (name && extname(name).toLowerCase() === ".torrent") {
-              this.schedule(join(folder, name), 500);
-            }
-          });
-          watcher.on("error", (error) => {
-            watcher.close();
-            this.watchers.set(folder, null);
-            const log = createLogger({
-              component: "torrent-folders",
-              context: { folder },
-              dataDir: this.options.dataDir,
-              error,
-              operation: "watch",
-            });
-            log.setLevel("warn");
-            log.emit();
-          });
-          this.watchers.set(folder, watcher);
-        } catch (error) {
-          this.watchers.set(folder, null);
+      if (!watchers.get(folder)) {
+        const retrying = watchers.has(folder);
+        const opened = yield* Effect.result(
+          Effect.try(() =>
+            // Only the folder itself is watched: torrent contents may include .torrent files.
+            watch(folder, (_event, name) => {
+              if (name && extname(name).toLowerCase() === ".torrent") {
+                schedule(join(folder, name), 500);
+              }
+            })
+          )
+        );
+        if (Result.isFailure(opened)) {
+          watchers.set(folder, null);
           // The rescan retries every interval; report the failure once.
           if (!retrying) {
             const log = createLogger({
               component: "torrent-folders",
               context: { folder },
-              dataDir: this.options.dataDir,
-              error,
+              dataDir,
+              error: opened.failure,
               operation: "watch",
             });
             log.setLevel("warn");
@@ -97,76 +95,105 @@ export class TorrentFolders {
           }
           continue;
         }
+        const watcher = opened.success;
+        watchers.set(folder, watcher);
+        watcher.on("error", (error) => {
+          watcher.close();
+          watchers.set(folder, null);
+          const log = createLogger({
+            component: "torrent-folders",
+            context: { folder },
+            dataDir,
+            error,
+            operation: "watch",
+          });
+          log.setLevel("warn");
+          log.emit();
+        });
       }
-      void this.scan(folder);
+      yield* Effect.forkIn(scan(folder), tasks);
     }
-  }
+  });
 
-  private async scan(folder: string) {
-    let names: string[];
-    try {
-      names = await readdir(folder);
-    } catch {
+  const scan = Effect.fn("TorrentFolders.scan")(function* (folder: string) {
+    const names = yield* Effect.result(Effect.tryPromise(() => readdir(folder)));
+    if (Result.isFailure(names)) {
       return;
     }
-    for (const name of names) {
+    for (const name of names.success) {
       if (extname(name).toLowerCase() === ".torrent") {
-        this.schedule(join(folder, name), 0);
+        schedule(join(folder, name), 0);
       }
     }
-  }
+  });
 
-  private schedule(path: string, delay: number) {
-    if (this.lifetime.signal.aborted) {
+  function schedule(path: string, delay: number) {
+    if (lifetime.signal.aborted) {
       return;
     }
-    clearTimeout(this.scheduled.get(path));
-    const timer = setTimeout(async () => {
-      this.scheduled.delete(path);
-      if (this.lifetime.signal.aborted || this.processing.has(path)) {
+    clearTimeout(scheduled.get(path));
+    const timer = setTimeout(() => {
+      scheduled.delete(path);
+      if (lifetime.signal.aborted || processing.has(path)) {
         return;
       }
-      const operation = this.process(path);
-      this.processing.set(path, operation);
-      try {
-        await operation;
-      } catch (error) {
-        const log = createLogger({
-          component: "torrent-folders",
-          context: { path },
-          dataDir: this.options.dataDir,
-          error,
-          operation: "add",
-        });
-        log.setLevel("error");
-        log.emit();
-      } finally {
-        this.processing.delete(path);
-      }
+      processing.add(path);
+      // This native callback has no awaiting caller; observe failures before releasing its slot.
+      const operation = processFile(path).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            if (result instanceof ElysiaStatus) {
+              const log = createLogger({
+                component: "torrent-folders",
+                context: { path },
+                dataDir,
+                error: result.response,
+                operation: "add",
+              });
+              log.setLevel("error");
+              log.emit();
+            }
+          })
+        ),
+        Effect.catchCause((cause) =>
+          Effect.sync(() => {
+            const log = createLogger({
+              component: "torrent-folders",
+              context: { path },
+              dataDir,
+              error: Cause.squash(cause),
+              operation: "add",
+            });
+            log.setLevel("error");
+            log.emit();
+          })
+        ),
+        Effect.ensuring(Effect.sync(() => processing.delete(path))),
+        // Finish an import already sent to the worker before its engine is closed.
+        Effect.uninterruptible
+      );
+      runFork(Effect.forkIn(operation, tasks));
     }, delay);
     timer.unref();
-    this.scheduled.set(path, timer);
+    scheduled.set(path, timer);
   }
 
-  private async process(path: string) {
-    const { engine } = this.options;
-    const destination = engine
-      .snapshot(null, false)
-      .destinations.find(
-        (item) => item.autoAddTorrentFilesSince !== null && item.downloadPath === dirname(path)
-      );
+  const processFile = Effect.fn("TorrentFolders.processFile")(function* (path: string) {
+    const snapshot = yield* Effect.try(() => engine.snapshot(null, false));
+    const destination = snapshot.destinations.find(
+      (item) => item.autoAddTorrentFilesSince !== null && item.downloadPath === dirname(path)
+    );
     if (!destination?.autoAddTorrentFilesSince) {
       return;
     }
-    let info: Awaited<ReturnType<typeof stat>>;
-    try {
-      info = await stat(path);
-    } catch {
+    const file = Bun.file(path);
+    const info = yield* Effect.result(Effect.tryPromise(() => file.stat()));
+    if (Result.isFailure(info)) {
       return;
     }
     // A copied or moved file keeps its modification time but gets a new change time.
-    const changedAt = Math.floor(Math.max(info.mtimeMs, info.ctimeMs));
-    if (!info.isFile() || changedAt < destination.autoAddTorrentFilesSince) {
+    const changedAt = Math.floor(Math.max(info.success.mtimeMs, info.success.ctimeMs));
+    if (!info.success.isFile() || changedAt < destination.autoAddTorrentFilesSince) {
       return;
     }
     const seen = db
@@ -179,13 +206,16 @@ export class TorrentFolders {
     }
     const age = Date.now() - changedAt;
     // Browsers may create the file before writing it; wait until it stops changing.
-    if (age < 1000 || info.size === 0) {
+    if (age < 1000 || info.success.size === 0) {
       if (age < 60_000) {
-        this.schedule(path, 1000);
+        schedule(path, 1000);
       }
       return;
     }
-    const infoHash = await this.import(path, destination, info.size, age);
+    const infoHash = yield* importTorrentFile(path, destination, info.success.size, age);
+    if (infoHash instanceof ElysiaStatus) {
+      return infoHash;
+    }
     if (infoHash === undefined) {
       return;
     }
@@ -194,14 +224,19 @@ export class TorrentFolders {
       .values({ changedAt, infoHash, path })
       .onConflictDoUpdate({ set: { changedAt, infoHash }, target: watchedTorrentFiles.path })
       .run();
-  }
+  });
 
   /**
    * Adds the torrent file to its thread. Returns the info hash to remember, null for an unusable
-   * file, or undefined when the file was deleted or will be checked again.
+   * file, a returned API failure, or undefined when the file was deleted or will be checked again.
    */
-  private async import(path: string, destination: Destination, size: number, age: number) {
-    const { engine, dataDir } = this.options;
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Validate, import and optionally remove the source file as one ordered operation.
+  const importTorrentFile = Effect.fn("TorrentFolders.importTorrentFile")(function* (
+    path: string,
+    destination: Destination,
+    size: number,
+    age: number
+  ) {
     if (size > 8 * 1024 * 1024) {
       const log = createLogger({
         component: "torrent-folders",
@@ -213,42 +248,33 @@ export class TorrentFolders {
       log.emit();
       return null;
     }
-    const bytes = new Uint8Array(await Bun.file(path).arrayBuffer());
-    let parsed: Awaited<ReturnType<typeof parseTorrent>>;
-    try {
-      parsed = await parseTorrent(bytes);
-    } catch (error) {
+    const bytes = yield* Effect.tryPromise(() => Bun.file(path).bytes());
+    const parsed = yield* Effect.result(Effect.tryPromise(() => parseTorrent(bytes)));
+    if (Result.isFailure(parsed)) {
       if (age < 60_000) {
-        this.schedule(path, 2000);
+        schedule(path, 2000);
         return;
       }
       const log = createLogger({
         component: "torrent-folders",
         context: { path },
         dataDir,
-        error,
+        error: parsed.failure,
         operation: "skip-invalid-file",
       });
       log.setLevel("warn");
       log.emit();
       return null;
     }
-    const { infoHash } = parsed;
+    const { infoHash } = parsed.success;
     const context = { destinationId: destination.id, path, torrentId: infoHash };
-    if (!engine.snapshot(null, false).torrents.some((torrent) => torrent.id === infoHash)) {
-      try {
-        await engine.add(bytes, { destinationId: destination.id, paused: false });
-      } catch (error) {
-        const log = createLogger({
-          component: "torrent-folders",
-          context,
-          dataDir,
-          error,
-          operation: "add",
-        });
-        log.setLevel("error");
-        log.emit();
-        return infoHash;
+    const snapshot = yield* Effect.try(() => engine.snapshot(null, false));
+    if (!snapshot.torrents.some((torrent) => torrent.id === infoHash)) {
+      const added = yield* Effect.tryPromise(() =>
+        engine.call("add", [bytes, { destinationId: destination.id, paused: false }])
+      );
+      if (added instanceof ElysiaStatus) {
+        return added;
       }
       const log = createLogger({
         component: "torrent-folders",
@@ -257,9 +283,9 @@ export class TorrentFolders {
         operation: "add",
       });
       log.emit();
-      if (runtime.current.kind === "desktop" && nativeControl.tofuNativeSdk) {
+      if (nativeControl.tofuNativeSdk) {
         nativeControl.tofuNativeSdk.Utils.showNotification({
-          body: `${[parsed.name].flat()[0] || infoHash} was added to ${destination.name}`,
+          body: `${[parsed.success.name].flat()[0] || infoHash} was added to ${destination.name}`,
           title: "Torrent added",
         });
       }
@@ -267,14 +293,13 @@ export class TorrentFolders {
     if (!(destination.deleteTorrentFileAfterAdd ?? engine.settings.deleteTorrentFileAfterAdd)) {
       return infoHash;
     }
-    try {
-      await unlink(path);
-    } catch (error) {
+    const deleted = yield* Effect.result(Effect.tryPromise(() => Bun.file(path).delete()));
+    if (Result.isFailure(deleted)) {
       const log = createLogger({
         component: "torrent-folders",
         context: { path },
         dataDir,
-        error,
+        error: deleted.failure,
         operation: "delete-source",
       });
       log.setLevel("warn");
@@ -282,19 +307,19 @@ export class TorrentFolders {
       return infoHash;
     }
     db.delete(watchedTorrentFiles).where(eq(watchedTorrentFiles.path, path)).run();
-  }
+  });
 
-  async close() {
-    this.lifetime.abort();
-    clearInterval(this.timer);
-    for (const timer of this.scheduled.values()) {
-      clearTimeout(timer);
-    }
-    this.scheduled.clear();
-    for (const watcher of this.watchers.values()) {
-      watcher?.close();
-    }
-    this.watchers.clear();
-    await Promise.allSettled(this.processing.values());
-  }
-}
+  const rescan = yield* Effect.acquireRelease(
+    Effect.sync(() => setInterval(() => runFork(Effect.forkIn(syncFolders(), tasks)), RESCAN_MS)),
+    (interval) => Effect.sync(() => clearInterval(interval))
+  );
+  rescan.unref();
+  yield* syncFolders();
+  return { sync: syncFolders() };
+});
+
+export class TorrentFolders extends Context.Service<TorrentFolders, Effect.Success<typeof make>>()(
+  "tofu/torrent-folders"
+) {}
+
+export const torrentFoldersLayer = Layer.effect(TorrentFolders, make);

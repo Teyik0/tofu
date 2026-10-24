@@ -5,8 +5,14 @@ import { provider } from "../helpers/provider";
 
 test("AniList validates its OAuth callback and disconnecting removes account access", async () => {
   await using upstream = provider();
-  await using app = await application({ provider: upstream.url });
+  await using app = await application({
+    entry: "tests/helpers/migrated-server.ts",
+    provider: upstream.url,
+  });
   const { client } = await app.start();
+  expect(success(await client.session.get()).capabilities.hostNative).toBe(false);
+  expect(success(await client.state.get()).viewer?.capabilities.hostNative).toBe(false);
+  expect((await client.desktop.open.post()).status).toBe(409);
   success(
     await client.anilist.put({
       clientId: "52735",
@@ -15,6 +21,10 @@ test("AniList validates its OAuth callback and disconnecting removes account acc
     })
   );
   const authorization = success(await client.anilist.connect.post({}));
+  expect(success(await client.anilist.open.post({ url: authorization.url }))).toEqual({
+    opened: false,
+    url: authorization.url,
+  });
   const state = new URL(authorization.url).searchParams.get("state");
   expect(state).toBeTruthy();
   const invalid = await client.anilist.callback.post({

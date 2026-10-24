@@ -1,6 +1,7 @@
 import { chmod, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { DesktopContext } from "@teyik0/furin-electrobun/host";
+import { Effect, Result } from "effect";
 import type { Updater } from "electrobun/main";
 import { problem } from "elysia";
 import { desktopTarget, installerName } from "../../../../.github/scripts/platform";
@@ -204,11 +205,11 @@ export class UpdatesService {
       return this.snapshot();
     }
     this.pending ??= (async () => {
-      try {
-        return await this.readLatest();
-      } finally {
+      using cleanup = new DisposableStack();
+      cleanup.defer(() => {
         this.pending = null;
-      }
+      });
+      return await this.readLatest();
     })();
     return await this.pending;
   }
@@ -266,52 +267,78 @@ export class UpdatesService {
       releaseUrl: null,
       status: "checking",
     });
-    try {
-      if (this.options.native) {
-        return await this.readNativeLatest(this.options.native);
+    const service = this;
+    const { native } = this.options;
+    const githubCheck = Effect.gen(function* () {
+      const response = yield* Effect.tryPromise({
+        catch: (error) => error,
+        try: () => service.github("/releases/latest", "application/vnd.github+json"),
+      });
+      if (service.lifetime.signal.aborted) {
+        return service.snapshot();
       }
-      const response = await this.github("/releases/latest", "application/vnd.github+json");
-      if (this.lifetime.signal.aborted) {
-        return this.snapshot();
-      }
-      this.snapshotState.checkedAt = Date.now();
-      if (response.status === 401 || response.status === 403) {
-        throw new Error(`GitHub rejected the update check (HTTP ${response.status})`);
+      service.snapshotState.checkedAt = Date.now();
+      if ([401, 403].includes(response.status)) {
+        return yield* Effect.fail(
+          new Error(`GitHub rejected the update check (HTTP ${response.status})`)
+        );
       }
       if (response.status === 404) {
-        this.snapshotState.status = "no-release";
-        return this.snapshot();
+        service.snapshotState.status = "no-release";
+        return service.snapshot();
       }
       if (!response.ok) {
-        throw new Error(`GitHub is unavailable (HTTP ${response.status})`);
+        return yield* Effect.fail(new Error(`GitHub is unavailable (HTTP ${response.status})`));
       }
-      const latest = release(await response.json());
-      if (this.lifetime.signal.aborted) {
-        return this.snapshot();
+      const body = yield* Effect.tryPromise({
+        catch: (error) => error,
+        try: () => response.json(),
+      });
+      const latest = yield* Effect.try({
+        catch: (error) => error,
+        try: () => release(body),
+      });
+      if (service.lifetime.signal.aborted) {
+        return service.snapshot();
       }
       if (latest.draft || latest.prerelease) {
-        throw new Error("No stable release available");
+        return yield* Effect.fail(new Error("No stable release available"));
       }
       const version = latest.tag_name.replace(versionPrefix, "");
-      versionParts(version);
-      this.snapshotState.latestVersion = version;
-      this.snapshotState.releaseUrl = `https://github.com/${repository}/releases/tag/v${version}`;
-      if (!newer(version, this.options.version)) {
-        this.snapshotState.status = "current";
-        return this.snapshot();
+      yield* Effect.try({ catch: (error) => error, try: () => versionParts(version) });
+      service.snapshotState.latestVersion = version;
+      service.snapshotState.releaseUrl = `https://github.com/${repository}/releases/tag/v${version}`;
+      if (!newer(version, service.options.version)) {
+        service.snapshotState.status = "current";
+        return service.snapshot();
       }
-      this.asset = this.compatibleInstaller(latest, version);
-      if (!this.asset) {
-        throw new Error("No installer compatible with this machine in the release");
+      service.asset = service.compatibleInstaller(latest, version);
+      if (!service.asset) {
+        return yield* Effect.fail(
+          new Error("No installer compatible with this machine in the release")
+        );
       }
-      this.snapshotState.downloadName = this.asset.name;
-      this.snapshotState.status = "available";
-      if (this.state.notifiedVersion !== version) {
-        this.options.notify(version);
-        this.state.notifiedVersion = version;
-        await this.persist();
+      service.snapshotState.downloadName = service.asset.name;
+      service.snapshotState.status = "available";
+      if (service.state.notifiedVersion !== version) {
+        service.options.notify(version);
+        service.state.notifiedVersion = version;
+        yield* Effect.tryPromise({ catch: (error) => error, try: () => service.persist() });
       }
-    } catch (error) {
+      return service.snapshot();
+    });
+    const checked = await Effect.runPromise(
+      Effect.result(
+        native
+          ? Effect.tryPromise({
+              catch: (error) => error,
+              try: () => service.readNativeLatest(native),
+            })
+          : githubCheck
+      )
+    );
+    if (Result.isFailure(checked)) {
+      const error = checked.failure;
       if (this.lifetime.signal.aborted) {
         return this.snapshot();
       }
@@ -337,28 +364,41 @@ export class UpdatesService {
     Object.assign(this.snapshotState, { error: null, progress: null, status: "downloading" });
     // The download continues after this response; its outcome is published in the snapshot.
     this.preparation = (async () => {
-      try {
-        await native.downloadUpdate();
+      using cleanup = new DisposableStack();
+      cleanup.defer(() => {
+        this.snapshotState.progress = null;
+        this.preparation = null;
+      });
+      const downloaded = await Effect.runPromise(
+        Effect.result(
+          Effect.tryPromise({
+            catch: (error) => error,
+            try: async () => {
+              await native.downloadUpdate();
+              return native.updateInfo();
+            },
+          })
+        )
+      );
+      if (Result.isSuccess(downloaded)) {
         if (this.lifetime.signal.aborted) {
           return;
         }
-        const info = native.updateInfo();
+        const info = downloaded.success;
         if (info.error || !info.updateReady || info.version !== this.snapshotState.latestVersion) {
           this.snapshotState.status = "available";
           this.snapshotState.error = info.error || "The update could not be prepared";
         } else {
           this.snapshotState.status = "ready";
         }
-      } catch (error) {
+      } else {
+        const error = downloaded.failure;
         if (this.lifetime.signal.aborted) {
           return;
         }
         this.snapshotState.status = "available";
         this.snapshotState.error =
           error instanceof Error ? error.message : "Unable to prepare update";
-      } finally {
-        this.snapshotState.progress = null;
-        this.preparation = null;
       }
     })();
     return this.snapshot();
@@ -374,13 +414,17 @@ export class UpdatesService {
     this.snapshotState.status = "restarting";
     this.snapshotState.error = null;
     const install = async () => {
-      try {
-        await installUpdate();
-      } catch (error) {
+      const installed = await Effect.runPromise(
+        Effect.result(Effect.tryPromise({ catch: (error) => error, try: () => installUpdate() }))
+      );
+      if (Result.isFailure(installed)) {
+        const error = installed.failure;
         if (this.lifetime.signal.aborted) {
           return;
         }
-        this.snapshotState.status = native.updateInfo().updateReady ? "ready" : "available";
+        const info = Effect.runSync(Effect.result(Effect.try(() => native.updateInfo())));
+        this.snapshotState.status =
+          Result.isSuccess(info) && info.success.updateReady ? "ready" : "available";
         this.snapshotState.error =
           error instanceof Error ? error.message : "Unable to install update";
       }
@@ -405,7 +449,17 @@ export class UpdatesService {
       return problem(409, { detail: "Check for updates before downloading the installer" });
     }
     const { asset } = this;
-    let response = await this.github(`/releases/assets/${asset.id}`, "application/octet-stream");
+    const requested = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise(() =>
+          this.github(`/releases/assets/${asset.id}`, "application/octet-stream")
+        )
+      )
+    );
+    if (Result.isFailure(requested)) {
+      return problem(502, { detail: "GitHub could not be reached for this download" });
+    }
+    let response = requested.success;
     if ([401, 403, 404].includes(response.status)) {
       this.asset = null;
       this.snapshotState.downloadName = null;
@@ -415,7 +469,7 @@ export class UpdatesService {
     }
     if (response.status === 302) {
       const location = response.headers.get("location");
-      const target = location ? new URL(location) : null;
+      const target = location ? URL.parse(location) : null;
       if (
         target?.protocol !== "https:" ||
         !["release-assets.githubusercontent.com", "objects.githubusercontent.com"].includes(
@@ -425,10 +479,20 @@ export class UpdatesService {
         return problem(502, { detail: "GitHub returned an invalid download URL" });
       }
       // The signed asset URL needs no GitHub credential; never forward stale headers there.
-      response = await fetch(target, {
-        redirect: "error",
-        signal: AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(120_000)]),
-      });
+      const downloaded = await Effect.runPromise(
+        Effect.result(
+          Effect.tryPromise(() =>
+            fetch(target, {
+              redirect: "error",
+              signal: AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(120_000)]),
+            })
+          )
+        )
+      );
+      if (Result.isFailure(downloaded)) {
+        return problem(502, { detail: "The installer download could not be reached" });
+      }
+      response = downloaded.success;
     }
     if (!response.ok) {
       return problem(502, { detail: `Download unavailable (HTTP ${response.status})` });

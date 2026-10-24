@@ -31,7 +31,7 @@
     "@base-ui/react": "1.9.0",
     "@elysia/eden": "2.0.0-beta.5",
     "@formisch/react": "1.1.0",
-    "@teyik0/furin": "file:vendor/furin-pr163-ce5d778.tgz",
+    "@teyik0/furin": "file:vendor/furin-pr163-ce5d778-session-v1.tgz",
     "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-ce5d778.tgz",
     "bun-plugin-tailwind": "0.1.2",
     "class-variance-authority": "0.7.1",

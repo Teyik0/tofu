@@ -3,12 +3,13 @@ import { copyFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { furinSync } from "@teyik0/furin/sync";
+import { desktopContext } from "@teyik0/furin-electrobun/server";
+import { Effect, Result } from "effect";
 import { Elysia, ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import { nativeControl } from "../../../native/control";
 import { sync } from "../../../sync";
 import { instance } from "../../lib/instance";
-import { runtime } from "../../lib/runtime";
 import { tailscale } from "../../lib/tailscale";
 import { localCertificate, prepareCertificate } from "../../lib/tailscale/certificates";
 import { checkTailscale } from "../../lib/tailscale/system";
@@ -31,12 +32,13 @@ import { updateRemoteAccess } from "./sharing";
 const SESSION_COOKIE_MAX_AGE = 365 * 86_400;
 
 export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
+  .use(desktopContext)
   .use(accessPlugin)
   .use(furinSync(sync))
-  .get("/session", { personal: true }, ({ access, caller, set }) => {
+  .get("/session", { personal: true }, ({ access, caller, desktop, set }) => {
     set.headers["cache-control"] = "private, no-store";
     return access.sessionView(caller, {
-      native: runtime.current.kind === "desktop",
+      native: desktop !== null,
       remoteAccess: access.policy().enabled,
     });
   })
@@ -263,18 +265,16 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
   }))
   .post("/connections/certificate", { owner: true }, async ({ access }) => {
     const turn = access.reserve();
-    try {
-      await turn.previous;
-      const config = access.sharing;
-      if (config.lan.enabled) {
-        return problem(409, {
-          detail: "Turn off local network sharing before renewing its certificate",
-        });
-      }
-      return await prepareCertificate(config.lan.hostnames);
-    } finally {
-      turn.release();
+    using cleanup = new DisposableStack();
+    cleanup.defer(turn.release);
+    await turn.previous;
+    const config = access.sharing;
+    if (config.lan.enabled) {
+      return problem(409, {
+        detail: "Turn off local network sharing before renewing its certificate",
+      });
     }
+    return await prepareCertificate(config.lan.hostnames);
   })
   .get("/connections/certificate/download", { owner: true }, ({ set }) => {
     if (!localCertificate()) {
@@ -285,9 +285,9 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
     set.headers["content-type"] = "application/x-pem-file";
     return readFileSync(join(instance.dataDir, "tls/ca.pem"), "utf8");
   })
-  .post("/connections/certificate/download", { owner: true }, async () => {
+  .post("/connections/certificate/download", { owner: true }, async ({ desktop }) => {
     const sdk = nativeControl.tofuNativeSdk;
-    if (runtime.current.kind !== "desktop" || !sdk) {
+    if (!(desktop && sdk)) {
       return problem(409, { detail: "Use the browser download to save the installation CA" });
     }
     if (!localCertificate()) {
@@ -303,19 +303,28 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
       return { path: null };
     }
     const path = join(folder, "Tofu-CA.pem");
-    try {
-      if (existsSync(path)) {
-        // Repeated exports of this installation's public CA reuse the existing file.
-        if (!readFileSync(path).equals(readFileSync(join(instance.dataDir, "tls/ca.pem")))) {
-          return problem(409, {
-            detail: "A different Tofu-CA.pem already exists in this folder. Choose another folder",
-          });
-        }
-      } else {
-        await copyFile(join(instance.dataDir, "tls/ca.pem"), path, constants.COPYFILE_EXCL);
-      }
-    } catch {
+    const saved = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise(async () => {
+          if (existsSync(path)) {
+            // Repeated exports of this installation's public CA reuse the existing file.
+            if (!readFileSync(path).equals(readFileSync(join(instance.dataDir, "tls/ca.pem")))) {
+              return problem(409, {
+                detail:
+                  "A different Tofu-CA.pem already exists in this folder. Choose another folder",
+              });
+            }
+          } else {
+            await copyFile(join(instance.dataDir, "tls/ca.pem"), path, constants.COPYFILE_EXCL);
+          }
+        })
+      )
+    );
+    if (Result.isFailure(saved)) {
       return problem(503, { detail: "The installation CA could not be saved in this folder" });
+    }
+    if (saved.success instanceof ElysiaStatus) {
+      return saved.success;
     }
     sdk.Utils.showItemInFolder(path);
     return { path };
@@ -333,22 +342,20 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
   })
   .post("/connections/tailscale/logout", { owner: true }, async ({ access }) => {
     const turn = access.reserve();
-    try {
-      await turn.previous;
-      const { tailscale: settings } = access.sharing;
-      if (settings.enabled && settings.mode === "embedded") {
-        return problem(409, {
-          detail: "Turn off Tailscale sharing before signing out of Tailscale",
-        });
-      }
-      const started = await tailscale.start();
-      if (started instanceof ElysiaStatus) {
-        return started;
-      }
-      return await tailscale.request({ method: "logout" });
-    } finally {
-      turn.release();
+    using cleanup = new DisposableStack();
+    cleanup.defer(turn.release);
+    await turn.previous;
+    const { tailscale: settings } = access.sharing;
+    if (settings.enabled && settings.mode === "embedded") {
+      return problem(409, {
+        detail: "Turn off Tailscale sharing before signing out of Tailscale",
+      });
     }
+    const started = await tailscale.start();
+    if (started instanceof ElysiaStatus) {
+      return started;
+    }
+    return await tailscale.request({ method: "logout" });
   })
   .post("/connections/tailscale/https", { owner: true }, async () => {
     const started = await tailscale.start();
@@ -366,22 +373,20 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
   })
   .post("/connections/tailscale/check", async ({ access }) => {
     const turn = access.reserve();
-    try {
-      await turn.previous;
-      const config = access.sharing;
-      const status = await checkTailscale(access.port);
-      if (status.state === "ready" && config.tailscale.origin !== status.origin) {
-        access.save({ ...config, tailscale: { ...config.tailscale, origin: status.origin } });
-      }
-      return status;
-    } finally {
-      turn.release();
+    using cleanup = new DisposableStack();
+    cleanup.defer(turn.release);
+    await turn.previous;
+    const config = access.sharing;
+    const status = await checkTailscale(access.port);
+    if (status.state === "ready" && config.tailscale.origin !== status.origin) {
+      access.save({ ...config, tailscale: { ...config.tailscale, origin: status.origin } });
     }
+    return status;
   })
   .put(
     "/connections",
     { body: connectionsUpdateSchema },
-    async ({ access, body, caller, cookie }) => {
+    async ({ access, body, caller, cookie, desktop }) => {
       const updated = await updateRemoteAccess(access, body, caller.kind === "owner");
       if (updated instanceof ElysiaStatus) {
         return updated;
@@ -397,7 +402,7 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
         previous.lan.enabled || previous.proxy.enabled || previous.tailscale.enabled;
       // A headless owner on loopback loses implicit access once others may connect; keep this
       // browser signed in as an administrator device instead of locking it out.
-      if (caller.kind === "owner" && runtime.current.kind === "server" && shared && !wasShared) {
+      if (caller.kind === "owner" && !desktop && shared && !wasShared) {
         const device = access.adoptOwnerBrowser();
         const secure = caller.origin.startsWith("https:");
         cookie[cookieName(access.identity().serverId, secure)]?.set({
