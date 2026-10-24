@@ -72,7 +72,7 @@ jobs:
       - name: Prepare release resources
         run: bun run setup
         env:
-          TOFU_RELEASE: "1"
+          NODE_ENV: production
 
       - name: Validate version and architecture
         run: |
@@ -97,7 +97,7 @@ jobs:
           bun run codegen
           bun --bun furin-electrobun build --env=stable
         env:
-          TOFU_RELEASE: "1"
+          NODE_ENV: production
 
       - name: Prepare release artifacts
         run: bun .github/scripts/release.ts artifacts

@@ -5,7 +5,7 @@ import { defineDesktopConfig } from "@teyik0/furin-electrobun";
 import tailwind from "bun-plugin-tailwind";
 import { version } from "./package.json";
 
-const release = process.env.TOFU_RELEASE === "1";
+const release = process.env.NODE_ENV === "production";
 process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
 if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPER_ID) {
   // The "-" identity enables free ad hoc signing without an Apple Developer account.
@@ -52,7 +52,11 @@ export default defineConfig({
       },
       win: { icon: "public/tofu.iconset/icon_256x256.png" },
     },
-    dataDir: { developmentName: "Tofu-dev", env: "TOFU_DATA_DIR", name: "Tofu" },
+    dataDir: {
+      developmentName: "Tofu-dev",
+      env: "TOFU_DATA_DIR",
+      name: "Tofu",
+    },
     external: ["webtorrent", "parse-torrent"],
     protocols: [release ? "tofu" : "tofu-dev"],
     release: { baseUrl: "https://github.com/Teyik0/Tofu/releases/latest/download" },

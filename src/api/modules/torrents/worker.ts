@@ -2,7 +2,7 @@ import { ElysiaStatus, HTTPError, problem } from "elysia";
 import { createLogger, initLogger, toLoggerConfig } from "evlog";
 import { config } from "../../../../evlog.config";
 import { sanitizeLog } from "../../lib/diagnostics";
-import { TorrentEngine } from "./service";
+import { openTorrentEngine, type TorrentEngine } from "./service";
 import type { EngineSnapshot } from "./types";
 import type { EngineFailure, EngineMessage, EngineRequest } from "./worker-protocol";
 
@@ -38,7 +38,7 @@ function snapshot(): EngineSnapshot | null {
 async function execute(request: EngineRequest) {
   if (request.method === "open") {
     ({ dataDir } = request.args[0]);
-    engine = await TorrentEngine.open(request.args[0]);
+    engine = await openTorrentEngine(request.args[0]);
     unsubscribe = engine.subscribeChanges(() => {
       // Coalesce synchronous bursts of engine changes into one snapshot message.
       if (posting) {

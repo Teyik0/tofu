@@ -55,11 +55,11 @@ export async function application(options?: {
           env: {
             ...process.env,
             FURIN_APP_DATA_DIR: undefined,
+            NODE_ENV: "development",
             TOFU_DATA_DIR: dataDir,
             TOFU_DISCOVERY: "0",
             TOFU_DOWNLOAD_DIR: downloadPath,
             TOFU_MODE: "server",
-            TOFU_PROFILE: "dev",
             TOFU_TAILSCALE_CLI: join(directory, "tailscale-not-installed"),
             TOFU_TEST_PROVIDER: options?.provider,
             TOFU_TEST_REMOTE_SERVERS: options?.remoteServers

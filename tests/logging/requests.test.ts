@@ -10,11 +10,11 @@ test("API requests emit one redacted event through direct Eden and HTTP", async 
     env: {
       ...process.env,
       FURIN_APP_DATA_DIR: undefined,
+      NODE_ENV: "development",
       TOFU_DATA_DIR: dataDir,
       TOFU_DISCOVERY: "0",
       TOFU_DOWNLOAD_DIR: app.downloadPath,
       TOFU_MODE: "server",
-      TOFU_PROFILE: "dev",
     },
     stderr: "pipe",
     stdout: "pipe",

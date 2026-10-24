@@ -1,45 +1,32 @@
 import "@teyik0/furin/server-only";
-import { Database } from "bun:sqlite";
-import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { initializeDatabase } from "../../db/migrations";
+import { furinSyncSchema } from "../../db/furin.schema";
 import { schema } from "../../db/schema";
+import { migrateSqliteSync } from "@teyik0/furin/sync/sqlite";
+import { sql } from "drizzle-orm";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import { lifecyclePlugin } from "./lifecycle-plugin";
+import Elysia from "elysia";
+import { databasePath } from "../../../drizzle.config";
 
-export function createDatabase(path: string) {
-  using startup = new DisposableStack();
-  const client = new Database(path, { create: true, strict: true });
-  startup.defer(client.close.bind(client, true));
-  // The worker and API own separate handles to the same WAL database.
-  client.run("PRAGMA busy_timeout = 5000");
-  const connection = drizzle({ client, schema });
-  startup.move();
-  return connection;
-}
+export const db = drizzle(databasePath);
 
-export async function openDatabase(directory: string) {
-  await mkdir(directory, { mode: 0o700, recursive: true });
-  await chmod(directory, 0o700);
-  const path = join(directory, "feeds.sqlite");
-  await using startup = new AsyncDisposableStack();
-  const connection = createDatabase(path);
-  startup.defer(connection.$client.close.bind(connection.$client, true));
-  initializeDatabase(connection);
-  await chmod(path, 0o600);
-  startup.move();
-  return connection;
-}
+function initializeDatabase() {
+  db.run(sql`PRAGMA journal_mode = WAL`);
+  migrate(db, { migrationsFolder: join(import.meta.dir, "../../db/drizzle") });
+  migrateSqliteSync(db.$client);
 
-export function assertDatabaseReady(connection: TofuDatabase) {
   for (const table of Object.values(schema)) {
-    connection.select().from(table).limit(0).all();
+    db.select().from(table).limit(0).all();
   }
-  connection.run(sql`SELECT 1 FROM
-    furin_sync_mutations, furin_sync_streams, furin_sync_changes
-    LIMIT 0`);
+  for (const table of Object.values(furinSyncSchema)) {
+    db.select({ namespace: table.namespace }).from(table).limit(0).all();
+  }
 }
 
-export type TofuDatabase = ReturnType<typeof createDatabase>;
-export type DatabaseTransaction = Parameters<Parameters<TofuDatabase["transaction"]>[0]>[0];
-export type DatabaseConnection = TofuDatabase | DatabaseTransaction;
+export const databasePlugin = new Elysia({ name: "tofu-database-service" })
+  .use(lifecyclePlugin)
+  .onStart(initializeDatabase)
+  .onStop(() => db.$client.close())
+  .decorate("db", db);

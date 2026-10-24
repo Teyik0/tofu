@@ -15,14 +15,13 @@ import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
 import type { Options as TorrentNetworkOptions } from "webtorrent";
-import WebTorrent, { type Options, type Torrent } from "webtorrent";
+import WebTorrent, { type Torrent } from "webtorrent";
 import {
   operationReceipts,
   torrentConfig,
   torrentDestinations,
   torrentRecords,
 } from "../../../db/schema";
-import { type DatabaseConnection, openDatabase, type TofuDatabase } from "../../lib/db";
 import { sanitizeLog } from "../../lib/diagnostics";
 import type { Destination, DestinationInput, DestinationPresentation } from "../destinations/model";
 import type { Settings, SettingsInput } from "../settings/model";
@@ -49,6 +48,7 @@ import type {
   TrackerStats,
 } from "./types";
 import type { WorkerTorrentEngine } from "./worker-client";
+import { db } from "@/api/lib/db";
 
 interface RelocatedFile {
   source: string;
@@ -161,171 +161,179 @@ function trackerStats(url: string): TrackerStats {
   };
 }
 
-export class TorrentEngine {
-  readonly client: WebTorrent;
-  readonly settings: Settings;
-  private readonly entries = new Map<string, Entry>();
-  private readonly ranges = new Map<string, { id: string; controller: AbortController }>();
-  // The window played next in each file, kept between the player's requests.
-  private readonly readAhead = new Map<
-    string,
-    { id: string; release: () => void; timer: ReturnType<typeof setTimeout> }
-  >();
-  private readonly destinations = new Map<string, Destination>();
-  private readonly movingDestinations = new Set<string>();
-  private destinationOperation: ReturnType<TorrentEngine["moveDestination"]> | null = null;
-  private readonly startedAt = Date.now();
-  private readonly db: TofuDatabase;
-  private readonly dataDir: string;
-  private readonly history: SpeedSample[] = [];
-  private timer: ReturnType<typeof setInterval>;
-  private telemetryTimer: ReturnType<typeof setTimeout> | null = null;
-  private closed = false;
-  private storageCheck: Promise<void> | null = null;
-  private received = 0;
-  private uploaded = 0;
-  private freeSpace: number | null = null;
-  private lastTick = Date.now();
-  private lastDiskAt = 0;
-  private lastPersistAt = 0;
-  private readonly connections: ConnectionScheduler;
-  private readonly cryptoDiagnostics: ReturnType<typeof installCryptoDiagnostics> | null;
-  private readonly dirtyEntries = new Set<Entry>();
-  private readonly persistedEntries = new Map<Entry, string>();
-  private readonly entryStructures = new Map<Entry, string>();
-  private trafficDirty = false;
-  private readonly listeners = new Set<(change: EngineChange) => void>();
-  private observed = false;
-  private diskCheck: Promise<void> | null = null;
-  private lastTelemetryAt = Date.now();
-  private telemetryValues: number[] = [];
-  stateRevision = 0;
-  telemetryRevision = 0;
-  mode: "desktop" | "server" = "server";
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Initialize resources and reconcile persisted operations before exposing the engine.
+export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
+  await mkdir(engineOptions.dataDir, { recursive: true });
+  await using startup = new AsyncDisposableStack();
+  const cryptoDiagnostics =
+    (engineOptions.cryptoDiagnostics ?? process.env.TOFU_CRYPTO_DIAGNOSTICS === "1")
+      ? installCryptoDiagnostics()
+      : null;
+  startup.defer(() => cryptoDiagnostics?.close());
 
-  private constructor(
-    settings: Settings,
-    network: Options,
-    database: TofuDatabase,
-    policy: ConnectionPolicy,
-    cryptoDiagnostics: ReturnType<typeof installCryptoDiagnostics> | null,
-    dataDir: string
-  ) {
-    this.db = database;
-    this.dataDir = dataDir;
-    this.cryptoDiagnostics = cryptoDiagnostics;
-    const stored = this.db
-      .select()
-      .from(torrentConfig)
-      .where(eq(torrentConfig.key, "settings"))
-      .get();
-    this.settings = stored ? { ...settings, ...(JSON.parse(stored.value) as Settings) } : settings;
-    for (const destination of this.db
-      .select()
-      .from(torrentDestinations)
-      .orderBy(sql`rowid`)
-      .all()) {
-      this.destinations.set(destination.id, destination);
-    }
-    if (!this.destinations.has("default")) {
-      this.storeDestination({
-        autoAddTorrentFilesSince: null,
-        deleteTorrentFileAfterAdd: null,
-        downloadPath: this.settings.downloadPath,
-        icon: "folder",
-        id: "default",
-        name: "Downloads",
-        pinned: false,
-      });
-    }
-    const totals = this.db
-      .select()
-      .from(torrentConfig)
-      .where(eq(torrentConfig.key, "traffic"))
-      .get();
-    if (totals) {
-      const parsed: { received: number; uploaded: number } = JSON.parse(totals.value);
-      this.received = parsed.received;
-      this.uploaded = parsed.uploaded;
-    }
-    this.client = new WebTorrent(network);
-    this.client.seedOutgoingConnections = this.settings.seedingConnectionMode === "balanced";
-    this.connections = new ConnectionScheduler(
-      this.client,
-      policy,
-      this.settings.seedingConnectionMode
-    );
-    this.client.throttleDownload(this.settings.downloadLimit);
-    this.client.throttleUpload(this.settings.uploadLimit);
-    this.client.on("error", (error) => {
-      const log = createLogger({
-        component: "torrent-engine",
-        dataDir: this.dataDir,
-        error: sanitizeLog(error),
-        operation: "client",
-      });
-      log.setLevel("error");
-      log.emit();
-    });
-    for (const row of this.db.select().from(torrentRecords).orderBy(sql`rowid`).all()) {
-      const storedEntry: StoredEntry = JSON.parse(row.value);
-      storedEntry.detail.destinationId ??= this.destinationForPath(
-        dirname(storedEntry.detail.savePath)
-      ).id;
-      storedEntry.detail.storageIssue ??= null;
-      this.entries.set(storedEntry.detail.id, {
-        ...storedEntry,
-        operation: Promise.resolve(),
-        storageClaimed: storedEntry.storageClaimed ?? storedEntry.detail.error === null,
-        storageFiles: storedEntry.storageFiles ?? [],
-        storageRoot: storedEntry.storageRoot ?? null,
-        torrent: null,
-      });
-    }
-    this.timer = setInterval(this.tick, 5000);
-    this.timer.unref();
+  const state = {
+    closed: false,
+    destinations: new Map<string, Destination>(),
+    dirtyEntries: new Set<Entry>(),
+    diskCheck: null as Promise<void> | null,
+    entries: new Map<string, Entry>(),
+    entryStructures: new Map<Entry, string>(),
+    freeSpace: null as number | null,
+    history: [] as SpeedSample[],
+    lastDiskAt: 0,
+    lastPersistAt: 0,
+    lastTelemetryAt: Date.now(),
+    lastTick: Date.now(),
+    listeners: new Set<(change: EngineChange) => void>(),
+    mode: "server" as "desktop" | "server",
+    movingDestinations: new Set<string>(),
+    observed: false,
+    persistedEntries: new Map<Entry, string>(),
+    ranges: new Map<string, { id: string; controller: AbortController }>(),
+    readAhead: new Map<
+      string,
+      { id: string; release: () => void; timer: ReturnType<typeof setTimeout> }
+    >(),
+    received: 0,
+    startedAt: Date.now(),
+    stateRevision: 0,
+    storageCheck: null as Promise<void> | null,
+    telemetryRevision: 0,
+    telemetryTimer: null as ReturnType<typeof setTimeout> | null,
+    telemetryValues: [] as number[],
+    timer: setInterval(tick, 5000),
+    trafficDirty: false,
+    uploaded: 0,
+  };
+  let destinationOperation: ReturnType<typeof moveDestination> | null = null;
+  startup.defer(() => clearInterval(state.timer));
+  const defaults: Settings = {
+    deleteTorrentFileAfterAdd: false,
+    downloadLimit: -1,
+    downloadPath: engineOptions.downloadPath,
+    runInBackground: false,
+    seedingConnectionMode: "balanced",
+    theme: "system",
+    uploadLimit: -1,
+  };
+
+  const storedSettings = db
+    .select()
+    .from(torrentConfig)
+    .where(eq(torrentConfig.key, "settings"))
+    .get();
+  const engineSettings = storedSettings
+    ? { ...defaults, ...(JSON.parse(storedSettings.value) as Settings) }
+    : defaults;
+  for (const destination of db.select().from(torrentDestinations).orderBy(sql`rowid`).all()) {
+    state.destinations.set(destination.id, destination);
   }
+  if (!state.destinations.has("default")) {
+    storeDestination({
+      autoAddTorrentFilesSince: null,
+      deleteTorrentFileAfterAdd: null,
+      downloadPath: engineSettings.downloadPath,
+      icon: "folder",
+      id: "default",
+      name: "Downloads",
+      pinned: false,
+    });
+  }
+  const totals = db
+    .select()
+    .from(torrentConfig)
+    .where(eq(torrentConfig.key, "traffic"))
+    .get();
+  if (totals) {
+    const parsed: { received: number; uploaded: number } = JSON.parse(totals.value);
+    state.received = parsed.received;
+    state.uploaded = parsed.uploaded;
+  }
+  const torrentClient = new WebTorrent(engineOptions.network);
+  startup.defer(async () => {
+    if (!torrentClient.destroyed) {
+      await new Promise<void>((resolve, reject) =>
+        torrentClient.destroy((error) => (error ? reject(error) : resolve()))
+      );
+    }
+  });
+  torrentClient.seedOutgoingConnections = engineSettings.seedingConnectionMode === "balanced";
+  const scheduler = new ConnectionScheduler(
+    torrentClient,
+    engineOptions.connectionPolicy ?? defaultConnectionPolicy,
+    engineSettings.seedingConnectionMode
+  );
+  startup.defer(() => scheduler.close());
+  torrentClient.throttleDownload(engineSettings.downloadLimit);
+  torrentClient.throttleUpload(engineSettings.uploadLimit);
+  torrentClient.on("error", (error) => {
+    const log = createLogger({
+      component: "torrent-engine",
+      dataDir: engineOptions.dataDir,
+      error: sanitizeLog(error),
+      operation: "client",
+    });
+    log.setLevel("error");
+    log.emit();
+  });
+  for (const row of db.select().from(torrentRecords).orderBy(sql`rowid`).all()) {
+    const storedEntry: StoredEntry = JSON.parse(row.value);
+    storedEntry.detail.destinationId ??= destinationForPath(
+      dirname(storedEntry.detail.savePath)
+    ).id;
+    storedEntry.detail.storageIssue ??= null;
+    state.entries.set(storedEntry.detail.id, {
+      ...storedEntry,
+      operation: Promise.resolve(),
+      storageClaimed: storedEntry.storageClaimed ?? storedEntry.detail.error === null,
+      storageFiles: storedEntry.storageFiles ?? [],
+      storageRoot: storedEntry.storageRoot ?? null,
+      torrent: null,
+    });
+  }
+  state.timer.unref();
 
-  private readonly tick = () => {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep the existing persistence, telemetry, and storage tick together.
+  function tick() {
     const now = Date.now();
-    const seconds = (now - this.lastTick) / 1000;
-    this.lastTick = now;
-    for (const entry of this.entries.values()) {
+    const seconds = (now - state.lastTick) / 1000;
+    state.lastTick = now;
+    for (const entry of state.entries.values()) {
       if (!entry.paused && entry.torrent) {
-        this.dirtyEntries.add(entry);
+        state.dirtyEntries.add(entry);
         entry.detail.activeSeconds += seconds;
         if (entry.torrent.done) {
           entry.detail.seedSeconds += seconds;
         }
       }
-      this.summary(entry);
+      summarizeTorrent(entry);
     }
-    if (now - this.lastPersistAt >= 5000) {
-      this.checkpoint();
-      this.lastPersistAt = now;
+    if (now - state.lastPersistAt >= 5000) {
+      checkpoint();
+      state.lastPersistAt = now;
     }
     // biome-ignore lint/suspicious/noUnnecessaryConditions: subscriptions change observation after startup.
-    if (this.observed) {
-      this.history.push({
-        download: this.client.downloadSpeed,
+    if (state.observed) {
+      state.history.push({
+        download: torrentClient.downloadSpeed,
         time: now,
-        upload: this.client.uploadSpeed,
+        upload: torrentClient.uploadSpeed,
       });
-      if (this.history.length > 120) {
-        this.history.shift();
+      if (state.history.length > 120) {
+        state.history.shift();
       }
       // Speeds decay with time even when no transfer event arrives.
-      this.publishTelemetry(now);
+      publishTelemetry(now);
     }
-    if (now - this.lastDiskAt >= this.diskInterval) {
-      this.diskSpace();
+    if (now - state.lastDiskAt >= diskInterval()) {
+      diskSpace();
     }
-    if (!this.storageCheck) {
+    if (!state.storageCheck) {
       const pending = Promise.withResolvers<void>();
-      this.storageCheck = pending.promise;
+      state.storageCheck = pending.promise;
       const check = async () => {
         try {
-          await this.checkStorage();
+          await checkStorage();
         } catch (error) {
           const log = createLogger({
             component: "storage",
@@ -335,156 +343,53 @@ export class TorrentEngine {
           log.setLevel("error");
           log.emit();
         } finally {
-          this.storageCheck = null;
+          state.storageCheck = null;
           pending.resolve();
         }
       };
       void check();
     }
-  };
-
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep validation, state changes, and cleanup in the same lifecycle operation.
-  static async open(options: EngineOpenOptions) {
-    await mkdir(options.dataDir, { recursive: true });
-    const database = await openDatabase(options.dataDir);
-    const cryptoDiagnostics =
-      (options.cryptoDiagnostics ?? process.env.TOFU_CRYPTO_DIAGNOSTICS === "1")
-        ? installCryptoDiagnostics()
-        : null;
-    let engine: TorrentEngine;
-    try {
-      engine = new TorrentEngine(
-        {
-          deleteTorrentFileAfterAdd: false,
-          downloadLimit: -1,
-          downloadPath: options.downloadPath,
-          runInBackground: false,
-          seedingConnectionMode: "balanced",
-          theme: "system",
-          uploadLimit: -1,
-        },
-        options.network,
-        database,
-        options.connectionPolicy ?? defaultConnectionPolicy,
-        cryptoDiagnostics,
-        options.dataDir
-      );
-    } catch (error) {
-      cryptoDiagnostics?.close();
-      database.$client.close(true);
-      throw error;
-    }
-    try {
-      // Reconcile receipts before a restored torrent may resume writing to storage.
-      for (const receipt of database
-        .select()
-        .from(operationReceipts)
-        .where(eq(operationReceipts.status, "pending"))
-        .all()) {
-        if (receipt.kind === "move") {
-          // biome-ignore lint/performance/noAwaitInLoops: Filesystem recovery precedes all torrent starts.
-          const recovered = await engine.finishMoveJournal(receipt.id);
-          if (recovered instanceof ElysiaStatus) {
-            throw new Error(recovered.response.detail);
-          }
-        } else if (receipt.kind === "add") {
-          database
-            .update(operationReceipts)
-            .set({
-              completedAt: Date.now(),
-              status: engine.entries.has(receipt.target) ? "done" : "failed",
-            })
-            .where(eq(operationReceipts.id, receipt.id))
-            .run();
-        } else if (receipt.kind === "remove") {
-          if (engine.entries.has(receipt.target)) {
-            const removed = await engine.remove(
-              receipt.target,
-              JSON.parse(receipt.result ?? "{}").deleteFiles === true,
-              receipt.id
-            );
-            if (removed instanceof ElysiaStatus) {
-              throw new Error(removed.response.detail);
-            }
-          } else {
-            database
-              .update(operationReceipts)
-              .set({
-                completedAt: Date.now(),
-                result: JSON.stringify({
-                  deleteFiles: JSON.parse(receipt.result ?? "{}").deleteFiles === true,
-                  ok: true,
-                }),
-                status: "done",
-              })
-              .where(eq(operationReceipts.id, receipt.id))
-              .run();
-          }
-        }
-      }
-      if (engine.entries.size === 0) {
-        await mkdir(engine.settings.downloadPath, { recursive: true });
-      }
-      await engine.diskSpace();
-      await Promise.all(
-        [...engine.entries.values()].map(async (entry) => {
-          await engine.inspectStorage(entry);
-          if (!entry.paused) {
-            await engine.start(entry);
-          }
-        })
-      );
-      engine.telemetryValues = engine.measureTelemetry();
-      return engine;
-    } catch (error) {
-      try {
-        await engine.close();
-      } catch {
-        /* The startup failure remains primary. */
-      }
-      throw error;
-    }
   }
 
-  assertReady() {
-    if (this.client.destroyed) {
+  function assertReady() {
+    if (torrentClient.destroyed) {
       return problem(503, { detail: "The torrent engine has stopped" });
     }
-    this.db.run(sql`SELECT 1 FROM config, torrents, destinations LIMIT 0`);
+    db.run(sql`SELECT 1 FROM config, torrents, destinations LIMIT 0`);
   }
 
-  private checkpoint() {
+  function checkpoint() {
     const saved = new Map<Entry, string>();
-    this.db.transaction((tx) => {
-      for (const entry of this.dirtyEntries) {
-        saved.set(entry, this.save(entry, tx));
+    db.transaction((tx) => {
+      for (const entry of state.dirtyEntries) {
+        saved.set(entry, save(entry, tx));
       }
       // biome-ignore lint/suspicious/noUnnecessaryConditions: Event handlers and lifecycle cleanup can change this state between calls or awaits.
-      if (this.trafficDirty) {
-        this.config("traffic", { received: this.received, uploaded: this.uploaded }, tx);
+      if (state.trafficDirty) {
+        config("traffic", { received: state.received, uploaded: state.uploaded }, tx);
       }
     });
     for (const [entry, value] of saved) {
-      this.persistedEntries.set(entry, value);
+      state.persistedEntries.set(entry, value);
     }
-    this.dirtyEntries.clear();
-    this.trafficDirty = false;
+    state.dirtyEntries.clear();
+    state.trafficDirty = false;
   }
 
-  private get diskInterval() {
+  function diskInterval() {
     // biome-ignore lint/suspicious/noUnnecessaryConditions: Event handlers and lifecycle cleanup can change this state between calls or awaits.
-    return this.observed ? 15_000 : 60_000;
+    return state.observed ? 15_000 : 60_000;
   }
 
-  private measureTelemetry() {
+  function measureTelemetry() {
     const values = [
-      this.received,
-      this.uploaded,
-      this.client.downloadSpeed,
-      this.client.uploadSpeed,
-      this.freeSpace ?? -1,
+      state.received,
+      state.uploaded,
+      torrentClient.downloadSpeed,
+      torrentClient.uploadSpeed,
+      state.freeSpace ?? -1,
     ];
-    for (const entry of this.entries.values()) {
+    for (const entry of state.entries.values()) {
       values.push(
         entry.torrent?.numPeers ?? 0,
         entry.torrent?.ready ? entry.torrent.progress : (entry.detail.progress ?? -1)
@@ -493,114 +398,114 @@ export class TorrentEngine {
     return values;
   }
 
-  private publishTelemetry(now: number) {
+  function publishTelemetry(now: number) {
     // biome-ignore lint/suspicious/noUnnecessaryConditions: Event handlers and lifecycle cleanup can change this state between calls or awaits.
-    if (!this.observed || now - this.lastTelemetryAt < 1000) {
+    if (!state.observed || now - state.lastTelemetryAt < 1000) {
       return;
     }
-    this.lastTelemetryAt = now;
-    const values = this.measureTelemetry();
+    state.lastTelemetryAt = now;
+    const values = measureTelemetry();
     if (
-      values.length !== this.telemetryValues.length ||
-      values.some((value, index) => value !== this.telemetryValues[index])
+      values.length !== state.telemetryValues.length ||
+      values.some((value, index) => value !== state.telemetryValues[index])
     ) {
-      this.telemetryValues = values;
-      this.changed("telemetry");
+      state.telemetryValues = values;
+      changed("telemetry");
     }
   }
 
-  private queueTelemetry() {
+  function queueTelemetry() {
     // biome-ignore lint/suspicious/noUnnecessaryConditions: Event handlers and lifecycle cleanup can change this state between calls or awaits.
-    if (!this.observed || this.closed || this.telemetryTimer) {
+    if (!state.observed || state.closed || state.telemetryTimer) {
       return;
     }
-    this.telemetryTimer = setTimeout(
+    state.telemetryTimer = setTimeout(
       () => {
-        this.telemetryTimer = null;
-        this.publishTelemetry(Date.now());
+        state.telemetryTimer = null;
+        publishTelemetry(Date.now());
       },
-      Math.max(0, 1000 - (Date.now() - this.lastTelemetryAt))
+      Math.max(0, 1000 - (Date.now() - state.lastTelemetryAt))
     );
-    this.telemetryTimer.unref();
+    state.telemetryTimer.unref();
   }
 
-  private diskSpace() {
-    if (!this.diskCheck) {
-      this.lastDiskAt = Date.now();
+  function diskSpace() {
+    if (!state.diskCheck) {
+      state.lastDiskAt = Date.now();
       const pending = Promise.withResolvers<void>();
-      this.diskCheck = pending.promise;
+      state.diskCheck = pending.promise;
       const check = async () => {
         try {
-          const disk = await statfs(this.settings.downloadPath);
-          this.freeSpace = disk.bavail * disk.bsize;
+          const disk = await statfs(engineSettings.downloadPath);
+          state.freeSpace = disk.bavail * disk.bsize;
         } catch {
-          this.freeSpace = null;
+          state.freeSpace = null;
         } finally {
-          this.diskCheck = null;
+          state.diskCheck = null;
           pending.resolve();
         }
       };
       void check();
     }
-    return this.diskCheck;
+    return state.diskCheck;
   }
 
-  connectionDiagnostics() {
-    return { ...this.connections.diagnostics, crypto: this.cryptoDiagnostics?.snapshot() ?? null };
+  function connectionDiagnostics() {
+    return { ...scheduler.diagnostics, crypto: cryptoDiagnostics?.snapshot() ?? null };
   }
 
-  setObserved(observed: boolean) {
-    if (this.observed === observed || this.closed) {
+  function setObserved(observed: boolean) {
+    if (state.observed === observed || state.closed) {
       return;
     }
-    clearInterval(this.timer);
-    this.observed = observed;
-    this.timer = setInterval(this.tick, observed ? 1000 : 5000);
-    this.timer.unref();
+    clearInterval(state.timer);
+    state.observed = observed;
+    state.timer = setInterval(tick, observed ? 1000 : 5000);
+    state.timer.unref();
     if (observed) {
-      this.history.length = 0;
-      this.telemetryValues = [];
-      this.lastTelemetryAt = 0;
-      this.queueTelemetry();
-    } else if (this.telemetryTimer) {
-      clearTimeout(this.telemetryTimer);
-      this.telemetryTimer = null;
+      state.history.length = 0;
+      state.telemetryValues = [];
+      state.lastTelemetryAt = 0;
+      queueTelemetry();
+    } else if (state.telemetryTimer) {
+      clearTimeout(state.telemetryTimer);
+      state.telemetryTimer = null;
     }
   }
 
-  async refreshSnapshot(_maxAgeMs: number) {
-    if (Date.now() - this.lastDiskAt >= this.diskInterval) {
-      await this.diskSpace();
+  async function refreshSnapshot(_maxAgeMs: number) {
+    if (Date.now() - state.lastDiskAt >= diskInterval()) {
+      await diskSpace();
     }
-    return this.snapshot(null, false);
+    return snapshot(null, false);
   }
 
-  subscribeChanges(listener: (change: EngineChange) => void) {
-    this.listeners.add(listener);
+  function subscribeChanges(listener: (change: EngineChange) => void) {
+    state.listeners.add(listener);
     return () => {
-      this.listeners.delete(listener);
+      state.listeners.delete(listener);
     };
   }
 
-  private changed(kind: EngineChange["kind"]) {
+  function changed(kind: EngineChange["kind"]) {
     if (kind === "state") {
-      this.stateRevision += 1;
+      state.stateRevision += 1;
     } else {
-      this.telemetryRevision += 1;
+      state.telemetryRevision += 1;
     }
-    for (const listener of this.listeners) {
+    for (const listener of state.listeners) {
       listener({
         kind,
-        stateRevision: this.stateRevision,
-        telemetryRevision: this.telemetryRevision,
+        stateRevision: state.stateRevision,
+        telemetryRevision: state.telemetryRevision,
       });
     }
   }
 
-  private async checkStorage() {
-    for (const entry of this.entries.values()) {
+  async function checkStorage() {
+    for (const entry of state.entries.values()) {
       // biome-ignore lint/suspicious/noUnnecessaryConditions: Event handlers and lifecycle cleanup can change this state between calls or awaits.
-      if (this.closed) {
+      if (state.closed) {
         return;
       }
       if (!(entry.metadata && entry.storageClaimed) || entry.moving || entry.verifying) {
@@ -609,7 +514,7 @@ export class TorrentEngine {
       // Serialize filesystem checks with pause, removal, and other lifecycle operations.
       try {
         // biome-ignore lint/performance/noAwaitInLoops: Each iteration depends on the previous lifecycle or readiness result.
-        await this.serial(entry, () => this.inspectStorage(entry), { checkpoint: true });
+        await serial(entry, () => inspectStorage(entry), { checkpoint: true });
       } catch (error) {
         const log = createLogger({
           component: "storage",
@@ -622,14 +527,15 @@ export class TorrentEngine {
     }
   }
 
-  private async inspectStorage(entry: Entry) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep storage inspection and its recovery decisions together.
+  async function inspectStorage(entry: Entry) {
     if (entry.detail.storageIssue && entry.detail.storageIssue.kind !== "storage-unavailable") {
       return;
     }
-    const detail = this.details(entry);
+    const detail = buildDetail(entry);
     try {
       const root = await storageRoot(detail.savePath, null);
-      const recovered = await this.recoverStorage(entry, root);
+      const recovered = await recoverStorage(entry, root);
       if (recovered instanceof ElysiaStatus) {
         return recovered;
       }
@@ -649,9 +555,9 @@ export class TorrentEngine {
       if (entry.validateRetained) {
         return;
       }
-      const inspected = await this.inspectFiles(entry);
+      const inspected = await inspectFiles(entry);
       if (inspected instanceof ElysiaStatus) {
-        await this.blockStorage(entry, {
+        await blockStorage(entry, {
           detectedAt: Date.now(),
           kind: "invalid-path",
           message: inspected.response.detail,
@@ -668,13 +574,13 @@ export class TorrentEngine {
       ) {
         return;
       }
-      await this.blockStorage(
+      await blockStorage(
         entry,
         storageFailure(
           cause,
           detail.files.map((file) => file.path),
           {
-            dataDir: this.dataDir,
+            dataDir: engineOptions.dataDir,
             expected: entry.storageRoot,
             savePath: detail.savePath,
             torrentId: detail.id,
@@ -684,7 +590,8 @@ export class TorrentEngine {
     }
   }
 
-  private async recoverStorage(entry: Entry, root: StorageIdentity) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Validate retained file identities before rebinding storage.
+  async function recoverStorage(entry: Entry, root: StorageIdentity) {
     const previous = entry.storageRoot;
     if (
       !previous ||
@@ -705,7 +612,7 @@ export class TorrentEngine {
     const expected = new Map<string, number>();
     for (const file of files) {
       const before = identities.get(file.path);
-      const path = this.storagePath(entry.detail.savePath, file.path);
+      const path = storagePath(entry.detail.savePath, file.path);
       if (path instanceof ElysiaStatus) {
         return path;
       }
@@ -726,16 +633,16 @@ export class TorrentEngine {
     const { verifying } = entry;
     entry.verifying = true;
     try {
-      await this.stop(entry);
+      await stop(entry);
       entry.storageRoot = root;
       entry.storageFiles = entry.storageFiles.map((file) => ({ ...file, dev: root.dev }));
       // Hash existing pieces with networking paused before accepting the new device identity.
-      await this.verifyData(entry);
+      await verifyData(entry);
       const invalid = entry.detail.files.filter(
         (file) => (file.downloaded ?? 0) < (expected.get(file.path) ?? 0)
       );
       if (invalid.length) {
-        await this.blockStorage(entry, {
+        await blockStorage(entry, {
           detectedAt: Date.now(),
           kind: "modified-files",
           message:
@@ -745,11 +652,11 @@ export class TorrentEngine {
       } else {
         entry.detail.storageIssue = null;
         entry.detail.error = null;
-        await this.finishVerification(entry);
+        await finishVerification(entry);
         const log = createLogger({
           component: "storage",
           context: { previous, root, savePath: entry.detail.savePath, torrentId: entry.detail.id },
-          dataDir: this.dataDir,
+          dataDir: engineOptions.dataDir,
           operation: "recovered",
         });
         log.emit();
@@ -760,7 +667,8 @@ export class TorrentEngine {
     return true;
   }
 
-  private async inspectFiles(entry: Entry) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep file identity checks and missing-data classification together.
+  async function inspectFiles(entry: Entry) {
     const { detail } = entry;
     const missing: string[] = [];
     const modified: string[] = [];
@@ -771,7 +679,7 @@ export class TorrentEngine {
       if (file.priority === "skip" || !(file.downloaded || before)) {
         continue;
       }
-      const path = this.storagePath(detail.savePath, file.path);
+      const path = storagePath(detail.savePath, file.path);
       if (path instanceof ElysiaStatus) {
         return path;
       }
@@ -794,7 +702,7 @@ export class TorrentEngine {
       }
     }
     if (missing.length) {
-      await this.blockStorage(entry, {
+      await blockStorage(entry, {
         detectedAt: Date.now(),
         kind: "missing-files",
         message: modified.length
@@ -803,7 +711,7 @@ export class TorrentEngine {
         paths: [...missing, ...modified],
       });
     } else if (modified.length) {
-      await this.blockStorage(entry, {
+      await blockStorage(entry, {
         detectedAt: Date.now(),
         kind: "modified-files",
         message: "Downloaded files were modified or truncated. Verify them or repair the download.",
@@ -814,12 +722,12 @@ export class TorrentEngine {
     }
   }
 
-  private async blockStorage(entry: Entry, issue: TorrentStorageIssue) {
-    await this.stop(entry);
-    this.markStorageIssue(entry, issue);
+  async function blockStorage(entry: Entry, issue: TorrentStorageIssue) {
+    await stop(entry);
+    markStorageIssue(entry, issue);
   }
 
-  private markStorageIssue(entry: Entry, issue: TorrentStorageIssue) {
+  function markStorageIssue(entry: Entry, issue: TorrentStorageIssue) {
     const log = createLogger({
       component: "storage",
       context: {
@@ -828,7 +736,7 @@ export class TorrentEngine {
         savePath: entry.detail.savePath,
         torrentId: entry.detail.id,
       },
-      dataDir: this.dataDir,
+      dataDir: engineOptions.dataDir,
       operation: "blocked",
     });
     log.setLevel("warn");
@@ -848,27 +756,28 @@ export class TorrentEngine {
         file.progress = null;
       }
     }
-    this.save(entry);
+    save(entry);
   }
 
-  private config(
+  function config(
     key: string,
     value: Settings | { received: number; uploaded: number },
-    connection?: DatabaseConnection
+    connection?: dbConnection
   ) {
-    const db = connection ?? this.db;
+    const db = connection ?? db;
     const serialized = JSON.stringify(value);
     db.insert(torrentConfig)
       .values({ key, value: serialized })
       .onConflictDoUpdate({ set: { value: serialized }, target: torrentConfig.key })
       .run();
     if (!connection && key === "settings") {
-      this.changed("state");
+      changed("state");
     }
   }
 
-  private save(entry: Entry, connection?: DatabaseConnection) {
-    const db = connection ?? this.db;
+  function save(entry: Entry, connection?: dbConnection) {
+    const db = connection ?? db;
+
     const {
       source,
       metadata,
@@ -887,7 +796,7 @@ export class TorrentEngine {
       storageFiles,
       storageRoot: root,
     } satisfies StoredEntry);
-    if (this.persistedEntries.get(entry) === value) {
+    if (state.persistedEntries.get(entry) === value) {
       return value;
     }
     db.insert(torrentRecords)
@@ -895,8 +804,8 @@ export class TorrentEngine {
       .onConflictDoUpdate({ set: { value }, target: torrentRecords.id })
       .run();
     if (!connection) {
-      this.persistedEntries.set(entry, value);
-      this.dirtyEntries.delete(entry);
+      state.persistedEntries.set(entry, value);
+      state.dirtyEntries.delete(entry);
       const structure = JSON.stringify({
         completedAt: detail.completedAt,
         destinationId: detail.destinationId,
@@ -912,16 +821,16 @@ export class TorrentEngine {
         trackers: detail.trackers.map((tracker) => tracker.url),
         verifying: entry.verifying ?? false,
       });
-      if (this.entryStructures.get(entry) !== structure) {
-        this.entryStructures.set(entry, structure);
-        this.changed("state");
+      if (state.entryStructures.get(entry) !== structure) {
+        state.entryStructures.set(entry, structure);
+        changed("state");
       }
     }
     return value;
   }
 
-  private writeDestination(destination: Destination, connection?: DatabaseConnection) {
-    const db = connection ?? this.db;
+  function writeDestination(destination: Destination, connection?: dbConnection) {
+    const db = connection ?? db;
     const { id, ...presentation } = destination;
     db.insert(torrentDestinations)
       .values(destination)
@@ -929,21 +838,21 @@ export class TorrentEngine {
       .run();
   }
 
-  private storeDestination(destination: Destination, connection?: DatabaseConnection) {
-    this.writeDestination(destination, connection);
-    this.destinations.set(destination.id, destination);
+  function storeDestination(destination: Destination, connection?: dbConnection) {
+    writeDestination(destination, connection);
+    state.destinations.set(destination.id, destination);
     if (!connection) {
-      this.changed("state");
+      changed("state");
     }
     return destination;
   }
 
-  private destinationForPath(downloadPath: string) {
+  function destinationForPath(downloadPath: string) {
     return (
-      [...this.destinations.values()].find(
+      [...state.destinations.values()].find(
         (destination) => destination.downloadPath === downloadPath
       ) ??
-      this.storeDestination({
+      storeDestination({
         autoAddTorrentFilesSince: null,
         deleteTorrentFileAfterAdd: null,
         downloadPath,
@@ -955,8 +864,8 @@ export class TorrentEngine {
     );
   }
 
-  private async prepareDestination(path: string) {
-    const bound = [...this.entries.values()].find(
+  async function prepareDestination(path: string) {
+    const bound = [...state.entries.values()].find(
       (entry) => entry.storageRoot && resolvePath(entry.detail.savePath) === resolvePath(path)
     );
     if (bound) {
@@ -965,7 +874,7 @@ export class TorrentEngine {
       } catch (cause) {
         return problem(409, {
           detail: storageFailure(cause, [], {
-            dataDir: this.dataDir,
+            dataDir: engineOptions.dataDir,
             expected: bound.storageRoot,
             savePath: path,
           }).message,
@@ -977,8 +886,8 @@ export class TorrentEngine {
   }
 
   /** Resolves how a thread handles .torrent files, keeping each folder watched by one thread. */
-  private torrentFileOptions(id: string | null, input: DestinationInput, downloadPath: string) {
-    const current = id ? this.destinations.get(id) : undefined;
+  function torrentFileOptions(id: string | null, input: DestinationInput, downloadPath: string) {
+    const current = id ? state.destinations.get(id) : undefined;
     let autoAddTorrentFilesSince = current?.autoAddTorrentFilesSince ?? null;
     if (input.autoAddTorrentFiles !== undefined) {
       autoAddTorrentFilesSince = input.autoAddTorrentFiles
@@ -987,7 +896,7 @@ export class TorrentEngine {
     }
     if (
       autoAddTorrentFilesSince !== null &&
-      [...this.destinations.values()].some(
+      [...state.destinations.values()].some(
         (other) =>
           other.id !== id &&
           other.autoAddTorrentFilesSince !== null &&
@@ -1008,25 +917,25 @@ export class TorrentEngine {
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep validation, state changes, and cleanup in the same lifecycle operation.
-  async saveDestination(id: string | null, input: DestinationInput) {
+  async function saveDestination(id: string | null, input: DestinationInput) {
     const name = input.name.trim();
     if (!(name && isAbsolute(input.downloadPath))) {
       return problem(400, { detail: "Enter a name and an absolute folder path" });
     }
-    if (id && !this.destinations.has(id)) {
+    if (id && !state.destinations.has(id)) {
       return problem(404, { detail: "Tab not found" });
     }
-    if (this.movingDestinations.size > 0) {
+    if (state.movingDestinations.size > 0) {
       return problem(409, { detail: "A move is already in progress for this tab" });
     }
     const downloadPath = resolvePath(input.downloadPath);
-    const fileOptions = this.torrentFileOptions(id, input, downloadPath);
+    const fileOptions = torrentFileOptions(id, input, downloadPath);
     if (fileOptions instanceof ElysiaStatus) {
       return fileOptions;
     }
     const { autoAddTorrentFilesSince, deleteTorrentFileAfterAdd } = fileOptions;
     if (id && input.moveFiles) {
-      const previous = this.destinations.get(id);
+      const previous = state.destinations.get(id);
       const destination: Destination = {
         autoAddTorrentFilesSince,
         deleteTorrentFileAfterAdd,
@@ -1036,30 +945,30 @@ export class TorrentEngine {
         name,
         pinned: input.pinned ?? previous?.pinned ?? false,
       };
-      const operation = this.moveDestination(destination);
-      this.destinationOperation = operation;
+      const operation = moveDestination(destination);
+      destinationOperation = operation;
       try {
         const result = await operation;
         if (result instanceof ElysiaStatus) {
           return result;
         }
       } finally {
-        this.destinationOperation = null;
+        destinationOperation = null;
       }
       return destination;
     }
-    const validationResult0 = await this.prepareDestination(downloadPath);
+    const validationResult0 = await prepareDestination(downloadPath);
     if (validationResult0 instanceof ElysiaStatus) {
       return validationResult0;
     }
-    if (id && !this.destinations.has(id)) {
+    if (id && !state.destinations.has(id)) {
       return problem(404, { detail: "Tab not found" });
     }
-    if (this.movingDestinations.size > 0) {
+    if (state.movingDestinations.size > 0) {
       return problem(409, { detail: "A move is already in progress for this tab" });
     }
-    const previous = id ? this.destinations.get(id) : undefined;
-    const destination = this.storeDestination({
+    const previous = id ? state.destinations.get(id) : undefined;
+    const destination = storeDestination({
       autoAddTorrentFilesSince,
       deleteTorrentFileAfterAdd,
       downloadPath,
@@ -1069,53 +978,53 @@ export class TorrentEngine {
       pinned: input.pinned ?? previous?.pinned ?? false,
     });
     if (destination.id === "default") {
-      this.settings.downloadPath = destination.downloadPath;
-      this.config("settings", this.settings);
-      await this.diskSpace();
+      engineSettings.downloadPath = destination.downloadPath;
+      config("settings", engineSettings);
+      await diskSpace();
     }
     return destination;
   }
 
-  updateDestinationPresentation(id: string, input: DestinationPresentation) {
-    const destination = this.destinations.get(id);
+  function updateDestinationPresentation(id: string, input: DestinationPresentation) {
+    const destination = state.destinations.get(id);
     if (!destination) {
       return problem(404, { detail: "Tab not found" });
     }
-    if (this.movingDestinations.size > 0) {
+    if (state.movingDestinations.size > 0) {
       return problem(409, { detail: "Wait for the move to finish before editing a tab" });
     }
-    return this.storeDestination({
+    return storeDestination({
       ...destination,
       icon: input.icon ?? destination.icon,
       pinned: input.pinned ?? destination.pinned,
     });
   }
 
-  async removeDestination(id: string) {
-    if (!this.destinations.has(id)) {
+  async function removeDestination(id: string) {
+    if (!state.destinations.has(id)) {
       return problem(404, { detail: "Tab not found" });
     }
-    if (this.movingDestinations.size > 0) {
+    if (state.movingDestinations.size > 0) {
       return problem(409, { detail: "Wait for the move to finish before deleting a tab" });
     }
     // Torrents, rules and preferences fall back to the "default" ID, so deleting that tab moves
     // the next tab into the default slot and removes the next tab's former ID instead.
     const removed =
-      id === "default" ? [...this.destinations.keys()].find((key) => key !== "default") : id;
-    const successor = removed === undefined ? undefined : this.destinations.get(removed);
+      id === "default" ? [...state.destinations.keys()].find((key) => key !== "default") : id;
+    const successor = removed === undefined ? undefined : state.destinations.get(removed);
     if (!(removed && successor)) {
       return problem(409, { detail: "At least one tab is required" });
     }
-    const reassigned = [...this.entries.values()].filter(
+    const reassigned = [...state.entries.values()].filter(
       (entry) => entry.detail.destinationId === removed
     );
-    this.db.transaction((tx) => {
+    db.transaction((tx) => {
       for (const entry of reassigned) {
-        this.save({ ...entry, detail: { ...entry.detail, destinationId: "default" } }, tx);
+        save({ ...entry, detail: { ...entry.detail, destinationId: "default" } }, tx);
       }
       if (id === "default") {
-        this.writeDestination({ ...successor, id: "default" }, tx);
-        this.config("settings", { ...this.settings, downloadPath: successor.downloadPath }, tx);
+        writeDestination({ ...successor, id: "default" }, tx);
+        config("settings", { ...engineSettings, downloadPath: successor.downloadPath }, tx);
       }
       tx.delete(torrentDestinations).where(eq(torrentDestinations.id, removed)).run();
     });
@@ -1123,32 +1032,32 @@ export class TorrentEngine {
       entry.detail.destinationId = "default";
     }
     if (id === "default") {
-      this.destinations.set("default", { ...successor, id: "default" });
-      this.settings.downloadPath = successor.downloadPath;
+      state.destinations.set("default", { ...successor, id: "default" });
+      engineSettings.downloadPath = successor.downloadPath;
     }
-    this.destinations.delete(removed);
-    this.changed("state");
+    state.destinations.delete(removed);
+    changed("state");
     if (id === "default") {
-      await this.diskSpace();
+      await diskSpace();
     }
     return { ok: true, removed };
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep validation, state changes, and cleanup in the same lifecycle operation.
-  private async moveDestination(destination: Destination) {
+  async function moveDestination(destination: Destination) {
     const { id, downloadPath } = destination;
-    const entries = [...this.entries.values()].filter(
+    const entries = [...state.entries.values()].filter(
       (entry) =>
         entry.detail.destinationId === id && resolvePath(entry.detail.savePath) !== downloadPath
     );
-    const validationResult1 = this.validateMove(entries);
+    const validationResult1 = validateMove(entries);
     if (validationResult1 instanceof ElysiaStatus) {
       return validationResult1;
     }
-    this.movingDestinations.add(id);
+    state.movingDestinations.add(id);
     for (const entry of entries) {
       entry.moving = true;
-      this.cancelRanges(entry.detail.id);
+      cancelRanges(entry.detail.id);
     }
     let running: Entry[] = [];
     let files: RelocatedFile[] = [];
@@ -1156,8 +1065,8 @@ export class TorrentEngine {
     const originalStorage = new Map(
       entries.map((entry) => [entry, { files: entry.storageFiles, root: entry.storageRoot }])
     );
-    const originalDestination = this.destinations.get(id);
-    const originalDefaultPath = this.settings.downloadPath;
+    const originalDestination = state.destinations.get(id);
+    const originalDefaultPath = engineSettings.downloadPath;
     const published: string[] = [];
     let staging: string | null = null;
     let journalId: string | null = null;
@@ -1165,19 +1074,19 @@ export class TorrentEngine {
     try {
       await Promise.allSettled(entries.map((entry) => entry.operation));
       running = entries.filter(
-        (entry) => !entry.paused && this.entries.get(entry.detail.id) === entry
+        (entry) => !entry.paused && state.entries.get(entry.detail.id) === entry
       );
-      const validationResult2 = this.validateMove(entries);
+      const validationResult2 = validateMove(entries);
       if (validationResult2 instanceof ElysiaStatus) {
         return validationResult2;
       }
-      await Promise.all(entries.map((entry) => this.stop(entry)));
-      const validationResult3 = await this.prepareDestination(downloadPath);
+      await Promise.all(entries.map((entry) => stop(entry)));
+      const validationResult3 = await prepareDestination(downloadPath);
       if (validationResult3 instanceof ElysiaStatus) {
         return validationResult3;
       }
       staging = await mkdtemp(join(downloadPath, ".tofu-move-"));
-      const planned = await this.planMove(entries, downloadPath, staging);
+      const planned = await planMove(entries, downloadPath, staging);
       if (planned instanceof ElysiaStatus) {
         return planned;
       }
@@ -1196,7 +1105,7 @@ export class TorrentEngine {
       );
       journalId = `move:${crypto.randomUUID()}`;
       const journal = { committed: false, files: sourceIdentities, staging };
-      this.db
+      db
         .insert(operationReceipts)
         .values({
           createdAt: Date.now(),
@@ -1214,9 +1123,9 @@ export class TorrentEngine {
       if (failure?.status === "rejected") {
         throw failure.reason;
       }
-      await this.publishMove(files, published);
+      await publishMove(files, published);
       const movedRoot = await storageRoot(downloadPath, null);
-      this.db.transaction((tx) => {
+      db.transaction((tx) => {
         tx.update(operationReceipts)
           .set({ result: JSON.stringify({ ...journal, committed: true }) })
           .where(eq(operationReceipts.id, journalId as string))
@@ -1225,17 +1134,17 @@ export class TorrentEngine {
           entry.detail.savePath = downloadPath;
           entry.storageRoot = movedRoot;
           entry.storageFiles = [];
-          this.save(entry, tx);
+          save(entry, tx);
         }
-        this.storeDestination(destination, tx);
+        storeDestination(destination, tx);
         if (id === "default") {
-          this.settings.downloadPath = downloadPath;
-          this.config("settings", this.settings, tx);
+          engineSettings.downloadPath = downloadPath;
+          config("settings", engineSettings, tx);
         }
       });
       committed = true;
-      this.changed("state");
-      const cleanup = await this.finishMoveJournal(journalId);
+      changed("state");
+      const cleanup = await finishMoveJournal(journalId);
       if (cleanup instanceof ElysiaStatus) {
         return cleanup;
       }
@@ -1247,11 +1156,11 @@ export class TorrentEngine {
           entry.storageFiles = originalStorage.get(entry)?.files ?? [];
         }
         if (originalDestination) {
-          this.destinations.set(id, originalDestination);
+          state.destinations.set(id, originalDestination);
         }
-        this.settings.downloadPath = originalDefaultPath;
+        engineSettings.downloadPath = originalDefaultPath;
         if (journalId) {
-          const rollback = await this.finishMoveJournal(journalId);
+          const rollback = await finishMoveJournal(journalId);
           if (rollback instanceof ElysiaStatus) {
             return rollback;
           }
@@ -1269,19 +1178,19 @@ export class TorrentEngine {
         }
         try {
           await Promise.all(
-            running.filter((entry) => !entry.torrent).map((entry) => this.start(entry))
+            running.filter((entry) => !entry.torrent).map((entry) => startTorrent(entry))
           );
         } finally {
-          this.movingDestinations.delete(id);
+          state.movingDestinations.delete(id);
         }
-        await this.diskSpace();
+        await diskSpace();
       }
     }
   }
 
   /** Reconcile a persisted move using inode ownership before removing any old or published copy. */
-  private async finishMoveJournal(id: string) {
-    const receipt = this.db
+  async function finishMoveJournal(id: string) {
+    const receipt = db
       .select()
       .from(operationReceipts)
       .where(eq(operationReceipts.id, id))
@@ -1337,7 +1246,7 @@ export class TorrentEngine {
       })
     );
     await rm(journal.staging, { force: true, recursive: true });
-    this.db
+    db
       .update(operationReceipts)
       .set({ completedAt: Date.now(), status: journal.committed ? "done" : "failed" })
       .where(eq(operationReceipts.id, id))
@@ -1345,9 +1254,9 @@ export class TorrentEngine {
     return results.find((result) => result instanceof ElysiaStatus);
   }
 
-  private validateMove(entries: Entry[]) {
+  function validateMove(entries: Entry[]) {
     for (const entry of entries) {
-      if (this.entries.get(entry.detail.id) !== entry) {
+      if (state.entries.get(entry.detail.id) !== entry) {
         return problem(404, { detail: "Torrent not found" });
       }
       const status = entryStatus(entry);
@@ -1373,14 +1282,14 @@ export class TorrentEngine {
     }
   }
 
-  private storageReservations(excluded: Set<Entry>) {
+  function storageReservations(excluded: Set<Entry>) {
     const reserved = new Set<string>();
-    for (const entry of this.entries.values()) {
+    for (const entry of state.entries.values()) {
       if (excluded.has(entry) || !entry.storageClaimed) {
         continue;
       }
       for (const file of entry.detail.files) {
-        const key = this.storageKey(entry.detail.savePath, file.path);
+        const key = storageKey(entry.detail.savePath, file.path);
         if (key instanceof ElysiaStatus) {
           return key;
         }
@@ -1391,8 +1300,8 @@ export class TorrentEngine {
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep filesystem identity checks and recovery decisions in the same operation.
-  private async planMove(entries: Entry[], downloadPath: string, staging: string) {
-    const reserved = this.storageReservations(new Set(entries));
+  async function planMove(entries: Entry[], downloadPath: string, staging: string) {
+    const reserved = storageReservations(new Set(entries));
     if (reserved instanceof ElysiaStatus) {
       return reserved;
     }
@@ -1405,19 +1314,19 @@ export class TorrentEngine {
     }[] = [];
     for (const entry of entries) {
       for (const file of entry.detail.files) {
-        const source = this.storagePath(entry.detail.savePath, file.path);
+        const source = storagePath(entry.detail.savePath, file.path);
         if (source instanceof ElysiaStatus) {
           return source;
         }
-        const sourceKey = this.storageKey(entry.detail.savePath, file.path);
+        const sourceKey = storageKey(entry.detail.savePath, file.path);
         if (sourceKey instanceof ElysiaStatus) {
           return sourceKey;
         }
-        const target = this.storagePath(downloadPath, file.path);
+        const target = storagePath(downloadPath, file.path);
         if (target instanceof ElysiaStatus) {
           return target;
         }
-        const targetKey = this.storageKey(downloadPath, file.path);
+        const targetKey = storageKey(downloadPath, file.path);
         if (targetKey instanceof ElysiaStatus) {
           return targetKey;
         }
@@ -1478,7 +1387,7 @@ export class TorrentEngine {
     return resolved;
   }
 
-  private async publishMove(files: RelocatedFile[], published: string[]) {
+  async function publishMove(files: RelocatedFile[], published: string[]) {
     const results = await Promise.allSettled(
       files.map(async (file) => {
         await mkdir(dirname(file.target), { recursive: true });
@@ -1493,9 +1402,9 @@ export class TorrentEngine {
     }
   }
 
-  private canonicalStorageRoot(root: StorageIdentity) {
+  function canonicalStorageRoot(root: StorageIdentity) {
     return (
-      [...this.entries.values()].find(
+      [...state.entries.values()].find(
         (entry) =>
           entry.storageRoot?.dev === root.dev &&
           entry.storageRoot.ino === root.ino &&
@@ -1504,10 +1413,10 @@ export class TorrentEngine {
     );
   }
 
-  private storageKey(savePath: string, filePath: string) {
+  function storageKey(savePath: string, filePath: string) {
     try {
       return resolvePath(
-        this.canonicalStorageRoot(statSync(savePath)) ?? realpathSync(savePath),
+        canonicalStorageRoot(statSync(savePath)) ?? realpathSync(savePath),
         filePath
       );
     } catch (cause) {
@@ -1516,10 +1425,10 @@ export class TorrentEngine {
         "code" in cause &&
         ["ENOENT", "EACCES", "EPERM", "ENODEV", "EIO"].includes(String(cause.code))
       ) {
-        const root = [...this.entries.values()].find(
+        const root = [...state.entries.values()].find(
           (entry) => resolvePath(entry.detail.savePath) === resolvePath(savePath)
         )?.storageRoot;
-        const canonical = root ? this.canonicalStorageRoot(root) : undefined;
+        const canonical = root ? canonicalStorageRoot(root) : undefined;
         if (canonical) {
           return resolvePath(canonical, filePath);
         }
@@ -1534,7 +1443,7 @@ export class TorrentEngine {
     }
   }
 
-  private storagePath(savePath: string, filePath: string) {
+  function storagePath(savePath: string, filePath: string) {
     const path = resolvePath(savePath, filePath);
     const within = relative(savePath, path);
     if (!within || within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within)) {
@@ -1557,25 +1466,25 @@ export class TorrentEngine {
     return path;
   }
 
-  private resolveDestination(options: { destinationId?: string; downloadPath?: string }) {
-    const chosen = this.destinations.get(options.destinationId ?? "");
+  function resolveDestination(options: { destinationId?: string; downloadPath?: string }) {
+    const chosen = state.destinations.get(options.destinationId ?? "");
     if (options.destinationId && !chosen) {
       return problem(404, { detail: "Tab not found" });
     }
     const downloadPath =
-      chosen?.downloadPath ?? (options.downloadPath || this.settings.downloadPath);
+      chosen?.downloadPath ?? (options.downloadPath || engineSettings.downloadPath);
     if (!isAbsolute(downloadPath)) {
       return problem(400, { detail: "The download folder must be an absolute path" });
     }
-    const destination = chosen ?? this.destinationForPath(downloadPath);
-    if (this.movingDestinations.size > 0) {
+    const destination = chosen ?? destinationForPath(downloadPath);
+    if (state.movingDestinations.size > 0) {
       return problem(409, { detail: "Wait for the move to finish before adding a torrent" });
     }
     return destination;
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep validation, state changes, and cleanup in the same lifecycle operation.
-  async add(
+  async function add(
     input: string | Uint8Array,
     options: {
       paused: boolean;
@@ -1619,7 +1528,7 @@ export class TorrentEngine {
       )
       .digest("hex");
     if (options.operationKey) {
-      const receipt = this.db
+      const receipt = db
         .select()
         .from(operationReceipts)
         .where(eq(operationReceipts.id, options.operationKey))
@@ -1649,30 +1558,30 @@ export class TorrentEngine {
       return trackers;
     }
     parsed.announce = trackers;
-    const destination = this.resolveDestination(options);
+    const destination = resolveDestination(options);
     if (destination instanceof ElysiaStatus) {
       return destination;
     }
     const { downloadPath } = destination;
     const savePath = downloadPath;
-    if (!this.destinations.has(destination.id)) {
+    if (!state.destinations.has(destination.id)) {
       return problem(404, { detail: "Tab not found" });
     }
-    if (this.movingDestinations.size > 0) {
+    if (state.movingDestinations.size > 0) {
       return problem(409, { detail: "Wait for the move to finish before adding a torrent" });
     }
-    if (this.entries.has(id)) {
+    if (state.entries.has(id)) {
       return problem(409, { detail: "This torrent is already in your library" });
     }
-    const validationResult4 = await this.prepareDestination(savePath);
+    const validationResult4 = await prepareDestination(savePath);
     if (validationResult4 instanceof ElysiaStatus) {
       return validationResult4;
     }
     const root = await storageRoot(savePath, null);
-    if (this.entries.has(id)) {
+    if (state.entries.has(id)) {
       return problem(409, { detail: "This torrent is already in your library" });
     }
-    if (!this.destinations.has(destination.id) || this.movingDestinations.size > 0) {
+    if (!state.destinations.has(destination.id) || state.movingDestinations.size > 0) {
       return problem(409, {
         detail: "The destination changed while adding the torrent. Try again.",
       });
@@ -1725,7 +1634,7 @@ export class TorrentEngine {
       verifiedPieces: 0,
     };
     const retainedKey = `retained:${id}:${new Bun.CryptoHasher("sha256").update(savePath).digest("hex")}`;
-    const retainedRow = this.db
+    const retainedRow = db
       .select()
       .from(operationReceipts)
       .where(eq(operationReceipts.id, retainedKey))
@@ -1750,7 +1659,7 @@ export class TorrentEngine {
     };
     try {
       for (const file of parsed.files ?? []) {
-        const path = this.storagePath(savePath, file.path);
+        const path = storagePath(savePath, file.path);
         if (path instanceof ElysiaStatus) {
           return path;
         }
@@ -1780,7 +1689,7 @@ export class TorrentEngine {
       return problem(400, { detail: "The torrent contains an unsafe or inaccessible file path" });
     }
     if (options.operationKey) {
-      this.db
+      db
         .insert(operationReceipts)
         .values({
           createdAt: Date.now(),
@@ -1793,15 +1702,15 @@ export class TorrentEngine {
         .onConflictDoUpdate({ set: { status: "pending" }, target: operationReceipts.id })
         .run();
     }
-    this.entries.set(id, entry);
+    state.entries.set(id, entry);
     // Persist identity and metadata before the worker starts any file or network effect.
-    this.save(entry);
+    save(entry);
     if (!options.paused) {
-      await this.start(entry);
+      await startTorrent(entry);
     }
-    this.save(entry);
+    save(entry);
     if (options.operationKey) {
-      this.db
+      db
         .update(operationReceipts)
         .set({ completedAt: Date.now(), status: "done" })
         .where(eq(operationReceipts.id, options.operationKey))
@@ -1811,20 +1720,20 @@ export class TorrentEngine {
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep filesystem identity checks and recovery decisions in the same operation.
-  private storageCollision(entry: Entry, torrent: Torrent) {
-    const reserved = this.storageReservations(new Set([entry]));
+  function storageCollision(entry: Entry, torrent: Torrent) {
+    const reserved = storageReservations(new Set([entry]));
     if (reserved instanceof ElysiaStatus) {
       return reserved;
     }
     for (const file of torrent.files) {
-      const key = this.storageKey(entry.detail.savePath, file.path);
+      const key = storageKey(entry.detail.savePath, file.path);
       if (key instanceof ElysiaStatus) {
         return key;
       }
       if (reserved.has(key)) {
         return file;
       }
-      const path = this.storagePath(entry.detail.savePath, file.path);
+      const path = storagePath(entry.detail.savePath, file.path);
       if (path instanceof ElysiaStatus) {
         return path;
       }
@@ -1852,9 +1761,9 @@ export class TorrentEngine {
     }
   }
 
-  private async start(entry: Entry, options?: { checking: boolean }) {
+  async function startTorrent(entry: Entry, options?: { checking: boolean }) {
     if (!options?.checking) {
-      await this.inspectStorage(entry);
+      await inspectStorage(entry);
       if (entry.detail.storageIssue || entry.torrent) {
         return;
       }
@@ -1866,7 +1775,7 @@ export class TorrentEngine {
     parsed.announce = entry.detail.trackers.map((tracker) => tracker.url);
     const expected = new Map(entry.detail.files.map((file) => [file.path, file.downloaded ?? 0]));
     entry.detail.error = entry.detail.storageIssue?.message ?? null;
-    entry.torrent = this.client.add(parsed, {
+    entry.torrent = torrentClient.add(parsed, {
       deselect: true,
       path: entry.detail.savePath,
       paused: options?.checking || entry.paused,
@@ -1874,20 +1783,20 @@ export class TorrentEngine {
       storeCacheSlots: 0,
     });
     const { torrent } = entry;
-    this.connections.attach(torrent);
+    scheduler.attach(torrent);
     const { detail } = entry;
     torrent.on("metadata", () => {
       entry.metadata = Buffer.from(torrent.torrentFile).toString("base64");
       let collision: Torrent["files"][number] | undefined;
       try {
         // This callback runs before WebTorrent verifies or writes its filesystem store.
-        const checked = this.storageCollision(entry, torrent);
+        const checked = storageCollision(entry, torrent);
         if (checked instanceof ElysiaStatus) {
           detail.error = checked.response.detail;
           entry.torrent = null;
           entry.unwatch?.();
           torrent.destroy({ destroyStore: false });
-          this.save(entry);
+          save(entry);
           return;
         }
         collision = checked;
@@ -1896,7 +1805,7 @@ export class TorrentEngine {
         entry.torrent = null;
         entry.unwatch?.();
         torrent.destroy({ destroyStore: false });
-        this.save(entry);
+        save(entry);
         return;
       }
       // Reserve the metadata paths before another torrent becomes ready.
@@ -1918,13 +1827,13 @@ export class TorrentEngine {
         entry.unwatch?.();
         torrent.destroy({ destroyStore: false });
       }
-      this.save(entry);
+      save(entry);
     });
     // WebTorrent 3.0.21 compares against torrent.peerId rather than client.peerId.
     torrent.on("wire", (wire: Torrent["wires"][number], address: string | undefined) => {
-      this.queueTelemetry();
-      wire.once("close", this.queueTelemetry.bind(this));
-      if (wire.peerId !== this.client.peerId) {
+      queueTelemetry();
+      wire.once("close", queueTelemetry);
+      if (wire.peerId !== torrentClient.peerId) {
         return;
       }
       if (address) {
@@ -1933,24 +1842,24 @@ export class TorrentEngine {
       wire.destroy();
     });
     torrent.on("download", (bytes) => {
-      this.dirtyEntries.add(entry);
-      this.trafficDirty = true;
+      state.dirtyEntries.add(entry);
+      state.trafficDirty = true;
       detail.received += bytes;
-      this.received += bytes;
+      state.received += bytes;
       detail.lastTransferAt = Date.now();
-      this.queueTelemetry();
+      queueTelemetry();
     });
     torrent.on("upload", (bytes) => {
-      this.dirtyEntries.add(entry);
-      this.trafficDirty = true;
+      state.dirtyEntries.add(entry);
+      state.trafficDirty = true;
       detail.uploaded += bytes;
-      this.uploaded += bytes;
+      state.uploaded += bytes;
       detail.lastTransferAt = Date.now();
-      this.queueTelemetry();
+      queueTelemetry();
     });
     torrent.on("verified", () => {
-      this.dirtyEntries.add(entry);
-      this.queueTelemetry();
+      state.dirtyEntries.add(entry);
+      queueTelemetry();
     });
     torrent.on("error", (error) => {
       if (entry.torrent !== torrent) {
@@ -1960,7 +1869,7 @@ export class TorrentEngine {
       const log = createLogger({
         component: "torrent-engine",
         context: { savePath: detail.savePath, torrentId: detail.id },
-        dataDir: this.dataDir,
+        dataDir: engineOptions.dataDir,
         error: sanitizeLog(error),
         operation: "torrent",
       });
@@ -1974,21 +1883,21 @@ export class TorrentEngine {
         error,
         detail.files.map((file) => file.path),
         {
-          dataDir: this.dataDir,
+          dataDir: engineOptions.dataDir,
           expected: entry.storageRoot,
           savePath: detail.savePath,
           torrentId: detail.id,
         }
       );
       if (issue.kind !== "io-error" || (error instanceof Error && "code" in error)) {
-        this.markStorageIssue(entry, issue);
+        markStorageIssue(entry, issue);
       } else {
-        this.save(entry);
+        save(entry);
       }
     });
     torrent.on("ready", () => {
       entry.metadata = Buffer.from(torrent.torrentFile).toString("base64");
-      this.details(entry);
+      buildDetail(entry);
       if (!options?.checking) {
         const invalid = detail.files.filter(
           (file) =>
@@ -1998,8 +1907,8 @@ export class TorrentEngine {
           torrent.pause();
           const block = async () => {
             try {
-              await this.serial(entry, () =>
-                this.blockStorage(entry, {
+              await serial(entry, () =>
+                blockStorage(entry, {
                   detectedAt: Date.now(),
                   kind: "modified-files",
                   message:
@@ -2020,24 +1929,25 @@ export class TorrentEngine {
           void block();
           return;
         }
-        this.selectFiles(entry);
+        selectFiles(entry);
       }
-      this.save(entry);
+      save(entry);
     });
     torrent.on("done", () => {
       detail.completedAt ??= Date.now();
-      this.details(entry);
-      this.save(entry);
+      buildDetail(entry);
+      save(entry);
       // Record completed file identities independently of periodic storage validation.
       const recordIdentity = async () => {
         try {
-          await this.serial(entry, async () => {
+          // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Record completed file identities within the torrent's operation queue.
+          await serial(entry, async () => {
             const identities = new Map(entry.storageFiles.map((file) => [file.path, file]));
             for (const file of detail.files) {
               if (file.progress !== 1) {
                 continue;
               }
-              const path = this.storagePath(detail.savePath, file.path);
+              const path = storagePath(detail.savePath, file.path);
               if (path instanceof ElysiaStatus) {
                 return path;
               }
@@ -2060,7 +1970,7 @@ export class TorrentEngine {
           const log = createLogger({
             component: "storage",
             context: { savePath: detail.savePath, torrentId: detail.id },
-            dataDir: this.dataDir,
+            dataDir: engineOptions.dataDir,
             error: sanitizeLog(error),
             operation: "completed-file-identity",
           });
@@ -2073,26 +1983,26 @@ export class TorrentEngine {
     entry.unwatch = watchTrackers(torrent, detail.trackers);
   }
 
-  private async stop(entry: Entry) {
-    this.cancelRanges(entry.detail.id);
+  async function stop(entry: Entry) {
+    cancelRanges(entry.detail.id);
     const { torrent } = entry;
     if (!torrent) {
       return;
     }
-    this.details(entry);
+    buildDetail(entry);
     entry.unwatch?.();
-    this.connections.detach(torrent);
+    scheduler.detach(torrent);
     entry.torrent = null;
-    if (await this.client.get(entry.detail.id)) {
+    if (await torrentClient.get(entry.detail.id)) {
       await new Promise<void>((resolve, reject) =>
-        this.client.remove(torrent.infoHash, { destroyStore: false }, (error) =>
+        torrentClient.remove(torrent.infoHash, { destroyStore: false }, (error) =>
           error ? reject(error) : resolve()
         )
       );
     }
   }
 
-  private async serial<Result>(
+  async function serial<Result>(
     entry: Entry,
     action: () => Result,
     options?: { checkpoint: boolean }
@@ -2109,18 +2019,18 @@ export class TorrentEngine {
       } catch {
         /* A previous operation reports its own failure. */
       }
-      if (this.entries.get(entry.detail.id) !== entry) {
+      if (state.entries.get(entry.detail.id) !== entry) {
         return problem(404, { detail: "Torrent not found" });
       }
       const result = await action();
       if (result instanceof ElysiaStatus) {
         return result;
       }
-      if (this.entries.get(entry.detail.id) === entry) {
+      if (state.entries.get(entry.detail.id) === entry) {
         if (options?.checkpoint) {
-          this.dirtyEntries.add(entry);
+          state.dirtyEntries.add(entry);
         } else {
-          this.save(entry);
+          save(entry);
         }
       }
       return result;
@@ -2129,14 +2039,14 @@ export class TorrentEngine {
     }
   }
 
-  async pause(id: string) {
-    const entry = this.get(id);
+  async function pause(id: string) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
-    const operationResult0 = await this.serial(entry, async () => {
+    const operationResult0 = await serial(entry, async () => {
       entry.paused = true;
-      await this.stop(entry);
+      await stop(entry);
     });
     if (operationResult0 instanceof ElysiaStatus) {
       return operationResult0;
@@ -2144,13 +2054,13 @@ export class TorrentEngine {
     return { ok: true };
   }
 
-  async resume(id: string) {
-    const entry = this.get(id);
+  async function resume(id: string) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
-    const operationResult1 = await this.serial(entry, async () => {
-      await this.inspectStorage(entry);
+    const operationResult1 = await serial(entry, async () => {
+      await inspectStorage(entry);
       if (entry.detail.storageIssue) {
         return problem(409, {
           detail: "Resolve the storage problem or repair the download before resuming",
@@ -2158,7 +2068,7 @@ export class TorrentEngine {
       }
       entry.paused = false;
       if (!entry.torrent) {
-        await this.start(entry);
+        await startTorrent(entry);
       }
     });
     if (operationResult1 instanceof ElysiaStatus) {
@@ -2167,24 +2077,24 @@ export class TorrentEngine {
     return { ok: true };
   }
 
-  async replaceTrackers(id: string, urls: string[]) {
+  async function replaceTrackers(id: string, urls: string[]) {
     const valid = trackerUrls(urls);
     if (valid instanceof ElysiaStatus) {
       return valid;
     }
-    const entry = this.get(id);
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
-    const operationResult2 = await this.serial(entry, async () => {
-      await this.stop(entry);
+    const operationResult2 = await serial(entry, async () => {
+      await stop(entry);
       entry.detail.trackers = valid.map(trackerStats);
       const parsed = await parseTorrent(entry.source);
       parsed.announce = valid;
       entry.source = toMagnetURI(parsed);
       entry.detail.magnet = entry.source;
       if (!entry.paused) {
-        await this.start(entry);
+        await startTorrent(entry);
       }
     });
     if (operationResult2 instanceof ElysiaStatus) {
@@ -2193,9 +2103,10 @@ export class TorrentEngine {
     return { ok: true };
   }
 
-  async remove(id: string, deleteFiles: boolean, operationKey?: string) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Reconcile removal receipts before changing the torrent or its files.
+  async function remove(id: string, deleteFiles: boolean, operationKey?: string) {
     if (operationKey) {
-      const receipt = this.db
+      const receipt = db
         .select()
         .from(operationReceipts)
         .where(eq(operationReceipts.id, operationKey))
@@ -2215,12 +2126,12 @@ export class TorrentEngine {
         return problem(409, { detail: "This operation key was used for another torrent" });
       }
     }
-    const entry = this.get(id);
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
     if (operationKey) {
-      this.db
+      db
         .insert(operationReceipts)
         .values({
           createdAt: Date.now(),
@@ -2233,8 +2144,9 @@ export class TorrentEngine {
         .onConflictDoNothing()
         .run();
     }
-    const operationResult3 = await this.serial(entry, async () => {
-      await this.stop(entry);
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep file ownership checks and persisted removal in one serialized operation.
+    const operationResult3 = await serial(entry, async () => {
+      await stop(entry);
       if (deleteFiles && entry.storageClaimed) {
         try {
           await storageRoot(entry.detail.savePath, entry.storageRoot);
@@ -2244,17 +2156,17 @@ export class TorrentEngine {
               "The original storage is unavailable. Reconnect it before deleting files, or remove the torrent while keeping its data.",
           });
         }
-        const shared = this.storageReservations(new Set([entry]));
+        const shared = storageReservations(new Set([entry]));
         if (shared instanceof ElysiaStatus) {
           return shared;
         }
         const paths: { key: string; path: string }[] = [];
         for (const file of entry.detail.files) {
-          const key = this.storageKey(entry.detail.savePath, file.path);
+          const key = storageKey(entry.detail.savePath, file.path);
           if (key instanceof ElysiaStatus) {
             return key;
           }
-          const path = this.storagePath(entry.detail.savePath, file.path);
+          const path = storagePath(entry.detail.savePath, file.path);
           if (path instanceof ElysiaStatus) {
             return path;
           }
@@ -2268,11 +2180,11 @@ export class TorrentEngine {
           })
         );
       }
-      this.entries.delete(id);
-      this.dirtyEntries.delete(entry);
-      this.persistedEntries.delete(entry);
-      this.entryStructures.delete(entry);
-      this.db.transaction((tx) => {
+      state.entries.delete(id);
+      state.dirtyEntries.delete(entry);
+      state.persistedEntries.delete(entry);
+      state.entryStructures.delete(entry);
+      db.transaction((tx) => {
         const retainedKey = `retained:${id}:${new Bun.CryptoHasher("sha256").update(entry.detail.savePath).digest("hex")}`;
         if (!deleteFiles && entry.storageClaimed) {
           const result = JSON.stringify({ files: entry.storageFiles, root: entry.storageRoot });
@@ -2306,7 +2218,7 @@ export class TorrentEngine {
             .run();
         }
       });
-      this.changed("state");
+      changed("state");
     });
     if (operationResult3 instanceof ElysiaStatus) {
       return operationResult3;
@@ -2314,7 +2226,7 @@ export class TorrentEngine {
     return { ok: true };
   }
 
-  private selectFiles(entry: Entry) {
+  function selectFiles(entry: Entry) {
     const { torrent } = entry;
     if (!torrent?.ready) {
       return;
@@ -2334,18 +2246,18 @@ export class TorrentEngine {
     }
   }
 
-  async priority(id: string, index: number, priority: FilePriority) {
-    const entry = this.get(id);
+  async function setFilePriority(id: string, index: number, priority: FilePriority) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
-    const operationResult4 = await this.serial(entry, () => {
-      const file = this.details(entry).files[index];
+    const operationResult4 = await serial(entry, () => {
+      const file = buildDetail(entry).files[index];
       if (!file) {
         return problem(404, { detail: "File not found" });
       }
       file.priority = priority;
-      this.selectFiles(entry);
+      selectFiles(entry);
     });
     if (operationResult4 instanceof ElysiaStatus) {
       return operationResult4;
@@ -2353,7 +2265,7 @@ export class TorrentEngine {
     return { ok: true };
   }
 
-  private assertVerification(entry: Entry) {
+  function assertVerification(entry: Entry) {
     if (entry.verifying || entryStatus(entry) === "checking") {
       return problem(409, { detail: "Verification is already in progress for this torrent" });
     }
@@ -2362,11 +2274,12 @@ export class TorrentEngine {
     }
   }
 
-  private async verifyData(entry: Entry) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep verification listeners, storage checks, and cleanup in the same operation.
+  async function verifyData(entry: Entry) {
     try {
       entry.storageRoot = await storageRoot(entry.detail.savePath, entry.storageRoot);
       for (const file of entry.detail.files) {
-        const path = this.storagePath(entry.detail.savePath, file.path);
+        const path = storagePath(entry.detail.savePath, file.path);
         if (path instanceof ElysiaStatus) {
           return path;
         }
@@ -2380,17 +2293,17 @@ export class TorrentEngine {
         cause,
         entry.detail.files.map((file) => file.path),
         {
-          dataDir: this.dataDir,
+          dataDir: engineOptions.dataDir,
           expected: entry.storageRoot,
           savePath: entry.detail.savePath,
           torrentId: entry.detail.id,
         }
       );
-      await this.blockStorage(entry, issue);
+      await blockStorage(entry, issue);
       return problem(409, { detail: issue.message });
     }
-    await this.stop(entry);
-    await this.start(entry, { checking: true });
+    await stop(entry);
+    await startTorrent(entry, { checking: true });
     const { torrent } = entry;
     if (!torrent) {
       return problem(500, { detail: "Unable to verify" });
@@ -2424,16 +2337,16 @@ export class TorrentEngine {
         torrent.once("close", closed);
       });
       if (outcome !== "ready") {
-        await this.stop(entry);
+        await stop(entry);
         return outcome === "timeout"
           ? problem(408, { detail: "Verification exceeded the 60-second timeout" })
           : problem(409, { detail: "Verification stopped before completion" });
       }
-      this.details(entry);
+      buildDetail(entry);
       entry.storageFiles = [];
-      const inspected = await this.inspectFiles(entry);
+      const inspected = await inspectFiles(entry);
       if (inspected instanceof ElysiaStatus) {
-        await this.blockStorage(entry, {
+        await blockStorage(entry, {
           detectedAt: Date.now(),
           kind: "invalid-path",
           message: inspected.response.detail,
@@ -2447,18 +2360,18 @@ export class TorrentEngine {
         });
       }
     } catch (cause) {
-      await this.stop(entry);
+      await stop(entry);
       entry.detail.error ??= cause instanceof Error ? cause.message : "Unable to verify storage";
-      this.save(entry);
+      save(entry);
       throw cause;
     }
   }
 
-  private async finishVerification(entry: Entry) {
+  async function finishVerification(entry: Entry) {
     if (entry.paused || entry.detail.storageIssue) {
-      await this.stop(entry);
+      await stop(entry);
     } else {
-      this.selectFiles(entry);
+      selectFiles(entry);
       entry.torrent?.resume();
       const parsed = await parseTorrent(entry.source);
       for (const peer of parsed.peerAddresses ?? []) {
@@ -2470,14 +2383,14 @@ export class TorrentEngine {
     }
   }
 
-  private async checkedOperation<Result>(entry: Entry, action: () => Promise<Result>) {
-    const denied = this.assertVerification(entry);
+  async function checkedOperation<Result>(entry: Entry, action: () => Promise<Result>) {
+    const denied = assertVerification(entry);
     if (denied instanceof ElysiaStatus) {
       return denied;
     }
-    const operation = this.serial(entry, action);
+    const operation = serial(entry, action);
     entry.verifying = true;
-    this.cancelRanges(entry.detail.id);
+    cancelRanges(entry.detail.id);
     try {
       const result = await operation;
       if (result instanceof ElysiaStatus) {
@@ -2489,17 +2402,17 @@ export class TorrentEngine {
     return { ok: true };
   }
 
-  verify(id: string) {
-    const entry = this.get(id);
+  function verify(id: string) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
-    return this.checkedOperation(entry, async () => {
+    return checkedOperation(entry, async () => {
       const expected = new Map(
-        this.details(entry).files.map((file) => [file.path, file.downloaded ?? 0])
+        buildDetail(entry).files.map((file) => [file.path, file.downloaded ?? 0])
       );
-      await this.inspectStorage(entry);
-      const validationResult5 = await this.verifyData(entry);
+      await inspectStorage(entry);
+      const validationResult5 = await verifyData(entry);
       if (validationResult5 instanceof ElysiaStatus) {
         return validationResult5;
       }
@@ -2525,37 +2438,37 @@ export class TorrentEngine {
         entry.detail.storageIssue = null;
         entry.detail.error = null;
       }
-      await this.finishVerification(entry);
+      await finishVerification(entry);
     });
   }
 
-  repair(id: string) {
-    const entry = this.get(id);
+  function repair(id: string) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
-    return this.checkedOperation(entry, async () => {
-      const validationResult6 = await this.verifyData(entry);
+    return checkedOperation(entry, async () => {
+      const validationResult6 = await verifyData(entry);
       if (validationResult6 instanceof ElysiaStatus) {
         return validationResult6;
       }
       entry.detail.storageIssue = null;
       entry.detail.error = null;
-      await this.finishVerification(entry);
+      await finishVerification(entry);
     });
   }
 
-  private assertLocation(entry: Entry, path: string) {
-    const reserved = this.storageReservations(new Set([entry]));
+  function assertLocation(entry: Entry, path: string) {
+    const reserved = storageReservations(new Set([entry]));
     if (reserved instanceof ElysiaStatus) {
       return reserved;
     }
     for (const file of entry.detail.files) {
-      const target = this.storagePath(path, file.path);
+      const target = storagePath(path, file.path);
       if (target instanceof ElysiaStatus) {
         return target;
       }
-      const key = this.storageKey(path, file.path);
+      const key = storageKey(path, file.path);
       if (key instanceof ElysiaStatus) {
         return key;
       }
@@ -2567,8 +2480,8 @@ export class TorrentEngine {
     }
   }
 
-  locate(id: string, downloadPath: string) {
-    const entry = this.get(id);
+  function locate(id: string, downloadPath: string) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
@@ -2577,35 +2490,35 @@ export class TorrentEngine {
     }
     const path = resolvePath(downloadPath);
     // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep filesystem identity checks and recovery decisions in the same operation.
-    return this.checkedOperation(entry, async () => {
+    return checkedOperation(entry, async () => {
       let root: StorageIdentity;
       try {
         root = await storageRoot(path, null);
-        const validationResult7 = this.assertLocation(entry, path);
+        const validationResult7 = assertLocation(entry, path);
         if (validationResult7 instanceof ElysiaStatus) {
           return validationResult7;
         }
       } catch (cause) {
         return problem(409, {
           detail: storageFailure(cause, [], {
-            dataDir: this.dataDir,
+            dataDir: engineOptions.dataDir,
             savePath: path,
             torrentId: id,
           }).message,
         });
       }
-      await this.stop(entry);
+      await stop(entry);
       try {
-        const validationResult8 = this.assertLocation(entry, path);
+        const validationResult8 = assertLocation(entry, path);
         if (validationResult8 instanceof ElysiaStatus) {
           if (!(entry.paused || entry.detail.storageIssue)) {
-            await this.start(entry);
+            await startTorrent(entry);
           }
           return validationResult8;
         }
       } catch (cause) {
         if (!(entry.paused || entry.detail.storageIssue)) {
-          await this.start(entry);
+          await startTorrent(entry);
         }
         throw cause;
       }
@@ -2613,7 +2526,7 @@ export class TorrentEngine {
       entry.storageRoot = root;
       entry.storageFiles = [];
       entry.storageClaimed = true;
-      const validationResult9 = await this.verifyData(entry);
+      const validationResult9 = await verifyData(entry);
       if (validationResult9 instanceof ElysiaStatus) {
         return validationResult9;
       }
@@ -2636,12 +2549,12 @@ export class TorrentEngine {
         };
         entry.detail.error = entry.detail.storageIssue.message;
       }
-      await this.finishVerification(entry);
+      await finishVerification(entry);
     });
   }
 
-  async addPeer(id: string, peer: string) {
-    const entry = this.get(id);
+  async function addPeer(id: string, peer: string) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
@@ -2651,7 +2564,7 @@ export class TorrentEngine {
     if (
       entry.torrent.ready &&
       entry.torrent.done &&
-      this.settings.seedingConnectionMode === "incoming-only"
+      engineSettings.seedingConnectionMode === "incoming-only"
     ) {
       return problem(409, {
         detail:
@@ -2674,46 +2587,46 @@ export class TorrentEngine {
     parsed.peerAddresses = [...new Set([...(parsed.peerAddresses ?? []), peer])];
     entry.source = toMagnetURI(parsed);
     entry.detail.magnet = entry.source;
-    this.save(entry);
+    save(entry);
     return { ok: true };
   }
 
-  async updateSettings(settings: SettingsInput) {
+  async function updateSettings(settings: SettingsInput) {
     if (settings.downloadPath !== undefined && !isAbsolute(settings.downloadPath)) {
       return problem(400, { detail: "The folder must be an absolute path" });
     }
-    const destination = this.destinations.get("default");
+    const destination = state.destinations.get("default");
     if (destination && settings.downloadPath !== undefined) {
-      await this.saveDestination("default", {
+      await saveDestination("default", {
         downloadPath: settings.downloadPath,
         moveFiles: settings.moveFiles,
         name: destination.name,
       });
     }
-    Object.assign(this.settings, {
+    Object.assign(engineSettings, {
       deleteTorrentFileAfterAdd:
-        settings.deleteTorrentFileAfterAdd ?? this.settings.deleteTorrentFileAfterAdd,
-      downloadLimit: settings.downloadLimit ?? this.settings.downloadLimit,
+        settings.deleteTorrentFileAfterAdd ?? engineSettings.deleteTorrentFileAfterAdd,
+      downloadLimit: settings.downloadLimit ?? engineSettings.downloadLimit,
       downloadPath:
         settings.downloadPath === undefined
-          ? this.settings.downloadPath
+          ? engineSettings.downloadPath
           : resolvePath(settings.downloadPath),
-      runInBackground: settings.runInBackground ?? this.settings.runInBackground,
-      seedingConnectionMode: settings.seedingConnectionMode ?? this.settings.seedingConnectionMode,
-      theme: settings.theme ?? this.settings.theme,
-      uploadLimit: settings.uploadLimit ?? this.settings.uploadLimit,
+      runInBackground: settings.runInBackground ?? engineSettings.runInBackground,
+      seedingConnectionMode: settings.seedingConnectionMode ?? engineSettings.seedingConnectionMode,
+      theme: settings.theme ?? engineSettings.theme,
+      uploadLimit: settings.uploadLimit ?? engineSettings.uploadLimit,
     });
-    this.client.throttleDownload(this.settings.downloadLimit);
-    this.client.throttleUpload(this.settings.uploadLimit);
-    this.connections.setSeedingMode(this.settings.seedingConnectionMode);
-    this.client.seedOutgoingConnections = this.settings.seedingConnectionMode === "balanced";
-    this.config("settings", this.settings);
-    await this.diskSpace();
-    return this.settings;
+    torrentClient.throttleDownload(engineSettings.downloadLimit);
+    torrentClient.throttleUpload(engineSettings.uploadLimit);
+    scheduler.setSeedingMode(engineSettings.seedingConnectionMode);
+    torrentClient.seedOutgoingConnections = engineSettings.seedingConnectionMode === "balanced";
+    config("settings", engineSettings);
+    await diskSpace();
+    return engineSettings;
   }
 
-  reannounce(id: string) {
-    const entry = this.get(id);
+  function reannounce(id: string) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
@@ -2729,15 +2642,16 @@ export class TorrentEngine {
     return { ok: true };
   }
 
-  get(id: string) {
-    const entry = this.entries.get(id);
+  function get(id: string) {
+    const entry = state.entries.get(id);
     if (!entry) {
       return problem(404, { detail: "Torrent not found" });
     }
     return entry;
   }
 
-  private summary(entry: Entry): TorrentDetail {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing summary calculation while moving it into the engine closure.
+  function summarizeTorrent(entry: Entry): TorrentDetail {
     const { torrent, detail } = entry;
     detail.status = entryStatus(entry);
     detail.downloadSpeed = torrent?.downloadSpeed ?? 0;
@@ -2777,8 +2691,8 @@ export class TorrentEngine {
     return detail;
   }
 
-  private details(entry: Entry): TorrentDetail {
-    const detail = this.summary(entry);
+  function buildDetail(entry: Entry): TorrentDetail {
+    const detail = summarizeTorrent(entry);
     const { torrent } = entry;
     if (torrent?.ready) {
       detail.comment = torrent.comment || "";
@@ -2823,38 +2737,38 @@ export class TorrentEngine {
     return detail;
   }
 
-  detail(id: string) {
-    const entry = this.get(id);
+  function readDetail(id: string) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
-    return this.details(entry);
+    return buildDetail(entry);
   }
 
-  snapshot(selected: string | null, includeDetail?: boolean): DashboardState {
-    const entries = [...this.entries.values()];
-    const details = entries.map((entry) => this.summary(entry));
-    const chosen = selected ? this.entries.get(selected) : entries[0];
+  function snapshot(selected: string | null, includeDetail?: boolean): DashboardState {
+    const entries = [...state.entries.values()];
+    const details = entries.map((entry) => summarizeTorrent(entry));
+    const chosen = selected ? state.entries.get(selected) : entries[0];
     return {
-      destinations: [...this.destinations.values()],
-      detail: includeDetail !== false && chosen ? this.details(chosen) : null,
-      history: [...this.history],
+      destinations: [...state.destinations.values()],
+      detail: includeDetail !== false && chosen ? buildDetail(chosen) : null,
+      history: [...state.history],
       session: {
         active: details.filter((detail) => !["paused", "error"].includes(detail.status)).length,
         dhtNodes:
-          (this.client.dht as { nodes?: { count: () => number } } | null)?.nodes?.count() ?? 0,
-        downloadSpeed: this.client.downloadSpeed,
+          (torrentClient.dht as { nodes?: { count: () => number } } | null)?.nodes?.count() ?? 0,
+        downloadSpeed: torrentClient.downloadSpeed,
         engine: WebTorrent.VERSION,
-        freeSpace: this.freeSpace,
-        mode: this.mode,
+        freeSpace: state.freeSpace,
+        mode: state.mode,
         peers: details.reduce((sum, detail) => sum + detail.peers, 0),
-        port: this.client.torrentPort,
-        received: this.received,
-        startedAt: this.startedAt,
-        uploaded: this.uploaded,
-        uploadSpeed: this.client.uploadSpeed,
+        port: torrentClient.torrentPort,
+        received: state.received,
+        startedAt: state.startedAt,
+        uploaded: state.uploaded,
+        uploadSpeed: torrentClient.uploadSpeed,
       },
-      settings: this.settings,
+      settings: engineSettings,
       torrents: details.map(
         ({
           savePath,
@@ -2879,8 +2793,14 @@ export class TorrentEngine {
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Validation and cancellation stay with the selection cleanup they protect.
-  async waitForRange(request: string, id: string, index: number, start: number, end: number) {
-    const entry = this.get(id);
+  async function waitForRange(
+    request: string,
+    id: string,
+    index: number,
+    start: number,
+    end: number
+  ) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
@@ -2893,7 +2813,7 @@ export class TorrentEngine {
       return problem(409, { detail: "Files are being moved. Try again afterward." });
     }
     const { torrent } = entry;
-    const stats = this.details(entry).files[index];
+    const stats = buildDetail(entry).files[index];
     if (!stats) {
       return problem(404, { detail: "File not found" });
     }
@@ -2915,13 +2835,13 @@ export class TorrentEngine {
     ) {
       return problem(416, { detail: "The requested range is outside the file" });
     }
-    const path = this.storagePath(entry.detail.savePath, stats.path);
+    const path = storagePath(entry.detail.savePath, stats.path);
     if (path instanceof ElysiaStatus) {
       return path;
     }
     const first = Math.floor((file.offset + start) / torrent.pieceLength);
     const last = Math.floor((file.offset + end) / torrent.pieceLength);
-    // These private stream selections are pinned to WebTorrent 3.0.21. Unlike public
+    // These stream selections are pinned to WebTorrent 3.0.21. Unlike public
     // selections, they never merge with or change the user's file priorities.
     const runtime = torrent as Torrent & {
       bitfield: { get: (piece: number) => boolean };
@@ -2941,7 +2861,7 @@ export class TorrentEngine {
     // Read ahead in bytes: VLC asks for 1 MiB at a time, and pieces can be 16 KiB to 16 MiB.
     const ahead = Math.min(last + Math.ceil((16 * 1024 * 1024) / torrent.pieceLength), fileLast);
     const playing = `${id}:${index}`;
-    const previous = this.readAhead.get(playing);
+    const previous = state.readAhead.get(playing);
     if (previous) {
       clearTimeout(previous.timer);
       previous.release();
@@ -2952,13 +2872,13 @@ export class TorrentEngine {
         runtime._deselect(first, ahead, true);
       }
     };
-    this.readAhead.set(playing, {
+    state.readAhead.set(playing, {
       id,
       release,
       // A player that stopped reading gives the bandwidth back to the whole torrent.
       timer: setTimeout(() => {
         release();
-        this.readAhead.delete(playing);
+        state.readAhead.delete(playing);
       }, 30_000),
     });
     if (!missing()) {
@@ -2966,7 +2886,7 @@ export class TorrentEngine {
       return { identity: { dev: identity.dev, ino: identity.ino }, path };
     }
     const controller = new AbortController();
-    this.ranges.set(request, { controller, id });
+    state.ranges.set(request, { controller, id });
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90_000)]);
     // The first request also fetches the end of the file, where containers often keep indexes.
     const tail = start === 0 ? Math.max(first, fileLast - 1) : null;
@@ -2997,41 +2917,42 @@ export class TorrentEngine {
       if (tail !== null && !runtime.destroyed) {
         runtime._deselect(tail, fileLast, true);
       }
-      this.ranges.delete(request);
+      state.ranges.delete(request);
     }
   }
 
-  cancelRange(request: string) {
-    this.ranges.get(request)?.controller.abort();
+  function cancelRange(request: string) {
+    state.ranges.get(request)?.controller.abort();
   }
 
-  cancelRanges(id?: string) {
-    for (const range of this.ranges.values()) {
+  function cancelRanges(id?: string) {
+    for (const range of state.ranges.values()) {
       if (id === undefined || range.id === id) {
         range.controller.abort();
       }
     }
-    for (const [playing, readAhead] of this.readAhead) {
+    for (const [playing, readAhead] of state.readAhead) {
       if (id === undefined || readAhead.id === id) {
         clearTimeout(readAhead.timer);
         readAhead.release();
-        this.readAhead.delete(playing);
+        state.readAhead.delete(playing);
       }
     }
   }
 
-  async file(id: string, index: number) {
-    const entry = this.get(id);
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Validate availability and file identity before exposing a disk path.
+  async function readFile(id: string, index: number) {
+    const entry = get(id);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
     if (!(entry.verifying || entry.moving)) {
-      const operationResult5 = await this.serial(entry, () => this.inspectStorage(entry));
+      const operationResult5 = await serial(entry, () => inspectStorage(entry));
       if (operationResult5 instanceof ElysiaStatus) {
         return operationResult5;
       }
     }
-    const detail = this.details(entry);
+    const detail = buildDetail(entry);
     if (detail.status === "checking" || entry.verifying) {
       return problem(409, {
         detail: "Files are being verified. Try again after verification completes.",
@@ -3055,7 +2976,7 @@ export class TorrentEngine {
     if (file.progress !== 1) {
       return problem(409, { detail: "This file has not finished downloading" });
     }
-    const path = this.storagePath(detail.savePath, file.path);
+    const path = storagePath(detail.savePath, file.path);
     if (path instanceof ElysiaStatus) {
       return path;
     }
@@ -3066,37 +2987,37 @@ export class TorrentEngine {
     return { identity: { dev: identity.dev, ino: identity.ino }, name: file.name, path };
   }
 
-  async close() {
+  async function close() {
     // biome-ignore lint/suspicious/noUnnecessaryConditions: A prior lifecycle close can change this state.
-    if (this.closed) {
+    if (state.closed) {
       return;
     }
-    this.closed = true;
-    this.cancelRanges();
+    state.closed = true;
+    cancelRanges();
     try {
-      clearInterval(this.timer);
-      if (this.telemetryTimer) {
-        clearTimeout(this.telemetryTimer);
+      clearInterval(state.timer);
+      if (state.telemetryTimer) {
+        clearTimeout(state.telemetryTimer);
       }
-      this.connections.close();
-      this.listeners.clear();
-      await this.diskCheck;
-      await this.storageCheck;
-      await Promise.allSettled(this.destinationOperation ? [this.destinationOperation] : []);
-      await Promise.allSettled([...this.entries.values()].map((entry) => entry.operation));
+      scheduler.close();
+      state.listeners.clear();
+      await state.diskCheck;
+      await state.storageCheck;
+      await Promise.allSettled(destinationOperation ? [destinationOperation] : []);
+      await Promise.allSettled([...state.entries.values()].map((entry) => entry.operation));
       // Drain torrent stores before bounding cleanup of remote router mappings.
-      await Promise.all([...this.entries.values()].map((entry) => this.stop(entry)));
-      for (const entry of this.entries.values()) {
-        this.save(entry);
+      await Promise.all([...state.entries.values()].map((entry) => stop(entry)));
+      for (const entry of state.entries.values()) {
+        save(entry);
       }
-      this.config("traffic", { received: this.received, uploaded: this.uploaded });
-      this.db.$client.close(true);
-      if (!this.client.destroyed) {
+      config("traffic", { received: state.received, uploaded: state.uploaded });
+      db.$client.close(true);
+      if (!torrentClient.destroyed) {
         let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
           await Promise.race([
             new Promise<void>((resolve, reject) =>
-              this.client.destroy((error) => (error ? reject(error) : resolve()))
+              torrentClient.destroy((error) => (error ? reject(error) : resolve()))
             ),
             new Promise<void>((resolve) => {
               deadline = setTimeout(resolve, 1000);
@@ -3107,10 +3028,121 @@ export class TorrentEngine {
         }
       }
     } finally {
-      this.cryptoDiagnostics?.close();
+      cryptoDiagnostics?.close();
     }
   }
+  startup.move();
+  await using recovery = new AsyncDisposableStack();
+  recovery.defer(close);
+  // Reconcile receipts before a restored torrent may resume writing to storage.
+  for (const receipt of db
+    .select()
+    .from(operationReceipts)
+    .where(eq(operationReceipts.status, "pending"))
+    .all()) {
+    if (receipt.kind === "move") {
+      // biome-ignore lint/performance/noAwaitInLoops: Filesystem recovery precedes all torrent starts.
+      const recovered = await finishMoveJournal(receipt.id);
+      if (recovered instanceof ElysiaStatus) {
+        throw new Error(recovered.response.detail);
+      }
+    } else if (receipt.kind === "add") {
+      db
+        .update(operationReceipts)
+        .set({
+          completedAt: Date.now(),
+          status: state.entries.has(receipt.target) ? "done" : "failed",
+        })
+        .where(eq(operationReceipts.id, receipt.id))
+        .run();
+    } else if (receipt.kind === "remove") {
+      if (state.entries.has(receipt.target)) {
+        const removed = await remove(
+          receipt.target,
+          JSON.parse(receipt.result ?? "{}").deleteFiles === true,
+          receipt.id
+        );
+        if (removed instanceof ElysiaStatus) {
+          throw new Error(removed.response.detail);
+        }
+      } else {
+        db
+          .update(operationReceipts)
+          .set({
+            completedAt: Date.now(),
+            result: JSON.stringify({
+              deleteFiles: JSON.parse(receipt.result ?? "{}").deleteFiles === true,
+              ok: true,
+            }),
+            status: "done",
+          })
+          .where(eq(operationReceipts.id, receipt.id))
+          .run();
+      }
+    }
+  }
+  if (state.entries.size === 0) {
+    await mkdir(engineSettings.downloadPath, { recursive: true });
+  }
+  await diskSpace();
+  await Promise.all(
+    [...state.entries.values()].map(async (entry) => {
+      await inspectStorage(entry);
+      if (!entry.paused) {
+        await startTorrent(entry);
+      }
+    })
+  );
+  state.telemetryValues = measureTelemetry();
+
+  recovery.move();
+  return {
+    add,
+    addPeer,
+    assertReady,
+    cancelRange,
+    cancelRanges,
+    client: torrentClient,
+    close,
+    connectionDiagnostics,
+    detail: readDetail,
+    file: readFile,
+    get,
+    locate,
+    get mode() {
+      return state.mode;
+    },
+    set mode(value: "desktop" | "server") {
+      state.mode = value;
+    },
+    pause,
+    priority: setFilePriority,
+    reannounce,
+    refreshSnapshot,
+    remove,
+    removeDestination,
+    repair,
+    replaceTrackers,
+    resume,
+    saveDestination,
+    setObserved,
+    settings: engineSettings,
+    snapshot,
+    get stateRevision() {
+      return state.stateRevision;
+    },
+    subscribeChanges,
+    get telemetryRevision() {
+      return state.telemetryRevision;
+    },
+    updateDestinationPresentation,
+    updateSettings,
+    verify,
+    waitForRange,
+  };
 }
+
+export type TorrentEngine = Awaited<ReturnType<typeof openTorrentEngine>>;
 
 export type EnginePort = TorrentEngine | WorkerTorrentEngine;
 

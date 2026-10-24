@@ -6,6 +6,7 @@ const root = join(import.meta.dir, "..");
 const runtime = join(root, "runtime");
 await mkdir(runtime, { recursive: true });
 const worker = await Bun.build({
+  define: { "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "development") },
   entrypoints: [join(root, "src/api/modules/torrents/worker.ts")],
   external: ["webtorrent", "parse-torrent"],
   naming: "engine-worker.worker",
@@ -20,7 +21,7 @@ await Bun.write(
   join(runtime, "anilist-client.json"),
   JSON.stringify(
     resolveAniListClient(
-      process.env.TOFU_RELEASE === "1" ? "release" : "dev",
+      process.env.NODE_ENV === "production" ? "release" : "dev",
       process.env.TOFU_ANILIST_CLIENT_ID
     )
   )
