@@ -52,7 +52,6 @@ export function desktopInstanceConfig(identity: DesktopIdentity) {
     downloadPath: process.env.TOFU_DOWNLOAD_DIR,
     homeDir: homedir(),
     platform: process.platform,
-    port: process.env.TOFU_PORT,
     profile,
   });
   if (identity.identifier !== config.identifier) {
@@ -88,7 +87,6 @@ export function currentInstanceConfig(runtime?: ApplicationRuntime) {
     downloadPath: process.env.TOFU_DOWNLOAD_DIR,
     homeDir: homedir(),
     platform: process.platform,
-    port: process.env.TOFU_PORT,
     profile,
   });
   return { ...config, desktop };
@@ -102,7 +100,6 @@ export function resolveInstanceConfig(options: {
   desktop: boolean;
   dataDir: string | undefined;
   downloadPath: string | undefined;
-  port: string | undefined;
 }): InstanceConfig {
   const development = options.profile === "dev";
   const directoryName = development ? "Tofu-dev" : "Tofu";
@@ -113,11 +110,6 @@ export function resolveInstanceConfig(options: {
           options.homeDir,
           options.platform === "darwin" ? "Library/Application Support" : ".local/share"
         );
-  const webPort = development ? "3030" : "3031";
-  const port = Number(options.port ?? (options.desktop ? "0" : webPort));
-  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-    throw new Error("TOFU_PORT must be an integer between 0 and 65535");
-  }
   const dataDir = resolve(options.dataDir ?? join(stateRoot, directoryName));
   if (development && within(dataDir, join(stateRoot, "Tofu"))) {
     throw new Error(
@@ -131,7 +123,6 @@ export function resolveInstanceConfig(options: {
     ),
     identifier: development ? "app.tofu.torrents.dev" : "app.tofu.torrents",
     name: development ? "Tofu Dev" : "Tofu",
-    port,
     profile: options.profile,
   };
 }
@@ -146,7 +137,6 @@ export async function acquireInstance(config: InstanceConfig) {
       downloadPath: undefined,
       homeDir: homedir(),
       platform: process.platform,
-      port: undefined,
       profile: "release",
     }).dataDir;
     let canonicalReleaseDir = releaseDir;
@@ -203,7 +193,6 @@ export interface InstanceConfig {
   downloadPath: string;
   identifier: string;
   name: string;
-  port: number;
   profile: InstanceProfile;
 }
 

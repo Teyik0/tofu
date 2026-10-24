@@ -5,7 +5,7 @@ pre-commit:
       stage_fixed: true
 
     - name: typescript
-      run: bun check
+      run: bun tscheck
 
 pre-push:
   jobs:

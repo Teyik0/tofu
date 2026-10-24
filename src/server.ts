@@ -1,38 +1,28 @@
 import { furin } from "@teyik0/furin";
 import { desktopApp } from "@teyik0/furin-electrobun/server";
-import { createContext, Elysia } from "elysia";
+import { Elysia } from "elysia";
 import { initLogger, toLoggerConfig, toMiddlewareOptions } from "evlog";
 import { config } from "../evlog.config";
 import { apiPlugin } from "./api";
 import { instance } from "./api/lib/database-plugin";
 import { closeResources } from "./api/lib/lifecycle-plugin";
+import { listen } from "./api/lib/network";
 import { sync } from "./sync";
 
 initLogger(toLoggerConfig(config));
 
-await apiPlugin.modules;
-const { access, connections, torrents } = createContext(apiPlugin).prototype;
-
-const app = new Elysia({
-  name: "tofu",
-  serve: {
-    hostname: "127.0.0.1",
-    idleTimeout: 120,
-    maxRequestBodySize: 9 * 1024 * 1024,
-  },
-})
+const app = new Elysia({ name: "tofu" })
   .use(apiPlugin)
   .use(
-    desktopApp({
+    desktopApp(({ access, torrents }) => ({
       admission: access.admit.bind(access),
       background: () => torrents.settings.runInBackground === true,
-      listen: connections.listenOptions.bind(connections),
       window: {
         frame: { height: 940, width: 1400 },
         renderer: "native",
         title: instance.name,
       },
-    })
+    }))
   )
   .onStop(closeResources)
   .guard({ noStore: true })
@@ -47,7 +37,7 @@ const app = new Elysia({
       sync,
     })
   )
-  .listen(connections.listenOptions());
+  .listen(listen);
 
 const shutdown = async () => {
   await app.stop(true);

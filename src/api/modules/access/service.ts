@@ -5,6 +5,7 @@ import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { problem } from "elysia";
 import {
   authorizedDevices,
+  connectionState,
   deviceSessions,
   pairingInvitations,
   serverIdentity,
@@ -66,10 +67,10 @@ export interface RemoteAccessPolicy {
 
 interface AccessServiceOptions {
   db: TofuDatabase;
+  defaultLanPort: number;
   /** The host runs headless; with remote access off its loopback clients act as owner. */
   headless: () => boolean;
   now: () => number;
-  policy: () => RemoteAccessPolicy;
 }
 
 /**
@@ -77,8 +78,94 @@ interface AccessServiceOptions {
  * grants (`devices.ts`) build on it. Every expected failure is a returned Elysia problem so routes
  * keep literal statuses in Eden types.
  */
+export type Exposure = "lan" | "tailscale" | "proxy";
+
+/**
+ * Independent ways other devices reach this server. Each terminates HTTPS outside the
+ * application and forwards to its loopback HTTP listener.
+ */
+export interface SharingConfig {
+  /** HTTPS served by the native companion on every interface with the installation CA. */
+  lan: {
+    enabled: boolean;
+    /** Extra host names covered by the local network certificate, such as `nas.local`. */
+    hostnames: string[];
+    /** Public HTTPS port on the local network, distinct from the application listener. */
+    port: number;
+  };
+  /** A custom TLS-terminating reverse proxy. */
+  proxy: {
+    enabled: boolean;
+    /** Browser-facing HTTPS origin of the proxy. */
+    origin: string | null;
+    /** Immediate peers (besides loopback) allowed to forward client addresses and hosts. */
+    trustedProxies: string[];
+  };
+  tailscale: {
+    enabled: boolean;
+    mode: "embedded" | "system";
+    /** Tailscale HTTPS origin, learned from a successful check. */
+    origin: string | null;
+    /** Tofu created the system Serve mapping and removes it once it is no longer used. */
+    serveOwned: boolean;
+  };
+}
+
+/** The exclusive single-transport configuration stored by earlier versions. */
+interface LegacyConfig {
+  enabled: boolean;
+  lanHostnames?: string[];
+  port: number;
+  proxyOrigin: string | null;
+  tailscaleMode?: "embedded" | "system";
+  tailscaleOrigin: string | null;
+  tailscaleServeOwned?: boolean;
+  transport: Exposure;
+  trustedProxies?: string[];
+}
+
+/** A change journaled before its exposure is activated. */
+interface PendingChange {
+  config: SharingConfig;
+  /** Tofu was about to create the system Serve mapping for this change. */
+  serveIntent: boolean;
+}
+
+/** Reads a stored configuration, including the exclusive single-transport format. */
+function upgrade(value: SharingConfig | LegacyConfig, defaultLanPort: number) {
+  if (!("transport" in value)) {
+    return { lan: value.lan, proxy: value.proxy, tailscale: value.tailscale };
+  }
+  const lan = value.enabled && value.transport === "lan";
+  return {
+    lan: {
+      enabled: lan,
+      hostnames: value.lanHostnames ?? [],
+      // A shared local network address keeps its visible port.
+      port: lan ? value.port : defaultLanPort,
+    },
+    proxy: {
+      enabled: value.enabled && value.transport === "proxy",
+      origin: value.proxyOrigin,
+      trustedProxies: value.trustedProxies ?? [],
+    },
+    tailscale: {
+      enabled: value.enabled && value.transport === "tailscale",
+      mode: value.tailscaleMode ?? "system",
+      origin: value.tailscaleOrigin,
+      serveOwned: value.tailscaleServeOwned ?? false,
+    },
+  } satisfies SharingConfig;
+}
+
 export class AccessService {
   private readonly options: AccessServiceOptions;
+  sharing: SharingConfig;
+  listenerPort: number | null = null;
+  private operation: Promise<void> = Promise.resolve();
+  private lanHosts: string[] = [];
+  private readonly serving = new Set<Exposure>();
+  private readonly failures = new Map<Exposure, string>();
   private readonly aborts = new Map<string, AbortController>();
   private readonly sessionReaders = new Map<string, Set<AbortController>>();
 
@@ -96,6 +183,176 @@ export class AccessService {
       })
       .onConflictDoNothing()
       .run();
+    const stored = this.read<SharingConfig | LegacyConfig>("active");
+    const lastGood = this.read<SharingConfig | LegacyConfig>("last-good");
+    let active = stored
+      ? upgrade(stored, options.defaultLanPort)
+      : {
+          lan: { enabled: false, hostnames: [], port: options.defaultLanPort },
+          proxy: { enabled: false, origin: null, trustedProxies: [] },
+          tailscale: { enabled: false, mode: "system" as const, origin: null, serveOwned: false },
+        };
+    const pending = this.read<PendingChange | { config: LegacyConfig }>("pending");
+    if (pending && "serveIntent" in pending) {
+      // An interrupted change never widens access: an exposure stays enabled only if both the
+      // last good and the interrupted configuration enabled it, with the last good settings.
+      const previous = lastGood ? upgrade(lastGood, options.defaultLanPort) : active;
+      const next = pending.config;
+      active = {
+        ...previous,
+        lan: { ...previous.lan, enabled: previous.lan.enabled && next.lan.enabled },
+        proxy: { ...previous.proxy, enabled: previous.proxy.enabled && next.proxy.enabled },
+        tailscale: {
+          ...previous.tailscale,
+          enabled: previous.tailscale.enabled && next.tailscale.enabled,
+          // A mapping that may have been created is removed by startup reconciliation.
+          serveOwned:
+            previous.tailscale.serveOwned || next.tailscale.serveOwned || pending.serveIntent,
+        },
+      };
+    } else if (pending) {
+      // Earlier versions journaled unconfirmed listener changes; restore the last good one.
+      active = lastGood ? upgrade(lastGood, options.defaultLanPort) : active;
+    }
+    this.sharing = active;
+    if (pending || JSON.stringify(stored) !== JSON.stringify(active)) {
+      this.save(active);
+    }
+  }
+
+  private read<Value>(key: "active" | "pending" | "last-good") {
+    const row = this.options.db
+      .select()
+      .from(connectionState)
+      .where(eq(connectionState.key, key))
+      .get();
+    return row ? (JSON.parse(row.value) as Value) : undefined;
+  }
+
+  private write(key: "active" | "pending" | "last-good", value: unknown) {
+    const now = this.options.now();
+    const text = JSON.stringify(value);
+    this.options.db
+      .insert(connectionState)
+      .values({ key, updatedAt: now, value: text })
+      .onConflictDoUpdate({ set: { updatedAt: now, value: text }, target: connectionState.key })
+      .run();
+  }
+
+  private remove(key: "pending") {
+    this.options.db.delete(connectionState).where(eq(connectionState.key, key)).run();
+  }
+
+  /**
+   * Reserves the next turn for a change to exposures. Call it before the first `await` and
+   * release the turn when the change has finished, so concurrent changes apply one at a time.
+   */
+  reserve() {
+    const previous = this.operation;
+    const turn = Promise.withResolvers<void>();
+    this.operation = turn.promise;
+    return { previous, release: turn.resolve };
+  }
+
+  policy(): RemoteAccessPolicy {
+    const { lan, proxy, tailscale } = this.sharing;
+    return {
+      enabled: lan.enabled || proxy.enabled || tailscale.enabled,
+      proxiedOrigins: [
+        ...(lan.enabled ? this.lanOrigins() : []),
+        ...(tailscale.enabled && tailscale.origin ? [tailscale.origin] : []),
+        ...(proxy.enabled && proxy.origin ? [proxy.origin] : []),
+      ],
+      trustedProxies: proxy.enabled ? proxy.trustedProxies : [],
+    };
+  }
+
+  /** HTTPS origins the local network ingress currently serves; empty while it is closed. */
+  lanOrigins() {
+    return this.lanHosts.map((host) => `https://${host}`);
+  }
+
+  /** Journals a change before its exposure is activated. */
+  journal(config: SharingConfig, serveIntent: boolean) {
+    this.write("pending", { config, serveIntent } satisfies PendingChange);
+  }
+
+  /** Drops the journal of a change that was refused or rolled back. */
+  abandon() {
+    this.remove("pending");
+  }
+
+  /** Persists a configuration as active and last good, ending any journaled change. */
+  save(config: SharingConfig) {
+    this.sharing = config;
+    this.write("active", config);
+    this.write("last-good", config);
+    this.remove("pending");
+    for (const exposure of ["lan", "proxy", "tailscale"] as const) {
+      if (!config[exposure].enabled) {
+        this.closed(exposure);
+      }
+    }
+    return config;
+  }
+
+  /** Records that an exposure forwards traffic; the local network reports its served hosts. */
+  opened(exposure: Exposure, hosts: string[] = []) {
+    this.serving.add(exposure);
+    this.failures.delete(exposure);
+    if (exposure === "lan") {
+      this.lanHosts = hosts;
+    }
+  }
+
+  /** Records that an exposure stopped forwarding, optionally with the reason it failed. */
+  closed(exposure: Exposure, failure?: string) {
+    this.serving.delete(exposure);
+    if (failure) {
+      this.failures.set(exposure, failure);
+    } else {
+      this.failures.delete(exposure);
+    }
+    if (exposure === "lan") {
+      this.lanHosts = [];
+    }
+  }
+
+  /** Runtime state of each exposure. Forwarding by the native companion needs it running. */
+  exposures(companion: boolean) {
+    const state = (exposure: Exposure, native: boolean) => {
+      if (!this.sharing[exposure].enabled) {
+        return { detail: null, state: "off" as const };
+      }
+      const failure = this.failures.get(exposure);
+      if (failure) {
+        return { detail: failure, state: "failed" as const };
+      }
+      if (!native) {
+        return { detail: null, state: "ready" as const };
+      }
+      if (!this.serving.has(exposure)) {
+        return { detail: null, state: "starting" as const };
+      }
+      return companion
+        ? { detail: null, state: "ready" as const }
+        : {
+            detail: "The network companion stopped. Restart Tofu to restore this connection",
+            state: "failed" as const,
+          };
+    };
+    return {
+      lan: state("lan", true),
+      proxy: state("proxy", false),
+      tailscale: state("tailscale", this.sharing.tailscale.mode === "embedded"),
+    };
+  }
+
+  get port() {
+    if (this.listenerPort === null) {
+      throw new Error("The application listener is not initialized");
+    }
+    return this.listenerPort;
   }
 
   identity() {
@@ -144,7 +401,7 @@ export class AccessService {
    */
   effectiveOrigin(request: Request, peerAddress: string | undefined) {
     const url = new URL(request.url);
-    const policy = this.options.policy();
+    const policy = this.policy();
     if (
       policy.enabled &&
       peerAddress &&
@@ -166,7 +423,7 @@ export class AccessService {
     context: { desktopSession: boolean; desktopHost?: boolean; peerAddress: string | undefined }
   ): Response | undefined {
     const url = new URL(request.url);
-    const policy = this.options.policy();
+    const policy = this.policy();
     if (context.desktopSession) {
       callers.set(request, { kind: "owner", origin: url.origin, principal: "local-window" });
       return;

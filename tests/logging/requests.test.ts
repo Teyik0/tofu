@@ -14,7 +14,6 @@ test("API requests emit one redacted event through direct Eden and HTTP", async 
       TOFU_DISCOVERY: "0",
       TOFU_DOWNLOAD_DIR: app.downloadPath,
       TOFU_MODE: "server",
-      TOFU_PORT: "0",
       TOFU_PROFILE: "dev",
     },
     stderr: "pipe",

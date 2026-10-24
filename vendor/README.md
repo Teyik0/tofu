@@ -2,12 +2,20 @@
 
 Both active packages are built without local source patches from
 [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
-`49a5663ddb8b038d5b784d92cb547b1f78ce8033`.
+`2ce23218e9b84023796d0635f110fd342cb0a458`.
 
 | Active archive | SHA-256 |
 | --- | --- |
-| `furin-pr163-49a5663.tgz` | `ac7e0593cc71f349d008b4e7440802ca6dbda608ea8585c1b16dd580a6cdbd69` |
-| `furin-electrobun-pr163-49a5663.tgz` | `97de38d285c40f328004be090fc5c40b1989a7b07f543ddfe23fd0d144be4f2e` |
+| `furin-pr163-2ce2321.tgz` | `1553e3081cee062caa54bc7c7f78c3462f067eddcaaeeae7c83e7359749b5f3a` |
+| `furin-electrobun-pr163-2ce2321.tgz` | `ad331d2bcfe997b862157ef8090de3334b40806c75caedb53304ab12deae29b8` |
+
+Commit `b156c07` preserves API plugin types in desktop composition, including
+request-aware macros. Commit `2ce2321` restores `background` as a callback;
+Tofu reads the current torrent settings whenever the native host checks the policy.
+
+Commit `95c290a` infers service decorators in `desktopApp(({ access, torrents }) => ...)`
+and uses Elysia's native listeners. Tofu configures admission and background behavior
+directly from those services without awaiting API modules or extracting their context.
 
 Commit `05cbdc8` replaces `desktopApp.onOpen` with the Electrobun SDK's `open-url`
 event. Tofu registers its existing backend link handler from the native entrypoint;
@@ -45,7 +53,7 @@ while the protected isomorphic Eden client keeps direct in-process dispatch to
 ## Rebuilding
 
 Use an isolated Furin checkout at the exact upstream commit above. Install dependencies
-with Bun 1.4.3 and run each package's
+with Bun 1.4.4 and run each package's
 `build.ts`, core first. Pack each package with `bun pm pack` from its package directory
 and copy the resulting archives to the names above. Packing resolves workspace catalog
 references to published ranges. Archives contain their upstream MIT licenses.

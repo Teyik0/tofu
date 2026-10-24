@@ -74,7 +74,6 @@ export type Plugin = typeof plugin;
 ## Elysia application composition
 
 - `api/index.ts` declares the API plugin as `apiPlugin` and composes API routes inside `.group("/api", ...)`.
-- `server.ts` declares the root application directly with `new Elysia()`, installs `desktopApp()` first, then uses `apiPlugin` and Furin. It exports the root as default and owns listening and process shutdown. Do not introduce an `app.ts` entry or an application factory.
 - Keep desktop host initialization, network admission and lifecycle hooks on the root application in `server.ts`, before route plugins install wrappers.
 - The server-side Eden client dispatches directly to `apiPlugin`; network requests enter through the root application and its desktop network guards. Do not add another HTTP listener or custom client transport.
 - Preserve inferred API types from the route plugins. Initialize dependencies and mount routes before listening.

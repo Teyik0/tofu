@@ -23,7 +23,6 @@ test("a failed service initialization releases resources before the process exit
       TOFU_DISCOVERY: "0",
       TOFU_DOWNLOAD_DIR: app.downloadPath,
       TOFU_MODE: "server",
-      TOFU_PORT: "0",
       TOFU_PROFILE: "dev",
     },
     stderr: "pipe",

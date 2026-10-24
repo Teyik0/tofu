@@ -25,6 +25,7 @@ function availablePort() {
 }
 
 export async function application(options?: {
+  entry?: string;
   provider?: string;
   remoteServers?: RemoteServerFixture[];
 }) {
@@ -42,7 +43,13 @@ export async function application(options?: {
       const port = listen?.port ?? availablePort();
       const origin = `http://127.0.0.1:${port}`;
       const child = Bun.spawn(
-        [process.execPath, "--preload", join(import.meta.dir, "preload.ts"), "src/server.ts"],
+        [
+          process.execPath,
+          "--preload",
+          join(import.meta.dir, "preload.ts"),
+          options?.entry ?? "src/server.ts",
+          String(port),
+        ],
         {
           cwd: join(import.meta.dir, "../.."),
           env: {
@@ -52,7 +59,6 @@ export async function application(options?: {
             TOFU_DISCOVERY: "0",
             TOFU_DOWNLOAD_DIR: downloadPath,
             TOFU_MODE: "server",
-            TOFU_PORT: String(port),
             TOFU_PROFILE: "dev",
             TOFU_TAILSCALE_CLI: join(directory, "tailscale-not-installed"),
             TOFU_TEST_PROVIDER: options?.provider,

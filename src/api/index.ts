@@ -14,8 +14,6 @@ import { anilistOpeningPlugin } from "./modules/anilist/opening";
 import { anilistServicePlugin } from "./modules/anilist/plugin";
 import { automationManagementPlugin } from "./modules/automation/management";
 import { releaseAutomationPlugin } from "./modules/automation/plugin";
-import { connectionsPlugin } from "./modules/connections";
-import { connectionsServicePlugin } from "./modules/connections/plugin";
 import { dashboardPlugin } from "./modules/dashboard";
 import { desktopPlugin } from "./modules/desktop";
 import { desktopNativeOpenPlugin } from "./modules/desktop/native-open";
@@ -43,7 +41,6 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
   .derive(() => ({ log: useLogger() }))
   .use(anilistServicePlugin)
   .use(releaseAutomationPlugin)
-  .use(connectionsServicePlugin)
   .use(discoveryServicePlugin)
   .use(jevServicePlugin)
   .use(pluginRegistryPlugin)
@@ -64,7 +61,6 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
   .group("/api", (app) =>
     app
       .use(accessRoutesPlugin)
-      .use(connectionsPlugin)
       .use(mediaLinksApiPlugin)
       .use(libraryAvailabilityPlugin)
       .use(linkedLibrariesPlugin)

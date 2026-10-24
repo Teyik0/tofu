@@ -1,9 +1,10 @@
 import "@teyik0/furin/server-only";
 import { ElysiaStatus, problem } from "elysia";
-import type { EmbeddedTailscale } from "./embedded";
+import { tailscale } from "../../lib/tailscale";
+import { closeLan, lanNames, openLan } from "../../lib/tailscale/lan";
+import { checkTailscale, disableTailscale, enableTailscale } from "../../lib/tailscale/system";
 import type { ConnectionsUpdate } from "./model";
-import type { ConnectionsService, RemoteAccessConfig } from "./service";
-import { checkTailscale, disableTailscale, enableTailscale } from "./tailscale";
+import type { AccessService, SharingConfig } from "./service";
 
 /** A browser-facing HTTPS origin without credentials, path, query or fragment. */
 function httpsOrigin(value: string) {
@@ -29,15 +30,14 @@ function httpsOrigin(value: string) {
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Validation, activation and rollback of one exposure form one lifecycle operation.
 export async function updateRemoteAccess(
-  connections: ConnectionsService,
-  embeddedTailscale: EmbeddedTailscale,
+  access: AccessService,
   body: ConnectionsUpdate,
   owner: boolean
 ) {
-  const turn = connections.reserve();
+  const turn = access.reserve();
   try {
     await turn.previous;
-    const current = connections.config();
+    const current = access.sharing;
     const exposure = body.transport;
     const proxyOrigin = body.proxyOrigin ? httpsOrigin(body.proxyOrigin) : null;
     if (body.proxyOrigin && !proxyOrigin) {
@@ -60,13 +60,13 @@ export async function updateRemoteAccess(
       });
     }
     const lanPort = body.lanPort ?? current.lan.port;
-    const port = connections.servicePort();
+    const { port } = access;
     if (lanPort === port) {
       return problem(400, {
         detail: `Choose a local network port other than ${port}, which Tofu uses on this computer`,
       });
     }
-    const next: RemoteAccessConfig = {
+    const next: SharingConfig = {
       ...current,
       lan: {
         enabled: exposure === "lan" ? body.enabled : current.lan.enabled,
@@ -102,11 +102,11 @@ export async function updateRemoteAccess(
 
     // Prepare: verify prerequisites without changing any forwarding.
     if (lanChanged && next.lan.enabled) {
-      const names = connections.lanNames(next);
+      const names = lanNames(next);
       if (names instanceof ElysiaStatus) {
         return names;
       }
-      if (!embeddedTailscale.available()) {
+      if (!tailscale.binary) {
         return problem(503, {
           detail: "The native network component is missing. Rebuild or reinstall Tofu",
         });
@@ -127,29 +127,34 @@ export async function updateRemoteAccess(
     }
 
     // Journal, then activate. An interrupted change never widens access after a restart.
-    connections.journal(next, serveIntent);
+    access.journal(next, serveIntent);
     if (lanChanged && next.lan.enabled) {
-      const opened = await connections.openLan(next);
+      const opened = await openLan(access, next, port);
       if (opened instanceof ElysiaStatus) {
         if (current.lan.enabled) {
           // Restore the previous local network ingress; its address and port stay in use.
-          const restored = await connections.openLan(current);
+          const restored = await openLan(access, current, port);
           if (restored instanceof ElysiaStatus) {
             return restored;
           }
         }
-        connections.abandon();
+        access.abandon();
         return opened;
       }
     }
     if (tailscaleChanged && next.tailscale.enabled && next.tailscale.mode === "embedded") {
-      const status = await embeddedTailscale.request({ method: "serve", port });
+      const started = await tailscale.start();
+      if (started instanceof ElysiaStatus) {
+        access.abandon();
+        return started;
+      }
+      const status = await tailscale.request({ method: "serve", port });
       if (status instanceof ElysiaStatus) {
-        connections.abandon();
+        access.abandon();
         return status;
       }
       if (status.state !== "ready" || !status.origin) {
-        connections.abandon();
+        access.abandon();
         return problem(409, {
           detail:
             status.state === "https-disabled"
@@ -158,11 +163,11 @@ export async function updateRemoteAccess(
         });
       }
       next.tailscale = { ...next.tailscale, origin: status.origin };
-      connections.opened("tailscale");
+      access.opened("tailscale");
     } else if (tailscaleChanged && next.tailscale.enabled) {
       const status = await enableTailscale(port);
       if (status.state !== "ready") {
-        connections.abandon();
+        access.abandon();
         return problem(409, {
           detail:
             "detail" in status
@@ -181,20 +186,20 @@ export async function updateRemoteAccess(
       current.tailscale.mode === "embedded" &&
       (!next.tailscale.enabled || next.tailscale.mode !== "embedded")
     ) {
-      const stopped = await embeddedTailscale.request({ method: "stop" });
+      const stopped = await tailscale.request({ method: "stop" });
       if (stopped instanceof ElysiaStatus) {
-        connections.abandon();
+        access.abandon();
         return stopped;
       }
     }
     if (lanChanged && !next.lan.enabled) {
-      const closed = await connections.closeLan();
+      const closed = await closeLan(access);
       if (closed instanceof ElysiaStatus) {
-        connections.abandon();
+        access.abandon();
         return closed;
       }
     }
-    const saved = connections.save(next);
+    const saved = access.save(next);
     // A system Serve mapping Tofu created and no longer uses is removed after the configuration
     // stops accepting its address; if Tailscale is unreachable, startup retries.
     if (
@@ -203,10 +208,10 @@ export async function updateRemoteAccess(
     ) {
       const removed = await disableTailscale(port);
       if (removed.state === "available" || removed.state === "conflict") {
-        connections.save({ ...saved, tailscale: { ...saved.tailscale, serveOwned: false } });
+        access.save({ ...saved, tailscale: { ...saved.tailscale, serveOwned: false } });
       }
     }
-    return { config: connections.config(), previous: current };
+    return { config: access.sharing, previous: current };
   } finally {
     turn.release();
   }

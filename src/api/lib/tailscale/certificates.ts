@@ -4,8 +4,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { problem } from "elysia";
-import { instance } from "../../lib/database-plugin";
-import type { EmbeddedTailscale } from "./embedded";
+import { instance } from "../database-plugin";
+import { tailscale } from ".";
 
 const LOCAL_HOST_SUFFIX = /\.local$/i;
 
@@ -29,8 +29,8 @@ export function localCertificate() {
   };
 }
 
-export async function prepareCertificate(embeddedTailscale: EmbeddedTailscale, names: string[]) {
-  const binary = embeddedTailscale.available();
+export async function prepareCertificate(names: string[]) {
+  const { binary } = tailscale;
   if (!binary) {
     return problem(503, {
       detail: "The native certificate component is missing. Rebuild or reinstall Tofu",

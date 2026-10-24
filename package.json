@@ -24,14 +24,14 @@
     "setup": "bun scripts/setup.ts",
     "start": "open .furin/electrobun/build/dev-macos-arm64/Tofu-dev.app",
     "test": "bun run codegen && bun test --parallel --isolate --bail --max-concurrency 3 --timeout 30000",
-    "tscheck": "bun --bun furin-electrobun prepare && tsc --noEmit"
+    "tscheck": "bun --bun furin-electrobun prepare && bun check"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
     "@elysia/eden": "2.0.0-beta.5",
     "@formisch/react": "1.1.0",
-    "@teyik0/furin": "file:vendor/furin-pr163-49a5663.tgz",
-    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-49a5663.tgz",
+    "@teyik0/furin": "file:vendor/furin-pr163-2ce2321.tgz",
+    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-2ce2321.tgz",
     "bun-plugin-tailwind": "0.1.2",
     "class-variance-authority": "0.7.1",
     "cn": "^0.5.0",

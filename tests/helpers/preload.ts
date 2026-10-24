@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { listen } from "../../src/api/lib/network";
 import { ServerCatalog } from "../../src/native/catalog";
 import { nativeControl } from "../../src/native/control";
 import { RemoteThreads } from "../../src/native/remote-threads";
@@ -80,4 +81,9 @@ if (provider) {
     },
     { preconnect: originalFetch.preconnect }
   );
+}
+
+const [, , testPort] = process.argv;
+if (testPort !== undefined) {
+  listen.port = Number(testPort);
 }
