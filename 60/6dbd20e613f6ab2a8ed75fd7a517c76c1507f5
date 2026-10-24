@@ -1,0 +1,94 @@
+src/api/modules/access/sharing.ts
+  s_4f02f48ceede92::t_6dc1393d6abf49 33,37,40,69,105,130,141,153,157,166,170,191,198,202,211,214
+  s_4f02f48ceede92::t_8a566a664ac388 5,109,132,136,146-151,189,196
+  s_4f02f48ceede92::t_c6db41efffb4a0 3
+  s_4f02f48ceede92::t_dd5d90b966c80c 63
+  s_4f02f48ceede92::t_06ad6edcf7e80b 4
+tests/remote/network.test.ts
+  s_4f02f48ceede92::t_69b0c99eb5e061 16-22,72-75
+  s_4f02f48ceede92::t_8d2f9f1d4e4d60 1,5,8-15,23-35,93
+  s_4f02f48ceede92::t_01a9d9698331ee 61
+  s_4f02f48ceede92::t_84edfb5f3a612b 3-4,6,36-60,62-71,76-90,92
+  s_4f02f48ceede92::t_8ae7fbff823e27 2,7,91
+src/api/modules/access/model.ts
+  s_4f02f48ceede92::t_6dc1393d6abf49 3,6-7,81-99
+  s_4f02f48ceede92::t_b42c47a8f9b1da 13
+tests/helpers/network-server.ts
+  s_4f02f48ceede92::t_8d2f9f1d4e4d60 1-22
+src/api/lib/tailscale/certificates.ts
+  s_eb4b5dd00e818a::t_38dce410e11517 7-8,32-33
+src/api/modules/access/service.ts
+  s_4f02f48ceede92::t_6dc1393d6abf49 8,70,81-160,163-168,186-355,404,426
+tests/helpers/app.ts
+  s_4f02f48ceede92::t_8d2f9f1d4e4d60 28,50
+  s_4f02f48ceede92::t_6dc1393d6abf49 46-49,52
+  s_4f02f48ceede92::t_a690bc51b94753 51
+src/api/modules/access/index.ts
+  s_4f02f48ceede92::t_6dc1393d6abf49 1-4,17,29,36,40,198,202-203,248,250-255,257-263,265-273,275-322,329-333,335-337,340-343,349-351,367-383,386-414
+  s_4f02f48ceede92::t_8a566a664ac388 249,256,264,274,323-328,334,344-348,353-366,384
+  s_4f02f48ceede92::t_c6db41efffb4a0 12-14,385
+  s_4f02f48ceede92::t_a12f7611501d0f 338-339
+  s_4f02f48ceede92::t_1978e8cd0b0f3e 352
+package.json
+  s_5bcde9a62a93e7::t_601ee114ea7e8c 33-34
+  s_5bcde9a62a93e7::t_ed5c6f90da1093 27
+src/server.ts
+  s_eb4b5dd00e818a::t_886d773a39e602 3,17,25
+  s_4f02f48ceede92::t_6dc1393d6abf49 14
+  s_4f02f48ceede92::t_8a566a664ac388 9,40
+src/api/lib/tailscale/model.ts
+  s_4f02f48ceede92::t_3a029f7fa0d218 1,5-25
+  s_4f02f48ceede92::t_c6db41efffb4a0 2-4
+tests/helpers/preload.ts
+  s_4f02f48ceede92::t_dd5d90b966c80c 86
+  s_4f02f48ceede92::t_6dc1393d6abf49 85,87
+  s_4f02f48ceede92::t_8a566a664ac388 3,88
+  s_4f02f48ceede92::t_85803696a1ee21 89
+src/api/lib/network.ts
+  s_4f02f48ceede92::t_3a029f7fa0d218 1-6
+src/api/lib/tailscale/index.ts
+  s_4f02f48ceede92::t_3a029f7fa0d218 5-7,9,11-18,21-24,26-28,30-58,60,62-64,123-129,131-136,139,141-175
+  s_4f02f48ceede92::t_c6db41efffb4a0 20,65-67,70-81,83-91,93-96,99-107,109-110,112-114,116-121
+src/api/modules/access/plugin.ts
+  s_4f02f48ceede92::t_6dc1393d6abf49 54-57,59-62,122
+  s_4f02f48ceede92::t_b42c47a8f9b1da 3,48
+  s_4f02f48ceede92::t_a12f7611501d0f 2,41,45,47,123-125
+  s_4f02f48ceede92::t_8a566a664ac388 15-16,42-44,52-53,58,63-76,78-121,126,189-190
+  s_4f02f48ceede92::t_c6db41efffb4a0 4-5,7-9
+bun.lock
+  s_5bcde9a62a93e7::t_10d71f879b8943 11-12,437,439
+vendor/README.md
+  s_5bcde9a62a93e7::t_2880722a2b03b2 5,9-18,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "606dbd20e613f6ab2a8ed75fd7a517c76c1507f5",
+  "prompts": {},
+  "sessions": {
+    "s_4f02f48ceede92": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16cfb-cb55-7461-9356-f1885d119867",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_5bcde9a62a93e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d51-95b8-7810-ac25-947fdff299eb",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_eb4b5dd00e818a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d25-e71c-7df1-856c-aa418751d634",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
