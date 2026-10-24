@@ -2,7 +2,7 @@ import "@teyik0/furin/server-only";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
-import { databasePlugin } from "../../lib/database-plugin";
+import { databasePlugin } from "../../lib/db";
 import { accessPlugin } from "../access/plugin";
 import { mediaKeyParamsSchema, positionSchema } from "./model";
 import { readPosition, recordPosition } from "./service";

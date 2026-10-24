@@ -65,7 +65,7 @@ async function sendPair(payload: Parameters<typeof api.auth.pair.post>[0]) {
 export const route = defineRoute("/(login)/pair")
   .config({ mode: "ssr" })
   .loader(async () => {
-    const { instance } = await import("../../../api/lib/database-plugin");
+    const { instance } = await import("../../../api/lib/instance");
     return { scheme: instance.profile === "release" ? "tofu" : "tofu-dev" };
   })
   .head(() => ({

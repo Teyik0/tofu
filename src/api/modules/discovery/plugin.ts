@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { databasePlugin } from "../../lib/database-plugin";
+import { databasePlugin } from "../../lib/db";
 import { jevServicePlugin } from "../jev/plugin";
 import { pluginRegistryPlugin } from "../plugins/plugin";
 import { pluginEndpoints } from "../plugins/service";

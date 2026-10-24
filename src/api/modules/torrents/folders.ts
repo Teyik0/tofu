@@ -6,14 +6,13 @@ import { createLogger } from "evlog";
 import parseTorrent from "parse-torrent";
 import { watchedTorrentFiles } from "../../../db/schema";
 import { nativeControl } from "../../../native/control";
-import type { TofuDatabase } from "../../lib/db";
 import { runtime } from "../../lib/runtime";
 import type { Destination } from "../destinations/model";
 import type { EnginePort } from "./service";
+import { db } from "@/api/lib/db";
 
 interface TorrentFoldersOptions {
   dataDir: string;
-  db: TofuDatabase;
   engine: EnginePort;
   /** Interval of the full rescan that catches events missed by the file system. */
   rescanMs?: number;
@@ -150,7 +149,7 @@ export class TorrentFolders {
   }
 
   private async process(path: string) {
-    const { db, engine } = this.options;
+    const { engine } = this.options;
     const destination = engine
       .snapshot(null, false)
       .destinations.find(
@@ -202,7 +201,7 @@ export class TorrentFolders {
    * file, or undefined when the file was deleted or will be checked again.
    */
   private async import(path: string, destination: Destination, size: number, age: number) {
-    const { db, engine, dataDir } = this.options;
+    const { engine, dataDir } = this.options;
     if (size > 8 * 1024 * 1024) {
       const log = createLogger({
         component: "torrent-folders",

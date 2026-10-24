@@ -1,7 +1,7 @@
 import { getDesktopHost } from "@teyik0/furin-electrobun/host";
 import { Elysia, ElysiaStatus } from "elysia";
 import { nativeControl } from "../../../native/control";
-import { instance } from "../../lib/database-plugin";
+import { instance } from "../../lib/instance";
 import { anilistServicePlugin } from "../anilist/plugin";
 import { torrentServicePlugin } from "../torrents/plugin";
 import { torrentOpenings } from "./service";

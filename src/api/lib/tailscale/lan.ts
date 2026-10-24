@@ -5,7 +5,7 @@ import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { ElysiaStatus, problem } from "elysia";
 import type { AccessService, SharingConfig } from "../../modules/access/service";
-import { instance } from "../database-plugin";
+import { instance } from "../instance";
 import { tailscale } from ".";
 
 const LOCAL_HOST_SUFFIX = /\.local$/i;

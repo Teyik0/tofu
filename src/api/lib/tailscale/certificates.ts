@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { problem } from "elysia";
-import { instance } from "../database-plugin";
+import { instance } from "../instance";
 import { tailscale } from ".";
 
 const LOCAL_HOST_SUFFIX = /\.local$/i;

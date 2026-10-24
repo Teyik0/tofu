@@ -7,7 +7,7 @@ import { Elysia, ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import { nativeControl } from "../../../native/control";
 import { sync } from "../../../sync";
-import { instance } from "../../lib/database-plugin";
+import { instance } from "../../lib/instance";
 import { runtime } from "../../lib/runtime";
 import { tailscale } from "../../lib/tailscale";
 import { localCertificate, prepareCertificate } from "../../lib/tailscale/certificates";

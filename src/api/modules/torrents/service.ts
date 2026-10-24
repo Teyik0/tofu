@@ -49,6 +49,8 @@ import type {
 } from "./types";
 import type { WorkerTorrentEngine } from "./worker-client";
 
+type DatabaseConnection = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 interface RelocatedFile {
   source: string;
   staged: string;
@@ -757,11 +759,11 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
   function config(
     key: string,
     value: Settings | { received: number; uploaded: number },
-    connection?: dbConnection
+    connection?: DatabaseConnection
   ) {
-    const db = connection ?? db;
+    const database = connection ?? db;
     const serialized = JSON.stringify(value);
-    db.insert(torrentConfig)
+    database.insert(torrentConfig)
       .values({ key, value: serialized })
       .onConflictDoUpdate({ set: { value: serialized }, target: torrentConfig.key })
       .run();
@@ -770,8 +772,8 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
     }
   }
 
-  function save(entry: Entry, connection?: dbConnection) {
-    const db = connection ?? db;
+  function save(entry: Entry, connection?: DatabaseConnection) {
+    const database = connection ?? db;
 
     const {
       source,
@@ -794,7 +796,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
     if (state.persistedEntries.get(entry) === value) {
       return value;
     }
-    db.insert(torrentRecords)
+    database.insert(torrentRecords)
       .values({ id: detail.id, value })
       .onConflictDoUpdate({ set: { value }, target: torrentRecords.id })
       .run();
@@ -824,16 +826,16 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions) {
     return value;
   }
 
-  function writeDestination(destination: Destination, connection?: dbConnection) {
-    const db = connection ?? db;
+  function writeDestination(destination: Destination, connection?: DatabaseConnection) {
+    const database = connection ?? db;
     const { id, ...presentation } = destination;
-    db.insert(torrentDestinations)
+    database.insert(torrentDestinations)
       .values(destination)
       .onConflictDoUpdate({ set: presentation, target: torrentDestinations.id })
       .run();
   }
 
-  function storeDestination(destination: Destination, connection?: dbConnection) {
+  function storeDestination(destination: Destination, connection?: DatabaseConnection) {
     writeDestination(destination, connection);
     state.destinations.set(destination.id, destination);
     if (!connection) {

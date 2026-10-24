@@ -1,4 +1,3 @@
-import type { DrainContext } from "evlog";
 import type { EngineOpenOptions, TorrentEngine } from "./service";
 import type { EngineSnapshot } from "./types";
 
@@ -51,7 +50,6 @@ type EngineReturnedStatus = Extract<
 >;
 
 export type EngineMessage =
-  | { type: "log"; context: DrainContext }
   | { type: "ready" }
   | { type: "snapshot"; snapshot: EngineSnapshot }
   | { type: "result"; id: number; value: unknown; snapshot: EngineSnapshot | null }

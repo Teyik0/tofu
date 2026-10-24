@@ -1,6 +1,6 @@
 import "@teyik0/furin/server-only";
 import { Elysia } from "elysia";
-import { databasePlugin } from "../../lib/database-plugin";
+import { databasePlugin } from "../../lib/db";
 import { accessPlugin } from "../access/plugin";
 import { LinkedLibraries } from "./service";
 

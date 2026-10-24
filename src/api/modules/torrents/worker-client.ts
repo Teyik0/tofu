@@ -2,7 +2,6 @@ import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { ElysiaStatus, HTTPError, problem } from "elysia";
 import { createLogger } from "evlog";
-import type { logDrain } from "../../../../evlog.config";
 import workerBundle from "../../../../runtime/engine-worker.worker" with { type: "file" };
 import type { DestinationInput, DestinationPresentation } from "../destinations/model";
 import type { SettingsInput } from "../settings/model";
@@ -19,7 +18,6 @@ interface PendingOperation {
 export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }> {
   private readonly worker: Worker;
   private readonly options: EngineOpenOptions;
-  private readonly logs?: typeof logDrain;
   private readonly pending = new Map<number, PendingOperation>();
   private readonly ready = Promise.withResolvers<void>();
   private state!: DashboardState;
@@ -34,18 +32,13 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
   private shutdown: Promise<void> | null = null;
   mode: "desktop" | "server" = "server";
 
-  private constructor(entry: string | URL, options: EngineOpenOptions, logs?: typeof logDrain) {
+  private constructor(entry: string | URL, options: EngineOpenOptions) {
     super();
     // Every open live stream listens for changes.
     this.setMaxListeners(0);
     this.options = options;
-    this.logs = logs;
     this.worker = new Worker(entry);
     this.worker.addEventListener("message", ({ data }: MessageEvent<EngineMessage>) => {
-      if (data.type === "log") {
-        this.logs?.(data.context);
-        return;
-      }
       if (data.type === "ready") {
         this.ready.resolve();
         return;
@@ -139,7 +132,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
     return this.call("setObserved", [observed]);
   }
 
-  static async open(options: EngineOpenOptions, logs?: typeof logDrain) {
+  static async open(options: EngineOpenOptions) {
     const source = new URL("./worker.ts", import.meta.url);
     const compiled = new URL(workerBundle, import.meta.url);
     // The native host shares the backend's worker and external package tree.
@@ -148,7 +141,7 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
     if (!entry) {
       throw new Error("The torrent worker entrypoint is missing");
     }
-    const engine = new WorkerTorrentEngine(entry, options, logs);
+    const engine = new WorkerTorrentEngine(entry, options);
     try {
       await engine.ready.promise;
       await engine.send({
@@ -165,7 +158,6 @@ export class WorkerTorrentEngine extends EventEmitter<{ change: [EngineChange] }
       return engine;
     } catch (error) {
       engine.worker.terminate();
-      await logs?.flush();
       throw error;
     }
   }

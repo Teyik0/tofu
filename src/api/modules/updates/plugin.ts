@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { version } from "../../../../package.json";
-import { databasePlugin, instance } from "../../lib/database-plugin";
+import { databasePlugin } from "../../lib/db";
+import { instance } from "../../lib/instance";
 import { reserveInitialization } from "../../lib/lifecycle-plugin";
 import { UpdatesService } from "./service";
 

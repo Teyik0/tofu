@@ -6,7 +6,7 @@ import { createLogger } from "evlog";
 import { nativeControl } from "../../../native/control";
 import { nativeServerActionSchema } from "../../../native/model";
 import { sync } from "../../../sync";
-import { instance, logs } from "../../lib/database-plugin";
+import { instance } from "../../lib/instance";
 import { resources } from "../../lib/lifecycle-plugin";
 import { runtime } from "../../lib/runtime";
 import { accessPlugin } from "../access/plugin";

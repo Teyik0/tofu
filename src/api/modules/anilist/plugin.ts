@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { databasePlugin, instance } from "../../lib/database-plugin";
+import { databasePlugin } from "../../lib/db";
 import { reserveInitialization } from "../../lib/lifecycle-plugin";
 import { automationPlugin } from "../automation";
 import { releaseAutomationPlugin } from "../automation/plugin";
@@ -9,6 +9,7 @@ import { pluginRegistryPlugin } from "../plugins/plugin";
 import { torrentServicePlugin } from "../torrents/plugin";
 import { readAniListClient } from "./client";
 import { AniListService } from "./service";
+import { instance } from "@/api/lib/instance";
 
 using _initialization = reserveInitialization();
 

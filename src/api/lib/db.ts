@@ -8,6 +8,7 @@ import Elysia from "elysia";
 import { databasePath } from "../../../drizzle.config";
 import { furinSyncSchema } from "../../db/furin.schema";
 import { schema } from "../../db/schema";
+import { lifecyclePlugin } from "./lifecycle-plugin";
 
 export const db = drizzle(databasePath);
 
@@ -27,6 +28,7 @@ function initializeDatabase() {
 // Will be used when the global SDK will be available
 // For now use global export const db instance in any services that need it
 export const databasePlugin = new Elysia({ name: "tofu-database-service" })
+  .use(lifecyclePlugin)
   .onStart(initializeDatabase)
   .onStop(() => db.$client.close())
   .decorate("db", db);

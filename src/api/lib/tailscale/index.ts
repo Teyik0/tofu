@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { problem } from "elysia";
-import { instance } from "../database-plugin";
+import { instance } from "../instance";
 import type { TailscaleCommand, TailscaleStatus } from "./model";
 
 type Companion = ReturnType<typeof Bun.spawn<"pipe", "pipe", "ignore">>;

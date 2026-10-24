@@ -1,6 +1,6 @@
 import "@teyik0/furin/server-only";
 import { Elysia } from "elysia";
-import { databasePlugin } from "../../lib/database-plugin";
+import { databasePlugin } from "../../lib/db";
 import { MediaLinks } from "./service";
 
 export const mediaLinksServicePlugin = new Elysia({ name: "tofu-media-links-service" })

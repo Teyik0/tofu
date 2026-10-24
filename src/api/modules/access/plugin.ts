@@ -1,8 +1,8 @@
 import "@teyik0/furin/server-only";
 import { createContext, Elysia, ElysiaStatus, problem } from "elysia";
-import { databasePlugin, instance } from "../../lib/database-plugin";
+import { databasePlugin } from "../../lib/db";
+import {instance} from '../../lib/instance'
 import { reserveInitialization } from "../../lib/lifecycle-plugin";
-import { listen } from "../../lib/network";
 import { runtime } from "../../lib/runtime";
 import { tailscale } from "../../lib/tailscale";
 import { closeLan, openLan } from "../../lib/tailscale/lan";
@@ -49,7 +49,7 @@ export const accessPlugin = new Elysia({ name: "tofu-access" })
       headless: () => runtime.current.kind === "server",
       now: Date.now,
     });
-    access.listenerPort = listen.port;
+    access.listenerPort = instance.port;
     startup.defer(async () => {
       const turn = access.reserve();
       using cleanup = new DisposableStack();
@@ -62,14 +62,14 @@ export const accessPlugin = new Elysia({ name: "tofu-access" })
     });
 
     const config = access.sharing;
-    if (config.lan.enabled && config.lan.port === listen.port) {
-      throw new Error("The local network HTTPS port conflicts with the application listener");
+    if (config.lan.enabled && config.lan.port === instance.port) {
+      throw new Error("The local network HTTPS port conflicts with the application instanceer");
     }
     if (
       config.tailscale.serveOwned &&
       !(config.tailscale.enabled && config.tailscale.mode === "system")
     ) {
-      const removed = await disableTailscale(listen.port);
+      const removed = await disableTailscale(instance.port);
       if (removed.state === "available" || removed.state === "conflict") {
         access.save({ ...config, tailscale: { ...config.tailscale, serveOwned: false } });
       }
@@ -92,7 +92,7 @@ export const accessPlugin = new Elysia({ name: "tofu-access" })
       let ready = false;
       for (let attempt = 0; attempt < 40; attempt += 1) {
         // biome-ignore lint/performance/noAwaitInLoops: Each native readiness check depends on the previous response.
-        const status = await tailscale.request({ method: "serve", port: listen.port });
+        const status = await tailscale.request({ method: "serve", port: instance.port });
         if (status instanceof ElysiaStatus) {
           throw new Error(status.response.detail);
         }
@@ -114,7 +114,7 @@ export const accessPlugin = new Elysia({ name: "tofu-access" })
       }
     }
     if (config.lan.enabled) {
-      const opened = await openLan(access, access.sharing, listen.port);
+      const opened = await openLan(access, access.sharing, instance.port);
       if (opened instanceof ElysiaStatus) {
         throw new Error(opened.response.detail);
       }

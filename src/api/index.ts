@@ -4,7 +4,6 @@ import { Elysia } from "elysia";
 import { toMiddlewareOptions } from "evlog";
 import { evlog, useLogger } from "evlog/elysia";
 import { config } from "../../evlog.config";
-import { instance } from "./lib/database-plugin";
 import { httpPolicyPlugin } from "./lib/http-policy";
 import { accessRoutesPlugin } from "./modules/access";
 import { publicDocumentsPlugin } from "./modules/access/documents";
@@ -35,6 +34,7 @@ import { torrentPlugin } from "./modules/torrents";
 import { torrentServicePlugin } from "./modules/torrents/plugin";
 import { updatesPlugin } from "./modules/updates";
 import { updatesServicePlugin } from "./modules/updates/plugin";
+import { instance } from "./lib/instance";
 
 export const apiPlugin = new Elysia({ name: "tofu-api" })
   .use(evlog(toMiddlewareOptions(config)))

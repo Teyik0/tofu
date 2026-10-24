@@ -1,42 +1,47 @@
+import { Context, Effect, Layer, ManagedRuntime } from "effect";
 import { Elysia, ElysiaStatus } from "elysia";
 import { version } from "../../../../package.json";
-import { databasePlugin, instance, logs } from "../../lib/database-plugin";
-import { reserveInitialization } from "../../lib/lifecycle-plugin";
+import { instance } from "../../lib/instance";
+import { lifecyclePlugin, resources } from "../../lib/lifecycle-plugin";
 import { TorrentFolders } from "./folders";
 import { WorkerTorrentEngine } from "./worker-client";
 
-using _initialization = reserveInitialization();
+const initialization = Effect.gen(function* () {
+  const torrents = yield* Effect.acquireRelease(
+    Effect.promise(() =>
+      WorkerTorrentEngine.open({
+        dataDir: instance.dataDir,
+        downloadPath: instance.defaultDownloadPath,
+        network: { maxConns: 40, userAgent: `Tofu/${version}`, utp: false },
+      })
+    ),
+    (engine) => Effect.promise(() => engine.close())
+  );
+  torrents.mode = instance.desktop ? "desktop" : "server";
+
+  const ready = yield* Effect.promise(() => torrents.assertReady());
+  if (ready instanceof ElysiaStatus) {
+    return yield* Effect.die(new Error(ready.response.detail));
+  }
+
+  const torrentFolders = yield* Effect.acquireRelease(
+    Effect.sync(() => new TorrentFolders({ dataDir: instance.dataDir, engine: torrents })),
+    (folders) => Effect.promise(() => folders.close())
+  );
+  return { torrentFolders, torrents };
+});
+
+const TorrentServices = Context.Service<Effect.Success<typeof initialization>>("tofu/torrents");
+// Register before startup so shutdown also interrupts and awaits an in-flight acquisition.
+const torrentRuntime = resources.use(
+  ManagedRuntime.make(Layer.effect(TorrentServices, initialization))
+);
 
 export const torrentServicePlugin = new Elysia({ name: "tofu-torrent-service" })
-  .use(databasePlugin)
+  .use(lifecyclePlugin)
   .use(async (app) => {
-    await using startup = new AsyncDisposableStack();
-    const torrents = await WorkerTorrentEngine.open(
-      {
-        dataDir: instance.dataDir,
-        downloadPath: instance.downloadPath,
-        network: { maxConns: 40, userAgent: `Tofu/${version}`, utp: false },
-      },
-      logs
-    );
-    startup.defer(torrents.close.bind(torrents));
-    torrents.mode = instance.desktop ? "desktop" : "server";
-
-    const ready = await torrents.assertReady();
-    if (ready instanceof ElysiaStatus) {
-      throw new Error(ready.response.detail);
-    }
-
-    return app.decorate((dependencies) => {
-      const torrentFolders = new TorrentFolders({
-        dataDir: instance.dataDir,
-        db: dependencies.db,
-        engine: torrents,
-      });
-      startup.defer(torrentFolders.close.bind(torrentFolders));
-      dependencies.resources.use(startup.move());
-      return { ...dependencies, torrentFolders, torrents };
-    });
+    const services = await torrentRuntime.runPromise(TorrentServices);
+    return app.decorate(services);
   });
 
 await torrentServicePlugin.modules;
