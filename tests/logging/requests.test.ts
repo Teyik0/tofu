@@ -5,20 +5,27 @@ import { application } from "../helpers/app";
 test("API requests emit one redacted event through direct Eden and HTTP", async () => {
   await using app = await application();
   const dataDir = join(app.directory, "state");
-  const child = Bun.spawn([process.execPath, "tests/helpers/logging.ts"], {
-    cwd: join(import.meta.dir, "../.."),
-    env: {
-      ...process.env,
-      FURIN_APP_DATA_DIR: undefined,
-      NODE_ENV: "development",
-      TOFU_DATA_DIR: dataDir,
-      TOFU_DISCOVERY: "0",
-      TOFU_DOWNLOAD_DIR: app.downloadPath,
-      TOFU_MODE: "server",
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "--preload",
+      "./tests/helpers/preload.ts",
+      "tests/helpers/logging.ts",
+      "0",
+      app.directory,
+    ],
+    {
+      cwd: join(import.meta.dir, "../.."),
+      env: {
+        ...process.env,
+        FURIN_APP_DATA_DIR: undefined,
+        NODE_ENV: "development",
+        TOFU_DISCOVERY: "0",
+      },
+      stderr: "pipe",
+      stdout: "pipe",
+    }
+  );
   using cleanup = new DisposableStack();
   cleanup.defer(() => child.kill());
   const deadline = setTimeout(() => child.kill(), 20_000);

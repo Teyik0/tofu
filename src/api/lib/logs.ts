@@ -3,9 +3,9 @@ import { join } from "node:path";
 import type { DrainContext } from "evlog";
 import { createFsDrain } from "evlog/fs";
 import { createDrainPipeline } from "evlog/pipeline";
-import { currentInstanceConfig } from "./instance";
+import { instance } from "./instance";
 
-export const logDirectory = join(currentInstanceConfig().dataDir, "logs");
+export const logDirectory = join(instance.dataDir, "logs");
 const logFiles = new Bun.Glob("*.jsonl");
 
 const fileDrain = createFsDrain({

@@ -5,8 +5,8 @@ import { initLogger, toLoggerConfig, toMiddlewareOptions } from "evlog";
 import { config } from "../evlog.config";
 import { apiPlugin } from "./api";
 import { closeResources } from "./api/lib/lifecycle-plugin";
-import { listen } from "./api/lib/network";
 import { sync } from "./sync";
+import { instance } from "./api/lib/instance";
 
 initLogger(toLoggerConfig(config));
 
@@ -36,7 +36,7 @@ const app = new Elysia({ name: "tofu" })
       sync,
     })
   )
-  .listen(listen);
+  .listen(instance.port);
 
 const shutdown = async () => {
   await app.stop(true);

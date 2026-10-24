@@ -30,7 +30,6 @@ export async function application(options?: {
   remoteServers?: RemoteServerFixture[];
 }) {
   const directory = await mkdtemp(join(tmpdir(), "tofu-integration-"));
-  const dataDir = join(directory, "state");
   const downloadPath = join(directory, "downloads");
   const resources = new AsyncDisposableStack();
   resources.defer(() => rm(directory, { force: true, recursive: true }));
@@ -49,6 +48,7 @@ export async function application(options?: {
           join(import.meta.dir, "preload.ts"),
           options?.entry ?? "src/server.ts",
           String(port),
+          directory,
         ],
         {
           cwd: join(import.meta.dir, "../.."),
@@ -56,10 +56,7 @@ export async function application(options?: {
             ...process.env,
             FURIN_APP_DATA_DIR: undefined,
             NODE_ENV: "development",
-            TOFU_DATA_DIR: dataDir,
             TOFU_DISCOVERY: "0",
-            TOFU_DOWNLOAD_DIR: downloadPath,
-            TOFU_MODE: "server",
             TOFU_TAILSCALE_CLI: join(directory, "tailscale-not-installed"),
             TOFU_TEST_PROVIDER: options?.provider,
             TOFU_TEST_REMOTE_SERVERS: options?.remoteServers

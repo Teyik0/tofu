@@ -6,7 +6,6 @@ import { schema } from "../../db/schema";
 import { migrateSqliteSync } from "@teyik0/furin/sync/sqlite";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { lifecyclePlugin } from "./lifecycle-plugin";
 import Elysia from "elysia";
 import { databasePath } from "../../../drizzle.config";
 
@@ -25,8 +24,9 @@ function initializeDatabase() {
   }
 }
 
+// Will be used when the global SDK will be available
+// For now use global export const db instance in any services that need it
 export const databasePlugin = new Elysia({ name: "tofu-database-service" })
-  .use(lifecyclePlugin)
   .onStart(initializeDatabase)
   .onStop(() => db.$client.close())
   .decorate("db", db);

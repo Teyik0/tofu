@@ -10,24 +10,30 @@ test("a failed service initialization releases resources before the process exit
   await using app = await application();
   const dataDir = join(app.directory, "state");
   await mkdir(dataDir, { recursive: true });
-  await Bun.write(join(dataDir, "instance.json"), JSON.stringify({ profile: "dev" }));
   const corruptState = join(dataDir, "release-access.json");
   await Bun.write(corruptState, "{");
 
-  const child = Bun.spawn([process.execPath, "tests/helpers/failed-startup.ts"], {
-    cwd: join(import.meta.dir, "../.."),
-    env: {
-      ...process.env,
-      FURIN_APP_DATA_DIR: undefined,
-      NODE_ENV: "development",
-      TOFU_DATA_DIR: dataDir,
-      TOFU_DISCOVERY: "0",
-      TOFU_DOWNLOAD_DIR: app.downloadPath,
-      TOFU_MODE: "server",
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "--preload",
+      "./tests/helpers/preload.ts",
+      "tests/helpers/failed-startup.ts",
+      "0",
+      app.directory,
+    ],
+    {
+      cwd: join(import.meta.dir, "../.."),
+      env: {
+        ...process.env,
+        FURIN_APP_DATA_DIR: undefined,
+        NODE_ENV: "development",
+        TOFU_DISCOVERY: "0",
+      },
+      stderr: "pipe",
+      stdout: "pipe",
+    }
+  );
   using cleanup = new DisposableStack();
   cleanup.defer(() => child.kill());
   const deadline = setTimeout(() => child.kill(), 15_000);

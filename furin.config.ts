@@ -54,7 +54,6 @@ export default defineConfig({
     },
     dataDir: {
       developmentName: "Tofu-dev",
-      env: "TOFU_DATA_DIR",
       name: "Tofu",
     },
     external: ["webtorrent", "parse-torrent"],

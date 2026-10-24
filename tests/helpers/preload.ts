@@ -1,20 +1,25 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { listen } from "../../src/api/lib/network";
+import { instance } from "../../src/api/lib/instance";
 import { ServerCatalog } from "../../src/native/catalog";
 import { nativeControl } from "../../src/native/control";
 import { RemoteThreads } from "../../src/native/remote-threads";
 import type { RemoteServerFixture } from "./app";
 
+const [, , testPort, directory] = process.argv;
+if (!directory) {
+  throw new Error("Application fixtures require a temporary directory");
+}
+instance.dataDir = join(directory, "state");
+instance.downloadPath = join(directory, "downloads");
+instance.desktop = false;
+
 const remoteServers = process.env.TOFU_TEST_REMOTE_SERVERS;
 
 if (remoteServers) {
   const fixtures = JSON.parse(remoteServers) as RemoteServerFixture[];
-  const dataDir = process.env.TOFU_DATA_DIR;
-  if (!dataDir) {
-    throw new Error("Remote server fixtures require a test data directory");
-  }
-  const catalog = new ServerCatalog(join(dataDir, "native"));
+  const catalog = new ServerCatalog(join(instance.dataDir, "native"));
 
   catalog.value.servers.push(...fixtures.map((fixture) => fixture.server));
 
@@ -83,7 +88,6 @@ if (provider) {
   );
 }
 
-const [, , testPort] = process.argv;
 if (testPort !== undefined) {
   listen.port = Number(testPort);
 }
