@@ -1,0 +1,75 @@
+src/api/modules/torrents/plugin.ts
+  s_9b8eda6abd5852::t_ce9c1d778fdced 1,4-5,9-12,14,16-20,23-25,27-44
+  s_9b8eda6abd5852::t_6d0a45d90a987b 22
+src/api/modules/torrents/service.ts
+  s_9b8eda6abd5852::t_bd3383718a838a 52-53,762,764,766,775-776,799,829-830,832,838
+tests/helpers/failed-torrent-startup.ts
+  s_9b8eda6abd5852::t_adcca326667e5b 1-22
+tests/helpers/torrent-lifecycle-server.ts
+  s_9b8eda6abd5852::t_adcca326667e5b 1,8,12-21
+  s_9b8eda6abd5852::t_169e19b84ba8f1 2-7,9-11,22-28,34-42,44
+  s_9b8eda6abd5852::t_15e97e7260115f 29-33
+  s_9b8eda6abd5852::t_6d0a45d90a987b 43
+  s_9b8eda6abd5852::t_619abce8d6768b 45-47
+tests/torrents/lifecycle.test.ts
+  s_9b8eda6abd5852::t_6d0a45d90a987b 22
+  s_9b8eda6abd5852::t_adcca326667e5b 71-100
+  s_9b8eda6abd5852::t_169e19b84ba8f1 1-21,23-70
+src/api/modules/access/plugin.ts
+  s_9b8eda6abd5852::t_cfcaebe8bc8fa3 52
+  s_9b8eda6abd5852::t_7df0017caf64b9 3-4,65-66,72,95,117
+bun.lock
+  s_9b8eda6abd5852::t_42f6e0e8178bc5 17,796-797
+package.json
+  s_9b8eda6abd5852::t_10063c358e32a9 40
+src/api/index.ts
+  s_9b8eda6abd5852::t_d53f7bbd44e6d4 37
+src/api/lib/tailscale/certificates.ts
+  s_9b8eda6abd5852::t_262ca76fece699 7
+src/api/lib/tailscale/index.ts
+  s_9b8eda6abd5852::t_dbc440fa3bdbd9 6
+src/api/lib/tailscale/lan.ts
+  s_9b8eda6abd5852::t_44e9031eb33fff 8
+src/api/modules/automation/index.ts
+  s_9b8eda6abd5852::t_11060c47493f68 2
+src/api/modules/destinations/plugin.ts
+  s_9b8eda6abd5852::t_b6f7f6e04dfce5 3
+src/api/modules/discovery/plugin.ts
+  s_9b8eda6abd5852::t_b536aaa982b9fd 2
+src/api/modules/jev/plugin.ts
+  s_9b8eda6abd5852::t_c60c315faef5ad 2
+src/api/modules/library-links/plugin.ts
+  s_9b8eda6abd5852::t_986e625a789246 3
+src/api/modules/media-links/plugin.ts
+  s_9b8eda6abd5852::t_4211a724b07699 3
+src/api/modules/playback/index.ts
+  s_9b8eda6abd5852::t_1597ed1eace237 5
+src/api/modules/plugins/plugin.ts
+  s_9b8eda6abd5852::t_e7721d5b037320 2
+src/pages/(login)/pair/index.tsx
+  s_9b8eda6abd5852::t_a8bb8f3d63c295 68
+src/api/modules/desktop/index.ts
+  s_9b8eda6abd5852::t_b0ceea522ff83c 9
+src/api/modules/desktop/native-open.ts
+  s_9b8eda6abd5852::t_9b35a0aa270027 4
+src/api/modules/player/index.ts
+  s_9b8eda6abd5852::t_d818a948b085a5 6-7
+src/api/modules/updates/plugin.ts
+  s_9b8eda6abd5852::t_d9db9b34426586 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "744067e07a0c10cb7508fe424329806ecabd8089",
+  "prompts": {},
+  "sessions": {
+    "s_9b8eda6abd5852": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e11-c51c-7e83-ba0a-14871cfc047d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
