@@ -1,0 +1,91 @@
+src/server.ts
+  s_ec07fed5a14f85::t_10f7e7fff464c0 37,44-46
+  s_ec07fed5a14f85::t_4a33ecba3af368 6,8-9
+  s_ec07fed5a14f85::t_c9b9be462eff30 7,11
+  s_21af74d8fc7972::t_2f961cc53e8cd1 2-3,13-14,18-22,26-31,39-43
+  s_21af74d8fc7972::t_83284554403cb3 4
+  s_21af74d8fc7972::t_2ebdefb5107648 25
+  s_21af74d8fc7972::t_6e94dc7bf08fad 32-34
+  s_ec07fed5a14f85::t_cd4e65dfca64e5 47-49
+package.json
+  s_ec07fed5a14f85::t_99c4c6a18ab615 33-34
+README.md
+  s_ec07fed5a14f85::t_de319ae8d51276 26
+  s_ec07fed5a14f85::t_4920e2752b688b 131
+src/api/index.ts
+  s_21af74d8fc7972::t_94ba8ef2d61351 52
+  s_ec07fed5a14f85::t_10f7e7fff464c0 4,42
+  s_21af74d8fc7972::t_7f7e281aeea4aa 3
+  s_ec07fed5a14f85::t_6f51211b044f84 57-58
+  s_21af74d8fc7972::t_d50a3fb70bc1a5 21
+  s_ec07fed5a14f85::t_b8b0b1c4a8dfbe 5-6
+  s_21af74d8fc7972::t_445b4656edd28a 2
+  s_ec07fed5a14f85::t_042773145b3fa7 43
+  s_ec07fed5a14f85::t_f82b5391558380 54-56
+src/api/modules/player/index.ts
+  s_ec07fed5a14f85::t_241b110ece6bac 4,46-47
+tests/helpers/app.ts
+  s_21af74d8fc7972::t_38fae79ca78cf3 19
+  s_21af74d8fc7972::t_35346d6eaa9f7e 55
+  s_21af74d8fc7972::t_35d1039c845a0a 14-18,20-26
+  s_21af74d8fc7972::t_589f8cfd290f4c 42-43
+  s_21af74d8fc7972::t_c952ea4aee7dbe 109-112
+src/api/lib/instance.ts
+  s_21af74d8fc7972::t_0a35131eb7ad6c 171
+  s_21af74d8fc7972::t_8f886d89d30ff2 2
+tests/helpers/logging.ts
+  s_ec07fed5a14f85::t_2ff0ae23bb1c0c 3,5,32-39
+  s_ec07fed5a14f85::t_6f51211b044f84 49-51
+  s_ec07fed5a14f85::t_15ee19c1da4234 1-2,4,6-31,40-48,52-55
+src/desktop.ts
+  s_ec07fed5a14f85::t_7334fbcee92448 11-14
+evlog.config.ts
+  s_ec07fed5a14f85::t_c9b9be462eff30 1-5,7,10-13,22-31,33-34
+  s_ec07fed5a14f85::t_10f7e7fff464c0 9
+  s_ec07fed5a14f85::t_312d9e4bccaa86 8,32
+  s_ec07fed5a14f85::t_de319ae8d51276 14-19
+  s_ec07fed5a14f85::t_c512a020c06731 20-21
+  s_ec07fed5a14f85::t_0ec4d71c189cbe 6
+src/native/control.ts
+  s_ec07fed5a14f85::t_7334fbcee92448 4
+tests/logging/requests.test.ts
+  s_ec07fed5a14f85::t_2ff0ae23bb1c0c 38-46,53
+  s_ec07fed5a14f85::t_6f51211b044f84 54-56
+  s_ec07fed5a14f85::t_15ee19c1da4234 1-37,47-50,52,57
+  s_ec07fed5a14f85::t_c512a020c06731 51
+src/api/modules/desktop/native-open.ts
+  s_21af74d8fc7972::t_0a37400cbab953 1-21,23-68,70-84
+  s_21af74d8fc7972::t_b7fd227e919f5d 69
+  s_21af74d8fc7972::t_d9ee50cc7b9d32 22
+src/api/modules/torrents/worker.ts
+  s_ec07fed5a14f85::t_c9b9be462eff30 2,4,12
+  s_ec07fed5a14f85::t_129352b531ddb3 3
+bun.lock
+  s_ec07fed5a14f85::t_3df38e12315b41 11-12,437,439
+vendor/README.md
+  s_ec07fed5a14f85::t_fdb08db0841dcd 5,9-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea83bb558bb3c25860fc43ee748f219235173c14",
+  "prompts": {},
+  "sessions": {
+    "s_21af74d8fc7972": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e932fccceffeQko2Jy4XfY9nw0",
+        "model": "unknown"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_ec07fed5a14f85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a162df-ddda-7cb1-b474-a37bf0853d8f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
