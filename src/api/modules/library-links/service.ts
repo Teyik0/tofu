@@ -1,7 +1,8 @@
 import { Access } from "../access/layer";
 import "@teyik0/furin/server-only";
 import { eq } from "drizzle-orm";
-import { Context, Effect, Layer, Result } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { problem } from "elysia";
 import { linkedServers } from "../../../db/schema";
 import { PROTOCOL_MAJOR } from "../../../lib/protocol";
@@ -15,6 +16,57 @@ const CACHE_TTL = 60_000;
 const STALE_TTL = 10 * 60_000;
 const MAX_LINKS = 8;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const decodeDescriptor = HttpClientResponse.schemaBodyJson(
+  Schema.Struct({
+    name: Schema.String,
+    product: Schema.Literal("tofu"),
+    protocol: Schema.optional(Schema.Struct({ major: Schema.optional(Schema.Number) })),
+    serverId: Schema.String,
+  })
+);
+const decodePair = HttpClientResponse.schemaBodyJson(
+  Schema.Struct({
+    detail: Schema.optional(Schema.String),
+    device: Schema.optional(Schema.Struct({ id: Schema.String })),
+    server: Schema.optional(Schema.Struct({ id: Schema.String })),
+    token: Schema.optional(Schema.String),
+  })
+);
+const decodeAvailability = HttpClientResponse.schemaBodyJson(
+  Schema.Struct({
+    results: Schema.Array(
+      Schema.Struct({
+        sources: Schema.Array(
+          Schema.Struct({
+            episode: Schema.NullOr(Schema.Number),
+            fileIndex: Schema.Number,
+            fileName: Schema.String,
+            language: Schema.NullOr(Schema.String),
+            length: Schema.Number,
+            match: Schema.Literals(["infohash", "title"]),
+            progress: Schema.NullOr(Schema.Number),
+            resolution: Schema.NullOr(Schema.String),
+            status: Schema.Literals(["playable", "downloading", "paused", "unavailable"]),
+            torrentId: Schema.String,
+          })
+        ).pipe(Schema.mutable),
+      })
+    ),
+  })
+);
+const decodePlayback = HttpClientResponse.schemaBodyJson(
+  Schema.Struct({
+    expiresAt: Schema.Number,
+    file: Schema.Struct({
+      complete: Schema.Boolean,
+      index: Schema.Number,
+      length: Schema.Number,
+      name: Schema.String,
+    }),
+    id: Schema.String,
+    url: Schema.String,
+  })
+);
 
 type LinkedServer = typeof linkedServers.$inferSelect;
 
@@ -50,6 +102,11 @@ function serverOrigin(address: string) {
  * them (a Playback device by default) and never shares its own AniList account with them.
  */
 const make = Effect.gen(function* () {
+  const http = HttpClient.withScope(yield* HttpClient.HttpClient).pipe(
+    HttpClient.transformResponse(
+      Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" })
+    )
+  );
   const db = yield* Database;
   const { access } = yield* Access;
   const options: LinkedLibrariesOptions = {
@@ -77,38 +134,21 @@ const make = Effect.gen(function* () {
       }));
   }
   const serviceDescriptor = Effect.fn("Libraries.descriptor")(function* (origin: string) {
-    const response = yield* Effect.tryPromise(() =>
-      fetch(`${origin}/.well-known/tofu`, {
-        redirect: "error",
-        signal: AbortSignal.timeout(DEADLINE),
-      })
-    );
-    if (!response.ok) {
+    const response = yield* http.get(`${origin}/.well-known/tofu`).pipe(Effect.timeout(DEADLINE));
+    if (response.status < 200 || response.status >= 300) {
       return null;
     }
-    const decoded = yield* Effect.result(Effect.tryPromise(() => response.json()));
-    if (Result.isFailure(decoded) || !decoded.success || typeof decoded.success !== "object") {
+    const decoded = yield* Effect.result(decodeDescriptor(response).pipe(Effect.timeout(DEADLINE)));
+    if (Result.isFailure(decoded)) {
       return null;
     }
-    const body = decoded.success as {
-      name?: unknown;
-      product?: unknown;
-      protocol?: { major?: unknown };
-      serverId?: unknown;
-    };
-    if (
-      body.product !== "tofu" ||
-      typeof body.serverId !== "string" ||
-      typeof body.name !== "string"
-    ) {
-      return null;
-    }
+    const body = decoded.success;
     return {
       compatible: body.protocol?.major === PROTOCOL_MAJOR,
       name: body.name,
       serverId: body.serverId,
     };
-  });
+  }, Effect.scoped);
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
   const serviceLink = Effect.fn("Libraries.link")(function* (input: {
     address: string;
@@ -144,37 +184,30 @@ const make = Effect.gen(function* () {
     }
     const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url");
     const paired = yield* Effect.result(
-      Effect.tryPromise(() =>
-        fetch(`${origin}/api/auth/pair`, {
-          body: JSON.stringify({
-            code: input.code,
-            kind: "server",
-            label: input.label,
-            nonce,
-            secret: input.secret,
-          }),
-          headers: { "content-type": "application/json" },
-          method: "POST",
-          redirect: "error",
-          signal: AbortSignal.timeout(DEADLINE * 2),
-        })
-      )
+      http
+        .execute(
+          HttpClientRequest.post(`${origin}/api/auth/pair`).pipe(
+            HttpClientRequest.bodyJsonUnsafe({
+              code: input.code,
+              kind: "server",
+              label: input.label,
+              nonce,
+              secret: input.secret,
+            })
+          )
+        )
+        .pipe(Effect.timeout(DEADLINE * 2))
     );
     if (Result.isFailure(paired)) {
       return problem(502, { detail: `${descriptor.name} did not answer. Try again` });
     }
     const response = paired.success;
-    const decoded = yield* Effect.result(Effect.tryPromise(() => response.json()));
-    if (Result.isFailure(decoded) || !decoded.success || typeof decoded.success !== "object") {
+    const decoded = yield* Effect.result(decodePair(response).pipe(Effect.timeout(DEADLINE)));
+    if (Result.isFailure(decoded)) {
       return problem(502, { detail: "The server returned an unreadable invitation response" });
     }
-    const body = decoded.success as {
-      detail?: string;
-      device?: { id: string };
-      server?: { id: string };
-      token?: string;
-    };
-    if (!response.ok) {
+    const body = decoded.success;
+    if (response.status < 200 || response.status >= 300) {
       return problem(response.status === 410 ? 410 : 403, {
         detail: body.detail ?? "The invitation was refused",
       });
@@ -203,27 +236,26 @@ const make = Effect.gen(function* () {
       serverId: link.serverId,
       state: link.state,
     };
-  });
+  }, Effect.scoped);
   const serviceUnlink = Effect.fn("Libraries.unlink")(function* (id: string) {
     const link = serviceFind(id);
     if (!link) {
       return problem(404, { detail: "Linked server not found" });
     }
     const revoked = yield* Effect.result(
-      Effect.tryPromise(() =>
-        fetch(`${link.origin}/api/auth/logout`, {
+      http
+        .post(`${link.origin}/api/auth/logout`, {
           headers: { authorization: `Bearer ${link.credential}` },
-          method: "POST",
-          redirect: "error",
-          signal: AbortSignal.timeout(DEADLINE),
         })
-      )
+        .pipe(Effect.timeout(DEADLINE))
     );
     const revokedRemotely =
-      Result.isSuccess(revoked) && (revoked.success.ok || revoked.success.status === 401);
+      Result.isSuccess(revoked) &&
+      ((revoked.success.status >= 200 && revoked.success.status < 300) ||
+        revoked.success.status === 401);
     serviceOptions.db.delete(linkedServers).where(eq(linkedServers.id, id)).run();
     return { removed: true as const, revokedRemotely };
-  });
+  }, Effect.scoped);
   function serviceFind(id: string) {
     return serviceOptions.db.select().from(linkedServers).where(eq(linkedServers.id, id)).get();
   }
@@ -276,18 +308,16 @@ const make = Effect.gen(function* () {
       return verified === "offline" ? offline() : { checkedAt: now, sources: [], state: verified };
     }
     const queried = yield* Effect.result(
-      Effect.tryPromise(() =>
-        fetch(`${link.origin}/api/library/availability`, {
-          body: JSON.stringify({ queries: [query] }),
-          headers: {
-            authorization: `Bearer ${link.credential}`,
-            "content-type": "application/json",
-          },
-          method: "POST",
-          redirect: "error",
-          signal: AbortSignal.timeout(DEADLINE),
-        })
-      )
+      http
+        .execute(
+          HttpClientRequest.post(`${link.origin}/api/library/availability`, {
+            headers: {
+              authorization: `Bearer ${link.credential}`,
+              "content-type": "application/json",
+            },
+          }).pipe(HttpClientRequest.bodyJsonUnsafe({ queries: [query] }))
+        )
+        .pipe(Effect.timeout(DEADLINE))
     );
     if (Result.isFailure(queried)) {
       return offline();
@@ -297,25 +327,17 @@ const make = Effect.gen(function* () {
       serviceMark(link, "revoked");
       return { checkedAt: now, sources: [], state: "revoked" };
     }
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       return offline();
     }
     const decoded = yield* Effect.result(
-      Effect.tryPromise(
-        () => response.json() as Promise<{ results: { sources: EpisodeSource[] }[] }>
-      )
+      decodeAvailability(response).pipe(Effect.timeout(DEADLINE))
     );
     if (Result.isFailure(decoded)) {
       return offline();
     }
     const body = decoded.success;
-    if (!Array.isArray(body?.results)) {
-      return offline();
-    }
     const sources = body.results[0]?.sources ?? [];
-    if (!Array.isArray(sources)) {
-      return offline();
-    }
     if (serviceCache.size >= 1024) {
       const first = serviceCache.keys().next().value;
       if (first) {
@@ -325,7 +347,7 @@ const make = Effect.gen(function* () {
     serviceCache.set(key, { at: now, sources });
     serviceMark(link, "active");
     return { checkedAt: now, sources, state: sources.length ? "available" : "none" };
-  });
+  }, Effect.scoped);
   const serviceAvailability = Effect.fn("Libraries.availability")(function* (
     query: AvailabilityQuery
   ) {
@@ -371,18 +393,16 @@ const make = Effect.gen(function* () {
       return problem(503, { detail: "The linked server is unavailable" });
     }
     const revoked = yield* Effect.result(
-      Effect.tryPromise(() =>
-        fetch(`${link.origin}/api/media-links/revoke`, {
-          body: JSON.stringify({ id: playbackId }),
-          headers: {
-            authorization: `Bearer ${link.credential}`,
-            "content-type": "application/json",
-          },
-          method: "POST",
-          redirect: "error",
-          signal: AbortSignal.timeout(DEADLINE),
-        })
-      )
+      http
+        .execute(
+          HttpClientRequest.post(`${link.origin}/api/media-links/revoke`, {
+            headers: {
+              authorization: `Bearer ${link.credential}`,
+              "content-type": "application/json",
+            },
+          }).pipe(HttpClientRequest.bodyJsonUnsafe({ id: playbackId }))
+        )
+        .pipe(Effect.timeout(DEADLINE))
     );
     if (Result.isFailure(revoked)) {
       return problem(503, {
@@ -390,11 +410,11 @@ const make = Effect.gen(function* () {
       });
     }
     const response = revoked.success;
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       return problem(409, { detail: "The linked server could not revoke this playback link" });
     }
     return { revoked: true as const };
-  });
+  }, Effect.scoped);
   const servicePlay = Effect.fn("Libraries.play")(function* (
     id: string,
     torrentId: string,
@@ -408,18 +428,16 @@ const make = Effect.gen(function* () {
       return problem(503, { detail: `${link.name} is not available` });
     }
     const played = yield* Effect.result(
-      Effect.tryPromise(() =>
-        fetch(`${link.origin}/api/media-links`, {
-          body: JSON.stringify({ fileIndex, torrentId }),
-          headers: {
-            authorization: `Bearer ${link.credential}`,
-            "content-type": "application/json",
-          },
-          method: "POST",
-          redirect: "error",
-          signal: AbortSignal.timeout(DEADLINE),
-        })
-      )
+      http
+        .execute(
+          HttpClientRequest.post(`${link.origin}/api/media-links`, {
+            headers: {
+              authorization: `Bearer ${link.credential}`,
+              "content-type": "application/json",
+            },
+          }).pipe(HttpClientRequest.bodyJsonUnsafe({ fileIndex, torrentId }))
+        )
+        .pipe(Effect.timeout(DEADLINE))
     );
     if (Result.isFailure(played)) {
       return problem(503, { detail: `${link.name} is not reachable` });
@@ -429,19 +447,14 @@ const make = Effect.gen(function* () {
       serviceMark(link, "revoked");
       return problem(403, { detail: `${link.name} removed access for this server` });
     }
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       return problem(404, { detail: "This file is no longer available" });
     }
-    const decoded = yield* Effect.result(Effect.tryPromise(() => response.json()));
-    if (Result.isFailure(decoded) || !decoded.success || typeof decoded.success !== "object") {
+    const decoded = yield* Effect.result(decodePlayback(response).pipe(Effect.timeout(DEADLINE)));
+    if (Result.isFailure(decoded)) {
       return problem(502, { detail: "The linked server returned an unreadable playback response" });
     }
-    const body = decoded.success as {
-      expiresAt: number;
-      id: string;
-      url: string;
-      file: { index: number; length: number; name: string; complete: boolean };
-    };
+    const body = decoded.success;
     // The linked server builds the URL from its own address; it must stay on that origin.
     if (URL.parse(body.url)?.origin !== link.origin) {
       return problem(502, { detail: "The linked server answered with another address" });
@@ -453,7 +466,7 @@ const make = Effect.gen(function* () {
       server: { id: link.serverId, name: link.name },
       url: body.url,
     };
-  });
+  }, Effect.scoped);
 
   return {
     availability: serviceAvailability,

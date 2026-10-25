@@ -1,4 +1,5 @@
 import { Layer } from "effect";
+import { FetchHttpClient } from "effect/http";
 import { accessLayer } from "../modules/access/layer";
 import { aniListLayer } from "../modules/anilist/service";
 import { releaseAutomationLayer } from "../modules/automation/integration";
@@ -45,4 +46,4 @@ export const servicesLayer = Layer.mergeAll(
     Layer.provideMerge(torrents)
   ),
   stateJournalsLayer.pipe(Layer.provide(torrents))
-);
+).pipe(Layer.provide(FetchHttpClient.layer));

@@ -1,5 +1,13 @@
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { ElysiaStatus, problem } from "elysia";
+
+const decodeCallbackState = Schema.decodeUnknownResult(Schema.Struct({ state: Schema.String }));
+const decodeDeclined = Schema.decodeUnknownResult(Schema.Struct({ error: Schema.NonEmptyString }));
+const decodeCallbackToken = Schema.decodeUnknownResult(
+  Schema.Struct({
+    access_token: Schema.NonEmptyString.check(Schema.isMaxLength(4096)),
+  })
+);
 
 interface AuthorizationAttempt {
   deviceId?: string;
@@ -198,11 +206,10 @@ export class AniListAuthorization {
 
   private async accept(body: unknown, attempt: AuthorizationAttempt) {
     const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+    const state = decodeCallbackState(body);
     if (
-      !body ||
-      typeof body !== "object" ||
-      !("state" in body) ||
-      body.state !== attempt.state ||
+      Result.isFailure(state) ||
+      state.success.state !== attempt.state ||
       this.attempt !== attempt ||
       attempt.processing
     ) {
@@ -211,17 +218,13 @@ export class AniListAuthorization {
         400
       );
     }
-    if ("error" in body && body.error) {
+    if (Result.isSuccess(decodeDeclined(body))) {
       this.attempt = null;
       this.error = "AniList authorization was declined. Connect again when you are ready.";
       return callbackProblem(this.error, 400);
     }
-    if (
-      !("access_token" in body) ||
-      typeof body.access_token !== "string" ||
-      !body.access_token ||
-      body.access_token.length > 4096
-    ) {
+    const token = decodeCallbackToken(body);
+    if (Result.isFailure(token)) {
       return callbackProblem("Missing AniList access token", 400);
     }
     attempt.processing = true;
@@ -245,7 +248,7 @@ export class AniListAuthorization {
       Effect.result(
         Effect.tryPromise({
           catch: (cause) => cause,
-          try: () => this.complete(body.access_token as string, () => this.attempt === attempt),
+          try: () => this.complete(token.success.access_token, () => this.attempt === attempt),
         })
       )
     );

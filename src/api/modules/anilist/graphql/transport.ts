@@ -1,13 +1,37 @@
-import { Effect, Result } from "effect";
+import { Schema } from "effect";
 import type { DocumentNode } from "graphql";
 import { ClientError, GraphQLClient, type Variables } from "graphql-request";
 import { getSdk } from "./generated";
 
 /**
- * AniList could not answer. The generated SDK requires its requester to throw; the AniList
- * service returns this as a typed 502 problem. The message never contains request data.
+ * Expected provider failures never retain upstream request data or credentials.
  */
-export class AniListUnavailable extends Error {}
+export class AniListUnavailable extends Schema.TaggedError<AniListUnavailable>()(
+  "AniListUnavailable",
+  {
+    message: Schema.String,
+  }
+) {}
+
+export class AniListCancelled extends Schema.TaggedError<AniListCancelled>()(
+  "AniListCancelled",
+  {}
+) {}
+
+export function anilistRequestError(cause: unknown, signal: AbortSignal) {
+  if (signal.aborted) {
+    return new AniListCancelled({});
+  }
+  if (cause instanceof ClientError) {
+    return new AniListUnavailable({
+      message:
+        cause.response.status >= 400
+          ? `AniList unavailable (HTTP ${cause.response.status})`
+          : "AniList: account or list inaccessible",
+    });
+  }
+  return new AniListUnavailable({ message: "AniList unavailable" });
+}
 
 interface RequestOptions {
   accessToken?: string;
@@ -23,46 +47,13 @@ export function createAniListSdk(endpoint: string, token: () => string) {
       options?: RequestOptions
     ): Promise<Result> => {
       const accessToken = options?.accessToken ?? token();
-      const response = await Effect.runPromise(
-        Effect.result(
-          Effect.tryPromise({
-            catch: (cause) => {
-              if (
-                options?.signal.aborted &&
-                !(
-                  options.signal.reason instanceof DOMException &&
-                  options.signal.reason.name === "TimeoutError"
-                )
-              ) {
-                return cause;
-              }
-              if (cause instanceof ClientError) {
-                const message =
-                  cause.response.status >= 400
-                    ? `AniList unavailable (HTTP ${cause.response.status})`
-                    : "AniList: account or list inaccessible";
-                // Do not expose upstream query variables or credentials in API errors.
-                return new AniListUnavailable(message);
-              }
-              // Transport errors can contain credentials, so omit their cause.
-              return new AniListUnavailable("AniList unavailable");
-            },
-            try: () =>
-              client.request<Result>({
-                document,
-                requestHeaders: accessToken ? { authorization: `Bearer ${accessToken}` } : {},
-                signal: options?.signal,
-                // The SDK supplies generated operation variables; this adapts its generic
-                // requester to graphql-request's transport-only Variables constraint.
-                variables: variables as Variables | undefined,
-              }),
-          })
-        )
-      );
-      if (Result.isFailure(response)) {
-        throw response.failure;
-      }
-      return response.success;
+      return await client.request<Result>({
+        document,
+        requestHeaders: accessToken ? { authorization: `Bearer ${accessToken}` } : {},
+        signal: options?.signal,
+        // Adapt generated operation variables to the transport's generic constraint.
+        variables: variables as Variables | undefined,
+      });
     }
   );
 }

@@ -8,7 +8,10 @@ import { provider } from "../helpers/provider";
 test("an anime episode downloads from a real peer and its watched progress syncs to AniList", async () => {
   await using source = await peer();
   await using upstream = provider(source);
-  await using app = await application({ provider: upstream.url });
+  await using app = await application({
+    entry: "tests/helpers/providers-server.ts",
+    provider: upstream.url,
+  });
   const { client } = await app.start();
   success(
     await client.plugins({ id: "anilist" }).put({ apiKey: "test-anilist-token", enabled: true })

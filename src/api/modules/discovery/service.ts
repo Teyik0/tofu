@@ -1,4 +1,5 @@
-import { Context, Effect, Layer, Result } from "effect";
+import { Context, Effect, Exit, Layer, Result, Schema, Scope } from "effect";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { ElysiaStatus, problem } from "elysia";
 import parseTorrent from "parse-torrent";
 import { automationReleases } from "../../../db/schema";
@@ -18,6 +19,7 @@ import { Plugins, pluginEndpoints } from "../plugins/service";
 import { TorrentClient } from "../torrents/layer";
 import type { EnginePort } from "../torrents/service";
 import type { DiscoveryResult, DiscoverySearch, FeedRelease } from "./model";
+import { decodeRelease } from "./persistence";
 import { collectSourceQueries, uniqueReleases } from "./sources";
 
 const combinedEpisode = /\bs(\d{1,3})\s*e(\d{1,4})\b/gi;
@@ -36,11 +38,24 @@ const catalogQuery = `query($search: String!) {
   }
 }`;
 
-interface AnimeTitle {
-  id: number;
-  synonyms: string[];
-  title: { english: string | null; romaji: string | null; native: string | null };
-}
+const animeTitleSchema = Schema.Struct({
+  id: Schema.Number,
+  synonyms: Schema.Array(Schema.String).pipe(Schema.mutable),
+  title: Schema.Struct({
+    english: Schema.NullOr(Schema.String),
+    native: Schema.NullOr(Schema.String),
+    romaji: Schema.NullOr(Schema.String),
+  }),
+});
+type AnimeTitle = typeof animeTitleSchema.Type;
+const decodeCatalogue = HttpClientResponse.schemaBodyJson(
+  Schema.Struct({
+    data: Schema.Struct({
+      Page: Schema.Struct({ media: Schema.Array(animeTitleSchema).pipe(Schema.mutable) }),
+    }),
+    errors: Schema.optional(Schema.Array(Schema.Struct({ message: Schema.String }))),
+  })
+);
 
 function titles(media: AnimeTitle) {
   return [media.title.english, media.title.romaji, media.title.native].filter(
@@ -176,6 +191,8 @@ interface DiscoveryOptions {
 }
 
 const make = Effect.gen(function* () {
+  const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+  const httpScope = yield* Scope.fork(yield* Effect.scope);
   const db = yield* Database;
   const plugins = yield* Plugins;
   const jev = yield* Jev;
@@ -188,7 +205,6 @@ const make = Effect.gen(function* () {
   const serviceReleases = new Map<string, FeedRelease>();
   const serviceAdditions = new Map<string, ReturnType<typeof serviceDownloadRelease>>();
   const serviceCache = new Map<string, { expires: number; media: AnimeTitle[] }>();
-  const serviceRequests = new Set<AbortController>();
   function serviceCachedReleases() {
     return structuredClone([...serviceReleases.values()]);
   }
@@ -484,51 +500,32 @@ const make = Effect.gen(function* () {
     if (cached && cached.expires > Date.now()) {
       return cached.media;
     }
-    const controller = new AbortController();
-    serviceRequests.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const cleanup = yield* Effect.acquireRelease(
-      Effect.sync(() => new DisposableStack()),
-      (resource) => Effect.sync(() => resource.dispose())
+    const requestScope = yield* Effect.acquireRelease(Scope.fork(httpScope), (owned, exit) =>
+      Scope.close(owned, exit)
     );
-    cleanup.defer(() => {
-      clearTimeout(timeout);
-      serviceRequests.delete(controller);
-    });
     const fetched = yield* Effect.result(
-      Effect.tryPromise({
-        catch: (cause) => cause,
-        try: () =>
-          fetch(endpoint, {
-            body: JSON.stringify({ query: catalogQuery, variables: { search: title } }),
-            headers: { "content-type": "application/json" },
-            method: "POST",
-            signal: controller.signal,
-          }),
-      })
+      http
+        .execute(
+          HttpClientRequest.post(endpoint).pipe(
+            HttpClientRequest.bodyJsonUnsafe({ query: catalogQuery, variables: { search: title } })
+          )
+        )
+        .pipe(Scope.provide(requestScope), Effect.timeout(5000))
     );
     if (Result.isFailure(fetched)) {
       return problem(502, { detail: "Catalogue unavailable" });
     }
     const response = fetched.success;
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       return problem(502, { detail: "Catalogue unavailable" });
     }
-    const decoded = yield* Effect.result(
-      Effect.tryPromise({
-        catch: (cause) => cause,
-        try: () => response.json(),
-      })
-    );
+    const decoded = yield* Effect.result(decodeCatalogue(response).pipe(Effect.timeout(5000)));
     if (Result.isFailure(decoded)) {
       return problem(502, { detail: "Invalid catalogue" });
     }
-    const result = decoded.success as {
-      data?: { Page?: { media?: AnimeTitle[] } };
-      errors?: unknown[];
-    } | null;
-    const media = result?.data?.Page?.media;
-    if (!Array.isArray(media) || result?.errors?.length) {
+    const result = decoded.success;
+    const { media } = result.data.Page;
+    if (result.errors?.length) {
       return problem(502, { detail: "Invalid catalogue" });
     }
     if (serviceCache.size >= 100) {
@@ -542,16 +539,14 @@ const make = Effect.gen(function* () {
       return;
     }
     serviceLifecycle.closed = true;
-    for (const request of serviceRequests) {
-      request.abort();
-    }
+    yield* Scope.close(httpScope, Exit.void);
     serviceCache.clear();
     yield* Effect.all([...serviceAdditions.values()].map(Effect.exit), {
       concurrency: "unbounded",
     });
   });
   for (const row of serviceDb.select().from(automationReleases).all()) {
-    const release = JSON.parse(row.value) as FeedRelease;
+    const release = decodeRelease(row.value);
     serviceReleases.set(`${release.sourceId}:${release.id}`, release);
   }
   yield* Effect.addFinalizer(() => serviceClose());

@@ -6,7 +6,7 @@ import { provider } from "../helpers/provider";
 test("AniList validates its OAuth callback and disconnecting removes account access", async () => {
   await using upstream = provider();
   await using app = await application({
-    entry: "tests/helpers/migrated-server.ts",
+    entry: "tests/helpers/providers-server.ts",
     provider: upstream.url,
   });
   const { client } = await app.start();

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import { Context, Effect, Layer, Result } from "effect";
+import { Clock, Context, Effect, Layer, Result, Schema, Semaphore } from "effect";
+import { HttpClient } from "effect/http";
 import { ElysiaStatus, problem } from "elysia";
 import { automationPlugins } from "../../../db/schema";
 import { Database } from "../../lib/database-layer";
@@ -17,6 +18,23 @@ export const pluginEndpoints = {
 export type PluginEndpoints = typeof pluginEndpoints & { anilist?: string; anilistToken?: string };
 const namespacedSourceId = /^[a-z0-9][a-z0-9._-]*\.[a-z0-9._-]+$/;
 const feedFailure = /^(Source unavailable|Invalid RSS feed|RSS feed missing|Invalid JSON feed)/;
+const decodeStoredPlugin = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      apiKey: Schema.optional(Schema.String),
+      callsDay: Schema.optional(Schema.String),
+      callsToday: Schema.optional(Schema.Number),
+      checkedAt: Schema.optional(Schema.NullOr(Schema.Number)),
+      dailyLimit: Schema.optional(Schema.Number),
+      description: Schema.optional(Schema.String),
+      enabled: Schema.optional(Schema.Boolean),
+      error: Schema.optional(Schema.NullOr(Schema.String)),
+      hasApiKey: Schema.optional(Schema.Boolean),
+      id: Schema.optional(Schema.String),
+      name: Schema.optional(Schema.String),
+    })
+  )
+);
 export const plugins: Pick<PluginState, "id" | "name" | "description">[] = [
   {
     description: "Browse your anime library, sync watched episodes, and customize download rules.",
@@ -56,6 +74,8 @@ export interface SourceRegistration {
 }
 
 const make = Effect.gen(function* () {
+  const client = yield* HttpClient.HttpClient;
+  const http = HttpClient.withScope(client);
   const db = yield* Database;
   const options: PluginsOptions = { endpoints: pluginEndpoints, now: Date.now };
   const serviceDb = db;
@@ -65,7 +85,7 @@ const make = Effect.gen(function* () {
   const serviceSources = new Map<SourcePluginId, SourceRegistration>();
   const serviceLifecycle: { closed: boolean } = { closed: false };
   const serviceRequests = new Map<PluginId, Set<AbortController>>();
-  let serviceC411Queue: Promise<void> = Promise.resolve();
+  const serviceC411Queue = yield* Semaphore.make(1);
   let serviceC411NextAt = 0;
   function serviceSnapshot() {
     return Array.from(servicePlugins.values(), ({ apiKey, callsDay, ...plugin }) => ({
@@ -90,7 +110,7 @@ const make = Effect.gen(function* () {
       .from(automationPlugins)
       .where(eq(automationPlugins.id, source.id))
       .get();
-    const stored = row ? (JSON.parse(row.value) as Partial<StoredPlugin>) : {};
+    const stored = row ? decodeStoredPlugin(row.value) : {};
     servicePlugins.set(source.id, {
       apiKey: "",
       callsDay: "",
@@ -211,7 +231,7 @@ const make = Effect.gen(function* () {
   const serviceRequest = Effect.fn("Plugins.request")(function* <Result>(
     id: PluginId,
     timeoutMs: number,
-    reserve: ((controller: AbortController) => Effect.Effect<void, unknown>) | null,
+    reserve: Effect.Effect<void> | null,
     run: (controller: AbortController) => Effect.Effect<Result>
   ) {
     if (serviceLifecycle.closed) {
@@ -221,29 +241,45 @@ const make = Effect.gen(function* () {
     const active = serviceRequests.get(id) ?? new Set<AbortController>();
     active.add(controller);
     serviceRequests.set(id, active);
-    let timer: ReturnType<typeof setTimeout> | null = null;
     const cleanup = yield* Effect.acquireRelease(
       Effect.sync(() => new DisposableStack()),
       (resource) => Effect.sync(() => resource.dispose())
     );
     cleanup.defer(() => {
       controller.abort();
-      if (timer !== null) {
-        clearTimeout(timer);
-      }
       active.delete(controller);
     });
-    if (reserve) {
-      const reserved = yield* Effect.result(reserve(controller));
-      if (Result.isFailure(reserved) && !controller.signal.aborted) {
-        throw reserved.failure;
-      }
-    }
     if (controller.signal.aborted) {
       return problem(409, { detail: "Plugin request cancelled" });
     }
-    timer = setTimeout(() => controller.abort(), timeoutMs);
-    const result = yield* run(controller);
+    const result = yield* Effect.raceFirst(
+      Effect.gen(function* () {
+        if (reserve) {
+          yield* reserve;
+        }
+        return yield* run(controller).pipe(
+          Effect.timeoutOrElse({
+            duration: timeoutMs,
+            orElse: () =>
+              Effect.sync(() => {
+                controller.abort();
+                return problem(409, { detail: "Plugin request cancelled" });
+              }),
+          })
+        );
+      }),
+      Effect.callback<
+        ReturnType<typeof problem<409, { readonly detail: "Plugin request cancelled" }>>
+      >((resume) => {
+        const abort = () =>
+          resume(Effect.succeed(problem(409, { detail: "Plugin request cancelled" })));
+        controller.signal.addEventListener("abort", abort, { once: true });
+        if (controller.signal.aborted) {
+          abort();
+        }
+        return Effect.sync(() => controller.signal.removeEventListener("abort", abort));
+      })
+    );
     if (controller.signal.aborted && !(result instanceof ElysiaStatus)) {
       return problem(409, { detail: "Plugin request cancelled" });
     }
@@ -268,36 +304,14 @@ const make = Effect.gen(function* () {
     serviceStorePlugin(plugin);
     return null;
   }
-  const serviceReserveC411 = Effect.fn("plugins.ReserveC411")(function* (
-    controller: AbortController
-  ) {
-    const previous = serviceC411Queue;
-    const reservation = (async () => {
-      await previous;
-      controller.signal.throwIfAborted();
-      const delay = Math.max(0, serviceC411NextAt - Date.now());
-      if (delay > 0) {
-        await new Promise<void>((resolve, reject) => {
-          const abort = () => {
-            clearTimeout(timer);
-            reject(controller.signal.reason);
-          };
-          const timer = setTimeout(() => {
-            controller.signal.removeEventListener("abort", abort);
-            resolve();
-          }, delay);
-          controller.signal.addEventListener("abort", abort, { once: true });
-        });
-      }
-      controller.signal.throwIfAborted();
-      serviceC411NextAt = Date.now() + 4100;
-    })();
-    serviceC411Queue = (async () => {
-      // An aborted reservation releases its slot; its caller observes the abort.
-      await Promise.allSettled([reservation]);
-    })();
-    return yield* Effect.promise(() => reservation);
-  });
+  const serviceReserveC411 = Effect.fn("Plugins.reserveC411")(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    const delay = Math.max(0, serviceC411NextAt - now);
+    if (delay > 0) {
+      yield* Effect.sleep(delay);
+    }
+    serviceC411NextAt = (yield* Clock.currentTimeMillis) + 4100;
+  }, serviceC411Queue.withPermits(1));
   const serviceFetchSource = Effect.fn("Plugins.fetchSource")(function* (
     sourceId: SourcePluginId,
     query: string
@@ -364,37 +378,37 @@ const make = Effect.gen(function* () {
     return yield* serviceRequest(
       sourceId,
       12_000,
-      sourceId === "c411" ? (controller) => serviceReserveC411(controller) : null,
-      (controller) =>
+      sourceId === "c411" ? serviceReserveC411() : null,
+      () =>
         Effect.gen(function* () {
           // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
           const fetched = yield* Effect.result(
-            Effect.tryPromise({
-              catch: (cause) => cause,
-              try: async () => {
-                const response = await fetch(url, { signal: controller.signal });
-                let releases: FeedRelease[];
-                if (sourceId === "nyaa" && !response.ok) {
-                  url.searchParams.delete("page");
-                  const fallback = await fetch(url, { signal: controller.signal });
-                  if (!fallback.ok) {
-                    return problem(502, {
-                      detail: `Source unavailable (HTTP ${fallback.status})`,
-                    });
-                  }
-                  releases = parseNyaaHtml(await fallback.text(), url.href);
-                } else {
-                  if (!response.ok) {
-                    return problem(502, {
-                      detail: `Source unavailable (HTTP ${response.status})`,
-                    });
-                  }
-                  const text = await response.text();
-                  releases =
-                    sourceId === "tsundere" ? parseTsundere(text) : parseRss(text, sourceId);
+            Effect.gen(function* () {
+              const response = yield* http.get(url);
+              let releases: FeedRelease[];
+              if (sourceId === "nyaa" && (response.status < 200 || response.status >= 300)) {
+                url.searchParams.delete("page");
+                const fallback = yield* http.get(url);
+                if (fallback.status < 200 || fallback.status >= 300) {
+                  return problem(502, {
+                    detail: `Source unavailable (HTTP ${fallback.status})`,
+                  });
                 }
-                return releases;
-              },
+                const text = yield* fallback.text;
+                releases = parseNyaaHtml(text, url.href);
+              } else {
+                if (response.status < 200 || response.status >= 300) {
+                  return problem(502, {
+                    detail: `Source unavailable (HTTP ${response.status})`,
+                  });
+                }
+                const text = yield* response.text;
+                releases =
+                  sourceId === "tsundere"
+                    ? yield* parseTsundere(text)
+                    : yield* parseRss(text, sourceId);
+              }
+              return releases;
             })
           );
           // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
@@ -440,17 +454,14 @@ const make = Effect.gen(function* () {
     const validated = yield* serviceRequest(
       id,
       15_000,
-      id === "c411" ? (controller) => serviceReserveC411(controller) : null,
+      id === "c411" ? serviceReserveC411() : null,
       (controller) =>
         Effect.gen(function* () {
-          const rejected = yield* Effect.promise(() =>
-            validatePluginCredential({
-              apiKey,
-              endpoint: serviceOptions.endpoints[id],
-              id,
-              signal: controller.signal,
-            })
-          );
+          const rejected = yield* validatePluginCredential({
+            apiKey,
+            endpoint: serviceOptions.endpoints[id],
+            id,
+          }).pipe(Effect.provideService(HttpClient.HttpClient, client));
           if (rejected) {
             return rejected;
           }
@@ -476,32 +487,34 @@ const make = Effect.gen(function* () {
 
         // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
         const downloaded = yield* Effect.result(
-          Effect.tryPromise({
-            catch: (cause) => cause,
-            try: async () => {
-              if (registered?.download) {
-                const bytes = await registered.download({
-                  apiKey: apiKey ?? "",
-                  release,
-                  signal: controller.signal,
-                });
-                if (bytes.byteLength > 8 * 1024 * 1024) {
-                  return problem(400, { detail: "Torrent file too large" });
-                }
-                return bytes;
-              }
-              const response = await fetch(release.downloadUrl, { signal: controller.signal });
-              if (!response.ok) {
-                return problem(502, {
-                  detail: `Torrent file unavailable (HTTP ${response.status})`,
-                });
-              }
-              const bytes = new Uint8Array(await response.arrayBuffer());
+          Effect.gen(function* () {
+            const download = registered?.download;
+            if (download) {
+              const bytes = yield* Effect.tryPromise({
+                catch: (cause) => cause,
+                try: () =>
+                  download({
+                    apiKey: apiKey ?? "",
+                    release,
+                    signal: controller.signal,
+                  }),
+              });
               if (bytes.byteLength > 8 * 1024 * 1024) {
                 return problem(400, { detail: "Torrent file too large" });
               }
               return bytes;
-            },
+            }
+            const response = yield* http.get(release.downloadUrl);
+            if (response.status < 200 || response.status >= 300) {
+              return problem(502, {
+                detail: `Torrent file unavailable (HTTP ${response.status})`,
+              });
+            }
+            const bytes = new Uint8Array(yield* response.arrayBuffer);
+            if (bytes.byteLength > 8 * 1024 * 1024) {
+              return problem(400, { detail: "Torrent file too large" });
+            }
+            return bytes;
           })
         );
         // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
@@ -539,14 +552,10 @@ const make = Effect.gen(function* () {
       enabled: false,
       error: null,
       hasApiKey: false,
-      ...(row ? (JSON.parse(row.value) as Partial<StoredPlugin>) : {}),
+      ...(row ? decodeStoredPlugin(row.value) : {}),
     });
   }
-  yield* Effect.addFinalizer(() =>
-    Effect.promise(async () => {
-      await serviceClose();
-    })
-  );
+  yield* Effect.addFinalizer(() => Effect.sync(serviceClose));
   return {
     close: serviceClose,
     configure: serviceConfigure,
@@ -698,7 +707,7 @@ export class Plugins extends Context.Service<
     readonly request: <Result>(
       id: PluginId,
       timeoutMs: number,
-      reserve: ((controller: AbortController) => Effect.Effect<void, unknown>) | null,
+      reserve: Effect.Effect<void> | null,
       run: (controller: AbortController) => Effect.Effect<Result>
     ) => Effect.Effect<
       | Result

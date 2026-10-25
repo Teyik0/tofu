@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { Schema } from "effect";
 import type { InstanceProfile } from "../../lib/instance";
 
 export function resolveAniListClient(
@@ -19,7 +20,11 @@ export async function readAniListClient(
     return resolveAniListClient(profile, developmentClientId);
   }
   const file = Bun.file(join(dirname(executable), "../Resources/app/bun/anilist-client.json"));
-  const packaged = (await file.exists()) ? ((await file.json()) as AniListClient) : undefined;
+  const packaged = (await file.exists())
+    ? Schema.decodeUnknownSync(Schema.Struct({ clientId: Schema.optional(Schema.String) }))(
+        await file.json()
+      )
+    : undefined;
   return resolveAniListClient(profile, packaged?.clientId);
 }
 

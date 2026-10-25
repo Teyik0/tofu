@@ -1,4 +1,5 @@
 import { Effect, Result } from "effect";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import { problem } from "elysia";
 import { parseJevResponse } from "../jev/service";
 import { parseRss } from "./feeds";
@@ -30,96 +31,74 @@ export function normalizePluginCredential(id: CredentialPluginId, input: string)
   return keys[0].trim();
 }
 
-export async function validatePluginCredential(options: {
-  id: CredentialPluginId;
-  apiKey: string;
-  endpoint: string;
-  signal: AbortSignal;
-}) {
-  const { id, apiKey, endpoint, signal } = options;
-  const questions = {
-    connected: { instructions: "Does the message say connection test?", type: "noul" as const },
-  };
-  const url = new URL(endpoint);
-  if (id === "c411") {
-    url.searchParams.set("apikey", apiKey);
-    url.searchParams.set("t", "search");
-    url.searchParams.set("limit", "1");
-  }
-  const name = id === "c411" ? "C411" : "TypeSafe";
-  const fetched = await Effect.runPromise(
-    Effect.result(
-      Effect.tryPromise({
-        catch: (cause) => cause,
-        try: () =>
-          fetch(url, {
-            ...(id === "jev"
-              ? {
-                  body: JSON.stringify({
-                    model: "jev-latest",
-                    questions,
-                    state: { message: "connection test" },
-                  }),
-                  headers: {
-                    authorization: `Bearer ${apiKey}`,
-                    "content-type": "application/json",
-                  },
-                  method: "POST",
-                }
-              : {}),
-            redirect: "error",
-            signal,
-          }),
-      })
-    )
-  );
-  if (Result.isFailure(fetched)) {
-    return problem(502, {
-      detail: `Unable to validate your ${name} API key. Check your connection and try again.`,
-    });
-  }
-  const response = fetched.success;
-  if ([401, 403].includes(response.status)) {
-    return problem(400, {
-      detail: `${name} rejected this API key. Generate a new key and try again.`,
-    });
-  }
-  if (response.status === 429) {
-    return problem(429, { detail: `${name} rate limit reached. Try again later.` });
-  }
-  if (!response.ok) {
-    return problem(502, {
-      detail: `Unable to validate your ${name} API key (HTTP ${response.status})`,
-    });
-  }
-  const decoded = await Effect.runPromise(
-    Effect.result(
-      Effect.tryPromise({
-        catch: (cause) => cause,
-        try: () => (id === "c411" ? response.text() : response.json()),
-      })
-    )
-  );
-  if (Result.isFailure(decoded)) {
-    return problem(502, {
-      detail: `Unable to validate your ${name} API key. Check your connection and try again.`,
-    });
-  }
-  const parsed = Effect.runSync(
-    Effect.result(
-      Effect.try({
-        catch: (cause) => cause,
-        try: () =>
-          id === "c411"
-            ? parseRss(decoded.success as string, "c411")
-            : parseJevResponse(decoded.success, questions),
-      })
-    )
-  );
-  if (Result.isFailure(parsed)) {
-    return problem(502, {
-      detail: `Unable to validate your ${name} API key. Check your connection and try again.`,
-    });
-  }
-  return null;
-}
+export const validatePluginCredential = Effect.fn("Plugins.validateCredentialResponse")(
+  function* (options: { id: CredentialPluginId; apiKey: string; endpoint: string }) {
+    const { id, apiKey, endpoint } = options;
+    const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+    const questions = {
+      connected: { instructions: "Does the message say connection test?", type: "noul" as const },
+    };
+    const url = new URL(endpoint);
+    if (id === "c411") {
+      url.searchParams.set("apikey", apiKey);
+      url.searchParams.set("t", "search");
+      url.searchParams.set("limit", "1");
+    }
+    const name = id === "c411" ? "C411" : "TypeSafe";
+    const request =
+      id === "jev"
+        ? HttpClientRequest.post(url, { headers: { authorization: `Bearer ${apiKey}` } }).pipe(
+            HttpClientRequest.bodyJsonUnsafe({
+              model: "jev-latest",
+              questions,
+              state: { message: "connection test" },
+            })
+          )
+        : HttpClientRequest.get(url);
+    const fetched = yield* Effect.result(
+      http
+        .execute(request)
+        .pipe(Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" }))
+    );
+    if (Result.isFailure(fetched)) {
+      return problem(502, {
+        detail: `Unable to validate your ${name} API key. Check your connection and try again.`,
+      });
+    }
+    const response = fetched.success;
+    if ([401, 403].includes(response.status)) {
+      return problem(400, {
+        detail: `${name} rejected this API key. Generate a new key and try again.`,
+      });
+    }
+    if (response.status === 429) {
+      return problem(429, { detail: `${name} rate limit reached. Try again later.` });
+    }
+    if (response.status < 200 || response.status >= 300) {
+      return problem(502, {
+        detail: `Unable to validate your ${name} API key (HTTP ${response.status})`,
+      });
+    }
+    const parsed =
+      id === "c411"
+        ? yield* Effect.result(
+            response.text.pipe(
+              Effect.flatMap((text) => parseRss(text, "c411")),
+              Effect.asVoid
+            )
+          )
+        : yield* Effect.result(
+            response.json.pipe(
+              Effect.flatMap((body) => parseJevResponse(body, questions)),
+              Effect.asVoid
+            )
+          );
+    if (parsed._tag === "Failure") {
+      return problem(502, {
+        detail: `Unable to validate your ${name} API key. Check your connection and try again.`,
+      });
+    }
+    return null;
+  },
+  Effect.scoped
+);

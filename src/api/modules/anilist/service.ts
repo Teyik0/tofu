@@ -1,6 +1,7 @@
 import { isAbsolute, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
-import { Cause, Context, Effect, Fiber, Layer, Result, Schedule } from "effect";
+import { Cause, Context, Effect, Fiber, Layer, Result, Schedule, Schema } from "effect";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import { anilistState } from "../../../db/schema";
@@ -31,9 +32,24 @@ import type { AniListClient } from "./client";
 import { readAniListClient } from "./client";
 import { editorState, validateEntryUpdate } from "./editor";
 import type { LibraryQuery, MediaListStatus, ScoreFormat } from "./graphql/generated";
-import { AniListUnavailable, createAniListSdk } from "./graphql/transport";
+import {
+  type AniListCancelled,
+  AniListUnavailable,
+  anilistRequestError,
+  createAniListSdk,
+} from "./graphql/transport";
 import type { AniListListUpdate, AniListThreadProposal } from "./model";
 import { AniListAuthorization } from "./oauth";
+import {
+  decodeAniListAccount,
+  decodeAniListCache,
+  decodeAniListConfig,
+  decodeAniListRule,
+  decodeAniListSelection,
+  decodeAniListStatuses,
+  decodeAniListSubscription,
+  decodeAniListWatched,
+} from "./persistence";
 import {
   animeEpisodeOffset,
   animeEpisodeRelease,
@@ -154,6 +170,10 @@ type ListFailure = Exclude<
 >;
 
 const make = Effect.gen(function* () {
+  const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+  const decodeToken = HttpClientResponse.schemaBodyJson(
+    Schema.Struct({ access_token: Schema.NonEmptyString })
+  );
   const db = yield* Database;
   const automation = yield* Automation;
   const discovery = yield* Discovery;
@@ -218,8 +238,9 @@ const make = Effect.gen(function* () {
   let serviceCallbackTimeout: ReturnType<typeof setTimeout> | null = null;
   let serviceOauthState: string | null = null;
   let serviceAuthorization: AniListAuthorization;
-  const serviceSdk = yield* Effect.try(() =>
-    createAniListSdk(serviceOptions.endpoint, () => serviceOptions.plugins.plugin("anilist").apiKey)
+  const serviceSdk = createAniListSdk(
+    serviceOptions.endpoint,
+    () => serviceOptions.plugins.plugin("anilist").apiKey
   );
   let serviceCatalogOptionsCache: AniListCatalogOptions | null = null;
   const serviceAnimeSearch = Effect.fn("AniList.animeSearch")(function* (entry: AniListMedia) {
@@ -332,22 +353,23 @@ const make = Effect.gen(function* () {
   function serviceRestore() {
     for (const row of serviceDb.select().from(anilistState).all()) {
       if (row.id === "preferences") {
-        serviceVisibleStatuses = JSON.parse(row.value) as AniListStatus[];
+        serviceVisibleStatuses = decodeAniListStatuses(row.value);
       } else if (row.id === "config") {
-        serviceConfig = { ...serviceConfig, ...(JSON.parse(row.value) as AniListConfig) };
+        serviceConfig = { ...serviceConfig, ...decodeAniListConfig(row.value) };
         serviceConfig.clientId ||= "9037";
       } else if (row.id === "profile") {
-        serviceAccount = JSON.parse(row.value) as { id: number; name: string };
+        serviceAccount = decodeAniListAccount(row.value);
       } else if (row.id === "list-cache") {
-        serviceCache = JSON.parse(row.value) as AniListCache;
+        const cached = decodeAniListCache(row.value);
+        serviceCache = Result.isSuccess(cached) ? cached.success : null;
       } else if (row.id.startsWith("anime-rule:")) {
-        serviceAnimeRules.set(row.id, JSON.parse(row.value) as string);
+        serviceAnimeRules.set(row.id, decodeAniListRule(row.value));
       } else if (row.id.startsWith("watched:")) {
-        serviceWatched.set(row.id, JSON.parse(row.value) as number[]);
+        serviceWatched.set(row.id, decodeAniListWatched(row.value));
       } else if (row.id.startsWith("selection:")) {
-        serviceSelections.set(row.id, JSON.parse(row.value) === true);
+        serviceSelections.set(row.id, decodeAniListSelection(row.value));
       } else {
-        const subscription = JSON.parse(row.value) as AniListSubscription;
+        const subscription = decodeAniListSubscription(row.value);
         serviceSubscriptions.set(subscription.id, subscription);
       }
     }
@@ -416,15 +438,17 @@ const make = Effect.gen(function* () {
     const rows = serviceDb.select().from(anilistState).all();
     const preferences = rows.find(({ id }) => id === "preferences");
     serviceVisibleStatuses = preferences
-      ? (JSON.parse(preferences.value) as AniListStatus[])
+      ? decodeAniListStatuses(preferences.value)
       : ["CURRENT", "PLANNING"];
     refreshRecords(
       serviceSelections,
-      rows.filter(({ id }) => id.startsWith("selection:"))
+      rows.filter(({ id }) => id.startsWith("selection:")),
+      decodeAniListSelection
     );
     refreshRecords(
       serviceAnimeRules,
-      rows.filter(({ id }) => id.startsWith("anime-rule:"))
+      rows.filter(({ id }) => id.startsWith("anime-rule:")),
+      decodeAniListRule
     );
     refreshRecords(
       serviceSubscriptions,
@@ -434,7 +458,8 @@ const make = Effect.gen(function* () {
             ["preferences", "config", "profile", "list-cache"].includes(id) ||
             ["selection:", "anime-rule:", "watched:"].some((prefix) => id.startsWith(prefix))
           )
-      )
+      ),
+      decodeAniListSubscription
     );
   }
   function serviceConfigure(input: {
@@ -520,38 +545,42 @@ const make = Effect.gen(function* () {
               serviceOauthState = null;
               const controller = new AbortController();
               serviceRequests.add(controller);
-              const timeout = setTimeout(
-                () =>
-                  controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-                15_000
-              );
               using cleanup = new DisposableStack();
               cleanup.defer(() => {
-                clearTimeout(timeout);
+                controller.abort();
                 serviceRequests.delete(controller);
               });
               const exchanged = await Effect.runPromise(
                 Effect.result(
-                  Effect.tryPromise({
-                    catch: (cause) => cause,
-                    try: () =>
-                      fetch(serviceOptions.tokenEndpoint, {
-                        body: JSON.stringify({
+                  http
+                    .execute(
+                      HttpClientRequest.post(serviceOptions.tokenEndpoint, {
+                        headers: { accept: "application/json" },
+                      }).pipe(
+                        HttpClientRequest.bodyJsonUnsafe({
                           client_id: config.clientId,
                           client_secret: config.clientSecret,
                           code: url.searchParams.get("code"),
                           grant_type: "authorization_code",
                           redirect_uri: config.redirectUri,
-                        }),
-                        headers: {
-                          accept: "application/json",
-                          "content-type": "application/json",
-                        },
-                        method: "POST",
-                        signal: controller.signal,
-                      }),
-                  })
-                )
+                        })
+                      )
+                    )
+                    .pipe(
+                      Effect.flatMap(
+                        Effect.fnUntraced(function* (response) {
+                          if (response.status < 200 || response.status >= 300) {
+                            return yield* new AniListUnavailable({
+                              message: `AniList unavailable (HTTP ${response.status})`,
+                            });
+                          }
+                          return yield* decodeToken(response);
+                        })
+                      ),
+                      Effect.timeout("15 seconds")
+                    )
+                ).pipe(Effect.scoped),
+                { signal: controller.signal }
               );
               if (Result.isFailure(exchanged)) {
                 return new Response(
@@ -559,32 +588,8 @@ const make = Effect.gen(function* () {
                   { status: 502 }
                 );
               }
-              const response = exchanged.success;
-              const decoded = await Effect.runPromise(
-                Effect.result(
-                  Effect.tryPromise({
-                    catch: (cause) => cause,
-                    try: () => response.json(),
-                  })
-                )
-              );
-              if (Result.isFailure(decoded)) {
-                return new Response(
-                  "Unable to connect AniList. Restart the connection from Tofu.",
-                  { status: 502 }
-                );
-              }
-              const token = decoded.success as { access_token?: string };
-              if (
-                !(
-                  response.ok &&
-                  token &&
-                  typeof token.access_token === "string" &&
-                  token.access_token
-                ) ||
-                serviceLifecycle.closed ||
-                serviceConfig.clientId !== config.clientId
-              ) {
+              const token = exchanged.success;
+              if (serviceLifecycle.closed || serviceConfig.clientId !== config.clientId) {
                 return new Response(
                   "Unable to connect AniList. Restart the connection from Tofu.",
                   { status: 502 }
@@ -645,32 +650,28 @@ const make = Effect.gen(function* () {
     serviceOauthState = null;
   }
   const serviceProvider = Effect.fn("AniList.provider")(function* <Result>(
-    run: (signal: AbortSignal) => Effect.Effect<Result, unknown>
+    run: (signal: AbortSignal) => Effect.Effect<Result, AniListUnavailable | AniListCancelled>
   ) {
     const controller = new AbortController();
     serviceRequests.add(controller);
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-      15_000
-    );
     const cleanup = yield* Effect.acquireRelease(
       Effect.sync(() => new DisposableStack()),
       (resource) => Effect.sync(() => resource.dispose())
     );
     cleanup.defer(() => {
       controller.abort();
-      clearTimeout(timeout);
       serviceRequests.delete(controller);
     });
-    const response = yield* Effect.result(run(controller.signal));
-    if (Result.isFailure(response)) {
-      const error = response.failure;
-      if (error instanceof AniListUnavailable) {
-        return problem(502, { detail: error.message });
-      }
-      throw error;
-    }
-    return response.success;
+    return yield* run(controller.signal).pipe(
+      Effect.timeout("15 seconds"),
+      Effect.catchTag("AniListUnavailable", (error) =>
+        Effect.succeed(problem(502, { detail: error.message }))
+      ),
+      Effect.catchTag("TimeoutError", () =>
+        Effect.succeed(problem(502, { detail: "AniList unavailable" }))
+      ),
+      Effect.catchTag("AniListCancelled", () => Effect.interrupt)
+    );
   }, Effect.scoped);
   const serviceMedia = Effect.fn("AniList.media")(function* (mediaId: number) {
     if (serviceLifecycle.closed) {
@@ -683,8 +684,12 @@ const make = Effect.gen(function* () {
     return yield* serviceProvider((signal) =>
       Effect.gen(function* () {
         const { Media } = yield* Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () => serviceSdk.Anime({ mediaId }, { accessToken: "", signal }),
+          catch: (cause) => anilistRequestError(cause, signal),
+          try: (requestSignal) =>
+            serviceSdk.Anime(
+              { mediaId },
+              { accessToken: "", signal: AbortSignal.any([signal, requestSignal]) }
+            ),
         });
         if (!Media || Media.id !== mediaId) {
           return problem(404, { detail: "Anime not found on AniList" });
@@ -701,8 +706,12 @@ const make = Effect.gen(function* () {
     return yield* serviceProvider((signal) =>
       Effect.gen(function* () {
         const { Page: page } = yield* Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () => serviceSdk.Catalog(variables, { accessToken: "", signal }),
+          catch: (cause) => anilistRequestError(cause, signal),
+          try: (requestSignal) =>
+            serviceSdk.Catalog(variables, {
+              accessToken: "",
+              signal: AbortSignal.any([signal, requestSignal]),
+            }),
         });
         if (
           !page?.pageInfo ||
@@ -725,7 +734,7 @@ const make = Effect.gen(function* () {
       accessToken: string,
       signal: AbortSignal,
       stale: () => ReturnType<typeof serviceStaleAccount>
-    ) => Effect.Effect<Result, unknown>
+    ) => Effect.Effect<Result, AniListUnavailable | AniListCancelled>
   ) {
     serviceCheckCacheIdentity();
     if (!serviceOptions.plugins.plugin("anilist").enabled || serviceLifecycle.closed) {
@@ -759,8 +768,12 @@ const make = Effect.gen(function* () {
     signal: AbortSignal
   ) {
     const result = yield* Effect.tryPromise({
-      catch: (cause) => cause,
-      try: () => serviceSdk.Editor({ mediaId }, { accessToken, signal }),
+      catch: (cause) => anilistRequestError(cause, signal),
+      try: (requestSignal) =>
+        serviceSdk.Editor(
+          { mediaId },
+          { accessToken, signal: AbortSignal.any([signal, requestSignal]) }
+        ),
     });
     if (!result.Viewer?.id || (serviceAccount && result.Viewer.id !== serviceAccount.id)) {
       return problem(409, { detail: "Reload your AniList list after changing accounts" });
@@ -799,15 +812,15 @@ const make = Effect.gen(function* () {
             return invalid;
           }
           const { SaveMediaListEntry: saved } = yield* Effect.tryPromise({
-            catch: (cause) => cause,
-            try: () =>
+            catch: (cause) => anilistRequestError(cause, signal),
+            try: (requestSignal) =>
               serviceSdk.SaveEntry(
                 {
                   ...body,
                   mediaId,
                   ...(editor.entry || body.status ? {} : { status: "PLANNING" as const }),
                 },
-                { accessToken, signal }
+                { accessToken, signal: AbortSignal.any([signal, requestSignal]) }
               ),
           });
           const changed = stale();
@@ -893,8 +906,12 @@ const make = Effect.gen(function* () {
             return problem(409, { detail: "AniList does not allow favouriting this anime" });
           }
           yield* Effect.tryPromise({
-            catch: (cause) => cause,
-            try: () => serviceSdk.ToggleAnimeFavourite({ mediaId }, { accessToken, signal }),
+            catch: (cause) => anilistRequestError(cause, signal),
+            try: (requestSignal) =>
+              serviceSdk.ToggleAnimeFavourite(
+                { mediaId },
+                { accessToken, signal: AbortSignal.any([signal, requestSignal]) }
+              ),
           });
           const toggled = stale();
           if (toggled) {
@@ -931,8 +948,12 @@ const make = Effect.gen(function* () {
           if (editor.entry) {
             const entryId = editor.entry.id;
             const { DeleteMediaListEntry } = yield* Effect.tryPromise({
-              catch: (cause) => cause,
-              try: () => serviceSdk.DeleteEntry({ id: entryId }, { accessToken, signal }),
+              catch: (cause) => anilistRequestError(cause, signal),
+              try: (requestSignal) =>
+                serviceSdk.DeleteEntry(
+                  { id: entryId },
+                  { accessToken, signal: AbortSignal.any([signal, requestSignal]) }
+                ),
             });
             const deleted = stale();
             if (deleted) {
@@ -964,8 +985,12 @@ const make = Effect.gen(function* () {
     return yield* serviceProvider((signal) =>
       Effect.gen(function* () {
         const result = yield* Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () => serviceSdk.CatalogOptions({}, { accessToken: "", signal }),
+          catch: (cause) => anilistRequestError(cause, signal),
+          try: (requestSignal) =>
+            serviceSdk.CatalogOptions(
+              {},
+              { accessToken: "", signal: AbortSignal.any([signal, requestSignal]) }
+            ),
         });
         serviceCatalogOptionsCache = {
           genres: (result.GenreCollection ?? [])
@@ -997,8 +1022,12 @@ const make = Effect.gen(function* () {
     const identity = yield* serviceProvider((signal) =>
       Effect.gen(function* () {
         const { Viewer } = yield* Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () => serviceSdk.Viewer({}, { accessToken: token, signal }),
+          catch: (cause) => anilistRequestError(cause, signal),
+          try: (requestSignal) =>
+            serviceSdk.Viewer(
+              {},
+              { accessToken: token, signal: AbortSignal.any([signal, requestSignal]) }
+            ),
         });
         return Viewer;
       }).pipe(Effect.scoped)
@@ -1100,13 +1129,20 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const identity = token
           ? (yield* Effect.tryPromise({
-              catch: (cause) => cause,
-              try: () => serviceSdk.Viewer({}, { accessToken: token, signal }),
+              catch: (cause) => anilistRequestError(cause, signal),
+              try: (requestSignal) =>
+                serviceSdk.Viewer(
+                  {},
+                  { accessToken: token, signal: AbortSignal.any([signal, requestSignal]) }
+                ),
             })).Viewer
           : (yield* Effect.tryPromise({
-              catch: (cause) => cause,
-              try: () =>
-                serviceSdk.User({ name: serviceConfig.userName }, { accessToken: token, signal }),
+              catch: (cause) => anilistRequestError(cause, signal),
+              try: (requestSignal) =>
+                serviceSdk.User(
+                  { name: serviceConfig.userName },
+                  { accessToken: token, signal: AbortSignal.any([signal, requestSignal]) }
+                ),
             })).User;
         if (!identity?.id) {
           return problem(404, { detail: "AniList account not found" });
@@ -1116,9 +1152,12 @@ const make = Effect.gen(function* () {
         for (let chunk = 1; more && chunk <= 30; chunk += 1) {
           // AniList chunks are sequential and must stop when hasNextChunk is false.
           const response = yield* Effect.tryPromise({
-            catch: (cause) => cause,
-            try: () =>
-              serviceSdk.Library({ chunk, userId: identity.id }, { accessToken: token, signal }),
+            catch: (cause) => anilistRequestError(cause, signal),
+            try: (requestSignal) =>
+              serviceSdk.Library(
+                { chunk, userId: identity.id },
+                { accessToken: token, signal: AbortSignal.any([signal, requestSignal]) }
+              ),
           });
           const collection = response.MediaListCollection;
           if (
@@ -1289,8 +1328,12 @@ const make = Effect.gen(function* () {
     return yield* serviceProvider((signal) =>
       Effect.gen(function* () {
         const { Viewer } = yield* Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () => serviceSdk.Viewer({}, { accessToken, signal }),
+          catch: (cause) => anilistRequestError(cause, signal),
+          try: (requestSignal) =>
+            serviceSdk.Viewer(
+              {},
+              { accessToken, signal: AbortSignal.any([signal, requestSignal]) }
+            ),
         });
         if (
           Viewer?.id !== accountId ||
@@ -1300,8 +1343,12 @@ const make = Effect.gen(function* () {
         }
         if (progress !== entry.progress) {
           const { SaveMediaListEntry } = yield* Effect.tryPromise({
-            catch: (cause) => cause,
-            try: () => serviceSdk.SaveProgress({ mediaId, progress }, { accessToken, signal }),
+            catch: (cause) => anilistRequestError(cause, signal),
+            try: (requestSignal) =>
+              serviceSdk.SaveProgress(
+                { mediaId, progress },
+                { accessToken, signal: AbortSignal.any([signal, requestSignal]) }
+              ),
           });
           if (SaveMediaListEntry?.progress !== progress) {
             return problem(502, { detail: "AniList did not save the episode progress" });

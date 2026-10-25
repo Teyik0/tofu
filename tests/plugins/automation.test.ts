@@ -1,5 +1,7 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { defaultAutomationPreferences } from "../../src/api/modules/automation/rules";
 import { application } from "../helpers/app";
 import { expectBytes, success } from "../helpers/assert";
 import { peer } from "../helpers/peer";
@@ -10,8 +12,12 @@ test("an automation downloads a new matching release into its destination exactl
   await using source = await peer();
   await using upstream = provider(source);
   upstream.state.published = false;
-  await using app = await application({ provider: upstream.url });
-  const { client } = await app.start();
+  await using app = await application({
+    entry: "tests/helpers/providers-server.ts",
+    provider: upstream.url,
+  });
+  const server = await app.start();
+  const { client } = server;
   success(await client.plugins({ id: "nyaa" }).put({ enabled: true }));
   const destination = success(
     await client.destinations.post({
@@ -19,9 +25,16 @@ test("an automation downloads a new matching release into its destination exactl
       name: "Anime",
     })
   );
-  const draft = success(
-    await client.automations.interpret.post({ destinationId: destination.id, query: "Example" })
-  );
+  const draft = {
+    ...defaultAutomationPreferences,
+    destinationId: destination.id,
+    enabled: true,
+    includeExisting: false,
+    matchMode: "exact" as const,
+    query: "Example",
+    season: null,
+    title: "Example",
+  };
   const rule = success(
     await client.automations.post({
       ...draft,
@@ -55,17 +68,42 @@ test("an automation downloads a new matching release into its destination exactl
   const repeated = success(await client.automations({ id: rule.id }).run.post({}));
   expect(repeated.decisions.filter((decision) => decision.status === "added")).toHaveLength(1);
   expect(success(await client.state.get()).torrents).toHaveLength(1);
+  await server.stop();
+  {
+    using db = new Database(join(app.directory, "state/tofu.sqlite"));
+    db.run("UPDATE automations SET value = json_remove(value, '$.revision') WHERE id = ?", [
+      rule.id,
+    ]);
+  }
+  const restarted = await app.start();
+  const restored = success(await restarted.client.automation.get());
+  expect(restored.automations).toContainEqual(
+    expect.objectContaining({ id: rule.id, revision: 0 })
+  );
+  expect(restored.decisions).toContainEqual(
+    expect.objectContaining({ status: "added", torrentId: source.id })
+  );
 });
 
 test("an automation preserves the evaluator's quota failure instead of returning success", async () => {
   await using source = await peer();
   await using upstream = provider(source);
-  await using app = await application({ provider: upstream.url });
+  await using app = await application({
+    entry: "tests/helpers/providers-server.ts",
+    provider: upstream.url,
+  });
   const { client } = await app.start();
   success(await client.plugins({ id: "nyaa" }).put({ enabled: true }));
-  const draft = success(
-    await client.automations.interpret.post({ destinationId: "default", query: "Example" })
-  );
+  const draft = {
+    ...defaultAutomationPreferences,
+    destinationId: "default",
+    enabled: true,
+    includeExisting: false,
+    matchMode: "exact" as const,
+    query: "Example",
+    season: null,
+    title: "Example",
+  };
   const rule = success(
     await client.automations.post({
       ...draft,

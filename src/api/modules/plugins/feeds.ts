@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { Effect, Schema } from "effect";
 import type { FeedRelease } from "../discovery/model";
 import type { SourcePluginId } from "./model";
 
@@ -34,41 +34,77 @@ const feedExpression28 = /<[^>]*>/g;
 const feedExpression29 = /href=["']([^"']*\/download\/\d+\.torrent)["']/;
 const episodeRange = /\s[-–]\s\d{1,4}(?:v\d+)?\s*[-–]\s*\d{1,4}\b/i;
 
-interface XmlAttribute {
-  "@name"?: string;
-  "@value"?: string;
-}
-interface RssItem {
-  enclosure?: { "@url"?: string; "@length"?: string };
-  guid?: string | { "#text"?: string };
-  link?: string;
-  "nyaa:infoHash"?: string;
-  "nyaa:seeders"?: number | string;
-  "nyaa:size"?: string;
-  pubDate?: string;
-  size?: string;
-  title?: string;
-  "torznab:attr"?: XmlAttribute | XmlAttribute[];
-}
-interface RssDocument {
-  rss?: { channel?: { item?: RssItem | RssItem[] } | "" };
-}
-interface TsundereEntry {
-  codec?: string;
-  episode?: number;
-  episodeRange?: unknown;
-  id?: string;
-  infohash?: string | null;
-  language?: string;
-  publishedAt?: string;
-  quality?: string;
-  season?: number;
-  size?: number;
-  title?: string;
-  torrentUrl?: string | null;
-  url?: string;
-}
-export function numberOrNull(value: unknown) {
+class FeedError extends Schema.TaggedError<FeedError>()("FeedError", {
+  cause: Schema.optional(Schema.Defect()),
+  message: Schema.String,
+}) {}
+const xmlAttribute = Schema.Struct({
+  "@name": Schema.optional(Schema.String),
+  "@value": Schema.optional(Schema.String),
+});
+const rssItem = Schema.Struct({
+  enclosure: Schema.optional(
+    Schema.Struct({
+      "@length": Schema.optional(Schema.String),
+      "@url": Schema.optional(Schema.String),
+    })
+  ),
+  guid: Schema.optional(
+    Schema.Union([Schema.String, Schema.Struct({ "#text": Schema.optional(Schema.String) })])
+  ),
+  link: Schema.optional(Schema.String),
+  "nyaa:infoHash": Schema.optional(Schema.String),
+  "nyaa:seeders": Schema.optional(Schema.Union([Schema.Number, Schema.String])),
+  "nyaa:size": Schema.optional(Schema.String),
+  pubDate: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
+  "torznab:attr": Schema.optional(
+    Schema.Union([xmlAttribute, Schema.Array(xmlAttribute).pipe(Schema.mutable)])
+  ),
+});
+const decodeRss = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    rss: Schema.optional(
+      Schema.Struct({
+        channel: Schema.optional(
+          Schema.Union([
+            Schema.Literal(""),
+            Schema.Struct({
+              item: Schema.optional(
+                Schema.Union([rssItem, Schema.Array(rssItem).pipe(Schema.mutable)])
+              ),
+            }),
+          ])
+        ),
+      })
+    ),
+  })
+);
+const decodeTsundere = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      entries: Schema.Array(
+        Schema.Struct({
+          codec: Schema.optional(Schema.String),
+          episode: Schema.optional(Schema.Number),
+          episodeRange: Schema.optional(Schema.Json),
+          id: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
+          infohash: Schema.optional(Schema.NullOr(Schema.String)),
+          language: Schema.optional(Schema.String),
+          publishedAt: Schema.optional(Schema.String),
+          quality: Schema.optional(Schema.String),
+          season: Schema.optional(Schema.Number),
+          size: Schema.optional(Schema.Number),
+          title: Schema.optional(Schema.String),
+          torrentUrl: Schema.optional(Schema.NullOr(Schema.String)),
+          url: Schema.optional(Schema.String),
+        })
+      ),
+    })
+  )
+);
+export function numberOrNull(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
     return null;
   }
@@ -114,10 +150,10 @@ export function releaseMetadata(title: string) {
     workTitle,
   } satisfies Partial<FeedRelease>;
 }
-function validDownload(value: unknown): value is string {
+function validDownload(value: string | null | undefined): value is string {
   return typeof value === "string" && feedExpression15.test(value);
 }
-function hash(value: unknown) {
+function hash(value: string | null | undefined) {
   return typeof value === "string" && feedExpression16.test(value) ? value.toLowerCase() : null;
 }
 function date(value: string | undefined) {
@@ -125,24 +161,22 @@ function date(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] {
+export const parseRss = Effect.fn("Feeds.parseRss")(function* (
+  body: string,
+  sourceId: SourcePluginId
+): Effect.fn.Return<FeedRelease[], FeedError> {
   if (body.length > 8 * 1024 * 1024) {
-    throw new Error("Invalid RSS feed");
+    return yield* new FeedError({ message: "Invalid RSS feed" });
   }
-  const parsed = Effect.runSync(
-    Effect.result(
-      Effect.try({
-        catch: (cause) => cause,
-        try: () => Bun.XML.parse(body) as RssDocument,
-      })
-    )
+  const parsed = yield* Effect.try({
+    catch: (cause) => new FeedError({ cause, message: "Invalid RSS feed" }),
+    try: () => Bun.XML.parse(body),
+  });
+  const document = yield* decodeRss(parsed).pipe(
+    Effect.mapError((cause) => new FeedError({ cause, message: "Invalid RSS feed" }))
   );
-  if (Result.isFailure(parsed)) {
-    throw new Error("Invalid RSS feed", { cause: parsed.failure });
-  }
-  const document = parsed.success;
   if (document.rss?.channel === undefined) {
-    throw new Error("RSS feed missing");
+    return yield* new FeedError({ message: "RSS feed missing" });
   }
   if (document.rss.channel === "") {
     return [];
@@ -175,12 +209,13 @@ export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] 
       },
     ];
   });
-}
-export function parseTsundere(body: string): FeedRelease[] {
-  const document = JSON.parse(body) as { entries?: TsundereEntry[] };
-  if (!Array.isArray(document.entries)) {
-    throw new Error("Invalid JSON feed");
-  }
+});
+export const parseTsundere = Effect.fn("Feeds.parseTsundere")(function* (
+  body: string
+): Effect.fn.Return<FeedRelease[], FeedError> {
+  const document = yield* decodeTsundere(body).pipe(
+    Effect.mapError((cause) => new FeedError({ cause, message: "Invalid JSON feed" }))
+  );
   return document.entries.flatMap((entry) => {
     if (typeof entry.title !== "string" || !validDownload(entry.torrentUrl)) {
       return [];
@@ -213,7 +248,7 @@ export function parseTsundere(body: string): FeedRelease[] {
       },
     ];
   });
-}
+});
 function asArray<T>(value: T | T[] | undefined): T[] {
   if (Array.isArray(value)) {
     return value;

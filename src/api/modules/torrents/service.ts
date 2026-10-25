@@ -12,6 +12,7 @@ import {
 } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { type Context, Effect, Result } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/http";
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import parseTorrent, { toMagnetURI } from "parse-torrent";
@@ -1603,13 +1604,23 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions, db: Da
   ) {
     let source = input;
     if (typeof source === "string" && torrentUrl.test(source)) {
-      const response = await fetch(source, { signal: AbortSignal.timeout(15_000) });
-      if (!response.ok) {
-        return problem(400, {
-          detail: `The torrent file is inaccessible (HTTP ${response.status})`,
-        });
+      const url = source;
+      const downloaded = await Effect.runPromise(
+        Effect.gen(function* () {
+          const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+          const response = yield* http.get(url);
+          if (response.status < 200 || response.status >= 300) {
+            return problem(400, {
+              detail: `The torrent file is inaccessible (HTTP ${response.status})`,
+            });
+          }
+          return new Uint8Array(yield* response.arrayBuffer);
+        }).pipe(Effect.timeout(15_000), Effect.scoped, Effect.provide(FetchHttpClient.layer))
+      );
+      if (downloaded instanceof ElysiaStatus) {
+        return downloaded;
       }
-      source = new Uint8Array(await response.arrayBuffer());
+      source = downloaded;
       if (source.length > 8 * 1024 * 1024) {
         return problem(400, { detail: "The torrent file is too large" });
       }

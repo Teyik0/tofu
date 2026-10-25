@@ -73,8 +73,10 @@ if (provider) {
     "anilist.co": "/anilist",
     "api.github.com": "/github",
     "api.typesafe.ai": "/jev",
+    "c411.org": "/c411",
     "graphql.anilist.co": "/anilist",
     "nyaa.si": "/nyaa",
+    "release-assets.githubusercontent.com": "/github-assets",
   };
   globalThis.fetch = Object.assign(
     async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
@@ -83,7 +85,8 @@ if (provider) {
       const path = paths[url.hostname];
       if (path) {
         const target = new URL(provider);
-        target.pathname = url.hostname === "api.github.com" ? `${path}${url.pathname}` : path;
+        target.pathname =
+          path === "/github" || path === "/github-assets" ? `${path}${url.pathname}` : path;
         target.search = url.search;
         return await originalFetch(new Request(target, request));
       }

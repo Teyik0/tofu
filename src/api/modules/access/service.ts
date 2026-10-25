@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { createLogger } from "evlog";
 import { PROTOCOL_MAJOR } from "../../../lib/protocol";
 import { instance } from "../../lib/instance";
@@ -133,6 +133,47 @@ interface PendingChange {
   serveIntent: boolean;
 }
 
+const sharingConfigSchema = Schema.Struct({
+  lan: Schema.Struct({
+    enabled: Schema.Boolean,
+    hostnames: Schema.Array(Schema.String).pipe(Schema.mutable),
+    port: Schema.Number,
+  }),
+  proxy: Schema.Struct({
+    enabled: Schema.Boolean,
+    origin: Schema.NullOr(Schema.String),
+    trustedProxies: Schema.Array(Schema.String).pipe(Schema.mutable),
+  }),
+  tailscale: Schema.Struct({
+    enabled: Schema.Boolean,
+    mode: Schema.Literals(["embedded", "system"]),
+    origin: Schema.NullOr(Schema.String),
+    serveOwned: Schema.Boolean,
+  }),
+});
+const legacyConfigSchema = Schema.Struct({
+  enabled: Schema.Boolean,
+  lanHostnames: Schema.optional(Schema.Array(Schema.String).pipe(Schema.mutable)),
+  port: Schema.Number,
+  proxyOrigin: Schema.NullOr(Schema.String),
+  tailscaleMode: Schema.optional(Schema.Literals(["embedded", "system"])),
+  tailscaleOrigin: Schema.NullOr(Schema.String),
+  tailscaleServeOwned: Schema.optional(Schema.Boolean),
+  transport: Schema.Literals(["lan", "tailscale", "proxy"]),
+  trustedProxies: Schema.optional(Schema.Array(Schema.String).pipe(Schema.mutable)),
+});
+const decodeSharingConfig = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.Union([sharingConfigSchema, legacyConfigSchema]))
+);
+const decodePendingChange = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Union([
+      Schema.Struct({ config: sharingConfigSchema, serveIntent: Schema.Boolean }),
+      Schema.Struct({ config: legacyConfigSchema }),
+    ])
+  )
+);
+
 /** Reads a stored configuration, including the exclusive single-transport format. */
 function upgrade(value: SharingConfig | LegacyConfig, defaultLanPort: number) {
   if (!("transport" in value)) {
@@ -179,15 +220,21 @@ const make = Effect.gen(function* () {
   const serviceFailures = new Map<Exposure, string>();
   const serviceAborts = new Map<string, AbortController>();
   const serviceSessionReaders = new Map<string, Set<AbortController>>();
-  function serviceRead<Value>(key: "active" | "pending" | "last-good") {
+  function serviceRead<Value>(
+    key: "active" | "pending" | "last-good",
+    decode: (value: string) => Value
+  ) {
     const row = serviceOptions.db
       .select()
       .from(connectionState)
       .where(eq(connectionState.key, key))
       .get();
-    return row ? (JSON.parse(row.value) as Value) : undefined;
+    return row ? decode(row.value) : undefined;
   }
-  function serviceWrite(key: "active" | "pending" | "last-good", value: unknown) {
+  function serviceWrite(
+    key: "active" | "pending" | "last-good",
+    value: SharingConfig | PendingChange
+  ) {
     const now = serviceOptions.now();
     const text = JSON.stringify(value);
     serviceOptions.db
@@ -827,8 +874,8 @@ const make = Effect.gen(function* () {
     })
     .onConflictDoNothing()
     .run();
-  const stored = serviceRead<SharingConfig | LegacyConfig>("active");
-  const lastGood = serviceRead<SharingConfig | LegacyConfig>("last-good");
+  const stored = serviceRead("active", decodeSharingConfig);
+  const lastGood = serviceRead("last-good", decodeSharingConfig);
   let active = stored
     ? upgrade(stored, options.defaultLanPort)
     : {
@@ -836,7 +883,7 @@ const make = Effect.gen(function* () {
         proxy: { enabled: false, origin: null, trustedProxies: [] },
         tailscale: { enabled: false, mode: "system" as const, origin: null, serveOwned: false },
       };
-  const pending = serviceRead<PendingChange | { config: LegacyConfig }>("pending");
+  const pending = serviceRead("pending", decodePendingChange);
   if (pending && "serveIntent" in pending) {
     // An interrupted change never widens access: an exposure stays enabled only if both the
     // last good and the interrupted configuration enabled it, with the last good settings.

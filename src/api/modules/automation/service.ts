@@ -25,6 +25,11 @@ import type {
   AutomationRule,
 } from "./model";
 import {
+  decodeAutomationDecision,
+  decodeAutomationPreferences,
+  decodeAutomationRule,
+} from "./persistence";
+import {
   compareQuality,
   compareReleases,
   defaultAutomationPreferences,
@@ -124,14 +129,19 @@ const make = Effect.gen(function* () {
     servicePreferences = preferences
       ? {
           ...defaultAutomationPreferences,
-          ...(JSON.parse(preferences.value) as Partial<AutomationPreferences>),
+          ...decodeAutomationPreferences(preferences.value),
         }
       : defaultAutomationPreferences;
-    refreshRecords(serviceRules, serviceDb.select().from(automationRules).all());
-    for (const rule of serviceRules.values()) {
-      rule.revision ??= 0;
-    }
-    refreshRecords(serviceDecisions, serviceDb.select().from(automationDecisions).all());
+    refreshRecords(
+      serviceRules,
+      serviceDb.select().from(automationRules).all(),
+      decodeAutomationRule
+    );
+    refreshRecords(
+      serviceDecisions,
+      serviceDb.select().from(automationDecisions).all(),
+      decodeAutomationDecision
+    );
   }
   const serviceInterpret = Effect.fn("Automation.interpret")(function* (
     query: string,
@@ -295,9 +305,7 @@ const make = Effect.gen(function* () {
       if (draft.title.length > 256) {
         return problem(400, { detail: "Pattern too long" });
       }
-      const pattern = Effect.runSync(
-        Effect.result(Effect.try(() => new RegExp(draft.title, "iu")))
-      );
+      const pattern = Result.try(() => new RegExp(draft.title, "iu"));
       if (Result.isFailure(pattern)) {
         return problem(400, { detail: "Invalid pattern" });
       }
@@ -341,9 +349,7 @@ const make = Effect.gen(function* () {
       .from(automationRules)
       .where(eq(automationRules.id, prepared.rule.id))
       .get();
-    const revision = stored
-      ? ((JSON.parse(stored.value) as Partial<AutomationRule>).revision ?? 0)
-      : null;
+    const revision = stored ? decodeAutomationRule(stored.value).revision : null;
     if (revision !== prepared.expectedRevision) {
       return problem(409, { detail: "Automation changed; reload the rule" });
     }
@@ -353,7 +359,7 @@ const make = Effect.gen(function* () {
         .from(automationRules)
         .all()
         .some((row) => {
-          const rule = JSON.parse(row.value) as AutomationRule;
+          const rule = decodeAutomationRule(row.value);
           return (
             rule.id !== prepared.rule.id &&
             rule.ownerId === prepared.rule.ownerId &&
@@ -375,7 +381,7 @@ const make = Effect.gen(function* () {
       return problem(404, { detail: "Unknown automation" });
     }
     for (const row of tx.select().from(automationDecisions).all()) {
-      const decision = JSON.parse(row.value) as AutomationDecision;
+      const decision = decodeAutomationDecision(row.value);
       if (
         decision.automationId === id &&
         decision.status !== "added" &&
@@ -420,7 +426,7 @@ const make = Effect.gen(function* () {
       .from(automationRules)
       .where(eq(automationRules.id, prepared.ruleId))
       .get();
-    const rule = ruleRow ? ({ revision: 0, ...JSON.parse(ruleRow.value) } as AutomationRule) : null;
+    const rule = ruleRow ? decodeAutomationRule(ruleRow.value) : null;
     if (!rule?.enabled || rule.revision !== prepared.revision) {
       return problem(409, { detail: "Automation changed; discard prepared decisions" });
     }
@@ -430,7 +436,7 @@ const make = Effect.gen(function* () {
         .from(automationDecisions)
         .where(eq(automationDecisions.id, decision.id))
         .get();
-      const existing = row ? (JSON.parse(row.value) as AutomationDecision) : null;
+      const existing = row ? decodeAutomationDecision(row.value) : null;
       if (existing?.status === "ignored") {
         continue;
       }
@@ -632,15 +638,15 @@ const make = Effect.gen(function* () {
   if (storedPreferences) {
     servicePreferences = {
       ...defaultAutomationPreferences,
-      ...(JSON.parse(storedPreferences.value) as Partial<AutomationPreferences>),
+      ...decodeAutomationPreferences(storedPreferences.value),
     };
   }
   for (const row of serviceDb.select().from(automationRules).all()) {
-    const rule = { revision: 0, ...JSON.parse(row.value) } as AutomationRule;
+    const rule = decodeAutomationRule(row.value);
     serviceRules.set(rule.id, rule);
   }
   for (const row of serviceDb.select().from(automationDecisions).all()) {
-    const decision = JSON.parse(row.value) as AutomationDecision;
+    const decision = decodeAutomationDecision(row.value);
     serviceDecisions.set(decision.id, decision);
   }
 

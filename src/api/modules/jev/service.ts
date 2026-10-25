@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import { Context, Effect, Layer, Result } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
+import { HttpClient, HttpClientRequest } from "effect/http";
 import { ElysiaStatus, problem } from "elysia";
 import { automationJudgements } from "../../../db/schema";
 import { Database } from "../../lib/database-layer";
@@ -256,42 +257,42 @@ export function safeReleaseState(release: FeedRelease) {
   };
 }
 
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function validAnswer(value: unknown, question: ChoiceQuestion | NoulQuestion) {
-  if (!record(value) || value.type !== question.type) {
-    return false;
-  }
-  if (question.type === "noul") {
-    return (
-      typeof value.noul === "number" &&
-      Number.isFinite(value.noul) &&
-      value.noul >= 0 &&
-      value.noul <= 1
-    );
-  }
-  return (
-    typeof value.choice === "string" &&
-    value.choice in question.criteria &&
-    typeof value.confidence === "number" &&
-    Number.isFinite(value.confidence) &&
-    value.confidence >= 0 &&
-    value.confidence <= 1
-  );
-}
-export function parseJevResponse(value: unknown, questions: JevQuestions): JevResult {
-  if (!record(value) || typeof value.model !== "string" || !record(value.answers)) {
-    throw new Error("Invalid Jev response");
-  }
-  const { answers } = value;
-  if (!Object.entries(questions).every(([id, question]) => validAnswer(answers[id], question))) {
-    throw new Error("Invalid Jev response");
-  }
-  return value as unknown as JevResult;
-}
+const probability = Schema.Finite.check(Schema.isBetween({ maximum: 1, minimum: 0 }));
+const decodeCachedJson = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Unknown));
+export const parseJevResponse = Effect.fn("Jev.parseResponse")(function* (
+  value: unknown,
+  questions: JevQuestions
+): Effect.fn.Return<JevResult, Schema.SchemaError> {
+  const decoded = yield* Schema.decodeUnknownEffect(
+    Schema.Struct({
+      answers: Schema.Struct(
+        Object.fromEntries(
+          Object.entries(questions).map(([id, question]) => [
+            id,
+            question.type === "noul"
+              ? Schema.Struct({ noul: probability, type: Schema.Literal("noul") })
+              : Schema.Struct({
+                  choice: Schema.Literals(Object.keys(question.criteria)),
+                  confidence: probability,
+                  type: Schema.Literal("choice"),
+                }),
+          ])
+        )
+      ),
+      model: Schema.String,
+      usage: Schema.optional(
+        Schema.Struct({
+          input_tokens: Schema.optional(Schema.Number),
+          output_tokens: Schema.optional(Schema.Number),
+        })
+      ),
+    })
+  )(value);
+  return { ...decoded, usage: decoded.usage ?? {} };
+});
 
 const make = Effect.gen(function* () {
+  const http = HttpClient.withScope(yield* HttpClient.HttpClient);
   const db = yield* Database;
   const plugins = yield* Plugins;
   const options = { endpoint: pluginEndpoints.jev, now: Date.now, plugins };
@@ -319,7 +320,13 @@ const make = Effect.gen(function* () {
       .where(eq(automationJudgements.id, key))
       .get();
     if (cached && cached.createdAt > serviceOptions.now() - 86_400_000) {
-      return JSON.parse(cached.value) as JevResult;
+      const json = decodeCachedJson(cached.value);
+      if (Result.isSuccess(json)) {
+        const decoded = yield* Effect.result(parseJevResponse(json.success, questions));
+        if (Result.isSuccess(decoded)) {
+          return decoded.success;
+        }
+      }
     }
     const pending = serviceEvaluations.get(key);
     if (pending) {
@@ -391,42 +398,27 @@ const make = Effect.gen(function* () {
           return unavailable("Jev plugin disabled", 409);
         }
         const fetched = yield* Effect.result(
-          Effect.tryPromise({
-            catch: (cause) => cause,
-            try: () =>
-              fetch(serviceOptions.endpoint, {
-                body: JSON.stringify({ model: "jev-latest", questions, state }),
-                headers: {
-                  authorization: `Bearer ${plugin.apiKey}`,
-                  "content-type": "application/json",
-                },
-                method: "POST",
-                signal: controller.signal,
-              }),
-          })
+          http.execute(
+            HttpClientRequest.post(serviceOptions.endpoint, {
+              headers: {
+                authorization: `Bearer ${plugin.apiKey}`,
+                "content-type": "application/json",
+              },
+            }).pipe(HttpClientRequest.bodyJsonUnsafe({ model: "jev-latest", questions, state }))
+          )
         );
         if (Result.isFailure(fetched)) {
           return unavailable("Unable to connect to Jev", 503);
         }
         const response = fetched.success;
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
           return unavailable(`Jev unavailable (HTTP ${response.status})`, 503);
         }
-        const decoded = yield* Effect.result(
-          Effect.tryPromise({
-            catch: (cause) => cause,
-            try: () => response.json(),
-          })
-        );
+        const decoded = yield* Effect.result(response.json);
         if (Result.isFailure(decoded)) {
           return unavailable("Unable to connect to Jev", 503);
         }
-        const parsed = yield* Effect.result(
-          Effect.try({
-            catch: (cause) => cause,
-            try: () => parseJevResponse(decoded.success, questions),
-          })
-        );
+        const parsed = yield* Effect.result(parseJevResponse(decoded.success, questions));
         if (Result.isFailure(parsed)) {
           return unavailable("Unable to connect to Jev", 503);
         }

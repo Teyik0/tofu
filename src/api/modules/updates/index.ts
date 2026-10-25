@@ -16,5 +16,5 @@ export const updatesPlugin = new Elysia({ name: "tofu-updates-api", prefix: "/up
   // Installing replaces the host application; only its owner decides.
   .guard({ owner: true })
   .post("/prepare", ({ updates }) => Effect.runPromise(updates.prepare()))
-  .post("/install", ({ updates }) => updates.install())
+  .post("/install", ({ updates }) => Effect.runPromise(updates.install()))
   .get("/download", ({ updates }) => Effect.runPromise(updates.download()));

@@ -3,6 +3,16 @@
 These rules apply throughout the repository, to both new files and changes to existing code.
 Always use ponytail skills when starting a feature.
 
+## Learning more about Effect
+
+This repository uses the Effect Typescript library.
+
+Before writing any Effect code, first read `node_modules/effect/AGENTS.md`
+**completely**, and follow the links in the file when required.
+
+If you need to learn more about particular Effect apis and concepts that the
+guide doesn't cover, search through the source code in `node_modules/effect/src`.
+
 ## Application service pattern
 
 - Declare injectable application services as classes extending `Context.Service<Self, Contract>()("tofu/domain")`. Keep the contract inline and its operations readonly. The class identifies the service; its implementation is an object, not a mutable service class.

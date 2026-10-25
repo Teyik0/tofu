@@ -1,6 +1,6 @@
 import "@teyik0/furin/server-only";
 import { existsSync } from "node:fs";
-import { Effect, Result } from "effect";
+import { Result, Schema } from "effect";
 
 const DNS_TRAILING_DOT = /\.$/;
 
@@ -41,11 +41,35 @@ async function run(args: string[]) {
   return { code, stderr, stdout };
 }
 
-interface ServeConfig {
-  AllowFunnel?: { [hostPort: string]: boolean };
-  TCP?: { [port: string]: { HTTPS?: boolean } };
-  Web?: { [hostPort: string]: { Handlers?: { [path: string]: { Proxy?: string } } } };
-}
+const decodeStatus = Schema.decodeUnknownResult(
+  Schema.fromJsonString(
+    Schema.Struct({
+      BackendState: Schema.optional(Schema.String),
+      CertDomains: Schema.optional(Schema.Array(Schema.String)),
+      Self: Schema.optional(Schema.Struct({ DNSName: Schema.optional(Schema.String) })),
+    })
+  )
+);
+const decodeServeConfig = Schema.decodeUnknownResult(
+  Schema.fromJsonString(
+    Schema.Struct({
+      AllowFunnel: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
+      TCP: Schema.optional(
+        Schema.Record(Schema.String, Schema.Struct({ HTTPS: Schema.optional(Schema.Boolean) }))
+      ),
+      Web: Schema.optional(
+        Schema.Record(
+          Schema.String,
+          Schema.Struct({
+            Handlers: Schema.optional(
+              Schema.Record(Schema.String, Schema.Struct({ Proxy: Schema.optional(Schema.String) }))
+            ),
+          })
+        )
+      ),
+    })
+  )
+);
 
 /**
  * Reads Tailscale status and the HTTPS 443 Serve mapping. Tofu owns only the exact mapping
@@ -57,18 +81,7 @@ export async function checkTailscale(port: number): Promise<TailscaleState> {
   if (!status) {
     return { state: "not-installed" };
   }
-  const parsedResult = Effect.runSync(
-    Effect.result(
-      Effect.try(
-        () =>
-          JSON.parse(status.stdout) as {
-            BackendState?: string;
-            CertDomains?: string[];
-            Self?: { DNSName?: string };
-          }
-      )
-    )
-  );
+  const parsedResult = decodeStatus(status.stdout);
   if (Result.isFailure(parsedResult)) {
     return { state: "signed-out" };
   }
@@ -82,11 +95,7 @@ export async function checkTailscale(port: number): Promise<TailscaleState> {
   }
   const origin = `https://${hostname}`;
   const serve = await run(["serve", "status", "--json"]);
-  const configResult = Effect.runSync(
-    Effect.result(
-      Effect.try(() => (serve?.stdout.trim() ? JSON.parse(serve.stdout) : {}) as ServeConfig)
-    )
-  );
+  const configResult = decodeServeConfig(serve?.stdout.trim() || "{}");
   if (Result.isFailure(configResult)) {
     return {
       detail: "Tailscale Serve returned an unreadable configuration",

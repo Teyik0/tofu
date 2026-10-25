@@ -5,7 +5,10 @@ import { provider } from "../helpers/provider";
 
 test("AniList catalog browsing and list edits use the provider and retain saved changes", async () => {
   await using upstream = provider();
-  await using app = await application({ provider: upstream.url });
+  await using app = await application({
+    entry: "tests/helpers/providers-server.ts",
+    provider: upstream.url,
+  });
   const { client } = await app.start();
   const catalog = success(await client.anilist.catalog.post({ search: "Example" }));
   expect(catalog.media).toHaveLength(1);

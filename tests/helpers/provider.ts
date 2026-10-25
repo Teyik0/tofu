@@ -2,14 +2,28 @@ import type { peer } from "./peer";
 
 export function provider(source?: Awaited<ReturnType<typeof peer>>) {
   const state: {
+    anilistGate: Promise<void> | null;
+    anilistRequests: number;
+    anilistStatus: number;
+    c411Gate: Promise<void> | null;
+    c411Requests: number[];
     failSource: boolean;
+    jevResponse: unknown;
+    jevRequests: number;
     notes: string;
     progress: number;
     published: boolean;
     status: string;
     writes: { variables: Record<string, unknown>; token: string | null }[];
   } = {
+    anilistGate: null,
+    anilistRequests: 0,
+    anilistStatus: 200,
+    c411Gate: null,
+    c411Requests: [],
     failSource: false,
+    jevRequests: 0,
+    jevResponse: null,
     notes: "",
     progress: 0,
     published: true,
@@ -24,11 +38,20 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
     siteUrl: "https://anilist.co/anime/10",
     status: "RELEASING",
     synonyms: [],
-    title: { english: "Example", romaji: "Example" },
+    title: { english: "Example", native: null, romaji: "Example" },
   };
   const server = Bun.serve({
     // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep the fixture's HTTP provider contracts together.
     async fetch(request) {
+      if (new URL(request.url).pathname === "/c411") {
+        state.c411Requests.push(Date.now());
+        if (state.c411Gate) {
+          await state.c411Gate;
+        }
+        return new Response("<rss><channel></channel></rss>", {
+          headers: { "content-type": "application/rss+xml" },
+        });
+      }
       if (new URL(request.url).pathname === "/nyaa") {
         if (state.failSource) {
           return new Response("Provider unavailable", { status: 503 });
@@ -42,7 +65,21 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
         });
       }
       if (new URL(request.url).pathname === "/jev") {
+        state.jevRequests += 1;
+        if (state.jevResponse !== null) {
+          return Response.json(state.jevResponse);
+        }
         return new Response("Provider unavailable", { status: 503 });
+      }
+      state.anilistRequests += 1;
+      if (state.anilistGate) {
+        await state.anilistGate;
+      }
+      if (state.anilistStatus !== 200) {
+        return Response.json(
+          { errors: [{ message: "Private provider diagnostics" }] },
+          { status: state.anilistStatus }
+        );
       }
       const { query, variables } = (await request.json()) as {
         query: string;
@@ -150,6 +187,7 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
       );
     },
     hostname: "127.0.0.1",
+    idleTimeout: 30,
     port: 0,
   });
   return {

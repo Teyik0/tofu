@@ -1,11 +1,14 @@
+import { Result, Schema } from "effect";
 import { problem } from "elysia";
 import { aniListScoreScales } from "../../../lib/anilist-score";
 import type { AniListListEntryFragment, EditorQuery } from "./graphql/generated";
 import type { AniListListUpdate } from "./model";
 import { isAniListStatus } from "./service";
 
+const decodeJsonRecord = Schema.decodeUnknownResult(Schema.Record(Schema.String, Schema.Unknown));
 function jsonEntries(value: unknown): [string, unknown][] {
-  return value && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : [];
+  const decoded = decodeJsonRecord(value);
+  return Result.isSuccess(decoded) ? Object.entries(decoded.success) : [];
 }
 
 /** A list entry from AniList, or null when the provider returned an incomplete entry. */
