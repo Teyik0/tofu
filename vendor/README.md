@@ -2,13 +2,18 @@
 
 Both active packages are based on
 [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
-`ce5d778f91925464a75e84ca15365edf1f8e572d`. The core package additionally
-includes [furin-session.patch](furin-session.patch); Electrobun is unmodified.
+`e2c37e99f9014bc99146d8cc43281b55bca94868`. Both packages are unmodified.
+Commit `614ab36` supersedes the former local session patch. No local Furin
+source patch is applied to either active package.
 
 | Active archive | SHA-256 |
 | --- | --- |
-| `furin-pr163-ce5d778-session-v1.tgz` | `4e2d24f3efcb2d256701caa189ac0f83e7bafbf3d823806524f6876b15dbb44b` |
-| `furin-electrobun-pr163-ce5d778.tgz` | `424811d675b30284de7fccbee5437cc9495ad260433807c6364e17ab76e37d65` |
+| `furin-pr163-e2c37e9.tgz` | `6ca6a5cfba7b0503f0a482a6fb1ea484b1ac56a8c5ac00fc398723dc34ac730a` |
+| `furin-electrobun-pr163-e2c37e9.tgz` | `6736762453108237abb405af4c2c82ace3d81b483ebd250c2c3f52b5ea2f6fc2` |
+
+Commit `e2c37e9` exposes `useDesktop` from `@teyik0/furin-electrobun/client`,
+with explicit availability states and acknowledged, validated browser-opening commands.
+This dependency update does not yet migrate Tofu's update UI to the hook.
 
 Commit `ce5d778` adds `createSyncClient` through `@teyik0/furin/sync/client`
 for continuous live queries outside React, plus `createLocalSyncClient` through
@@ -18,14 +23,21 @@ invalidations declare their principal provenance, preserving targeted recovery
 without exposing another principal's journal entries. Tofu's browser and native
 consumers now subscribe to `/api/state` through the standalone client.
 
-The local patch adds `sync.connection(context)`, returning an optional
+Upstream now includes `sync.connection(context)` in `FurinSyncOptions`, returning an optional
 `{ signal, release }` session resource. Furin closes the event connection when
 the signal aborts and releases the resource on disconnect or failed startup,
-for both WebSocket and SSE. WebSocket close code `4409` means the session
-context changed: the standalone client cancels old reads, clears its cache and
-reauthenticates. A grant change can reconnect; a revoked or expired session
-receives an HTTP denial. Codes `1008`, `4401` and `4403` retain their existing
-terminal-denial meaning.
+for both WebSocket and SSE. An internal context-change notification makes the
+client cancel old reads, clear its cache and reauthenticate. Tofu does not
+inspect transport messages or close codes. A grant change can reconnect; a
+revoked or expired session receives an HTTP denial. A query-specific `403`
+does not suspend unrelated queries.
+
+`reconnect()` resets the access context by default. The optional
+`reconnect({ preserveCache: true })` is reserved for credential renewal with
+the same identity and access scope; Tofu does not assume that its cookie's
+permissions stayed unchanged while disconnected. Connection notifications
+distinguish `network`, `credentials` and `context` restart reasons, so native
+clients do not trigger a second reset after Furin has refreshed the context.
 
 Tofu connects its existing `callerReader()` in `src/sync.ts`. Torrent telemetry
 no longer depends on connected readers: a one-second engine tick samples
@@ -78,20 +90,18 @@ while the protected isomorphic Eden client keeps direct in-process dispatch to
 
 ## Rebuilding
 
-Use an isolated Furin checkout at the exact upstream commit above. Apply
-`git apply /absolute/path/to/Tofu/vendor/furin-session.patch` from its root.
+Use an isolated Furin checkout at the exact upstream commit above, without local patches.
 Install dependencies with Bun 1.4.4, then run `bun run build.ts` in
-`packages/core`. Pack it with `bun pm pack --filename
-/absolute/path/to/Tofu/vendor/furin-pr163-ce5d778-session-v1.tgz`.
-The patch also includes the transport and standalone-client regression tests;
-run them with `bun test --isolate` to avoid cross-file framework state.
+`packages/core`, followed by `packages/electrobun`. Pack each package with
+`bun pm pack --filename /absolute/path/to/Tofu/vendor/<active-archive-name>`.
+Run the transport and standalone-client regression tests with `bun test --isolate`
+to avoid cross-file framework state.
 Packing resolves workspace catalog references to published ranges. Archives
-contain their upstream MIT licenses. The existing Electrobun archive does not
-need rebuilding for this core-only change.
+contain their upstream MIT licenses.
 
-The unmodified `furin-pr163-ce5d778.tgz` archive is retained as the upstream
-reference. The local patch is already included in the active archive; Bun does
-not apply it again during installation.
+The older unmodified `ce5d778` archives are retained as historical references.
+They are not active dependencies. The superseded local session patch and its
+patched archive have been retired.
 
 The separate `../patches/libvlc-wasm@0.2.0.patch` is applied by Bun through
 `package.json`. It bounds VLC worker shutdown and the HTTP source chunk cache;

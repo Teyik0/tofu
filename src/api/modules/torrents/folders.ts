@@ -15,7 +15,9 @@ import type { EnginePort } from "./service";
 
 const RESCAN_MS = 30_000;
 
-export const TorrentFolderEngine = Context.Service<EnginePort>("tofu/torrent-folders/engine");
+export class TorrentFolderEngine extends Context.Service<TorrentFolderEngine, EnginePort>()(
+  "tofu/torrent-folders/engine"
+) {}
 
 /** Adds the .torrent files that appear in the folder of each thread that opted in. */
 const make = Effect.gen(function* () {
@@ -290,7 +292,7 @@ const make = Effect.gen(function* () {
         });
       }
     }
-    if (!(destination.deleteTorrentFileAfterAdd ?? engine.settings.deleteTorrentFileAfterAdd)) {
+    if (!(destination.deleteTorrentFileAfterAdd ?? engine.settings().deleteTorrentFileAfterAdd)) {
       return infoHash;
     }
     const deleted = yield* Effect.result(Effect.tryPromise(() => Bun.file(path).delete()));

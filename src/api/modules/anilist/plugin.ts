@@ -1,7 +1,6 @@
 import { Context } from "effect";
 import { Elysia } from "elysia";
 import { databasePlugin } from "../../lib/db";
-import { AniList } from "../../lib/services-layer";
 import { services } from "../../lib/services-runtime";
 import { automationPlugin } from "../automation";
 import { releaseAutomationPlugin } from "../automation/plugin";
@@ -9,6 +8,7 @@ import { discoveryServicePlugin } from "../discovery/plugin";
 import { jevServicePlugin } from "../jev/plugin";
 import { pluginRegistryPlugin } from "../plugins/plugin";
 import { torrentServicePlugin } from "../torrents/plugin";
+import { AniList } from "./service";
 
 export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
   .use(databasePlugin)

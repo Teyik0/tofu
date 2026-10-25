@@ -1,14 +1,16 @@
+import { Context, Effect, Layer } from "effect";
 import "@teyik0/furin/server-only";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { authorizedDevices, mediaLinks } from "../../../db/schema";
-import type { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/database-layer";
 import type { EnginePort } from "../torrents/service";
+import type { FileStats } from "../torrents/types";
 
 const DEFAULT_TTL = 6 * 3_600_000;
 
 interface MediaLinksOptions {
-  db: Database;
+  db: Database["Service"];
   now: () => number;
 }
 
@@ -21,20 +23,19 @@ function hash(value: string) {
  * session: external players and linked Tofu servers. Holding a link grants Range reads of one
  * file until it expires, is revoked, or its issuing device loses access.
  */
-export class MediaLinks {
-  private readonly options: MediaLinksOptions;
-  private readonly readers = new Map<string, { controller: AbortController; count: number }>();
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const options: MediaLinksOptions = { db, now: Date.now };
 
-  constructor(options: MediaLinksOptions) {
-    this.options = options;
-  }
+  const serviceOptions = options;
 
-  issue(input: {
+  const serviceReaders = new Map<string, { controller: AbortController; count: number }>();
+  function serviceIssue(input: {
     deviceId: string | null;
     file: { index: number; length: number; name: string };
     torrentId: string;
   }) {
-    const now = this.options.now();
+    const now = serviceOptions.now();
     const token = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
     const link = {
       createdAt: now,
@@ -48,20 +49,18 @@ export class MediaLinks {
       tokenHash: hash(token),
       torrentId: input.torrentId,
     };
-    this.options.db.insert(mediaLinks).values(link).run();
+    serviceOptions.db.insert(mediaLinks).values(link).run();
     return {
       expiresAt: link.expiresAt,
       id: link.id,
       path: `/media/x/${token}/${encodeURIComponent(input.file.name)}`,
     };
   }
-
-  /** Issues a link to one file of a torrent after checking that the file exists. */
-  async issueForFile(
+  const serviceIssueForFile = Effect.fn("PlaybackLinks.issueForFile")(function* (
     engine: EnginePort,
     input: { deviceId: string | null; fileIndex: number; torrentId: string }
   ) {
-    const detail = await engine.call("detail", [input.torrentId]);
+    const detail = yield* Effect.promise(() => engine.call("detail", [input.torrentId]));
     if (detail instanceof ElysiaStatus) {
       return detail;
     }
@@ -69,7 +68,7 @@ export class MediaLinks {
     if (!file) {
       return problem(404, { detail: "File not found" });
     }
-    const link = this.issue({
+    const link = serviceIssue({
       deviceId: input.deviceId,
       file: { index: file.index, length: file.length, name: file.name },
       torrentId: input.torrentId,
@@ -83,15 +82,16 @@ export class MediaLinks {
         name: file.name,
       },
     };
-  }
-
-  /** The file a live token grants, checked against the identity it was issued for. */
-  async describe(engine: EnginePort, token: string) {
-    const link = this.resolve(token);
+  });
+  const serviceDescribe = Effect.fn("PlaybackLinks.describe")(function* (
+    engine: EnginePort,
+    token: string
+  ) {
+    const link = serviceResolve(token);
     if (!link) {
       return problem(404, { detail: "This playback link expired or was revoked" });
     }
-    const detail = await engine.call("detail", [link.torrentId]);
+    const detail = yield* Effect.promise(() => engine.call("detail", [link.torrentId]));
     if (detail instanceof ElysiaStatus) {
       return detail;
     }
@@ -100,12 +100,10 @@ export class MediaLinks {
       return problem(404, { detail: "This playback link expired or was revoked" });
     }
     return file;
-  }
-
-  /** The live grant behind a token, or null once expired, revoked or orphaned. */
-  resolve(token: string) {
-    const now = this.options.now();
-    const row = this.options.db
+  });
+  function serviceResolve(token: string) {
+    const now = serviceOptions.now();
+    const row = serviceOptions.db
       .select({ device: authorizedDevices, link: mediaLinks })
       .from(mediaLinks)
       .leftJoin(authorizedDevices, eq(authorizedDevices.id, mediaLinks.deviceId))
@@ -122,17 +120,16 @@ export class MediaLinks {
     }
     return row.link;
   }
-
-  read(id: string, expiresAt: number) {
-    let active = this.readers.get(id);
+  function serviceRead(id: string, expiresAt: number) {
+    let active = serviceReaders.get(id);
     if (!active) {
       active = { controller: new AbortController(), count: 0 };
-      this.readers.set(id, active);
+      serviceReaders.set(id, active);
     }
     active.count += 1;
     const signal = AbortSignal.any([
       active.controller.signal,
-      AbortSignal.timeout(Math.max(0, expiresAt - this.options.now())),
+      AbortSignal.timeout(Math.max(0, expiresAt - serviceOptions.now())),
     ]);
     let released = false;
     return {
@@ -142,34 +139,106 @@ export class MediaLinks {
         }
         released = true;
         active.count -= 1;
-        if (active.count === 0 && this.readers.get(id) === active) {
-          this.readers.delete(id);
+        if (active.count === 0 && serviceReaders.get(id) === active) {
+          serviceReaders.delete(id);
         }
       },
       signal,
     };
   }
-
-  revoke(deviceId: string | null, id: string) {
-    const link = this.options.db.select().from(mediaLinks).where(eq(mediaLinks.id, id)).get();
+  function serviceRevoke(deviceId: string | null, id: string) {
+    const link = serviceOptions.db.select().from(mediaLinks).where(eq(mediaLinks.id, id)).get();
     if (!link || link.deviceId !== deviceId) {
       return problem(404, { detail: "Playback link not found" });
     }
-    this.options.db
+    serviceOptions.db
       .update(mediaLinks)
-      .set({ revokedAt: this.options.now() })
+      .set({ revokedAt: serviceOptions.now() })
       .where(eq(mediaLinks.id, id))
       .run();
-    this.readers.get(id)?.controller.abort();
-    this.readers.delete(id);
+    serviceReaders.get(id)?.controller.abort();
+    serviceReaders.delete(id);
     return { revoked: true as const };
   }
-
-  prune() {
-    const now = this.options.now();
-    this.options.db
+  function servicePrune() {
+    const now = serviceOptions.now();
+    serviceOptions.db
       .delete(mediaLinks)
       .where(or(lt(mediaLinks.expiresAt, now), lt(mediaLinks.revokedAt, now - 86_400_000)))
       .run();
   }
-}
+
+  return {
+    describe: serviceDescribe,
+    issue: serviceIssue,
+    issueForFile: serviceIssueForFile,
+    prune: servicePrune,
+    read: serviceRead,
+    resolve: serviceResolve,
+    revoke: serviceRevoke,
+  };
+});
+
+export type MediaLinks = PlaybackLinks["Service"];
+export class PlaybackLinks extends Context.Service<
+  PlaybackLinks,
+  {
+    readonly issue: (input: {
+      deviceId: string | null;
+      file: { index: number; length: number; name: string };
+      torrentId: string;
+    }) => {
+      expiresAt: number;
+      id: `${string}-${string}-${string}-${string}-${string}`;
+      path: string;
+    };
+    readonly issueForFile: (
+      engine: EnginePort,
+      input: { deviceId: string | null; fileIndex: number; torrentId: string }
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<404, { readonly detail: "Torrent not found" }>>
+      | ReturnType<typeof problem<503, { readonly detail: "The worker is unavailable" }>>
+      | ReturnType<typeof problem<503, { detail: string }>>
+      | ReturnType<typeof problem<404, { readonly detail: "File not found" }>>
+      | {
+          file: { complete: boolean; index: number; length: number; name: string };
+          expiresAt: number;
+          id: `${string}-${string}-${string}-${string}-${string}`;
+          path: string;
+        }
+    >;
+    readonly describe: (
+      engine: EnginePort,
+      token: string
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<404, { readonly detail: "Torrent not found" }>>
+      | FileStats
+      | ReturnType<typeof problem<503, { readonly detail: "The worker is unavailable" }>>
+      | ReturnType<typeof problem<503, { detail: string }>>
+      | ReturnType<
+          typeof problem<404, { readonly detail: "This playback link expired or was revoked" }>
+        >
+    >;
+    readonly resolve: (token: string) => {
+      createdAt: number;
+      deviceId: string | null;
+      expiresAt: number;
+      fileIndex: number;
+      fileLength: number;
+      fileName: string;
+      id: string;
+      revokedAt: number | null;
+      tokenHash: string;
+      torrentId: string;
+    } | null;
+    readonly read: (id: string, expiresAt: number) => { release: () => void; signal: AbortSignal };
+    readonly revoke: (
+      deviceId: string | null,
+      id: string
+    ) =>
+      | ReturnType<typeof problem<404, { readonly detail: "Playback link not found" }>>
+      | { revoked: true };
+    readonly prune: () => void;
+  }
+>()("tofu/media-links") {}
+export const playbackLinksLayer = Layer.effect(PlaybackLinks, make);

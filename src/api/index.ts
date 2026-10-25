@@ -38,9 +38,7 @@ import { updatesPlugin } from "./modules/updates";
 
 export const apiPlugin = new Elysia({ name: "tofu-api" })
   .use(evlog(toMiddlewareOptions(config)))
-  .derive(() => ({
-    log: useLogger(),
-  }))
+  .derive(() => ({ log: useLogger() }))
   .use(anilistServicePlugin)
   .use(releaseAutomationPlugin)
   .use(discoveryServicePlugin)

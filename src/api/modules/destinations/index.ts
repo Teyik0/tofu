@@ -1,4 +1,5 @@
 import { furinSync } from "@teyik0/furin/sync";
+import { Effect } from "effect";
 import { Elysia, ElysiaStatus, problem } from "elysia";
 import { sync } from "../../../sync";
 import { accessPlugin } from "../access/plugin";
@@ -92,7 +93,9 @@ export const destinationsPlugin = new Elysia({ name: "tofu-destinations-api" })
       body: destinationWithinRootSchema,
     },
     async ({ storageRoots, torrents, torrentFolders, torrentFoldersRuntime, body }) => {
-      const downloadPath = await storageRoots.resolveFolder(body.rootId, body.folder);
+      const downloadPath = await Effect.runPromise(
+        storageRoots.resolveFolder(body.rootId, body.folder)
+      );
       if (downloadPath instanceof ElysiaStatus) {
         return downloadPath;
       }

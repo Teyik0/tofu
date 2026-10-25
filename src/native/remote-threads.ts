@@ -554,7 +554,7 @@ export class RemoteThreads extends EventEmitter {
       resources.defer(() => signal.removeEventListener("abort", aborted));
       let reconnecting = false;
       resources.defer(
-        client.subscribeConnection(({ status, error }) => {
+        client.subscribeConnection(({ status, error, reason }) => {
           if (signal.aborted) {
             return;
           }
@@ -569,7 +569,7 @@ export class RemoteThreads extends EventEmitter {
                 : problem(401, { detail: "This connection expired or was revoked" })
             );
           } else if (status === "reconnecting") {
-            reconnecting = true;
+            reconnecting = reason === "network";
             this.#generations.delete(serverId);
             this.#states.set(serverId, {
               connection: "offline",

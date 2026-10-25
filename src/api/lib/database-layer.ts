@@ -10,11 +10,11 @@ import { databasePath } from "../../../drizzle.config";
 import { furinSyncSchema } from "../../db/furin.schema";
 import { schema } from "../../db/schema";
 
-export type Database = ReturnType<typeof drizzle>;
-export type DatabaseTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
-export type DatabaseConnection = Database | DatabaseTransaction;
+export type DatabaseInstance = ReturnType<typeof drizzle>;
+export type DatabaseTransaction = Parameters<Parameters<DatabaseInstance["transaction"]>[0]>[0];
+export type DatabaseConnection = DatabaseInstance | DatabaseTransaction;
 
-export const Database = Context.Service<ReturnType<typeof drizzle>>("tofu/database");
+export class Database extends Context.Service<Database, DatabaseInstance>()("tofu/database") {}
 
 export const databaseLayer = Layer.effect(
   Database,

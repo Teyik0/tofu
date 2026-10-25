@@ -1,8 +1,10 @@
+import { Context, Effect, Layer } from "effect";
+import { AccessControl } from "./service";
 import "@teyik0/furin/server-only";
 import { and, eq, isNull } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { authorizedDevices, deviceSessions, pairingInvitations } from "../../../db/schema";
-import type { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/database-layer";
 import { grantsOf, holds } from "./grants";
 import type { DeviceRole } from "./model";
 import type { AccessService, Caller, Device } from "./service";
@@ -17,7 +19,7 @@ export interface GrantChange {
 
 interface DevicesOptions {
   access: AccessService;
-  db: Database;
+  db: Database["Service"];
   now: () => number;
 }
 
@@ -39,26 +41,24 @@ interface Reconnection {
  * Authorized devices and their grants. An editor may change or revoke only devices whose grants
  * it holds, never raise itself, and grant changes end the device's open streams.
  */
-export class Devices {
-  // Pending approvals deliberately expire on restart; no credential is persisted before approval.
-  private readonly reconnections = new Map<string, Reconnection>();
-  private readonly options: DevicesOptions;
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const access = yield* AccessControl;
+  const options: DevicesOptions = { access, db, now: Date.now };
 
-  constructor(options: DevicesOptions) {
-    this.options = options;
-  }
+  const serviceOptions = options;
 
-  list() {
-    return this.options.db
+  const serviceReconnections = new Map<string, Reconnection>();
+  function serviceList() {
+    return serviceOptions.db
       .select()
       .from(authorizedDevices)
       .where(isNull(authorizedDevices.revokedAt))
       .all()
-      .map((device) => this.summary(device));
+      .map((device) => serviceSummary(device));
   }
-
-  summary(device: Device) {
-    const sessions = this.options.db
+  function serviceSummary(device: Device) {
+    const sessions = serviceOptions.db
       .select()
       .from(deviceSessions)
       .where(eq(deviceSessions.deviceId, device.id))
@@ -75,19 +75,18 @@ export class Devices {
       role: device.role,
     };
   }
-
-  private find(id: string) {
-    return this.options.db
+  function serviceFind(id: string) {
+    return serviceOptions.db
       .select()
       .from(authorizedDevices)
       .where(and(eq(authorizedDevices.id, id), isNull(authorizedDevices.revokedAt)))
       .get();
   }
 
-  /** Grant edits are bounded by the editor: both the current and new grants must be held. */
-  update(editor: Caller, id: string, change: GrantChange) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep grant validation and device session updates in one authorization decision.
+  function serviceUpdate(editor: Caller, id: string, change: GrantChange) {
     const grants = grantsOf(editor);
-    const device = this.find(id);
+    const device = serviceFind(id);
     if (!(grants && device)) {
       return problem(404, { detail: "Device not found" });
     }
@@ -125,7 +124,7 @@ export class Devices {
       label: label ?? device.label,
       profileId: change.profileId ?? device.profileId,
     };
-    this.options.db
+    serviceOptions.db
       .update(authorizedDevices)
       .set({
         canDeleteFiles: updated.canDeleteFiles,
@@ -137,25 +136,27 @@ export class Devices {
       .where(eq(authorizedDevices.id, id))
       .run();
     if (grantsChanged) {
-      this.options.access.interrupt(id);
+      serviceOptions.access.interrupt(id);
     }
-    return this.summary(updated);
+    return serviceSummary(updated);
   }
-
-  revoke(editor: Caller, id: string) {
+  function serviceRevoke(editor: Caller, id: string) {
     const grants = grantsOf(editor);
-    const device = this.find(id);
+    const device = serviceFind(id);
     if (!(grants && device)) {
       return problem(404, { detail: "Device not found" });
     }
     if (!holds(grants, device)) {
       return problem(403, { detail: "You can revoke only devices within your permissions" });
     }
-    return this.options.access.revoke(id);
+    return serviceOptions.access.revoke(id);
   }
-
-  createReconnection(editor: Exclude<Caller, { kind: "anonymous" }>, id: string, origin: string) {
-    const device = this.find(id);
+  function serviceCreateReconnection(
+    editor: Exclude<Caller, { kind: "anonymous" }>,
+    id: string,
+    origin: string
+  ) {
+    const device = serviceFind(id);
     const grants = grantsOf(editor);
     if (!(device && grants && holds(grants, device))) {
       return problem(403, { detail: "You can reconnect only devices within your permissions" });
@@ -163,13 +164,13 @@ export class Devices {
     if (device.kind !== "browser") {
       return problem(400, { detail: "Only browser devices support browser reconnection" });
     }
-    const now = this.options.now();
-    for (const [key, request] of this.reconnections) {
+    const now = serviceOptions.now();
+    for (const [key, request] of serviceReconnections) {
       if (
         request.expiresAt <= now ||
         (request.editor.principal === editor.principal && request.device.id === id)
       ) {
-        this.reconnections.delete(key);
+        serviceReconnections.delete(key);
       }
     }
     const secret = randomToken(32);
@@ -186,28 +187,27 @@ export class Devices {
       origin,
       secretHash: hash(secret),
     };
-    this.reconnections.set(request.id, request);
+    serviceReconnections.set(request.id, request);
     return { expiresAt: request.expiresAt, id: request.id, secret };
   }
-
-  private validReconnection(request: Reconnection | undefined) {
-    if (!request || request.expiresAt <= this.options.now()) {
+  function serviceValidReconnection(request: Reconnection | undefined) {
+    if (!request || request.expiresAt <= serviceOptions.now()) {
       return problem(410, {
         detail: "This reconnection expired. Generate a new QR code on the Mac",
       });
     }
-    const device = this.find(request.device.id);
+    const device = serviceFind(request.device.id);
     if (!device || device.grantVersion !== request.device.grantVersion) {
       return problem(410, { detail: "This device's access changed. Generate a new QR code" });
     }
     if (request.editor.kind === "device") {
-      const editor = this.find(request.editor.device.id);
-      const session = this.options.db
+      const editor = serviceFind(request.editor.device.id);
+      const session = serviceOptions.db
         .select()
         .from(deviceSessions)
         .where(eq(deviceSessions.id, request.editor.session.id))
         .get();
-      const now = this.options.now();
+      const now = serviceOptions.now();
       if (
         !editor ||
         editor.grantVersion !== request.editor.device.grantVersion ||
@@ -221,9 +221,8 @@ export class Devices {
     }
     return request;
   }
-
-  reconnection(editor: Caller, id: string, requestId: string) {
-    const request = this.validReconnection(this.reconnections.get(requestId));
+  function serviceReconnection(editor: Caller, id: string, requestId: string) {
+    const request = serviceValidReconnection(serviceReconnections.get(requestId));
     if (request instanceof ElysiaStatus) {
       return request;
     }
@@ -239,20 +238,19 @@ export class Devices {
     }
     return request;
   }
-
-  decideReconnection(
+  function serviceDecideReconnection(
     editor: Caller,
     id: string,
     requestId: string,
     code: string,
     approve: boolean
   ) {
-    const request = this.reconnection(editor, id, requestId);
+    const request = serviceReconnection(editor, id, requestId);
     if (request instanceof ElysiaStatus) {
       return request;
     }
     if (!approve) {
-      this.reconnections.delete(requestId);
+      serviceReconnections.delete(requestId);
       return { approved: false };
     }
     if (!(request.browserHash && request.code) || request.code !== code || request.completed) {
@@ -263,10 +261,14 @@ export class Devices {
     request.approved = true;
     return { approved: true };
   }
-
-  claimReconnection(secret: string, browserSecret: string, label: string, origin: string) {
-    const request = this.validReconnection(
-      [...this.reconnections.values()].find((item) => item.secretHash === hash(secret))
+  function serviceClaimReconnection(
+    secret: string,
+    browserSecret: string,
+    label: string,
+    origin: string
+  ) {
+    const request = serviceValidReconnection(
+      [...serviceReconnections.values()].find((item) => item.secretHash === hash(secret))
     );
     if (request instanceof ElysiaStatus) {
       return request;
@@ -292,9 +294,8 @@ export class Devices {
     }
     return { code: request.code, expiresAt: request.expiresAt, id: request.id };
   }
-
-  completeReconnection(id: string, browserSecret: string, origin: string) {
-    const request = this.validReconnection(this.reconnections.get(id));
+  function serviceCompleteReconnection(id: string, browserSecret: string, origin: string) {
+    const request = serviceValidReconnection(serviceReconnections.get(id));
     if (request instanceof ElysiaStatus) {
       return request;
     }
@@ -307,7 +308,7 @@ export class Devices {
     if (!request.approved) {
       return { pending: true as const };
     }
-    const now = this.options.now();
+    const now = serviceOptions.now();
     const deviceId = crypto.randomUUID();
     const device: Device = {
       ...request.device,
@@ -322,43 +323,39 @@ export class Devices {
       redemptionNonceHash: null,
       revokedAt: null,
     };
-    const session = this.options.db.transaction((tx) => {
+    const session = serviceOptions.db.transaction((tx) => {
       tx.insert(authorizedDevices).values(device).run();
-      return this.options.access.issueSession(deviceId, "browser");
+      return serviceOptions.access.issueSession(deviceId, "browser");
     });
     request.completed = true;
     return { deviceId, session };
   }
-
-  /** Revokes every device the editor may revoke, except the editor itself. */
-  revokeOthers(editor: Caller) {
+  function serviceRevokeOthers(editor: Caller) {
     const grants = grantsOf(editor);
     if (!grants) {
       return problem(401, { detail: "Sign in to this server" });
     }
     let revoked = 0;
-    for (const device of this.options.db
+    for (const device of serviceOptions.db
       .select()
       .from(authorizedDevices)
       .where(isNull(authorizedDevices.revokedAt))
       .all()) {
       if (!(editor.kind === "device" && editor.device.id === device.id) && holds(grants, device)) {
-        this.options.access.revoke(device.id);
+        serviceOptions.access.revoke(device.id);
         revoked += 1;
       }
     }
     return { revoked };
   }
-
-  /** Revokes every remote device and pending invitation; the owner keeps access. */
-  revokeAll() {
-    const now = this.options.now();
-    const devices = this.options.db
+  function serviceRevokeAll() {
+    const now = serviceOptions.now();
+    const devices = serviceOptions.db
       .select({ id: authorizedDevices.id })
       .from(authorizedDevices)
       .where(isNull(authorizedDevices.revokedAt))
       .all();
-    this.options.db.transaction((tx) => {
+    serviceOptions.db.transaction((tx) => {
       tx.update(authorizedDevices)
         .set({ revokedAt: now })
         .where(isNull(authorizedDevices.revokedAt))
@@ -370,8 +367,28 @@ export class Devices {
         .run();
     });
     for (const device of devices) {
-      this.options.access.interrupt(device.id);
+      serviceOptions.access.interrupt(device.id);
     }
     return { revoked: devices.length };
   }
-}
+
+  return {
+    claimReconnection: serviceClaimReconnection,
+    completeReconnection: serviceCompleteReconnection,
+    createReconnection: serviceCreateReconnection,
+    decideReconnection: serviceDecideReconnection,
+    list: serviceList,
+    reconnection: serviceReconnection,
+    revoke: serviceRevoke,
+    revokeAll: serviceRevokeAll,
+    revokeOthers: serviceRevokeOthers,
+    summary: serviceSummary,
+    update: serviceUpdate,
+  };
+});
+
+export type Devices = Effect.Success<typeof make>;
+export class AuthorizedDevices extends Context.Service<AuthorizedDevices, Devices>()(
+  "tofu/devices"
+) {}
+export const authorizedDevicesLayer = Layer.effect(AuthorizedDevices, make);

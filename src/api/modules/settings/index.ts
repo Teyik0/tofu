@@ -11,12 +11,12 @@ export const settingsPlugin = new Elysia({ name: "tofu-settings-api" })
   .use(accessPlugin)
   .use(furinSync(sync))
   .guard({ administration: true, idempotent: false })
-  .get("/settings", ({ torrents }) => torrents.settings)
+  .get("/settings", ({ torrents }) => torrents.settings())
   .put(
     "/settings",
     { body: settingsSchema },
     async ({ caller, torrents, torrentFolders, torrentFoldersRuntime, body }) => {
-      if (caller.kind !== "owner" && changesOwnerSettings(torrents.settings, body)) {
+      if (caller.kind !== "owner" && changesOwnerSettings(torrents.settings(), body)) {
         return problem(403, { detail: "Change this on the server itself" });
       }
       const settings = await torrents.call("updateSettings", [body]);
@@ -32,7 +32,7 @@ export const settingsPlugin = new Elysia({ name: "tofu-settings-api" })
     "/settings",
     { body: settingsPatchSchema },
     async ({ caller, torrents, torrentFolders, torrentFoldersRuntime, body }) => {
-      if (caller.kind !== "owner" && changesOwnerSettings(torrents.settings, body)) {
+      if (caller.kind !== "owner" && changesOwnerSettings(torrents.settings(), body)) {
         return problem(403, { detail: "Change this on the server itself" });
       }
       const settings = await torrents.call("updateSettings", [body]);

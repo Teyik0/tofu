@@ -3,6 +3,16 @@
 These rules apply throughout the repository, to both new files and changes to existing code.
 Always use ponytail skills when starting a feature.
 
+## Application service pattern
+
+- Declare injectable application services as classes extending `Context.Service<Self, Contract>()("tofu/domain")`. Keep the contract inline and its operations readonly. The class identifies the service; its implementation is an object, not a mutable service class.
+- Construct implementations with a module-local `const make = Effect.gen(...)` and export a `Layer.effect(Service, make)` beside the service. Resolve service dependencies with `yield*` during construction; compose their layers in `src/api/lib/services-layer.ts`.
+- Use named `Effect.fn("Service.operation")` operations for asynchronous workflows. Compose Effects directly inside services; execute them at HTTP, CLI, worker, or native callback boundaries. Keep synchronous projections and transaction callbacks synchronous where their callers require it.
+- Infer downstream service types from `Service["Service"]` and result types from the operation. Keep explicit input schemas and contracts independent when deriving them from the service would create a recursive service definition.
+- Own resources and background work in the service's scope. Attach cleanup when acquiring resources and preserve operation reservations and shared in-flight work before the first asynchronous boundary.
+- Read mutable service state through operations. Do not expose mutable getters through Elysia decorators: composition can copy their current values instead of preserving the getters.
+- Native SDK objects, transport adapters, data objects, and local resource types may remain classes. Do not duplicate their APIs with parallel service interfaces.
+
 ## Async syntax
 
 - Use `async` / `await` for all promise sequencing. Never use `.then()`.
@@ -201,8 +211,11 @@ return { torrent: data };
 
 ## Integration tests
 
+- Tests verify product requirements and production behavior; they must not drive runtime architecture or unrelated code changes.
+- Never change runtime behavior, logging, configuration, startup, or public contracts solely to make a test pass. Fix incorrect test assumptions, setup, or fixtures in the test layer instead.
+- If a test exposes a genuine production defect outside the requested scope, report it and obtain explicit approval before changing runtime code. Do not disable or weaken assertions to hide the defect.
 - Keep only essential integration scenarios. Exercise API behavior through typed Eden endpoints with real application services; do not add function unit tests, component snapshots, or tests of framework internals.
 - Test torrent transfers and lifecycle behavior with real peers in temporary directories. Simulate external providers only at their HTTP or native SDK boundaries.
 - Put shared fixtures, resource cleanup, and assertion helpers in `tests/helpers/`. Keep endpoint calls visible in the tests rather than wrapping them in request helpers.
 - Keep AniList tests in `tests/anilist/` and omit redundant `anilist-` filename prefixes.
-- The overall runtime codebase should not be affected by testing. Don't make the code write unnecessary export function / config files for testing purpose.
+- Keep test-only exports, configuration, branches, adapters, and dependency injection out of runtime code. Simulate external dependencies only at the existing HTTP or native SDK boundaries.

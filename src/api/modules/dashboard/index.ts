@@ -1,6 +1,6 @@
 import { furinSync } from "@teyik0/furin/sync";
 import { desktopContext } from "@teyik0/furin-electrobun/server";
-import { Context } from "effect";
+import { Context, Effect } from "effect";
 import { Elysia, ElysiaStatus } from "elysia";
 import { sync } from "../../../sync";
 import { services, servicesRuntime } from "../../lib/services-runtime";
@@ -27,7 +27,7 @@ export const dashboardPlugin = new Elysia({ name: "tofu-dashboard-api" })
     },
     async ({ access, caller, desktop, torrents, query, set }) => {
       set.headers["cache-control"] = "private, no-store";
-      const state = await torrents.refreshSnapshot(1000);
+      const state = await Effect.runPromise(torrents.refreshSnapshot(1000));
       if (state instanceof ElysiaStatus) {
         return state;
       }
@@ -60,7 +60,7 @@ export const dashboardPlugin = new Elysia({ name: "tofu-dashboard-api" })
     }
   )
   .get("/host", { administration: true }, async ({ torrents }) => {
-    const state = await torrents.refreshSnapshot(1000);
+    const state = await Effect.runPromise(torrents.refreshSnapshot(1000));
     if (state instanceof ElysiaStatus) {
       return state;
     }

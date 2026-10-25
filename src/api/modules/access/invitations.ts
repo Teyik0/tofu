@@ -1,8 +1,10 @@
+import { Context, Effect, Layer } from "effect";
+import { AccessControl } from "./service";
 import "@teyik0/furin/server-only";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { problem } from "elysia";
 import { authorizedDevices, deviceSessions, pairingInvitations } from "../../../db/schema";
-import type { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/database-layer";
 import { grantsOf, holds } from "./grants";
 import type { DeviceKind, DeviceRole, SessionKind } from "./model";
 import { type AccessService, type Caller, DAY, type Device, type Invitation } from "./service";
@@ -52,7 +54,7 @@ export function normalizeCode(code: string) {
 
 interface InvitationsOptions {
   access: AccessService;
-  db: Database;
+  db: Database["Service"];
   now: () => number;
 }
 
@@ -60,15 +62,17 @@ interface InvitationsOptions {
  * One-time invitations and their atomic redemption into a device. Grants never exceed the
  * issuer's; short codes burn after repeated failures and a global bucket limits guessing.
  */
-export class Invitations {
-  private readonly options: InvitationsOptions;
-  private failedCodes: number[] = [];
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const access = yield* AccessControl;
+  const options: InvitationsOptions = { access, db, now: Date.now };
 
-  constructor(options: InvitationsOptions) {
-    this.options = options;
-  }
+  const serviceOptions = options;
 
-  create(issuer: Caller, input: InvitationInput) {
+  let serviceFailedCodes: number[] = [];
+
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep one-time invitation validation and redemption atomic.
+  function serviceCreate(issuer: Caller, input: InvitationInput) {
     const grants = grantsOf(issuer);
     if (!grants) {
       return problem(401, { detail: "Sign in to this server" });
@@ -85,10 +89,10 @@ export class Invitations {
     if (!label || label.length > 64) {
       return problem(400, { detail: "Enter a device name of 64 characters or fewer" });
     }
-    const now = this.options.now();
+    const now = serviceOptions.now();
     const secret = randomToken(16);
     // The first three characters select the invitation; the other seven are its secret.
-    const selectors = new Set(this.active(now).map((active) => active.codeHash.slice(0, 3)));
+    const selectors = new Set(serviceActive(now).map((active) => active.codeHash.slice(0, 3)));
     let code = "";
     for (let attempt = 0; attempt < 16 && !code; attempt += 1) {
       const candidate = randomCode(10);
@@ -112,10 +116,10 @@ export class Invitations {
       role: input.role,
       secretHash: hash(secret),
     };
-    this.options.db.insert(pairingInvitations).values(invitation).run();
+    serviceOptions.db.insert(pairingInvitations).values(invitation).run();
     return {
       code: `${code.slice(0, 5)}-${code.slice(5)}`,
-      invitation: this.summary({
+      invitation: serviceSummary({
         ...invitation,
         consumedAt: null,
         consumedBy: null,
@@ -124,9 +128,8 @@ export class Invitations {
       secret,
     };
   }
-
-  private active(now: number) {
-    return this.options.db
+  function serviceActive(now: number) {
+    return serviceOptions.db
       .select()
       .from(pairingInvitations)
       .where(
@@ -138,9 +141,8 @@ export class Invitations {
       )
       .all();
   }
-
-  summary(invitation: Invitation) {
-    const now = this.options.now();
+  function serviceSummary(invitation: Invitation) {
+    const now = serviceOptions.now();
     let status: "active" | "used" | "expired" | "revoked" = "active";
     if (invitation.revokedAt !== null) {
       status = "revoked";
@@ -159,20 +161,18 @@ export class Invitations {
       status,
     };
   }
-
-  list() {
-    const recent = this.options.now() - DAY;
-    return this.options.db
+  function serviceList() {
+    const recent = serviceOptions.now() - DAY;
+    return serviceOptions.db
       .select()
       .from(pairingInvitations)
       .where(or(gt(pairingInvitations.createdAt, recent), isNull(pairingInvitations.consumedAt)))
       .all()
-      .map((invitation) => this.summary(invitation))
+      .map((invitation) => serviceSummary(invitation))
       .sort((left, right) => right.createdAt - left.createdAt);
   }
-
-  revoke(issuer: Caller, id: string) {
-    const invitation = this.options.db
+  function serviceRevoke(issuer: Caller, id: string) {
+    const invitation = serviceOptions.db
       .select()
       .from(pairingInvitations)
       .where(eq(pairingInvitations.id, id))
@@ -184,20 +184,19 @@ export class Invitations {
     if (!holds(grants, { canDeleteFiles: invitation.canDeleteFiles, role: invitation.role })) {
       return problem(403, { detail: "You can revoke only invitations within your permissions" });
     }
-    this.options.db
+    serviceOptions.db
       .update(pairingInvitations)
-      .set({ revokedAt: invitation.revokedAt ?? this.options.now() })
+      .set({ revokedAt: invitation.revokedAt ?? serviceOptions.now() })
       .where(eq(pairingInvitations.id, id))
       .run();
-    return this.summary({
+    return serviceSummary({
       ...invitation,
-      revokedAt: invitation.revokedAt ?? this.options.now(),
+      revokedAt: invitation.revokedAt ?? serviceOptions.now(),
     });
   }
-
-  private find(input: PairingInput) {
+  function serviceFind(input: PairingInput) {
     if (input.secret) {
-      return this.options.db
+      return serviceOptions.db
         .select()
         .from(pairingInvitations)
         .where(eq(pairingInvitations.secretHash, hash(input.secret)))
@@ -207,7 +206,7 @@ export class Invitations {
     if (code.length !== 10) {
       return;
     }
-    const candidates = this.options.db
+    const candidates = serviceOptions.db
       .select()
       .from(pairingInvitations)
       .all()
@@ -219,11 +218,11 @@ export class Invitations {
       return match;
     }
     // A wrong secret for a live selector counts against that invitation and burns it.
-    const now = this.options.now();
+    const now = serviceOptions.now();
     for (const invitation of candidates) {
       if (invitation.consumedAt === null && invitation.revokedAt === null) {
         const failedAttempts = invitation.failedAttempts + 1;
-        this.options.db
+        serviceOptions.db
           .update(pairingInvitations)
           .set({
             failedAttempts,
@@ -234,26 +233,24 @@ export class Invitations {
       }
     }
   }
-
-  /** What a valid invitation grants, without redeeming it. */
-  preview(input: PairingInput) {
-    const now = this.options.now();
-    this.failedCodes = this.failedCodes.filter((time) => now - time < 60_000);
-    if (this.failedCodes.length >= FAILED_CODE_BUCKET) {
+  function servicePreview(input: PairingInput) {
+    const now = serviceOptions.now();
+    serviceFailedCodes = serviceFailedCodes.filter((time) => now - time < 60_000);
+    if (serviceFailedCodes.length >= FAILED_CODE_BUCKET) {
       return problem(429, { detail: "Too many attempts. Wait a minute and try again" });
     }
-    const invitation = input.secret ? this.find(input) : undefined;
+    const invitation = input.secret ? serviceFind(input) : undefined;
     if (!invitation) {
-      this.failedCodes.push(now);
+      serviceFailedCodes.push(now);
       return problem(401, { detail: "This invitation is not valid. Check the link or code" });
     }
-    const summary = this.summary(invitation);
+    const summary = serviceSummary(invitation);
     if (summary.status !== "active") {
       return problem(410, {
         detail: `This invitation was ${summary.status === "used" ? "already used" : summary.status}. Ask for a new one`,
       });
     }
-    const identity = this.options.access.identity();
+    const identity = serviceOptions.access.identity();
     return {
       canDeleteFiles: invitation.canDeleteFiles,
       expiresAt: invitation.expiresAt,
@@ -262,11 +259,11 @@ export class Invitations {
     };
   }
 
-  /** Redeems an invitation once, atomically, into a new device and its first session. */
-  redeem(input: PairingInput) {
-    const now = this.options.now();
-    this.failedCodes = this.failedCodes.filter((time) => now - time < 60_000);
-    if (this.failedCodes.length >= FAILED_CODE_BUCKET) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep one-time invitation validation and redemption atomic.
+  function serviceRedeem(input: PairingInput) {
+    const now = serviceOptions.now();
+    serviceFailedCodes = serviceFailedCodes.filter((time) => now - time < 60_000);
+    if (serviceFailedCodes.length >= FAILED_CODE_BUCKET) {
       return problem(429, { detail: "Too many attempts. Wait a minute and try again" });
     }
     if (!(input.secret || input.code) || input.nonce.length < 22) {
@@ -276,14 +273,14 @@ export class Invitations {
     if (!label || label.length > 64) {
       return problem(400, { detail: "Enter a device name of 64 characters or fewer" });
     }
-    const invitation = this.find(input);
+    const invitation = serviceFind(input);
     if (!invitation) {
-      this.failedCodes.push(now);
+      serviceFailedCodes.push(now);
       return problem(401, { detail: "This invitation is not valid. Check the link or code" });
     }
     if (invitation.consumedAt !== null) {
       const device = invitation.consumedBy
-        ? this.options.db
+        ? serviceOptions.db
             .select()
             .from(authorizedDevices)
             .where(eq(authorizedDevices.id, invitation.consumedBy))
@@ -296,9 +293,9 @@ export class Invitations {
         device.redemptionNonceHash === hash(input.nonce) &&
         now - invitation.consumedAt <= PAIRING_RETRY_WINDOW
       ) {
-        const session = this.options.db.transaction((tx) => {
+        const session = serviceOptions.db.transaction((tx) => {
           tx.delete(deviceSessions).where(eq(deviceSessions.deviceId, device.id)).run();
-          return this.options.access.issueSession(device.id, sessionKinds[device.kind]);
+          return serviceOptions.access.issueSession(device.id, sessionKinds[device.kind]);
         });
         return { device, session };
       }
@@ -327,7 +324,7 @@ export class Invitations {
       revokedAt: null,
       role: invitation.role,
     };
-    const session = this.options.db.transaction((tx) => {
+    const session = serviceOptions.db.transaction((tx) => {
       const claimed = tx
         .update(pairingInvitations)
         .set({ consumedAt: now, consumedBy: id })
@@ -338,11 +335,26 @@ export class Invitations {
         return null;
       }
       tx.insert(authorizedDevices).values(device).run();
-      return this.options.access.issueSession(id, sessionKinds[input.kind]);
+      return serviceOptions.access.issueSession(id, sessionKinds[input.kind]);
     });
     if (!session) {
       return problem(410, { detail: "This invitation was already used. Ask for a new one" });
     }
     return { device, session };
   }
-}
+
+  return {
+    create: serviceCreate,
+    list: serviceList,
+    preview: servicePreview,
+    redeem: serviceRedeem,
+    revoke: serviceRevoke,
+    summary: serviceSummary,
+  };
+});
+
+export type Invitations = Effect.Success<typeof make>;
+export class PairingInvitations extends Context.Service<PairingInvitations, Invitations>()(
+  "tofu/invitations"
+) {}
+export const pairingInvitationsLayer = Layer.effect(PairingInvitations, make);

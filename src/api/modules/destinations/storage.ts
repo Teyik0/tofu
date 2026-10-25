@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import "@teyik0/furin/server-only";
 import { Elysia } from "elysia";
 import { accessPlugin } from "../access/plugin";
@@ -16,7 +17,7 @@ export const storageRootsPlugin = new Elysia({ name: "tofu-storage-roots-api" })
     }))
   )
   .post("/storage-roots", { body: storageRootSchema, owner: true }, ({ body, storageRoots }) =>
-    storageRoots.add(body.name, body.path)
+    Effect.runPromise(storageRoots.add(body.name, body.path))
   )
   .delete("/storage-roots/:id", { owner: true }, ({ params, storageRoots }) =>
     storageRoots.remove(params.id)

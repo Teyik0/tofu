@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import "@teyik0/furin/server-only";
 import { furinSync } from "@teyik0/furin/sync";
 import { Elysia, ElysiaStatus, problem } from "elysia";
@@ -29,11 +30,13 @@ export const mediaLinksApiPlugin = new Elysia({ name: "tofu-media-links-api" })
       personal: true,
     },
     async ({ body, caller, mediaLinks, torrents }) => {
-      const link = await mediaLinks.issueForFile(torrents, {
-        deviceId: caller.kind === "device" ? caller.device.id : null,
-        fileIndex: body.fileIndex,
-        torrentId: body.torrentId,
-      });
+      const link = await Effect.runPromise(
+        mediaLinks.issueForFile(torrents, {
+          deviceId: caller.kind === "device" ? caller.device.id : null,
+          fileIndex: body.fileIndex,
+          torrentId: body.torrentId,
+        })
+      );
       if (link instanceof ElysiaStatus) {
         return link;
       }
@@ -76,7 +79,7 @@ export const mediaLinksPlugin = new Elysia({ name: "tofu-media-links" })
       })
   )
   .head("/media/x/:token/:name", { public: true }, async ({ mediaLinks, params, torrents }) => {
-    const file = await mediaLinks.describe(torrents, params.token);
+    const file = await Effect.runPromise(mediaLinks.describe(torrents, params.token));
     if (file instanceof ElysiaStatus) {
       return file;
     }

@@ -43,7 +43,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
           Effect.result(
             Effect.tryPromise({
               catch: (cause) => cause,
-              try: () => anilist.refresh(),
+              try: () => Effect.runPromise(anilist.refresh()),
             })
           )
         );
@@ -61,11 +61,11 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
     return anilist.snapshot();
   })
   .post("/catalog", { body: catalogSchema }, ({ anilist, body }) =>
-    anilist.catalog(body as AniListCatalogFilters)
+    Effect.runPromise(anilist.catalog(body as AniListCatalogFilters))
   )
-  .get("/catalog/options", ({ anilist }) => anilist.catalogOptions())
+  .get("/catalog/options", ({ anilist }) => Effect.runPromise(anilist.catalogOptions()))
   .get("/entries/:mediaId/editor", { params: mediaParamsSchema }, ({ anilist, params }) =>
-    anilist.editor(params.mediaId)
+    Effect.runPromise(anilist.editor(params.mediaId))
   )
   .put(
     "/entries/:mediaId/editor",
@@ -76,7 +76,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
     },
     ({ anilist, params, body, invalidate }) => {
       invalidate(invalidateLibrary);
-      return anilist.saveEntry(params.mediaId, body);
+      return Effect.runPromise(anilist.saveEntry(params.mediaId, body));
     }
   )
   .put(
@@ -88,7 +88,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
     },
     ({ anilist, params, body, invalidate }) => {
       invalidate(invalidateLibrary);
-      return anilist.favourite(params.mediaId, body.enabled);
+      return Effect.runPromise(anilist.favourite(params.mediaId, body.enabled));
     }
   )
   .delete(
@@ -98,11 +98,11 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
     },
     ({ anilist, params, invalidate }) => {
       invalidate(invalidateLibrary);
-      return anilist.deleteEntry(params.mediaId);
+      return Effect.runPromise(anilist.deleteEntry(params.mediaId));
     }
   )
   .post("/entries/:mediaId/releases", { params: mediaParamsSchema }, ({ anilist, params }) =>
-    anilist.releases(params.mediaId)
+    Effect.runPromise(anilist.releases(params.mediaId))
   )
   .put(
     "/entries/:mediaId/automation",
@@ -117,10 +117,12 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
       if (input instanceof ElysiaStatus) {
         return input;
       }
-      const prepared = await releaseAutomation.prepareRule(input.id, input.draft, {
-        key: input.key,
-        ownerId: "tofu.anilist",
-      });
+      const prepared = await Effect.runPromise(
+        releaseAutomation.prepareRule(input.id, input.draft, {
+          key: input.key,
+          ownerId: "tofu.anilist",
+        })
+      );
       if (prepared instanceof ElysiaStatus) {
         return prepared;
       }
@@ -145,11 +147,8 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
     },
     ({ anilist, params, body, invalidate }) => {
       invalidate(invalidateLibrary);
-      return anilist.completeEpisode(
-        params.mediaId,
-        params.episode,
-        body.completed,
-        body.accountId
+      return Effect.runPromise(
+        anilist.completeEpisode(params.mediaId, params.episode, body.completed, body.accountId)
       );
     }
   )
@@ -226,16 +225,20 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
           "Start AniList authorization in a paired Tofu desktop app or the server's own desktop window",
       });
     }
-    return anilist.connect(caller.kind === "device" ? caller.device.id : undefined);
+    return Effect.runPromise(
+      anilist.connect(caller.kind === "device" ? caller.device.id : undefined)
+    );
   })
   .post(
     "/callback",
     { body: authorizationCallbackSchema },
     ({ anilist, body, caller, invalidate }) => {
       invalidate(invalidateLibrary);
-      return anilist.receiveAuthorizationUrl(
-        body.url,
-        caller.kind === "device" ? caller.device.id : undefined
+      return Effect.runPromise(
+        anilist.receiveAuthorizationUrl(
+          body.url,
+          caller.kind === "device" ? caller.device.id : undefined
+        )
       );
     }
   )
@@ -244,9 +247,11 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
     { body: authorizationCallbackSchema },
     ({ anilist, body, caller, invalidate }) => {
       invalidate(invalidateLibrary);
-      return anilist.receiveAuthorizationUrl(
-        body.url,
-        caller.kind === "device" ? caller.device.id : undefined
+      return Effect.runPromise(
+        anilist.receiveAuthorizationUrl(
+          body.url,
+          caller.kind === "device" ? caller.device.id : undefined
+        )
       );
     }
   )
@@ -256,11 +261,11 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
   })
   .post("/list", {}, ({ anilist, invalidate }) => {
     invalidate(invalidateLibrary);
-    return anilist.list();
+    return Effect.runPromise(anilist.list());
   })
   .post("/refresh", {}, ({ anilist, invalidate }) => {
     invalidate(invalidateLibrary);
-    return anilist.refresh();
+    return Effect.runPromise(anilist.refresh());
   })
   .post(
     "/subscriptions",
@@ -277,7 +282,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
   )
   .post("/subscriptions/:id/sync", {}, ({ anilist, params, invalidate }) => {
     invalidate(invalidateLibrary);
-    return anilist.sync(params.id);
+    return Effect.runPromise(anilist.sync(params.id));
   })
   .put(
     "/subscriptions/:id",

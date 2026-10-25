@@ -253,10 +253,10 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
     return {
       /** Local network HTTPS origins the ingress serves now; each is covered by the certificate. */
       addresses: access.lanOrigins(),
-      config: access.sharing,
+      config: access.sharing(),
       enabled: access.policy().enabled,
       exposures: access.exposures(tailscale.running),
-      listening: { hostname: "127.0.0.1" as const, port: access.port },
+      listening: { hostname: "127.0.0.1" as const, port: access.port() },
       server: { id: identity.serverId, name: identity.name },
     };
   })
@@ -268,7 +268,7 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
     using cleanup = new DisposableStack();
     cleanup.defer(turn.release);
     await turn.previous;
-    const config = access.sharing;
+    const config = access.sharing();
     if (config.lan.enabled) {
       return problem(409, {
         detail: "Turn off local network sharing before renewing its certificate",
@@ -345,7 +345,7 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
     using cleanup = new DisposableStack();
     cleanup.defer(turn.release);
     await turn.previous;
-    const { tailscale: settings } = access.sharing;
+    const { tailscale: settings } = access.sharing();
     if (settings.enabled && settings.mode === "embedded") {
       return problem(409, {
         detail: "Turn off Tailscale sharing before signing out of Tailscale",
@@ -376,8 +376,8 @@ export const accessRoutesPlugin = new Elysia({ name: "tofu-access-api" })
     using cleanup = new DisposableStack();
     cleanup.defer(turn.release);
     await turn.previous;
-    const config = access.sharing;
-    const status = await checkTailscale(access.port);
+    const config = access.sharing();
+    const status = await checkTailscale(access.port());
     if (status.state === "ready" && config.tailscale.origin !== status.origin) {
       access.save({ ...config, tailscale: { ...config.tailscale, origin: status.origin } });
     }

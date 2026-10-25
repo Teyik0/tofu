@@ -14,22 +14,31 @@ import { StateJournals } from "../../lib/state-journals";
 import { accessPlugin } from "../access/plugin";
 import { acceptOpenedTorrentSchema } from "../torrents/model";
 import { torrentServicePlugin } from "../torrents/plugin";
-import { updatesServicePlugin } from "../updates/plugin";
+import { Updates } from "../updates/service";
 import { setDefaultTorrentFileApp } from "./associations";
 import { torrentOpenings } from "./service";
 
 export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   .use(desktopContext)
   .use(torrentServicePlugin)
-  .use(updatesServicePlugin)
   .use(accessPlugin)
   .use(furinSync(sync))
+  .decorate("updates", Context.get(services, Updates))
   .onStart(() => servicesRuntime.runPromise(Context.get(services, StateJournals).startRemote(sync)))
   // Host paths, native windows, dialogs and file openings belong to the host's own window.
   .guard({ idempotent: false, owner: true })
+  .guard({
+    beforeHandle({ desktop, path }) {
+      const remoteThreads =
+        path.startsWith("/api/desktop/servers/") && nativeControl.tofuNativeThreads;
+      if (!(desktop || remoteThreads)) {
+        return problem(409, { detail: "This action requires the desktop app" });
+      }
+    },
+  })
   .get("/instance", () => instance)
-  .get("/desktop/servers", ({ desktop }) => {
-    if (!(desktop && nativeControl.tofuNativeServers)) {
+  .get("/desktop/servers", () => {
+    if (!nativeControl.tofuNativeServers) {
       return problem(409, { detail: "Desktop servers are managed in the native Tofu app" });
     }
     return nativeControl.tofuNativeServers.read();
@@ -84,7 +93,7 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   })
   .get("/desktop/openings", async function* ({ request }) {
     // Register before the first list so no torrent opened in between is missed.
-    const changes = on(torrentOpenings, "change", { signal: request.signal });
+    const changes = on(torrentOpenings.events, "change", { signal: request.signal });
     await using cleanup = new AsyncDisposableStack();
     cleanup.defer(async () => {
       await changes.return?.();
@@ -110,7 +119,8 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
   .post(
     "/desktop/openings/:id",
     { body: acceptOpenedTorrentSchema },
-    ({ torrents, params, body }) => torrentOpenings.accept(params.id, body, torrents)
+    ({ torrents, params, body }) =>
+      Effect.runPromise(torrentOpenings.accept(params.id, body, torrents))
   )
   .delete("/desktop/openings/:id", ({ params }) => torrentOpenings.dismiss(params.id))
   .post("/desktop/associations/torrent", ({ desktop }) => {
@@ -128,7 +138,7 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
       allowsMultipleSelection: false,
       canChooseDirectory: true,
       canChooseFiles: false,
-      startingFolder: torrents.settings.downloadPath,
+      startingFolder: torrents.settings().downloadPath,
     });
     return { path: path ?? null };
   })
@@ -171,7 +181,7 @@ export const desktopPlugin = new Elysia({ name: "tofu-desktop-api" })
     if (!desktop) {
       return problem(409, { detail: "This action requires the desktop app" });
     }
-    if (!torrents.settings.runInBackground) {
+    if (!torrents.settings().runInBackground) {
       return problem(409, { detail: "Enable Run in background in settings first" });
     }
     if (!desktop.snapshot().trayVisible) {

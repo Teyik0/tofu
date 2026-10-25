@@ -49,14 +49,17 @@ const make = Effect.gen(function* () {
   let stateRevision = 0;
   let telemetryRevision = 0;
   let sampledAt = 0;
-  let refresh: ReturnType<typeof client.call<"refreshSnapshot">> | null = null;
-  let shutdown: Promise<void> | null = null;
+  let refresh: Effect.Effect<
+    Awaited<ReturnType<typeof client.call<"refreshSnapshot">>>,
+    unknown
+  > | null = null;
+  let shutdown: Effect.Effect<void, unknown> | null = null;
   const changes = new EventEmitter<{ change: [EngineChange] }>();
   changes.setMaxListeners(0);
-  client.on("snapshot", (snapshot) => {
-    const structural = snapshot.stateRevision !== stateRevision;
-    const telemetry = snapshot.telemetryRevision !== telemetryRevision;
-    ({ state, stateRevision, telemetryRevision, sampledAt } = snapshot);
+  client.on("snapshot", (currentSnapshot) => {
+    const structural = currentSnapshot.stateRevision !== stateRevision;
+    const telemetry = currentSnapshot.telemetryRevision !== telemetryRevision;
+    ({ state, stateRevision, telemetryRevision, sampledAt } = currentSnapshot);
     if (structural || telemetry) {
       changes.emit("change", {
         kind: structural ? "state" : "telemetry",
@@ -66,66 +69,71 @@ const make = Effect.gen(function* () {
     }
   });
 
+  function snapshot(_selected: string | null, _includeDetail?: boolean): DashboardState {
+    if (client.failure) {
+      throw client.failure;
+    }
+    return {
+      ...state,
+      session: { ...state.session, mode: instance.desktop ? "desktop" : "server" },
+    };
+  }
+
+  const close = Effect.fn("TorrentClient.close")(function* () {
+    if (shutdown) {
+      return yield* shutdown;
+    }
+    const operation = yield* Effect.cached(
+      Effect.gen(function* () {
+        if (client.failure) {
+          return;
+        }
+        const result = yield* Effect.tryPromise(() => client.call("close", []));
+        if (result instanceof ElysiaStatus && !client.failure) {
+          return yield* Effect.die(new Error(result.response.detail));
+        }
+      }).pipe(Effect.ensuring(Effect.sync(client.close)))
+    );
+    shutdown = operation;
+    yield* operation;
+  });
+
+  const refreshSnapshot = Effect.fn("TorrentClient.refreshSnapshot")(function* (maxAgeMs: number) {
+    if (maxAgeMs > 0 && Date.now() - sampledAt <= maxAgeMs && !client.failure) {
+      return snapshot(null, false);
+    }
+    if (refresh) {
+      return yield* refresh;
+    }
+    const operation = yield* Effect.cached(
+      Effect.gen(function* () {
+        const result = yield* Effect.tryPromise(() => client.call("refreshSnapshot", [0]));
+        return result instanceof ElysiaStatus ? result : snapshot(null, false);
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (refresh === operation) {
+              refresh = null;
+            }
+          })
+        )
+      )
+    );
+    refresh = operation;
+    return yield* operation;
+  });
+
   const torrents = {
+    // RPC is the native Promise boundary; callers preserve its typed returned statuses.
     call: client.call,
-    close() {
-      if (!shutdown) {
-        shutdown = Effect.runPromise(
-          Effect.ensuring(
-            Effect.tryPromise(async () => {
-              if (client.failure) {
-                return;
-              }
-              const result = await client.call("close", []);
-              if (result instanceof ElysiaStatus && !client.failure) {
-                throw new Error(result.response.detail);
-              }
-            }),
-            Effect.sync(client.close)
-          )
-        );
-      }
-      return shutdown;
-    },
+    close,
     off: changes.off.bind(changes),
     on: changes.on.bind(changes),
-    refreshSnapshot(maxAgeMs: number) {
-      if (maxAgeMs > 0 && Date.now() - sampledAt <= maxAgeMs && !client.failure) {
-        return Promise.resolve(torrents.snapshot(null, false));
-      }
-      if (!refresh) {
-        refresh = Effect.runPromise(
-          Effect.ensuring(
-            Effect.promise(async () => {
-              const result = await client.call("refreshSnapshot", [0]);
-              return result instanceof ElysiaStatus ? result : torrents.snapshot(null, false);
-            }),
-            Effect.sync(() => {
-              refresh = null;
-            })
-          )
-        );
-      }
-      return refresh;
-    },
-    get settings() {
-      return state.settings;
-    },
-    snapshot(_selected: string | null, _includeDetail?: boolean): DashboardState {
-      if (client.failure) {
-        throw client.failure;
-      }
-      return {
-        ...state,
-        session: { ...state.session, mode: instance.desktop ? "desktop" : "server" },
-      };
-    },
-    get stateRevision() {
-      return stateRevision;
-    },
-    get telemetryRevision() {
-      return telemetryRevision;
-    },
+    refreshSnapshot,
+    settings: () => state.settings,
+    snapshot,
+    stateRevision: () => stateRevision,
+    telemetryRevision: () => telemetryRevision,
   };
 
   yield* Effect.tryPromise({ catch: (error) => error, try: () => client.ready });
@@ -144,7 +152,7 @@ const make = Effect.gen(function* () {
   if (opened instanceof ElysiaStatus) {
     return yield* Effect.fail(new Error(opened.response.detail));
   }
-  yield* Effect.addFinalizer(() => Effect.promise(() => torrents.close()));
+  yield* Effect.addFinalizer(() => close().pipe(Effect.orDie));
   const ready = yield* Effect.tryPromise({
     catch: (error) => error,
     try: () => client.call("assertReady", []),

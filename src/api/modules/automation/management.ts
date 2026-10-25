@@ -1,4 +1,5 @@
 import { furinSync } from "@teyik0/furin/sync";
+import { Effect } from "effect";
 import { Elysia, ElysiaStatus } from "elysia";
 import { sync } from "../../../sync";
 import { accessPlugin } from "../access/plugin";
@@ -27,7 +28,7 @@ export const automationManagementPlugin = new Elysia({ name: "tofu-automation-ma
     }
   )
   .post("/automations/preview", { body: draft, idempotent: false }, ({ releaseAutomation, body }) =>
-    releaseAutomation.preview(body)
+    Effect.runPromise(releaseAutomation.preview(body))
   )
   .post(
     "/automations",
@@ -35,7 +36,7 @@ export const automationManagementPlugin = new Elysia({ name: "tofu-automation-ma
     async ({ automation, releaseAutomation, body, mutation, invalidate }) => {
       invalidate({ path: "/", type: "layout" });
 
-      const prepared = await releaseAutomation.prepareRule(null, body);
+      const prepared = await Effect.runPromise(releaseAutomation.prepareRule(null, body));
       if (prepared instanceof ElysiaStatus) {
         return prepared;
       }
@@ -50,7 +51,7 @@ export const automationManagementPlugin = new Elysia({ name: "tofu-automation-ma
     async ({ automation, releaseAutomation, params, body, mutation, invalidate }) => {
       invalidate({ path: "/", type: "layout" });
 
-      const prepared = await releaseAutomation.prepareRule(params.id, body);
+      const prepared = await Effect.runPromise(releaseAutomation.prepareRule(params.id, body));
       if (prepared instanceof ElysiaStatus) {
         return prepared;
       }
@@ -67,12 +68,12 @@ export const automationManagementPlugin = new Elysia({ name: "tofu-automation-ma
     return result;
   })
   .post("/automations/:id/run", { idempotent: false }, ({ releaseAutomation, params }) =>
-    releaseAutomation.run(params.id)
+    Effect.runPromise(releaseAutomation.run(params.id))
   )
   .post(
     "/automation-decisions/:id/approve",
     { idempotent: false },
-    ({ releaseAutomation, params }) => releaseAutomation.approve(params.id)
+    ({ releaseAutomation, params }) => Effect.runPromise(releaseAutomation.approve(params.id))
   )
   .post(
     "/automation-decisions/:id/ignore",

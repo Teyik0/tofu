@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
-import { Effect, Result } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import { automationJudgements } from "../../../db/schema";
-import type { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/database-layer";
 import type { AniListMedia } from "../anilist/types";
 import type { AutomationCriterion, AutomationDraft } from "../automation/model";
 import type { FeedRelease } from "../discovery/model";
 import type { SourcePluginId } from "../plugins/model";
-import type { PluginsService } from "../plugins/service";
+import { Plugins, pluginEndpoints } from "../plugins/service";
 
 const feedExpression1 = /\s+/;
 const trailingTitlePunctuation = /[:;,]+$/;
@@ -291,102 +291,110 @@ export function parseJevResponse(value: unknown, questions: JevQuestions): JevRe
   return value as unknown as JevResult;
 }
 
-export class JevService {
-  private readonly db: Database;
-  private readonly lifecycle: { closed: boolean } = { closed: false };
-  private readonly evaluations = new Map<string, ReturnType<JevService["requestEvaluation"]>>();
-  private readonly requests = new Set<AbortController>();
-  private readonly options: { plugins: PluginsService; now: () => number; endpoint: string };
-  constructor(
-    db: Database,
-    options: { plugins: PluginsService; now: () => number; endpoint: string }
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const plugins = yield* Plugins;
+  const options = { endpoint: pluginEndpoints.jev, now: Date.now, plugins };
+  const serviceDb = db;
+  const serviceOptions = options;
+
+  const serviceLifecycle: { closed: boolean } = { closed: false };
+  const serviceEvaluations = new Map<string, ReturnType<typeof serviceRequestEvaluation>>();
+  const serviceRequests = new Set<AbortController>();
+  const serviceEvaluate = Effect.fn("Jev.evaluate")(function* (
+    state: object,
+    questions: JevQuestions
   ) {
-    this.db = db;
-    this.options = options;
-  }
-  /**
-   * Asks Jev, deduplicating identical questions and caching answers for a day. Returns null when
-   * Jev is disabled, and a typed problem when it is stopped, over budget or unavailable.
-   */
-  async evaluate(state: object, questions: JevQuestions) {
-    if (this.lifecycle.closed) {
+    if (serviceLifecycle.closed) {
       return problem(409, { detail: "Jev service stopped" });
     }
-    const plugin = this.options.plugins.plugin("jev");
+    const plugin = serviceOptions.plugins.plugin("jev");
     if (!(plugin?.enabled && plugin.apiKey)) {
       return null;
     }
     const key = Bun.SHA256.hash(JSON.stringify({ model: "jev-latest", questions, state }), "hex");
-    const cached = this.db
+    const cached = serviceDb
       .select()
       .from(automationJudgements)
       .where(eq(automationJudgements.id, key))
       .get();
-    if (cached && cached.createdAt > this.options.now() - 86_400_000) {
+    if (cached && cached.createdAt > serviceOptions.now() - 86_400_000) {
       return JSON.parse(cached.value) as JevResult;
     }
-    const pending = this.evaluations.get(key);
+    const pending = serviceEvaluations.get(key);
     if (pending) {
-      return pending;
+      return yield* pending;
     }
-    // Register the evaluation before its first await so identical questions share it.
-    const task = (async () => {
-      const result = await this.requestEvaluation(state, questions);
-      if (result instanceof ElysiaStatus) {
+    const task = yield* Effect.cached(
+      Effect.gen(function* () {
+        const result = yield* serviceRequestEvaluation(state, questions);
+        if (result instanceof ElysiaStatus) {
+          return result;
+        }
+        if (!result || serviceLifecycle.closed) {
+          return null;
+        }
+        const judgement = { createdAt: serviceOptions.now(), value: JSON.stringify(result) };
+        serviceDb
+          .insert(automationJudgements)
+          .values({ id: key, ...judgement })
+          .onConflictDoUpdate({ set: judgement, target: automationJudgements.id })
+          .run();
         return result;
-      }
-      if (!result || this.lifecycle.closed) {
-        return null;
-      }
-      const judgement = { createdAt: this.options.now(), value: JSON.stringify(result) };
-      this.db
-        .insert(automationJudgements)
-        .values({ id: key, ...judgement })
-        .onConflictDoUpdate({ set: judgement, target: automationJudgements.id })
-        .run();
-      return result;
-    })();
-    this.evaluations.set(key, task);
-    using cleanup = new DisposableStack();
-    cleanup.defer(() => {
-      this.evaluations.delete(key);
-    });
-    return await task;
-  }
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (serviceEvaluations.get(key) === task) {
+              serviceEvaluations.delete(key);
+            }
+          })
+        )
+      )
+    );
+    serviceEvaluations.set(key, task);
+    return yield* task;
+  });
 
-  private async requestEvaluation(state: object, questions: JevQuestions) {
-    const plugin = this.options.plugins.plugin("jev");
+  // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceRequestEvaluation = Effect.fn("Jev.requestEvaluation")(function* (
+    state: object,
+    questions: JevQuestions
+  ) {
+    const plugin = serviceOptions.plugins.plugin("jev");
     if (!(plugin?.enabled && plugin.apiKey)) {
       return null;
     }
-    const reserved = this.options.plugins.reserveDailyCall("jev");
+    const reserved = serviceOptions.plugins.reserveDailyCall("jev");
     if (reserved) {
       return reserved;
     }
     const unavailable = (detail: string, status: 409 | 503) => {
       if (plugin.enabled) {
-        this.options.plugins.recordFailure("jev", "Jev evaluation unavailable");
+        serviceOptions.plugins.recordFailure("jev", "Jev evaluation unavailable");
       }
       return status === 409 ? problem(409, { detail }) : problem(503, { detail });
     };
-    return await this.options.plugins.request("jev", 15_000, null, async (controller) => {
-      this.requests.add(controller);
-      using cleanup = new DisposableStack();
-      cleanup.defer(() => {
-        this.requests.delete(controller);
-      });
-      if (this.lifecycle.closed) {
-        controller.abort();
-      }
-      if (controller.signal.aborted) {
-        return unavailable("Jev plugin disabled", 409);
-      }
-      const fetched = await Effect.runPromise(
-        Effect.result(
+    return yield* serviceOptions.plugins.request("jev", 15_000, null, (controller) =>
+      Effect.gen(function* () {
+        serviceRequests.add(controller);
+        const cleanup = yield* Effect.acquireRelease(
+          Effect.sync(() => new DisposableStack()),
+          (resource) => Effect.sync(() => resource.dispose())
+        );
+        cleanup.defer(() => {
+          serviceRequests.delete(controller);
+        });
+        if (serviceLifecycle.closed) {
+          controller.abort();
+        }
+        if (controller.signal.aborted) {
+          return unavailable("Jev plugin disabled", 409);
+        }
+        const fetched = yield* Effect.result(
           Effect.tryPromise({
             catch: (cause) => cause,
             try: () =>
-              fetch(this.options.endpoint, {
+              fetch(serviceOptions.endpoint, {
                 body: JSON.stringify({ model: "jev-latest", questions, state }),
                 headers: {
                   authorization: `Bearer ${plugin.apiKey}`,
@@ -396,50 +404,74 @@ export class JevService {
                 signal: controller.signal,
               }),
           })
-        )
-      );
-      if (Result.isFailure(fetched)) {
-        return unavailable("Unable to connect to Jev", 503);
-      }
-      const response = fetched.success;
-      if (!response.ok) {
-        return unavailable(`Jev unavailable (HTTP ${response.status})`, 503);
-      }
-      const decoded = await Effect.runPromise(
-        Effect.result(
+        );
+        if (Result.isFailure(fetched)) {
+          return unavailable("Unable to connect to Jev", 503);
+        }
+        const response = fetched.success;
+        if (!response.ok) {
+          return unavailable(`Jev unavailable (HTTP ${response.status})`, 503);
+        }
+        const decoded = yield* Effect.result(
           Effect.tryPromise({
             catch: (cause) => cause,
             try: () => response.json(),
           })
-        )
-      );
-      if (Result.isFailure(decoded)) {
-        return unavailable("Unable to connect to Jev", 503);
-      }
-      const parsed = Effect.runSync(
-        Effect.result(
+        );
+        if (Result.isFailure(decoded)) {
+          return unavailable("Unable to connect to Jev", 503);
+        }
+        const parsed = yield* Effect.result(
           Effect.try({
             catch: (cause) => cause,
             try: () => parseJevResponse(decoded.success, questions),
           })
-        )
-      );
-      if (Result.isFailure(parsed)) {
-        return unavailable("Unable to connect to Jev", 503);
-      }
-      const result = parsed.success;
-      if (!this.options.plugins.plugin("jev").enabled) {
-        return unavailable("Jev plugin disabled", 409);
-      }
-      this.options.plugins.recordSuccess("jev");
-      return result;
-    });
-  }
-  async close() {
-    this.lifecycle.closed = true;
-    for (const controller of this.requests) {
+        );
+        if (Result.isFailure(parsed)) {
+          return unavailable("Unable to connect to Jev", 503);
+        }
+        const result = parsed.success;
+        if (!serviceOptions.plugins.plugin("jev").enabled) {
+          return unavailable("Jev plugin disabled", 409);
+        }
+        serviceOptions.plugins.recordSuccess("jev");
+        return result;
+      }).pipe(Effect.scoped)
+    );
+  }, Effect.scoped);
+  // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
+  const serviceClose = Effect.fn("Jev.close")(function* () {
+    serviceLifecycle.closed = true;
+    for (const controller of serviceRequests) {
       controller.abort();
     }
-    await Promise.allSettled(this.evaluations.values());
+    yield* Effect.all([...serviceEvaluations.values()].map(Effect.exit), {
+      concurrency: "unbounded",
+    });
+  });
+
+  yield* Effect.addFinalizer(() => serviceClose());
+  return {
+    close: serviceClose,
+    evaluate: serviceEvaluate,
+  };
+});
+
+export type JevService = Jev["Service"];
+export class Jev extends Context.Service<
+  Jev,
+  {
+    readonly evaluate: (
+      state: object,
+      questions: JevQuestions
+    ) => Effect.Effect<
+      | JevResult
+      | ReturnType<typeof problem<429, { readonly detail: string }>>
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | null
+    >;
+    readonly close: () => Effect.Effect<void>;
   }
-}
+>()("tofu/jev") {}
+export const jevLayer = Layer.effect(Jev, make);

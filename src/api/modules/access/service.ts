@@ -1,5 +1,7 @@
+import { Context, Effect, Layer } from "effect";
 import { createLogger } from "evlog";
 import { PROTOCOL_MAJOR } from "../../../lib/protocol";
+import { instance } from "../../lib/instance";
 import "@teyik0/furin/server-only";
 import { hostname } from "node:os";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
@@ -12,7 +14,7 @@ import {
   serverIdentity,
   sessionTransfers,
 } from "../../../db/schema";
-import type { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/database-layer";
 import {
   cookieName,
   isPublicRequest,
@@ -66,7 +68,7 @@ export interface RemoteAccessPolicy {
 }
 
 interface AccessServiceOptions {
-  db: Database;
+  db: Database["Service"];
   defaultLanPort: number;
   /** The host runs headless; with remote access off its loopback clients act as owner. */
   headless: () => boolean;
@@ -158,180 +160,115 @@ function upgrade(value: SharingConfig | LegacyConfig, defaultLanPort: number) {
   } satisfies SharingConfig;
 }
 
-export class AccessService {
-  private readonly options: AccessServiceOptions;
-  sharing: SharingConfig;
-  listenerPort: number | null = null;
-  private operation: Promise<void> = Promise.resolve();
-  private lanHosts: string[] = [];
-  private readonly serving = new Set<Exposure>();
-  private readonly failures = new Map<Exposure, string>();
-  private readonly aborts = new Map<string, AbortController>();
-  private readonly sessionReaders = new Map<string, Set<AbortController>>();
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const options: AccessServiceOptions = {
+    db,
+    defaultLanPort: instance.profile === "dev" ? 3442 : 3443,
+    headless: () => !instance.desktop,
+    now: Date.now,
+  };
 
-  constructor(options: AccessServiceOptions) {
-    this.options = options;
-    const now = options.now();
-    options.db
-      .insert(serverIdentity)
-      .values({
-        createdAt: now,
-        identityEpoch: 1,
-        key: "server",
-        name: hostname().replace(LOCAL_HOST_SUFFIX, "") || "Tofu server",
-        serverId: crypto.randomUUID(),
-      })
-      .onConflictDoNothing()
-      .run();
-    const stored = this.read<SharingConfig | LegacyConfig>("active");
-    const lastGood = this.read<SharingConfig | LegacyConfig>("last-good");
-    let active = stored
-      ? upgrade(stored, options.defaultLanPort)
-      : {
-          lan: { enabled: false, hostnames: [], port: options.defaultLanPort },
-          proxy: { enabled: false, origin: null, trustedProxies: [] },
-          tailscale: { enabled: false, mode: "system" as const, origin: null, serveOwned: false },
-        };
-    const pending = this.read<PendingChange | { config: LegacyConfig }>("pending");
-    if (pending && "serveIntent" in pending) {
-      // An interrupted change never widens access: an exposure stays enabled only if both the
-      // last good and the interrupted configuration enabled it, with the last good settings.
-      const previous = lastGood ? upgrade(lastGood, options.defaultLanPort) : active;
-      const next = pending.config;
-      active = {
-        ...previous,
-        lan: { ...previous.lan, enabled: previous.lan.enabled && next.lan.enabled },
-        proxy: { ...previous.proxy, enabled: previous.proxy.enabled && next.proxy.enabled },
-        tailscale: {
-          ...previous.tailscale,
-          enabled: previous.tailscale.enabled && next.tailscale.enabled,
-          // A mapping that may have been created is removed by startup reconciliation.
-          serveOwned:
-            previous.tailscale.serveOwned || next.tailscale.serveOwned || pending.serveIntent,
-        },
-      };
-    } else if (pending) {
-      // Earlier versions journaled unconfirmed listener changes; restore the last good one.
-      active = lastGood ? upgrade(lastGood, options.defaultLanPort) : active;
-    }
-    this.sharing = active;
-    if (pending || JSON.stringify(stored) !== JSON.stringify(active)) {
-      this.save(active);
-    }
-  }
+  const serviceOptions = options;
 
-  private read<Value>(key: "active" | "pending" | "last-good") {
-    const row = this.options.db
+  let serviceSharing: SharingConfig;
+  let serviceListenerPort: number | null = null;
+  let serviceOperation: Promise<void> = Promise.resolve();
+  let serviceLanHosts: string[] = [];
+  const serviceServing = new Set<Exposure>();
+  const serviceFailures = new Map<Exposure, string>();
+  const serviceAborts = new Map<string, AbortController>();
+  const serviceSessionReaders = new Map<string, Set<AbortController>>();
+  function serviceRead<Value>(key: "active" | "pending" | "last-good") {
+    const row = serviceOptions.db
       .select()
       .from(connectionState)
       .where(eq(connectionState.key, key))
       .get();
     return row ? (JSON.parse(row.value) as Value) : undefined;
   }
-
-  private write(key: "active" | "pending" | "last-good", value: unknown) {
-    const now = this.options.now();
+  function serviceWrite(key: "active" | "pending" | "last-good", value: unknown) {
+    const now = serviceOptions.now();
     const text = JSON.stringify(value);
-    this.options.db
+    serviceOptions.db
       .insert(connectionState)
       .values({ key, updatedAt: now, value: text })
       .onConflictDoUpdate({ set: { updatedAt: now, value: text }, target: connectionState.key })
       .run();
   }
-
-  private remove(key: "pending") {
-    this.options.db.delete(connectionState).where(eq(connectionState.key, key)).run();
+  function serviceRemove(key: "pending") {
+    serviceOptions.db.delete(connectionState).where(eq(connectionState.key, key)).run();
   }
-
-  /**
-   * Reserves the next turn for a change to exposures. Call it before the first `await` and
-   * release the turn when the change has finished, so concurrent changes apply one at a time.
-   */
-  reserve() {
-    const previous = this.operation;
+  function serviceReserve() {
+    const previous = serviceOperation;
     const turn = Promise.withResolvers<void>();
-    this.operation = turn.promise;
+    serviceOperation = turn.promise;
     return { previous, release: turn.resolve };
   }
-
-  policy(): RemoteAccessPolicy {
-    const { lan, proxy, tailscale } = this.sharing;
+  function servicePolicy(): RemoteAccessPolicy {
+    const { lan, proxy, tailscale } = serviceSharing;
     return {
       enabled: lan.enabled || proxy.enabled || tailscale.enabled,
       proxiedOrigins: [
-        ...(lan.enabled ? this.lanOrigins() : []),
+        ...(lan.enabled ? serviceLanOrigins() : []),
         ...(tailscale.enabled && tailscale.origin ? [tailscale.origin] : []),
         ...(proxy.enabled && proxy.origin ? [proxy.origin] : []),
       ],
       trustedProxies: proxy.enabled ? proxy.trustedProxies : [],
     };
   }
-
-  /** HTTPS origins the local network ingress currently serves; empty while it is closed. */
-  lanOrigins() {
-    return this.lanHosts.map((host) => `https://${host}`);
+  function serviceLanOrigins() {
+    return serviceLanHosts.map((host) => `https://${host}`);
   }
-
-  /** Journals a change before its exposure is activated. */
-  journal(config: SharingConfig, serveIntent: boolean) {
-    this.write("pending", { config, serveIntent } satisfies PendingChange);
+  function serviceJournal(config: SharingConfig, serveIntent: boolean) {
+    serviceWrite("pending", { config, serveIntent } satisfies PendingChange);
   }
-
-  /** Drops the journal of a change that was refused or rolled back. */
-  abandon() {
-    this.remove("pending");
+  function serviceAbandon() {
+    serviceRemove("pending");
   }
-
-  /** Persists a configuration as active and last good, ending any journaled change. */
-  save(config: SharingConfig) {
-    this.sharing = config;
-    this.write("active", config);
-    this.write("last-good", config);
-    this.remove("pending");
+  function serviceSave(config: SharingConfig) {
+    serviceSharing = config;
+    serviceWrite("active", config);
+    serviceWrite("last-good", config);
+    serviceRemove("pending");
     for (const exposure of ["lan", "proxy", "tailscale"] as const) {
       if (!config[exposure].enabled) {
-        this.closed(exposure);
+        serviceClosed(exposure);
       }
     }
     return config;
   }
-
-  /** Records that an exposure forwards traffic; the local network reports its served hosts. */
-  opened(exposure: Exposure, hosts: string[] = []) {
-    this.serving.add(exposure);
-    this.failures.delete(exposure);
+  function serviceOpened(exposure: Exposure, hosts: string[] = []) {
+    serviceServing.add(exposure);
+    serviceFailures.delete(exposure);
     if (exposure === "lan") {
-      this.lanHosts = hosts;
+      serviceLanHosts = hosts;
     }
   }
-
-  /** Records that an exposure stopped forwarding, optionally with the reason it failed. */
-  closed(exposure: Exposure, failure?: string) {
-    this.serving.delete(exposure);
+  function serviceClosed(exposure: Exposure, failure?: string) {
+    serviceServing.delete(exposure);
     if (failure) {
-      this.failures.set(exposure, failure);
+      serviceFailures.set(exposure, failure);
     } else {
-      this.failures.delete(exposure);
+      serviceFailures.delete(exposure);
     }
     if (exposure === "lan") {
-      this.lanHosts = [];
+      serviceLanHosts = [];
     }
   }
-
-  /** Runtime state of each exposure. Forwarding by the native companion needs it running. */
-  exposures(companion: boolean) {
+  function serviceExposures(companion: boolean) {
     const state = (exposure: Exposure, native: boolean) => {
-      if (!this.sharing[exposure].enabled) {
+      if (!serviceSharing[exposure].enabled) {
         return { detail: null, state: "off" as const };
       }
-      const failure = this.failures.get(exposure);
+      const failure = serviceFailures.get(exposure);
       if (failure) {
         return { detail: failure, state: "failed" as const };
       }
       if (!native) {
         return { detail: null, state: "ready" as const };
       }
-      if (!this.serving.has(exposure)) {
+      if (!serviceServing.has(exposure)) {
         return { detail: null, state: "starting" as const };
       }
       return companion
@@ -344,19 +281,11 @@ export class AccessService {
     return {
       lan: state("lan", true),
       proxy: state("proxy", false),
-      tailscale: state("tailscale", this.sharing.tailscale.mode === "embedded"),
+      tailscale: state("tailscale", serviceSharing.tailscale.mode === "embedded"),
     };
   }
-
-  get port() {
-    if (this.listenerPort === null) {
-      throw new Error("The application listener is not initialized");
-    }
-    return this.listenerPort;
-  }
-
-  identity() {
-    const identity = this.options.db
+  function serviceIdentity() {
+    const identity = serviceOptions.db
       .select()
       .from(serverIdentity)
       .where(eq(serverIdentity.key, "server"))
@@ -366,25 +295,21 @@ export class AccessService {
     }
     return identity;
   }
-
-  rename(name: string) {
-    this.options.db
+  function serviceRename(name: string) {
+    serviceOptions.db
       .update(serverIdentity)
       .set({ name: name.trim() })
       .where(eq(serverIdentity.key, "server"))
       .run();
-    return this.identity();
+    return serviceIdentity();
   }
-
-  disconnectRemoteReaders() {
-    for (const id of [...this.aborts.keys()]) {
-      this.interrupt(id);
+  function serviceDisconnectRemoteReaders() {
+    for (const id of [...serviceAborts.keys()]) {
+      serviceInterrupt(id);
     }
   }
-
-  /** Public, unauthenticated descriptor. Contains no paths, accounts or secrets. */
-  descriptor(version: string) {
-    const identity = this.identity();
+  function serviceDescriptor(version: string) {
+    const identity = serviceIdentity();
     return {
       appVersion: version,
       name: identity.name,
@@ -394,14 +319,9 @@ export class AccessService {
       serverId: identity.serverId,
     };
   }
-
-  /**
-   * Browser-facing origin of a request. Forwarded hosts count only when the immediate peer is
-   * loopback or a configured trusted proxy, and only for configured HTTPS origins.
-   */
-  effectiveOrigin(request: Request, peerAddress: string | undefined) {
+  function serviceEffectiveOrigin(request: Request, peerAddress: string | undefined) {
     const url = new URL(request.url);
-    const policy = this.policy();
+    const policy = servicePolicy();
     if (
       policy.enabled &&
       peerAddress &&
@@ -416,14 +336,13 @@ export class AccessService {
     return url.origin;
   }
 
-  /** Clients sharing this server, before any route runs. Returns a Response to reject. */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: The admission decision remains explicit and ordered before route dispatch.
-  admit(
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep the existing admission decisions ordered before authentication and authorization.
+  function serviceAdmit(
     request: Request,
     context: { desktopSession: boolean; desktopHost?: boolean; peerAddress: string | undefined }
   ): Response | undefined {
     const url = new URL(request.url);
-    const policy = this.policy();
+    const policy = servicePolicy();
     if (context.desktopSession) {
       callers.set(request, { kind: "owner", origin: url.origin, principal: "local-window" });
       return;
@@ -435,7 +354,7 @@ export class AccessService {
     if (!policy.enabled) {
       if (
         !context.desktopHost &&
-        this.options.headless() &&
+        serviceOptions.headless() &&
         loopback &&
         !["forwarded", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto"].some((name) =>
           request.headers.has(name)
@@ -455,7 +374,7 @@ export class AccessService {
       }
       return new Response("Remote access is turned off on this server.", { status: 403 });
     }
-    const origin = this.effectiveOrigin(request, context.peerAddress);
+    const origin = serviceEffectiveOrigin(request, context.peerAddress);
     const secure = origin.startsWith("https:");
     // Playback links are capability URLs read cross-origin by players without credentials.
     if (
@@ -482,13 +401,13 @@ export class AccessService {
     const bearer = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
     const cookie = readCookie(
       request.headers.get("cookie"),
-      cookieName(this.identity().serverId, secure)
+      cookieName(serviceIdentity().serverId, secure)
     );
-    let authenticated: ReturnType<AccessService["authenticate"]> = null;
+    let authenticated: ReturnType<typeof serviceAuthenticate> = null;
     if (bearer) {
-      authenticated = this.authenticate(bearer, ["native", "link"]);
+      authenticated = serviceAuthenticate(bearer, ["native", "link"]);
     } else if (cookie) {
-      authenticated = this.authenticate(cookie, ["browser", "window"]);
+      authenticated = serviceAuthenticate(cookie, ["browser", "window"]);
     }
     if (
       authenticated &&
@@ -522,7 +441,7 @@ export class AccessService {
       let reason = "missing-session";
       let deviceId: string | null = null;
       if (presented) {
-        const stored = this.options.db
+        const stored = serviceOptions.db
           .select({ device: authorizedDevices, session: deviceSessions })
           .from(deviceSessions)
           .innerJoin(authorizedDevices, eq(authorizedDevices.id, deviceSessions.deviceId))
@@ -531,7 +450,7 @@ export class AccessService {
         reason = "unknown-session";
         if (stored) {
           deviceId = stored.device.id;
-          const now = this.options.now();
+          const now = serviceOptions.now();
           if (stored.device.revokedAt !== null) {
             reason = "revoked-device";
           } else if (stored.session.expiresAt <= now) {
@@ -582,11 +501,9 @@ export class AccessService {
       { headers: { "content-type": "application/problem+json" }, status: 401 }
     );
   }
-
-  /** Validates a session token and slides its idle expiry at most every ten minutes. */
-  authenticate(token: string, kinds: SessionKind[]) {
-    const now = this.options.now();
-    const row = this.options.db
+  function serviceAuthenticate(token: string, kinds: SessionKind[]) {
+    const now = serviceOptions.now();
+    const row = serviceOptions.db
       .select({ device: authorizedDevices, session: deviceSessions })
       .from(deviceSessions)
       .innerJoin(authorizedDevices, eq(authorizedDevices.id, deviceSessions.deviceId))
@@ -603,7 +520,7 @@ export class AccessService {
       return null;
     }
     if (now - row.session.lastSeenAt > LAST_SEEN_PRECISION) {
-      this.options.db.transaction((tx) => {
+      serviceOptions.db.transaction((tx) => {
         tx.update(deviceSessions)
           .set({
             idleExpiresAt: Math.min(now + SESSION_IDLE, row.session.expiresAt),
@@ -619,37 +536,33 @@ export class AccessService {
     }
     return row;
   }
-
-  /** Aborted when the device is revoked or its grants change; streams compose it. */
-  deviceSignal(deviceId: string) {
-    let controller = this.aborts.get(deviceId);
+  function serviceDeviceSignal(deviceId: string) {
+    let controller = serviceAborts.get(deviceId);
     if (!controller) {
       controller = new AbortController();
-      this.aborts.set(deviceId, controller);
+      serviceAborts.set(deviceId, controller);
     }
     return controller.signal;
   }
-
-  /** Registers one long-lived response, including session expiry and window-only sign-out. */
-  callerReader(caller: Caller, request: Request) {
+  function serviceCallerReader(caller: Caller, request: Request) {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let released = false;
     const readers =
       caller.kind === "device"
-        ? (this.sessionReaders.get(caller.session.id) ?? new Set<AbortController>())
+        ? (serviceSessionReaders.get(caller.session.id) ?? new Set<AbortController>())
         : null;
     if (caller.kind === "device" && readers) {
       readers.add(controller);
-      this.sessionReaders.set(caller.session.id, readers);
+      serviceSessionReaders.set(caller.session.id, readers);
       const expiry = () => {
-        const current = this.options.db
+        const current = serviceOptions.db
           .select()
           .from(deviceSessions)
           .where(eq(deviceSessions.id, caller.session.id))
           .get();
         const remaining = current
-          ? Math.min(current.expiresAt, current.idleExpiresAt) - this.options.now()
+          ? Math.min(current.expiresAt, current.idleExpiresAt) - serviceOptions.now()
           : 0;
         if (remaining <= 0) {
           controller.abort(new Error("This session expired"));
@@ -669,8 +582,8 @@ export class AccessService {
       request.signal.removeEventListener("abort", release);
       if (caller.kind === "device" && readers) {
         readers.delete(controller);
-        if (readers.size === 0 && this.sessionReaders.get(caller.session.id) === readers) {
-          this.sessionReaders.delete(caller.session.id);
+        if (readers.size === 0 && serviceSessionReaders.get(caller.session.id) === readers) {
+          serviceSessionReaders.delete(caller.session.id);
         }
       }
     };
@@ -683,27 +596,27 @@ export class AccessService {
       signal: AbortSignal.any([
         request.signal,
         controller.signal,
-        ...(caller.kind === "device" ? [this.deviceSignal(caller.device.id)] : []),
+        ...(caller.kind === "device" ? [serviceDeviceSignal(caller.device.id)] : []),
       ]),
     };
   }
-
-  /** Ends the device's open streams; used when its access ends or its grants change. */
-  interrupt(deviceId: string) {
-    const controller = this.aborts.get(deviceId);
-    this.aborts.delete(deviceId);
+  function serviceInterrupt(deviceId: string) {
+    const controller = serviceAborts.get(deviceId);
+    serviceAborts.delete(deviceId);
     controller?.abort(new Error("Access to this server changed"));
   }
-
-  /** Stores a new session for a device and returns its one-time token. */
-  issueSession(deviceId: string, kind: SessionKind, until = Number.POSITIVE_INFINITY) {
-    const now = this.options.now();
+  function serviceIssueSession(
+    deviceId: string,
+    kind: SessionKind,
+    until = Number.POSITIVE_INFINITY
+  ) {
+    const now = serviceOptions.now();
     const token = randomToken(32);
     const expiresAt = Math.min(
       now + (kind === "window" ? WINDOW_SESSION_ABSOLUTE : SESSION_ABSOLUTE),
       until
     );
-    this.options.db
+    serviceOptions.db
       .insert(deviceSessions)
       .values({
         createdAt: now,
@@ -718,20 +631,18 @@ export class AccessService {
       .run();
     return { expiresAt, token };
   }
-
-  /** A browser may hand off its own grants, never the host's owner authority. */
-  createSessionTransfer(caller: Exclude<Caller, { kind: "anonymous" }>) {
+  function serviceCreateSessionTransfer(caller: Exclude<Caller, { kind: "anonymous" }>) {
     if (caller.kind !== "device" || caller.session.kind !== "browser") {
       return problem(403, { detail: "Only a paired browser can transfer its session" });
     }
-    const now = this.options.now();
+    const now = serviceOptions.now();
     const expiresAt = Math.min(
       now + 60_000,
       caller.session.expiresAt,
       caller.session.idleExpiresAt
     );
     const secret = randomToken(32);
-    this.options.db.transaction((tx) => {
+    serviceOptions.db.transaction((tx) => {
       tx.delete(sessionTransfers)
         .where(
           or(
@@ -752,11 +663,9 @@ export class AccessService {
     });
     return { expiresAt, secret };
   }
-
-  /** Atomically consumes a handoff and creates a cookie session for the same device/profile. */
-  redeemSessionTransfer(secret: string, origin: string) {
-    const now = this.options.now();
-    return this.options.db.transaction((tx) => {
+  function serviceRedeemSessionTransfer(secret: string, origin: string) {
+    const now = serviceOptions.now();
+    return serviceOptions.db.transaction((tx) => {
       const stored = tx
         .select({ device: authorizedDevices, session: deviceSessions, transfer: sessionTransfers })
         .from(sessionTransfers)
@@ -793,18 +702,15 @@ export class AccessService {
           detail: "This transfer was already used. Prepare a new link in the connected browser",
         });
       }
-      const session = this.issueSession(stored.device.id, "browser", stored.session.expiresAt);
+      const session = serviceIssueSession(stored.device.id, "browser", stored.session.expiresAt);
       return { deviceId: stored.device.id, session };
     });
   }
-
-  /** Short-lived WebView cookie minted by a desktop client from its native credential. */
-  /** What the caller may do here; the browser reads it after mount, never during rendering. */
-  sessionView(
+  function serviceSessionView(
     caller: Exclude<Caller, { kind: "anonymous" }>,
     host: { native: boolean; remoteAccess: boolean }
   ) {
-    const identity = this.identity();
+    const identity = serviceIdentity();
     const owner = caller.kind === "owner";
     const role: DeviceRole | "owner" = owner ? "owner" : caller.device.role;
     const level = rank(role);
@@ -841,52 +747,42 @@ export class AccessService {
       server: { id: identity.serverId, name: identity.name },
     };
   }
-
-  createWindowSession(caller: Caller) {
+  function serviceCreateWindowSession(caller: Caller) {
     if (!(caller.kind === "device" && caller.session.kind === "native")) {
       return problem(403, { detail: "Only the Tofu desktop app can open windows" });
     }
-    return this.issueSession(caller.device.id, "window");
+    return serviceIssueSession(caller.device.id, "window");
   }
-
-  /** Ends the caller's own session; a desktop credential also ends its window sessions. */
-  signOut(caller: Caller) {
+  function serviceSignOut(caller: Caller) {
     if (caller.kind !== "device") {
       return problem(409, { detail: "This computer's own window cannot sign out" });
     }
     if (caller.session.kind !== "window") {
-      return this.revoke(caller.device.id);
+      return serviceRevoke(caller.device.id);
     }
-    this.options.db.delete(deviceSessions).where(eq(deviceSessions.id, caller.session.id)).run();
-    for (const controller of this.sessionReaders.get(caller.session.id) ?? []) {
+    serviceOptions.db.delete(deviceSessions).where(eq(deviceSessions.id, caller.session.id)).run();
+    for (const controller of serviceSessionReaders.get(caller.session.id) ?? []) {
       controller.abort(new Error("This window signed out"));
     }
-    this.sessionReaders.delete(caller.session.id);
+    serviceSessionReaders.delete(caller.session.id);
     return { signedOut: true as const };
   }
-
-  /** Revokes a device, deletes its sessions and ends its streams. */
-  revoke(id: string) {
-    const now = this.options.now();
-    this.options.db.transaction((tx) => {
+  function serviceRevoke(id: string) {
+    const now = serviceOptions.now();
+    serviceOptions.db.transaction((tx) => {
       tx.update(authorizedDevices)
         .set({ revokedAt: now })
         .where(and(eq(authorizedDevices.id, id), isNull(authorizedDevices.revokedAt)))
         .run();
       tx.delete(deviceSessions).where(eq(deviceSessions.deviceId, id)).run();
     });
-    this.interrupt(id);
+    serviceInterrupt(id);
     return { signedOut: true as const };
   }
-
-  /**
-   * When a headless server opens to other devices, its loopback browser stops being the owner.
-   * It becomes an Administration device with file deletion so it keeps its current access.
-   */
-  adoptOwnerBrowser() {
-    const now = this.options.now();
+  function serviceAdoptOwnerBrowser() {
+    const now = serviceOptions.now();
     const id = crypto.randomUUID();
-    this.options.db
+    serviceOptions.db
       .insert(authorizedDevices)
       .values({
         canDeleteFiles: true,
@@ -905,20 +801,112 @@ export class AccessService {
         role: "administration",
       })
       .run();
-    return { id, token: this.issueSession(id, "browser").token };
+    return { id, token: serviceIssueSession(id, "browser").token };
   }
-
-  /** Drops expired sessions and old invitations. */
-  prune() {
-    const now = this.options.now();
-    this.options.db
+  function servicePrune() {
+    const now = serviceOptions.now();
+    serviceOptions.db
       .delete(deviceSessions)
       .where(or(lt(deviceSessions.expiresAt, now), lt(deviceSessions.idleExpiresAt, now)))
       .run();
-    this.options.db.delete(sessionTransfers).where(lt(sessionTransfers.expiresAt, now)).run();
-    this.options.db
+    serviceOptions.db.delete(sessionTransfers).where(lt(sessionTransfers.expiresAt, now)).run();
+    serviceOptions.db
       .delete(pairingInvitations)
       .where(lt(pairingInvitations.expiresAt, now - 30 * DAY))
       .run();
   }
-}
+  const now = options.now();
+  options.db
+    .insert(serverIdentity)
+    .values({
+      createdAt: now,
+      identityEpoch: 1,
+      key: "server",
+      name: hostname().replace(LOCAL_HOST_SUFFIX, "") || "Tofu server",
+      serverId: crypto.randomUUID(),
+    })
+    .onConflictDoNothing()
+    .run();
+  const stored = serviceRead<SharingConfig | LegacyConfig>("active");
+  const lastGood = serviceRead<SharingConfig | LegacyConfig>("last-good");
+  let active = stored
+    ? upgrade(stored, options.defaultLanPort)
+    : {
+        lan: { enabled: false, hostnames: [], port: options.defaultLanPort },
+        proxy: { enabled: false, origin: null, trustedProxies: [] },
+        tailscale: { enabled: false, mode: "system" as const, origin: null, serveOwned: false },
+      };
+  const pending = serviceRead<PendingChange | { config: LegacyConfig }>("pending");
+  if (pending && "serveIntent" in pending) {
+    // An interrupted change never widens access: an exposure stays enabled only if both the
+    // last good and the interrupted configuration enabled it, with the last good settings.
+    const previous = lastGood ? upgrade(lastGood, options.defaultLanPort) : active;
+    const next = pending.config;
+    active = {
+      ...previous,
+      lan: { ...previous.lan, enabled: previous.lan.enabled && next.lan.enabled },
+      proxy: { ...previous.proxy, enabled: previous.proxy.enabled && next.proxy.enabled },
+      tailscale: {
+        ...previous.tailscale,
+        enabled: previous.tailscale.enabled && next.tailscale.enabled,
+        // A mapping that may have been created is removed by startup reconciliation.
+        serveOwned:
+          previous.tailscale.serveOwned || next.tailscale.serveOwned || pending.serveIntent,
+      },
+    };
+  } else if (pending) {
+    // Earlier versions journaled unconfirmed listener changes; restore the last good one.
+    active = lastGood ? upgrade(lastGood, options.defaultLanPort) : active;
+  }
+  serviceSharing = active;
+  if (pending || JSON.stringify(stored) !== JSON.stringify(active)) {
+    serviceSave(active);
+  }
+
+  return {
+    abandon: serviceAbandon,
+    admit: serviceAdmit,
+    adoptOwnerBrowser: serviceAdoptOwnerBrowser,
+    authenticate: serviceAuthenticate,
+    callerReader: serviceCallerReader,
+    closed: serviceClosed,
+    createSessionTransfer: serviceCreateSessionTransfer,
+    createWindowSession: serviceCreateWindowSession,
+    descriptor: serviceDescriptor,
+    deviceSignal: serviceDeviceSignal,
+    disconnectRemoteReaders: serviceDisconnectRemoteReaders,
+    effectiveOrigin: serviceEffectiveOrigin,
+    exposures: serviceExposures,
+    identity: serviceIdentity,
+    interrupt: serviceInterrupt,
+    issueSession: serviceIssueSession,
+    journal: serviceJournal,
+    lanOrigins: serviceLanOrigins,
+    opened: serviceOpened,
+    policy: servicePolicy,
+    port() {
+      if (serviceListenerPort === null) {
+        throw new Error("The application listener is not initialized");
+      }
+      return serviceListenerPort;
+    },
+    prune: servicePrune,
+    redeemSessionTransfer: serviceRedeemSessionTransfer,
+    rename: serviceRename,
+    reserve: serviceReserve,
+    revoke: serviceRevoke,
+    save: serviceSave,
+    sessionView: serviceSessionView,
+    setListenerPort(port: number) {
+      serviceListenerPort = port;
+    },
+    sharing: () => serviceSharing,
+    signOut: serviceSignOut,
+  };
+});
+
+export type AccessService = Effect.Success<typeof make>;
+export class AccessControl extends Context.Service<AccessControl, AccessService>()(
+  "tofu/access-control"
+) {}
+export const accessControlLayer = Layer.effect(AccessControl, make);

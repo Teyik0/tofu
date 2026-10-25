@@ -1,43 +1,31 @@
 import { Context, Effect, Layer } from "effect";
 import { ElysiaStatus } from "elysia";
-import { Database } from "../../lib/database-layer";
 import { instance } from "../../lib/instance";
 import { tailscale } from "../../lib/tailscale";
 import { closeLan, openLan } from "../../lib/tailscale/lan";
 import { disableTailscale } from "../../lib/tailscale/system";
-import { Devices } from "./devices";
-import { Invitations } from "./invitations";
-import { AccessService } from "./service";
+import { AuthorizedDevices, authorizedDevicesLayer } from "./devices";
+import { PairingInvitations, pairingInvitationsLayer } from "./invitations";
+import { AccessControl, accessControlLayer } from "./service";
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Restore independent persisted transports before publishing their dependencies.
 const make = Effect.gen(function* () {
-  const db = yield* Database;
   yield* Effect.addFinalizer(() => Effect.promise(tailscale.close));
-  const access = yield* Effect.acquireRelease(
-    Effect.sync(
-      () =>
-        new AccessService({
-          db,
-          defaultLanPort: instance.profile === "dev" ? 3442 : 3443,
-          headless: () => !instance.desktop,
-          now: Date.now,
-        })
-    ),
-    (service) =>
-      Effect.gen(function* () {
-        const turn = service.reserve();
-        yield* Effect.acquireRelease(Effect.succeed(turn), (reservation) =>
-          Effect.sync(reservation.release)
-        );
-        yield* Effect.promise(() => turn.previous);
-        const closed = yield* Effect.promise(() => closeLan(service));
-        if (closed instanceof ElysiaStatus) {
-          yield* Effect.die(new Error(closed.response.detail));
-        }
-      }).pipe(Effect.scoped)
+  const access = yield* Effect.acquireRelease(AccessControl, (service) =>
+    Effect.gen(function* () {
+      const turn = service.reserve();
+      yield* Effect.acquireRelease(Effect.succeed(turn), (reservation) =>
+        Effect.sync(reservation.release)
+      );
+      yield* Effect.promise(() => turn.previous);
+      const closed = yield* Effect.promise(() => closeLan(service));
+      if (closed instanceof ElysiaStatus) {
+        yield* Effect.die(new Error(closed.response.detail));
+      }
+    }).pipe(Effect.scoped)
   );
-  access.listenerPort = instance.port;
-  const config = access.sharing;
+  access.setListenerPort(instance.port);
+  const config = access.sharing();
   if (config.lan.enabled && config.lan.port === instance.port) {
     return yield* Effect.fail(
       new Error("The local network HTTPS port conflicts with the application instance")
@@ -98,18 +86,24 @@ const make = Effect.gen(function* () {
     }
   }
   if (config.lan.enabled) {
-    const opened = yield* Effect.tryPromise(() => openLan(access, access.sharing, instance.port));
+    const opened = yield* Effect.tryPromise(() => openLan(access, access.sharing(), instance.port));
     if (opened instanceof ElysiaStatus) {
       return yield* Effect.fail(new Error(opened.response.detail));
     }
   }
   return {
     access,
-    devices: new Devices({ access, db, now: Date.now }),
-    invitations: new Invitations({ access, db, now: Date.now }),
+    devices: yield* AuthorizedDevices,
+    invitations: yield* PairingInvitations,
   };
 });
 
 export class Access extends Context.Service<Access, Effect.Success<typeof make>>()("tofu/access") {}
 
-export const accessLayer = Layer.effect(Access, make);
+export const accessLayer = Layer.effect(Access, make).pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(authorizedDevicesLayer, pairingInvitationsLayer).pipe(
+      Layer.provideMerge(accessControlLayer)
+    )
+  )
+);

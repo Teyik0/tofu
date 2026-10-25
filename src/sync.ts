@@ -1,5 +1,5 @@
 import "@teyik0/furin/server-only";
-import type { SyncRuntimeOptions } from "@teyik0/furin/sync";
+import type { FurinSyncOptions } from "@teyik0/furin/sync";
 import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import { createContext } from "elysia";
 import { db } from "./api/lib/db";
@@ -25,4 +25,4 @@ export const sync = {
     }
     return caller.kind === "anonymous" ? `anonymous:${crypto.randomUUID()}` : caller.principal;
   },
-} satisfies SyncRuntimeOptions;
+} satisfies FurinSyncOptions;

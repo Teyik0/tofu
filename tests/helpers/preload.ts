@@ -71,6 +71,7 @@ if (provider) {
   const originalFetch = globalThis.fetch;
   const paths: Record<string, string> = {
     "anilist.co": "/anilist",
+    "api.github.com": "/github",
     "api.typesafe.ai": "/jev",
     "graphql.anilist.co": "/anilist",
     "nyaa.si": "/nyaa",
@@ -82,7 +83,7 @@ if (provider) {
       const path = paths[url.hostname];
       if (path) {
         const target = new URL(provider);
-        target.pathname = path;
+        target.pathname = url.hostname === "api.github.com" ? `${path}${url.pathname}` : path;
         target.search = url.search;
         return await originalFetch(new Request(target, request));
       }

@@ -1,17 +1,18 @@
+import { TorrentClient } from "../torrents/layer";
 import "@teyik0/furin/server-only";
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { eq } from "drizzle-orm";
-import { Effect, Result } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 import { problem } from "elysia";
 import { storageRoots } from "../../../db/schema";
-import type { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/database-layer";
 
 const PATH_SEGMENTS = /[\\/]+/;
 const WINDOWS_DRIVE = /^[a-z]:/i;
 
 interface StorageRootsOptions {
-  db: Database;
+  db: Database["Service"];
   /** Current download folder, offered as the first root when none exists. */
   defaultPath: () => string;
   now: () => number;
@@ -45,30 +46,33 @@ async function canonical(path: string): Promise<string> {
  * Host folders beneath which remote administrators may place downloads. Only the owner edits
  * the list; every remote path is canonicalized so `..` and symbolic links cannot escape it.
  */
-export class StorageRoots {
-  private readonly options: StorageRootsOptions;
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const torrents = yield* TorrentClient;
+  const options: StorageRootsOptions = {
+    db,
+    defaultPath: () => torrents.settings().downloadPath,
+    now: Date.now,
+  };
 
-  constructor(options: StorageRootsOptions) {
-    this.options = options;
-  }
+  const serviceOptions = options;
 
-  list() {
-    const roots = this.options.db.select().from(storageRoots).all();
+  function serviceList() {
+    const roots = serviceOptions.db.select().from(storageRoots).all();
     if (roots.length > 0) {
       return roots;
     }
-    const path = resolve(this.options.defaultPath());
+    const path = resolve(serviceOptions.defaultPath());
     const root = {
-      createdAt: this.options.now(),
+      createdAt: serviceOptions.now(),
       id: crypto.randomUUID(),
       name: "Downloads",
       path,
     };
-    this.options.db.insert(storageRoots).values(root).onConflictDoNothing().run();
-    return this.options.db.select().from(storageRoots).all();
+    serviceOptions.db.insert(storageRoots).values(root).onConflictDoNothing().run();
+    return serviceOptions.db.select().from(storageRoots).all();
   }
-
-  async add(name: string, path: string) {
+  const serviceAdd = Effect.fn("Roots.add")(function* (name: string, path: string) {
     if (!isAbsolute(path)) {
       return problem(400, { detail: "Enter an absolute folder path" });
     }
@@ -76,39 +80,36 @@ export class StorageRoots {
     if (!label) {
       return problem(400, { detail: "Enter a name for this storage location" });
     }
-    await mkdir(path, { recursive: true });
-    const real = await realpath(path);
-    if (this.list().some((existing) => existing.path === real)) {
+    yield* Effect.promise(() => mkdir(path, { recursive: true }));
+    const real = yield* Effect.promise(() => realpath(path));
+    if (serviceList().some((existing) => existing.path === real)) {
       return problem(409, { detail: "This folder is already a storage location" });
     }
     const root = {
-      createdAt: this.options.now(),
+      createdAt: serviceOptions.now(),
       id: crypto.randomUUID(),
       name: label,
       path: real,
     };
-    this.options.db.insert(storageRoots).values(root).run();
+    serviceOptions.db.insert(storageRoots).values(root).run();
     return root;
-  }
-
-  remove(id: string) {
-    const roots = this.list();
+  });
+  function serviceRemove(id: string) {
+    const roots = serviceList();
     if (!roots.some((root) => root.id === id)) {
       return problem(404, { detail: "Storage location not found" });
     }
     if (roots.length === 1) {
       return problem(409, { detail: "Keep at least one storage location" });
     }
-    this.options.db.delete(storageRoots).where(eq(storageRoots.id, id)).run();
+    serviceOptions.db.delete(storageRoots).where(eq(storageRoots.id, id)).run();
     return { removed: id };
   }
-
-  /**
-   * Resolves `folder` beneath root `rootId`. Rejects absolute or parent segments, and paths whose
-   * existing ancestors resolve outside the root through symbolic links.
-   */
-  async resolveFolder(rootId: string, folder: string) {
-    const root = this.list().find((candidate) => candidate.id === rootId);
+  const serviceResolveFolder = Effect.fn("Roots.resolveFolder")(function* (
+    rootId: string,
+    folder: string
+  ) {
+    const root = serviceList().find((candidate) => candidate.id === rootId);
     if (!root) {
       return problem(404, { detail: "Storage location not found" });
     }
@@ -122,26 +123,31 @@ export class StorageRoots {
       return problem(400, { detail: "Enter a folder name inside the storage location" });
     }
     const path = join(root.path, ...segments);
-    const canonicalRoot = await canonical(root.path);
-    if (!(within(await canonical(path), canonicalRoot) && (await this.contains(path)))) {
+    const canonicalRoot = yield* Effect.promise(() => canonical(root.path));
+    if (
+      !(
+        within(yield* Effect.promise(() => canonical(path)), canonicalRoot) &&
+        (yield* serviceContains(path))
+      )
+    ) {
       return problem(403, { detail: "This folder is outside the server's storage locations" });
     }
     return path;
-  }
-
-  /** Whether `path` canonically lies inside a storage root, following symbolic links. */
-  async contains(path: string) {
+  });
+  const serviceContains = Effect.fn("Roots.contains")(function* (path: string) {
     if (!isAbsolute(path)) {
       return false;
     }
-    const real = await canonical(resolve(path));
-    const roots = await Promise.all(this.list().map((root) => canonical(root.path)));
+    const real = yield* Effect.promise(() => canonical(resolve(path)));
+    const roots = yield* Effect.promise(() =>
+      Promise.all(serviceList().map((root) => canonical(root.path)))
+    );
     if (!roots.some((root) => within(real, root))) {
       return false;
     }
     // A dangling symbolic link at the target would be followed when the folder is created.
-    const info = await Effect.runPromise(
-      Effect.result(Effect.tryPromise({ catch: (error) => error, try: () => lstat(resolve(path)) }))
+    const info = yield* Effect.result(
+      Effect.tryPromise({ catch: (error) => error, try: () => lstat(resolve(path)) })
     );
     if (Result.isFailure(info)) {
       return (
@@ -149,5 +155,66 @@ export class StorageRoots {
       );
     }
     return !info.success.isSymbolicLink();
+  });
+
+  return {
+    add: serviceAdd,
+    contains: serviceContains,
+    list: serviceList,
+    remove: serviceRemove,
+    resolveFolder: serviceResolveFolder,
+  };
+});
+
+export type StorageRoots = Roots["Service"];
+export class Roots extends Context.Service<
+  Roots,
+  {
+    readonly list: () => { createdAt: number; id: string; name: string; path: string }[];
+    readonly add: (
+      name: string,
+      path: string
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<400, { readonly detail: "Enter an absolute folder path" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Enter a name for this storage location" }>
+        >
+      | ReturnType<
+          typeof problem<409, { readonly detail: "This folder is already a storage location" }>
+        >
+      | {
+          createdAt: number;
+          id: `${string}-${string}-${string}-${string}-${string}`;
+          name: string;
+          path: string;
+        }
+    >;
+    readonly remove: (
+      id: string
+    ) =>
+      | ReturnType<typeof problem<404, { readonly detail: "Storage location not found" }>>
+      | ReturnType<typeof problem<409, { readonly detail: "Keep at least one storage location" }>>
+      | { removed: string };
+    readonly resolveFolder: (
+      rootId: string,
+      folder: string
+    ) => Effect.Effect<
+      | string
+      | ReturnType<typeof problem<404, { readonly detail: "Storage location not found" }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Enter a folder name inside the storage location" }
+          >
+        >
+      | ReturnType<
+          typeof problem<
+            403,
+            { readonly detail: "This folder is outside the server's storage locations" }
+          >
+        >
+    >;
+    readonly contains: (path: string) => Effect.Effect<boolean>;
   }
-}
+>()("tofu/storage-roots") {}
+export const rootsLayer = Layer.effect(Roots, make);

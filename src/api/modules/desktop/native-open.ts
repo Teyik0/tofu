@@ -42,7 +42,7 @@ export const desktopNativeOpenPlugin = new Elysia({
 
               if (["tofu:", "tofu-dev:"].includes(new URL(url).protocol)) {
                 desktop.open();
-                const result = await anilist.receiveAuthorizationUrl(url);
+                const result = await Effect.runPromise(anilist.receiveAuthorizationUrl(url));
 
                 if (result instanceof ElysiaStatus) {
                   await sdk.Utils.showMessageBox({
@@ -56,7 +56,7 @@ export const desktopNativeOpenPlugin = new Elysia({
                 return;
               }
 
-              const opened = await torrentOpenings.stage(url, torrents);
+              const opened = await Effect.runPromise(torrentOpenings.stage(url, torrents));
               desktop.open();
 
               if (opened instanceof ElysiaStatus) {

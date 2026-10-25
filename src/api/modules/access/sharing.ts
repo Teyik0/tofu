@@ -38,7 +38,7 @@ export async function updateRemoteAccess(
   using cleanup = new DisposableStack();
   cleanup.defer(turn.release);
   await turn.previous;
-  const current = access.sharing;
+  const current = access.sharing();
   const exposure = body.transport;
   const proxyOrigin = body.proxyOrigin ? httpsOrigin(body.proxyOrigin) : null;
   if (body.proxyOrigin && !proxyOrigin) {
@@ -61,7 +61,7 @@ export async function updateRemoteAccess(
     });
   }
   const lanPort = body.lanPort ?? current.lan.port;
-  const { port } = access;
+  const port = access.port();
   if (lanPort === port) {
     return problem(400, {
       detail: `Choose a local network port other than ${port}, which Tofu uses on this computer`,
@@ -212,5 +212,5 @@ export async function updateRemoteAccess(
       access.save({ ...saved, tailscale: { ...saved.tailscale, serveOwned: false } });
     }
   }
-  return { config: access.sharing, previous: current };
+  return { config: access.sharing(), previous: current };
 }

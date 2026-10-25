@@ -23,7 +23,7 @@ import {
   torrentDestinations,
   torrentRecords,
 } from "../../../db/schema";
-import type { Database, DatabaseConnection } from "../../lib/database-layer";
+import type { DatabaseInstance as Database, DatabaseConnection } from "../../lib/database-layer";
 import type { Destination, DestinationInput, DestinationPresentation } from "../destinations/model";
 import type { Settings, SettingsInput } from "../settings/model";
 import type { ConnectionPolicy } from "./connections";
@@ -887,15 +887,28 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions, db: Da
   }
 
   async function prepareDestination(path: string) {
-    const bound = [...state.entries.values()].find(
+    const bound = [...state.entries.values()].filter(
       (entry) => entry.storageRoot && resolvePath(entry.detail.savePath) === resolvePath(path)
     );
-    if (bound) {
+    if (bound.length) {
       const root = await Effect.runPromise(
         Effect.result(
-          Effect.tryPromise({
-            catch: (cause) => cause,
-            try: () => storageRoot(path, bound.storageRoot),
+          Effect.gen(function* () {
+            const observed = yield* Effect.tryPromise({
+              catch: (cause) => cause,
+              try: () => storageRoot(path, null),
+            });
+            if (
+              !bound.some(
+                (entry) =>
+                  entry.storageRoot?.dev === observed.dev && entry.storageRoot.ino === observed.ino
+              )
+            ) {
+              yield* Effect.tryPromise({
+                catch: (cause) => cause,
+                try: () => storageRoot(path, bound[0]?.storageRoot ?? null),
+              });
+            }
           })
         )
       );
@@ -903,7 +916,7 @@ export async function openTorrentEngine(engineOptions: EngineOpenOptions, db: Da
         return problem(409, {
           detail: storageFailure(root.failure, [], {
             dataDir: engineOptions.dataDir,
-            expected: bound.storageRoot,
+            expected: bound[0]?.storageRoot,
             savePath: path,
           }).message,
         });

@@ -1,6 +1,7 @@
 import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
 import { desktopContext } from "@teyik0/furin-electrobun/server";
+import { Effect } from "effect";
 import { Elysia, ElysiaStatus, problem } from "elysia";
 import { nativeControl } from "../../../native/control";
 import { sync } from "../../../sync";
@@ -43,23 +44,25 @@ export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
   })
   .post("/plugins/:id/test", async ({ anilist, releaseAutomation, jev, plugins, params }) => {
     if (params.id === "anilist") {
-      const listed = await anilist.list();
+      const listed = await Effect.runPromise(anilist.list());
       if (listed instanceof ElysiaStatus) {
         return listed;
       }
       return releaseAutomation.snapshot();
     }
     if (params.id === "jev") {
-      const evaluated = await jev.evaluate(
-        { message: "connection test" },
-        { connected: { instructions: "Does the message say connection test?", type: "noul" } }
+      const evaluated = await Effect.runPromise(
+        jev.evaluate(
+          { message: "connection test" },
+          { connected: { instructions: "Does the message say connection test?", type: "noul" } }
+        )
       );
       if (evaluated instanceof ElysiaStatus) {
         return evaluated;
       }
       return releaseAutomation.snapshot();
     }
-    const tested = await plugins.test(params.id);
+    const tested = await Effect.runPromise(plugins.test(params.id));
     if (tested instanceof ElysiaStatus) {
       return tested;
     }
@@ -69,7 +72,7 @@ export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
     "/plugins/:id/connect",
     { body: pluginConfigurationSchema },
     async ({ plugins, releaseAutomation, params, body }) => {
-      const connected = await plugins.connect(params.id, body);
+      const connected = await Effect.runPromise(plugins.connect(params.id, body));
       if (connected instanceof ElysiaStatus) {
         return connected;
       }

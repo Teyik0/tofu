@@ -92,16 +92,16 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
         setDashboard(data);
       }
     );
-    const visible = () => {
-      if (document.visibilityState === "visible") {
+    const reconnect = (event: Event) => {
+      if (event.type === "online" || document.visibilityState === "visible") {
         client.reconnect();
       }
     };
-    window.addEventListener("online", client.reconnect);
-    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("online", reconnect);
+    document.addEventListener("visibilitychange", reconnect);
     return () => {
-      window.removeEventListener("online", client.reconnect);
-      document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("online", reconnect);
+      document.removeEventListener("visibilitychange", reconnect);
       subscription();
       connection();
       client.close();

@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { ManagedRuntime } from "effect";
+import { Effect, ManagedRuntime } from "effect";
 import { Elysia, t } from "elysia";
 import { Database, databaseLayer } from "../../src/api/lib/database-layer";
 import { instance } from "../../src/api/lib/instance";
@@ -44,7 +44,7 @@ const app = new Elysia()
     crashNextCall = true;
     return { ok: true };
   })
-  .get("/state", ({ torrents }) => torrents.refreshSnapshot(0))
+  .get("/state", ({ torrents }) => Effect.runPromise(torrents.refreshSnapshot(0)))
   .get("/torrents/:id", ({ torrents, params }) => torrents.call("detail", [params.id]))
   .post(
     "/torrents/:id/peers",

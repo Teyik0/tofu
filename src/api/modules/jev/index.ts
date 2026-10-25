@@ -1,4 +1,5 @@
 import { furinSync } from "@teyik0/furin/sync";
+import { Effect } from "effect";
 import { Elysia } from "elysia";
 import { sync } from "../../../sync";
 import { accessPlugin } from "../access/plugin";
@@ -15,5 +16,6 @@ export const jevManagementPlugin = new Elysia({ name: "tofu-jev-api" })
     {
       body: interpretationSchema,
     },
-    ({ automation, body }) => automation.interpret(body.query, body.destinationId)
+    ({ automation, body }) =>
+      Effect.runPromise(automation.interpret(body.query, body.destinationId))
   );

@@ -1,14 +1,21 @@
-import { Effect, Result } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import parseTorrent from "parse-torrent";
 import { automationReleases } from "../../../db/schema";
-import type { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/database-layer";
 import { normalizeTitle } from "../../lib/title";
 import type { JevService } from "../jev/service";
-import { discoveryMatchQuestions, discoveryTitleQuestions, safeReleaseState } from "../jev/service";
+import {
+  discoveryMatchQuestions,
+  discoveryTitleQuestions,
+  Jev,
+  safeReleaseState,
+} from "../jev/service";
 import type { SourcePluginId } from "../plugins/model";
 import { publicRelease } from "../plugins/releases";
 import type { PluginEndpoints, PluginsService } from "../plugins/service";
+import { Plugins, pluginEndpoints } from "../plugins/service";
+import { TorrentClient } from "../torrents/layer";
 import type { EnginePort } from "../torrents/service";
 import type { DiscoveryResult, DiscoverySearch, FeedRelease } from "./model";
 import { collectSourceQueries, uniqueReleases } from "./sources";
@@ -168,72 +175,82 @@ interface DiscoveryOptions {
   plugins: PluginsService;
 }
 
-export class DiscoveryService {
-  private readonly lifecycle: { closed: boolean } = { closed: false };
-  private readonly releases = new Map<string, FeedRelease>();
-  private readonly additions = new Map<string, ReturnType<DiscoveryService["downloadRelease"]>>();
-  private readonly db: Database;
-  private readonly options: DiscoveryOptions;
-  constructor(db: Database, options: DiscoveryOptions) {
-    this.db = db;
-    this.options = options;
-    for (const row of this.db.select().from(automationReleases).all()) {
-      const release = JSON.parse(row.value) as FeedRelease;
-      this.releases.set(`${release.sourceId}:${release.id}`, release);
-    }
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const plugins = yield* Plugins;
+  const jev = yield* Jev;
+  const engine = yield* TorrentClient;
+  const options: DiscoveryOptions = { endpoints: pluginEndpoints, engine, jev, plugins };
+  const serviceDb = db;
+  const serviceOptions = options;
+
+  const serviceLifecycle: { closed: boolean } = { closed: false };
+  const serviceReleases = new Map<string, FeedRelease>();
+  const serviceAdditions = new Map<string, ReturnType<typeof serviceDownloadRelease>>();
+  const serviceCache = new Map<string, { expires: number; media: AnimeTitle[] }>();
+  const serviceRequests = new Set<AbortController>();
+  function serviceCachedReleases() {
+    return structuredClone([...serviceReleases.values()]);
   }
-  cachedReleases() {
-    return structuredClone([...this.releases.values()]);
-  }
-  private storeRelease(release: FeedRelease) {
+  function serviceStoreRelease(release: FeedRelease) {
     const value = JSON.stringify(release);
-    this.db
+    serviceDb
       .insert(automationReleases)
       .values({ id: `${release.sourceId}:${release.id}`, value })
       .onConflictDoUpdate({ set: { value }, target: automationReleases.id })
       .run();
   }
-  async search(query: string, sources: SourcePluginId[]): Promise<DiscoveryResult> {
+  const serviceSearch = Effect.fn("Discovery.search")(function* (
+    query: string,
+    sources: SourcePluginId[]
+  ) {
     const result: DiscoveryResult = { errors: [], releases: [] };
-    await Promise.all(
-      [...new Set(sources)].map(async (sourceId) => {
-        const releases = await this.options.plugins.fetchSource(sourceId, query);
-        if (releases instanceof ElysiaStatus) {
-          if (!this.options.plugins.plugin(sourceId).enabled || this.lifecycle.closed) {
+    yield* Effect.forEach(
+      [...new Set(sources)],
+      (sourceId) =>
+        Effect.gen(function* () {
+          const releases = yield* serviceOptions.plugins.fetchSource(sourceId, query);
+          if (releases instanceof ElysiaStatus) {
+            if (!serviceOptions.plugins.plugin(sourceId).enabled || serviceLifecycle.closed) {
+              return;
+            }
+            const message = releases.response.detail;
+            result.errors.push({ message, sourceId });
+            serviceOptions.plugins.recordFailure(sourceId, message);
             return;
           }
-          const message = releases.response.detail;
-          result.errors.push({ message, sourceId });
-          this.options.plugins.recordFailure(sourceId, message);
-          return;
-        }
-        result.releases.push(...releases);
-      })
+          result.releases.push(...releases);
+        }),
+      { concurrency: "unbounded", discard: true }
     );
-    if (this.lifecycle.closed) {
+    if (serviceLifecycle.closed) {
       return { errors: [], releases: [] };
     }
     for (const release of result.releases) {
       const key = `${release.sourceId}:${release.id}`;
-      this.releases.set(key, release);
-      this.storeRelease(release);
+      serviceReleases.set(key, release);
+      serviceStoreRelease(release);
     }
     return result;
-  }
-  async discover(query: string, sources: SourcePluginId[] | undefined) {
-    const known = this.options.plugins.sourceIds();
+  });
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceDiscover = Effect.fn("Discovery.discover")(function* (
+    query: string,
+    sources: SourcePluginId[] | undefined
+  ) {
+    const known = serviceOptions.plugins.sourceIds();
     if (sources?.some((id) => !known.includes(id))) {
       return problem(404, { detail: "Unknown plugin" });
     }
     const selected: SourcePluginId[] = sources ?? known;
-    const active = [...new Set(selected)].filter((id) => this.options.plugins.plugin(id).enabled);
-    const jev = this.options.plugins.plugin("jev");
-    if (!(jev?.enabled && jev.apiKey)) {
+    const active = [...new Set(selected)].filter((id) => serviceOptions.plugins.plugin(id).enabled);
+    const currentJev = serviceOptions.plugins.plugin("jev");
+    if (!(currentJev?.enabled && currentJev.apiKey)) {
       const search = classicDiscovery(query);
-      if (!(search.title && active.length) || this.lifecycle.closed) {
+      if (!(search.title && active.length) || serviceLifecycle.closed) {
         return { errors: [], releases: [], search };
       }
-      const result = await this.search(query, active);
+      const result = yield* serviceSearch(query, active);
       return {
         ...result,
         releases: result.releases
@@ -245,11 +262,11 @@ export class DiscoveryService {
       };
     }
     const search = parseDiscovery(query);
-    if (!(search.title && active.length) || this.lifecycle.closed) {
+    if (!(search.title && active.length) || serviceLifecycle.closed) {
       return { errors: [], releases: [], search };
     }
     const interpretation = discoveryTitleQuestions(search.title);
-    const interpreted = await this.options.jev.evaluate({ query }, interpretation.questions);
+    const interpreted = yield* serviceOptions.jev.evaluate({ query }, interpretation.questions);
     const semantic = !(interpreted instanceof ElysiaStatus);
     if (semantic) {
       const answer = interpreted?.answers.title;
@@ -261,35 +278,36 @@ export class DiscoveryService {
     } else {
       search.warning = "Jev interpretation unavailable; searching with the entered title.";
     }
-    await this.resolve(search, this.options.endpoints.anilist ?? "https://graphql.anilist.co");
+    yield* serviceResolve(search, serviceOptions.endpoints.anilist ?? "https://graphql.anilist.co");
     if (!search.queries.length) {
       search.queries = [search.title];
     }
-    const result = await collectSourceQueries({
+    const result = yield* collectSourceQueries({
       accept: (release) => discoveryCandidate(search, release),
-      active: (source) => !this.lifecycle.closed && this.options.plugins.plugin(source).enabled,
-      enough: () => Promise.resolve(false),
+      active: (source) => !serviceLifecycle.closed && serviceOptions.plugins.plugin(source).enabled,
+      enough: () => Effect.succeed(false),
       queries: (source) => (source === "tsundere" ? [search.title] : search.queries),
-      search: (variant, source) => this.search(variant, [source]),
+      search: (variant, source) => serviceSearch(variant, [source]),
       sources: active,
     });
     const candidates = uniqueReleases(result.releases);
     const ranked = semantic
-      ? await this.rank(query, search, candidates, (release) => matchesDiscovery(search, release))
+      ? yield* serviceRank(query, search, candidates, (release) =>
+          matchesDiscovery(search, release)
+        )
       : candidates.filter((release) => matchesDiscovery(search, release));
     return {
       errors: result.errors,
       releases: ranked
         .filter(
           (release) =>
-            !this.lifecycle.closed && this.options.plugins.plugin(release.sourceId).enabled
+            !serviceLifecycle.closed && serviceOptions.plugins.plugin(release.sourceId).enabled
         )
         .map((release) => publicRelease(release)),
       search,
     };
-  }
-
-  async rank(
+  });
+  const serviceRank = Effect.fn("Discovery.rank")(function* (
     query: string,
     search: DiscoverySearch,
     releases: FeedRelease[],
@@ -297,12 +315,12 @@ export class DiscoveryService {
   ) {
     const ranked: { probability: number; release: FeedRelease }[] = [];
     for (let offset = 0; offset < releases.length; offset += 20) {
-      if (this.lifecycle.closed) {
+      if (serviceLifecycle.closed) {
         return [];
       }
       const batch = releases.slice(offset, offset + 20);
-      // biome-ignore lint/performance/noAwaitInLoops: bound model requests and respect the daily budget.
-      const result = await this.options.jev.evaluate(
+      // bound model requests and respect the daily budget.
+      const result = yield* serviceOptions.jev.evaluate(
         {
           query,
           releases: batch.map(safeReleaseState),
@@ -347,55 +365,60 @@ export class DiscoveryService {
           b.probability - a.probability || (b.release.seeders ?? -1) - (a.release.seeders ?? -1)
       )
       .map(({ release }) => release);
-  }
-  async addRelease(
+  });
+  const serviceAddRelease = Effect.fn("Discovery.addRelease")(function* (
     sourceId: SourcePluginId,
     id: string,
     destinationId: string,
     paused: boolean,
     allowed?: () => boolean
   ) {
-    const release = this.releases.get(`${sourceId}:${id}`);
+    const release = serviceReleases.get(`${sourceId}:${id}`);
     if (!release) {
       return problem(404, { detail: "Search for this release before adding it" });
     }
     const key = release.infoHash ?? `${sourceId}:${id}`;
-    const pending = this.additions.get(key);
+    const pending = serviceAdditions.get(key);
     if (pending) {
-      return pending;
+      return yield* pending;
     }
-    const task = this.downloadRelease(release, destinationId, paused, allowed);
-    this.additions.set(key, task);
-    using cleanup = new DisposableStack();
-    cleanup.defer(() => {
-      this.additions.delete(key);
-    });
-    return await task;
-  }
-  private async downloadRelease(
+    const task = yield* Effect.cached(
+      serviceDownloadRelease(release, destinationId, paused, allowed).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (serviceAdditions.get(key) === task) {
+              serviceAdditions.delete(key);
+            }
+          })
+        )
+      )
+    );
+    serviceAdditions.set(key, task);
+    return yield* task;
+  });
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceDownloadRelease = Effect.fn("Discovery.downloadRelease")(function* (
     release: FeedRelease,
     destinationId: string,
     paused: boolean,
     allowed: (() => boolean) | undefined
   ) {
-    if (!this.options.plugins.plugin(release.sourceId).enabled || this.lifecycle.closed) {
+    if (!serviceOptions.plugins.plugin(release.sourceId).enabled || serviceLifecycle.closed) {
       return problem(409, { detail: "Plugin disabled" });
     }
     let input: string | Uint8Array = release.downloadUrl;
     if (!input.startsWith("magnet:")) {
-      const file = await this.options.plugins.downloadFile(release);
+      const file = yield* serviceOptions.plugins.downloadFile(release);
       if (file instanceof ElysiaStatus) {
         return file;
       }
       input = file;
     }
-    const parsedTorrent = await Effect.runPromise(
-      Effect.result(
-        Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () => parseTorrent(input),
-        })
-      )
+    const parsedTorrent = yield* Effect.result(
+      Effect.tryPromise({
+        catch: (cause) => cause,
+        try: () => parseTorrent(input),
+      })
     );
     if (Result.isFailure(parsedTorrent)) {
       return problem(400, { detail: "Invalid torrent file" });
@@ -403,27 +426,29 @@ export class DiscoveryService {
     const parsed = parsedTorrent.success;
     if (parsed.infoHash && release.infoHash !== parsed.infoHash) {
       release.infoHash = parsed.infoHash;
-      this.storeRelease(release);
+      serviceStoreRelease(release);
     }
-    if (this.lifecycle.closed || !this.options.plugins.plugin(release.sourceId).enabled) {
+    if (serviceLifecycle.closed || !serviceOptions.plugins.plugin(release.sourceId).enabled) {
       return problem(409, { detail: "Plugin disabled" });
     }
     if (allowed && !allowed()) {
       return problem(409, { detail: "Automation changed or release ignored" });
     }
-    const existing = this.options.engine
+    const existing = serviceOptions.engine
       .snapshot(null, false)
       .torrents.find((torrent) => torrent.id === parsed.infoHash);
     if (existing) {
       return { id: existing.id };
     }
-    return this.options.engine.call("add", [input, { destinationId, paused }]);
-  }
-  private readonly cache = new Map<string, { expires: number; media: AnimeTitle[] }>();
-  private readonly requests = new Set<AbortController>();
-
-  private async resolve(search: DiscoverySearch, endpoint: string) {
-    const media = await this.media(search.title, endpoint);
+    return yield* Effect.promise(() =>
+      serviceOptions.engine.call("add", [input, { destinationId, paused }])
+    );
+  });
+  const serviceResolve = Effect.fn("Discovery.resolve")(function* (
+    search: DiscoverySearch,
+    endpoint: string
+  ) {
+    const media = yield* serviceMedia(search.title, endpoint);
     if (media instanceof ElysiaStatus) {
       search.warning = [
         search.warning,
@@ -434,12 +459,11 @@ export class DiscoveryService {
       return;
     }
     resolveTitles(search, media);
-  }
-
-  async titleAliases(title: string): Promise<string[]> {
-    const media = await this.media(
+  });
+  const serviceTitleAliases = Effect.fn("Discovery.titleAliases")(function* (title: string) {
+    const media = yield* serviceMedia(
       title,
-      this.options.endpoints.anilist ?? "https://graphql.anilist.co"
+      serviceOptions.endpoints.anilist ?? "https://graphql.anilist.co"
     );
     if (!(media instanceof ElysiaStatus)) {
       const best = bestTitle(title, media);
@@ -453,35 +477,35 @@ export class DiscoveryService {
       }
     }
     return [title];
-  }
-
-  private async media(title: string, endpoint: string) {
+  });
+  const serviceMedia = Effect.fn("Discovery.media")(function* (title: string, endpoint: string) {
     const key = normalizeTitle(title);
-    const cached = this.cache.get(key);
+    const cached = serviceCache.get(key);
     if (cached && cached.expires > Date.now()) {
       return cached.media;
     }
     const controller = new AbortController();
-    this.requests.add(controller);
+    serviceRequests.add(controller);
     const timeout = setTimeout(() => controller.abort(), 5000);
-    using cleanup = new DisposableStack();
+    const cleanup = yield* Effect.acquireRelease(
+      Effect.sync(() => new DisposableStack()),
+      (resource) => Effect.sync(() => resource.dispose())
+    );
     cleanup.defer(() => {
       clearTimeout(timeout);
-      this.requests.delete(controller);
+      serviceRequests.delete(controller);
     });
-    const fetched = await Effect.runPromise(
-      Effect.result(
-        Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () =>
-            fetch(endpoint, {
-              body: JSON.stringify({ query: catalogQuery, variables: { search: title } }),
-              headers: { "content-type": "application/json" },
-              method: "POST",
-              signal: controller.signal,
-            }),
-        })
-      )
+    const fetched = yield* Effect.result(
+      Effect.tryPromise({
+        catch: (cause) => cause,
+        try: () =>
+          fetch(endpoint, {
+            body: JSON.stringify({ query: catalogQuery, variables: { search: title } }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+            signal: controller.signal,
+          }),
+      })
     );
     if (Result.isFailure(fetched)) {
       return problem(502, { detail: "Catalogue unavailable" });
@@ -490,13 +514,11 @@ export class DiscoveryService {
     if (!response.ok) {
       return problem(502, { detail: "Catalogue unavailable" });
     }
-    const decoded = await Effect.runPromise(
-      Effect.result(
-        Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () => response.json(),
-        })
-      )
+    const decoded = yield* Effect.result(
+      Effect.tryPromise({
+        catch: (cause) => cause,
+        try: () => response.json(),
+      })
     );
     if (Result.isFailure(decoded)) {
       return problem(502, { detail: "Invalid catalogue" });
@@ -509,25 +531,122 @@ export class DiscoveryService {
     if (!Array.isArray(media) || result?.errors?.length) {
       return problem(502, { detail: "Invalid catalogue" });
     }
-    if (this.cache.size >= 100) {
-      this.cache.clear();
+    if (serviceCache.size >= 100) {
+      serviceCache.clear();
     }
-    this.cache.set(key, { expires: Date.now() + 3_600_000, media });
+    serviceCache.set(key, { expires: Date.now() + 3_600_000, media });
     return media;
-  }
-
-  async close() {
-    if (this.lifecycle.closed) {
+  }, Effect.scoped);
+  const serviceClose = Effect.fn("Discovery.close")(function* () {
+    if (serviceLifecycle.closed) {
       return;
     }
-    this.lifecycle.closed = true;
-    for (const request of this.requests) {
+    serviceLifecycle.closed = true;
+    for (const request of serviceRequests) {
       request.abort();
     }
-    this.cache.clear();
-    await Promise.allSettled(this.additions.values());
+    serviceCache.clear();
+    yield* Effect.all([...serviceAdditions.values()].map(Effect.exit), {
+      concurrency: "unbounded",
+    });
+  });
+  for (const row of serviceDb.select().from(automationReleases).all()) {
+    const release = JSON.parse(row.value) as FeedRelease;
+    serviceReleases.set(`${release.sourceId}:${release.id}`, release);
   }
-}
+  yield* Effect.addFinalizer(() => serviceClose());
+  return {
+    addRelease: serviceAddRelease,
+    cachedReleases: serviceCachedReleases,
+    close: serviceClose,
+    discover: serviceDiscover,
+    rank: serviceRank,
+    search: serviceSearch,
+    titleAliases: serviceTitleAliases,
+  };
+});
+
+export type DiscoveryService = Discovery["Service"];
+export class Discovery extends Context.Service<
+  Discovery,
+  {
+    readonly cachedReleases: () => FeedRelease[];
+    readonly search: (query: string, sources: SourcePluginId[]) => Effect.Effect<DiscoveryResult>;
+    readonly discover: (
+      query: string,
+      sources: SourcePluginId[] | undefined
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown plugin" }>>
+      | {
+          releases: FeedRelease[];
+          search: DiscoverySearch;
+          errors: { sourceId: SourcePluginId; message: string }[];
+        }
+    >;
+    readonly rank: (
+      query: string,
+      search: DiscoverySearch,
+      releases: FeedRelease[],
+      locallyMatches: (release: FeedRelease) => boolean
+    ) => Effect.Effect<FeedRelease[]>;
+    readonly addRelease: (
+      sourceId: SourcePluginId,
+      id: string,
+      destinationId: string,
+      paused: boolean,
+      allowed?: () => boolean
+    ) => Effect.Effect<
+      | ReturnType<
+          typeof problem<404, { readonly detail: "Search for this release before adding it" }>
+        >
+      | ReturnType<typeof problem<502, { readonly detail: "Unable to download the torrent file" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Torrent file too large" }>>
+      | ReturnType<
+          typeof problem<502, { readonly detail: `Torrent file unavailable (HTTP ${number})` }>
+        >
+      | ReturnType<typeof problem<400, { readonly detail: "Invalid torrent file" }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: `The torrent file is inaccessible (HTTP ${number})` }
+          >
+        >
+      | ReturnType<typeof problem<400, { readonly detail: "The torrent file is too large" }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Invalid magnet link or .torrent file (BitTorrent v1 required)" }
+          >
+        >
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Trackers must use valid HTTP, HTTPS, UDP, or WebSocket URLs" }
+          >
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Tab not found" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "The download folder must be an absolute path" }>
+        >
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "The torrent contains an unsafe or inaccessible file path" }
+          >
+        >
+      | ReturnType<
+          typeof problem<400, { readonly detail: "File path outside the download folder" }>
+        >
+      | { id: string }
+      | ReturnType<typeof problem<503, { readonly detail: "The worker is unavailable" }>>
+      | ReturnType<typeof problem<503, { detail: string }>>
+    >;
+    readonly titleAliases: (title: string) => Effect.Effect<string[]>;
+    readonly close: () => Effect.Effect<void>;
+  }
+>()("tofu/discovery") {}
+export const discoveryLayer = Layer.effect(Discovery, make);
 
 export function matchesDiscovery(search: DiscoverySearch, release: FeedRelease) {
   const work = normalizeTitle(release.workTitle);

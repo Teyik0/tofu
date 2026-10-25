@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { getDesktopDevelopment, getDesktopHost } from "@teyik0/furin-electrobun/host";
+import { Effect } from "effect";
 // biome-ignore lint/performance/noNamespaceImport: Share the canonical SDK with native integrations and the backend.
 import * as sdk from "electrobun/main";
 import { ElysiaStatus } from "elysia";
@@ -78,7 +79,9 @@ async function dispatch(event: unknown) {
         desktop.browser.open("/");
         break;
       case "updates":
-        await nativeControl.tofuNativeUpdates?.check();
+        if (nativeControl.tofuNativeUpdates) {
+          await Effect.runPromise(nativeControl.tofuNativeUpdates.check());
+        }
         desktop.open();
         break;
       case "quit":

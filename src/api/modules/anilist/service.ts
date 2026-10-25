@@ -1,28 +1,36 @@
 import { isAbsolute, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
-import { Effect, Result } from "effect";
+import { Cause, Context, Effect, Fiber, Layer, Result, Schedule } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import { anilistState } from "../../../db/schema";
-import type { Database, DatabaseConnection } from "../../lib/database-layer";
+import { Database, type DatabaseConnection } from "../../lib/database-layer";
+import { instance } from "../../lib/instance";
 import { refreshRecords } from "../../lib/persisted-cache";
 import type { ReleaseAutomationService } from "../automation/integration";
+import { ReleaseAutomation } from "../automation/integration";
 import type { AutomationDraft } from "../automation/model";
 import { compareReleases, interpretLocally } from "../automation/rules";
 import type { AutomationService } from "../automation/service";
+import { Automation } from "../automation/service";
 import type { FeedRelease } from "../discovery/model";
-import { classicDiscovery, type DiscoveryService } from "../discovery/service";
+import { classicDiscovery, Discovery, type DiscoveryService } from "../discovery/service";
 import { collectSourceQueries } from "../discovery/sources";
 import type { JevService } from "../jev/service";
-import { animeSearchQuestions, type JevAnswer } from "../jev/service";
+import { animeSearchQuestions, Jev, type JevAnswer } from "../jev/service";
+import type { SourcePluginId } from "../plugins/model";
 import { publicRelease } from "../plugins/releases";
 import type { PluginsService } from "../plugins/service";
+import { Plugins } from "../plugins/service";
+import { TorrentClient } from "../torrents/layer";
 import type { EnginePort } from "../torrents/service";
+import type { TorrentSummary } from "../torrents/types";
 import type { AniListCatalogFilters } from "./catalog";
 import { catalogMedia, catalogVariables } from "./catalog";
 import type { AniListClient } from "./client";
+import { readAniListClient } from "./client";
 import { editorState, validateEntryUpdate } from "./editor";
-import type { LibraryQuery } from "./graphql/generated";
+import type { LibraryQuery, MediaListStatus, ScoreFormat } from "./graphql/generated";
 import { AniListUnavailable, createAniListSdk } from "./graphql/transport";
 import type { AniListListUpdate, AniListThreadProposal } from "./model";
 import { AniListAuthorization } from "./oauth";
@@ -130,79 +138,94 @@ function collectEntries(
   }
 }
 
-export class AniListService {
-  private config: AniListConfig = {
+type ListFailure = Exclude<
+  | ReturnType<typeof problem<409, { readonly detail: "AniList plugin disabled" }>>
+  | ReturnType<
+      typeof problem<400, { readonly detail: "Connect AniList or enter your public account name" }>
+    >
+  | ReturnType<typeof problem<404, { readonly detail: "AniList account not found" }>>
+  | ReturnType<typeof problem<400, { readonly detail: "AniList list too large for a full sync" }>>
+  | ReturnType<
+      typeof problem<409, { readonly detail: "The AniList account changed during refresh" }>
+    >
+  | ReturnType<typeof problem<502, { readonly detail: string }>>
+  | null,
+  null
+>;
+
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const automation = yield* Automation;
+  const discovery = yield* Discovery;
+  const engine = yield* TorrentClient;
+  const jev = yield* Jev;
+  const plugins = yield* Plugins;
+  const releaseAutomation = yield* ReleaseAutomation;
+  const client = yield* Effect.tryPromise(() =>
+    readAniListClient(instance.profile, process.env.TOFU_ANILIST_CLIENT_ID, process.execPath)
+  );
+  const options: AniListOptions = {
+    automation,
+    client,
+    discovery,
+    endpoint: "https://graphql.anilist.co",
+    engine,
+    jev,
+    now: Date.now,
+    plugins,
+    releaseAutomation,
+    tokenEndpoint: "https://anilist.co/api/v2/oauth/token",
+  };
+  const serviceDb = db;
+  const serviceOptions = options;
+  const scope = yield* Effect.scope;
+
+  let serviceConfig: AniListConfig = {
     clientId: "9037",
     clientSecret: "",
     redirectUri: "tofu://oauth/anilist",
     userName: "",
   };
-  private visibleStatuses: AniListStatus[] = ["CURRENT", "PLANNING"];
-  private entries: AniListEntry[] = [];
-  private connectedUser: string | null = null;
-  private account: { id: number; name: string } | null = null;
-  private cache: AniListCache | null = null;
-  private listFlight: { key: string; promise: Promise<AniListState | ListFailure> } | null = null;
-  private refreshError: string | null = null;
-  private retryAt = 0;
-  private readonly selections = new Map<string, boolean>();
-  private readonly watched = new Map<string, number[]>();
-  private readonly animeRules = new Map<string, string>();
-  private readonly episodeRuns = new Map<number, Promise<void>>();
-  private listRevision = 0;
-  private readonly subscriptions = new Map<string, AniListSubscription>();
-  private readonly runs = new Map<
+  let serviceVisibleStatuses: AniListStatus[] = ["CURRENT", "PLANNING"];
+  let serviceEntries: AniListEntry[] = [];
+  let serviceConnectedUser: string | null = null;
+  let serviceAccount: { id: number; name: string } | null = null;
+  let serviceCache: AniListCache | null = null;
+  let serviceListFlight: {
+    key: string;
+    operation: Effect.Effect<AniListState | ListFailure>;
+  } | null = null;
+  let serviceRefreshError: string | null = null;
+  let serviceRetryAt = 0;
+  const serviceSelections = new Map<string, boolean>();
+  const serviceWatched = new Map<string, number[]>();
+  const serviceAnimeRules = new Map<string, string>();
+  const serviceEpisodeRuns = new Map<number, Promise<void>>();
+  let serviceListRevision = 0;
+  const serviceSubscriptions = new Map<string, AniListSubscription>();
+  const serviceRuns = new Map<string, ReturnType<typeof serviceReconcile>>();
+  const serviceDestinationRuns = new Map<
     string,
-    Promise<Awaited<ReturnType<AniListService["reconcile"]>>>
+    Promise<Awaited<ReturnType<typeof serviceOptions.engine.call<"saveDestination">>>>
   >();
-  private readonly destinationRuns = new Map<
-    string,
-    Promise<Awaited<ReturnType<typeof this.options.engine.call<"saveDestination">>>>
-  >();
-  private readonly requests = new Set<AbortController>();
-  private readonly lifecycle: { closed: boolean; started: boolean } = {
+  const serviceRequests = new Set<AbortController>();
+  const serviceLifecycle: { closed: boolean; started: boolean } = {
     closed: false,
     started: false,
   };
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private callbackServer: ReturnType<typeof Bun.serve> | null = null;
-  private callbackTimeout: ReturnType<typeof setTimeout> | null = null;
-  private oauthState: string | null = null;
-  private readonly authorization: AniListAuthorization;
-  private readonly db: Database;
-  private readonly options: AniListOptions;
-  private readonly sdk: ReturnType<typeof createAniListSdk>;
-  constructor(db: Database, options: AniListOptions) {
-    this.db = db;
-    this.options = options;
-    this.sdk = createAniListSdk(options.endpoint, () => options.plugins.plugin("anilist").apiKey);
-    this.authorization = new AniListAuthorization((token, current) =>
-      this.authorize(token, current)
-    );
-    this.restore();
-    if (
-      options.client &&
-      (this.config.clientId === "9037" || this.config.redirectUri.startsWith("tofu"))
-    ) {
-      this.config = { ...this.config, ...options.client, clientSecret: "" };
-    } else if (
-      this.config.clientId === "9037" &&
-      this.config.redirectUri === "http://localhost:3000/"
-    ) {
-      this.config.redirectUri = "tofu://oauth/anilist";
-      this.config.clientSecret = "";
-    }
-    this.checkCacheIdentity();
-    if (this.cache) {
-      this.entries = this.cache.entries;
-      this.account = this.cache.account;
-      this.connectedUser = this.account.name;
-    }
-  }
-  private async animeSearch(entry: AniListMedia) {
+  let serviceTimer: Fiber.Fiber<void> | null = null;
+  let serviceCallbackServer: ReturnType<typeof Bun.serve> | null = null;
+  let serviceCallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+  let serviceOauthState: string | null = null;
+  let serviceAuthorization: AniListAuthorization;
+  const serviceSdk = yield* Effect.try(() =>
+    createAniListSdk(serviceOptions.endpoint, () => serviceOptions.plugins.plugin("anilist").apiKey)
+  );
+  let serviceCatalogOptionsCache: AniListCatalogOptions | null = null;
+  const serviceAnimeSearch = Effect.fn("AniList.animeSearch")(function* (entry: AniListMedia) {
     const interpretation = animeSearchQuestions(entry);
     const fallback = localAnimeSearch(entry);
-    const result = await this.options.jev.evaluate(
+    const result = yield* serviceOptions.jev.evaluate(
       { anime: { aliases: entry.aliases, titles: interpretation.titles } },
       interpretation.questions
     );
@@ -226,36 +249,36 @@ export class AniListService {
     });
     const part = fallback.part ?? confidentAnimeNumber(result.answers.part);
     return animeSearchPlan(entry, titles, season, part);
-  }
-  async releases(mediaId: number) {
-    const original = await this.media(mediaId);
+  });
+  const serviceReleases = Effect.fn("AniList.releases")(function* (mediaId: number) {
+    const original = yield* serviceMedia(mediaId);
     if (original instanceof ElysiaStatus) {
       return original;
     }
-    const library = this.snapshot().entries;
-    const plan = await this.animeSearch(original);
+    const library = serviceSnapshot().entries;
+    const plan = yield* serviceAnimeSearch(original);
     const { entry, titles } = plan;
     const sources = (["nyaa", "tsundere", "c411"] as const).filter(
-      (id) => this.options.plugins.plugin(id).enabled
+      (id) => serviceOptions.plugins.plugin(id).enabled
     );
-    const { preferences } = this.options.automation.snapshot();
+    const { preferences } = serviceOptions.automation.snapshot();
     const offset = animeEpisodeOffset(entry, library);
     const contextual = (release: FeedRelease) => animeEpisodeRelease(entry, offset, release);
-    const result = await collectSourceQueries({
+    const result = yield* collectSourceQueries({
       accept: () => true,
       active: () => true,
-      enough: () => Promise.resolve(false),
+      enough: () => Effect.succeed(false),
       queries: (source) => {
         if (source === "nyaa") {
           return animeQueries(entry, preferences, titles);
         }
         return source === "tsundere" ? titles.slice(0, 1) : titles;
       },
-      search: (sourceQuery, source) => this.options.discovery.search(sourceQuery, [source]),
+      search: (sourceQuery, source) => serviceOptions.discovery.search(sourceQuery, [source]),
       sources,
     });
     const matches = (release: FeedRelease) => matchesAnimeRelease(entry, preferences, release);
-    const stored = this.options.discovery
+    const stored = serviceOptions.discovery
       .cachedReleases()
       .map(contextual)
       .filter((release): release is FeedRelease => release !== null)
@@ -276,16 +299,17 @@ export class AniListService {
       season: plan.season,
       warning: plan.warning,
     };
-    const jev = this.options.plugins.plugin("jev");
+    const currentJev = serviceOptions.plugins.plugin("jev");
     const query = `Find releases for "${entry.title}". Allowed languages: ${preferences.languages.join(", ") || "any"}. Allowed resolutions: ${preferences.resolutions.join(", ") || "any"}. Allowed codecs: ${preferences.codecs.join(", ") || "any"}. ${offset ? `The preceding parts have ${offset} episodes; sourceEpisode uses continuous numbering and episode is relative to this part.` : ""}`;
     const ranked =
-      jev?.enabled && jev.apiKey
-        ? await this.options.discovery.rank(query, search, candidates, matches)
+      currentJev?.enabled && currentJev.apiKey
+        ? yield* serviceOptions.discovery.rank(query, search, candidates, matches)
         : candidates.filter(matches);
     const matcher = { ...interpretLocally(entry.title, "default", preferences), season: null };
     const releases = ranked
       .filter(
-        (release) => !this.lifecycle.closed && this.options.plugins.plugin(release.sourceId).enabled
+        (release) =>
+          !serviceLifecycle.closed && serviceOptions.plugins.plugin(release.sourceId).enabled
       )
       .sort((a, b) => compareReleases(matcher, a, b));
     const hashes = new Set(releases.map((release) => release.infoHash));
@@ -298,109 +322,112 @@ export class AniListService {
       errors: result.errors,
       releases,
       search,
-      torrents: this.options.engine
+      torrents: serviceOptions.engine
         .snapshot(null, false)
         .torrents.filter((torrent) => hashes.has(torrent.id)),
     };
-  }
-  private restore() {
-    for (const row of this.db.select().from(anilistState).all()) {
+  });
+
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  function serviceRestore() {
+    for (const row of serviceDb.select().from(anilistState).all()) {
       if (row.id === "preferences") {
-        this.visibleStatuses = JSON.parse(row.value) as AniListStatus[];
+        serviceVisibleStatuses = JSON.parse(row.value) as AniListStatus[];
       } else if (row.id === "config") {
-        this.config = { ...this.config, ...(JSON.parse(row.value) as AniListConfig) };
-        this.config.clientId ||= "9037";
+        serviceConfig = { ...serviceConfig, ...(JSON.parse(row.value) as AniListConfig) };
+        serviceConfig.clientId ||= "9037";
       } else if (row.id === "profile") {
-        this.account = JSON.parse(row.value) as { id: number; name: string };
+        serviceAccount = JSON.parse(row.value) as { id: number; name: string };
       } else if (row.id === "list-cache") {
-        this.cache = JSON.parse(row.value) as AniListCache;
+        serviceCache = JSON.parse(row.value) as AniListCache;
       } else if (row.id.startsWith("anime-rule:")) {
-        this.animeRules.set(row.id, JSON.parse(row.value) as string);
+        serviceAnimeRules.set(row.id, JSON.parse(row.value) as string);
       } else if (row.id.startsWith("watched:")) {
-        this.watched.set(row.id, JSON.parse(row.value) as number[]);
+        serviceWatched.set(row.id, JSON.parse(row.value) as number[]);
       } else if (row.id.startsWith("selection:")) {
-        this.selections.set(row.id, JSON.parse(row.value) === true);
+        serviceSelections.set(row.id, JSON.parse(row.value) === true);
       } else {
         const subscription = JSON.parse(row.value) as AniListSubscription;
-        this.subscriptions.set(subscription.id, subscription);
+        serviceSubscriptions.set(subscription.id, subscription);
       }
     }
   }
-  private writeState(id: string, value: string, connection?: DatabaseConnection) {
-    const db = connection ?? this.db;
-    db.insert(anilistState)
+  function serviceWriteState(id: string, value: string, connection?: DatabaseConnection) {
+    const currentDb = connection ?? serviceDb;
+    currentDb
+      .insert(anilistState)
       .values({ id, value })
       .onConflictDoUpdate({ set: { value }, target: anilistState.id })
       .run();
   }
-  private cacheKey() {
-    const token = this.options.plugins.plugin("anilist").apiKey;
+  function serviceCacheKey() {
+    const token = serviceOptions.plugins.plugin("anilist").apiKey;
     return Bun.SHA256.hash(
       JSON.stringify([
-        this.options.endpoint,
-        token ? ["token", token] : ["public", this.config.userName.trim().toLowerCase()],
+        serviceOptions.endpoint,
+        token ? ["token", token] : ["public", serviceConfig.userName.trim().toLowerCase()],
       ]),
       "hex"
     );
   }
-  private checkCacheIdentity() {
-    if (this.cache && this.cache.key !== this.cacheKey()) {
-      this.cache = null;
-      this.entries = [];
-      this.account = null;
-      this.connectedUser = null;
-      this.refreshError = null;
-      this.retryAt = 0;
-      this.db.delete(anilistState).where(eq(anilistState.id, "list-cache")).run();
+  function serviceCheckCacheIdentity() {
+    if (serviceCache && serviceCache.key !== serviceCacheKey()) {
+      serviceCache = null;
+      serviceEntries = [];
+      serviceAccount = null;
+      serviceConnectedUser = null;
+      serviceRefreshError = null;
+      serviceRetryAt = 0;
+      serviceDb.delete(anilistState).where(eq(anilistState.id, "list-cache")).run();
     }
   }
-  snapshot(): AniListState {
-    this.checkCacheIdentity();
-    const { clientSecret, ...config } = this.config;
+  function serviceSnapshot(): AniListState {
+    serviceCheckCacheIdentity();
+    const { clientSecret, ...config } = serviceConfig;
     return {
       ...config,
-      accountId: this.account?.id ?? null,
-      authenticated: Boolean(this.options.plugins.plugin("anilist").apiKey),
-      authorizationError: this.authorization.error,
-      authorizationPending: this.authorization.pending || this.oauthState !== null,
-      connectedUser: this.connectedUser,
-      entries: this.entries.map((entry) => ({
+      accountId: serviceAccount?.id ?? null,
+      authenticated: Boolean(serviceOptions.plugins.plugin("anilist").apiKey),
+      authorizationError: serviceAuthorization.error,
+      authorizationPending: serviceAuthorization.pending || serviceOauthState !== null,
+      connectedUser: serviceConnectedUser,
+      entries: serviceEntries.map((entry) => ({
         ...entry,
-        automationId: this.animeRule(entry.mediaId)?.id ?? null,
-        completedEpisodes: this.completedEpisodes(entry),
+        automationId: serviceAnimeRule(entry.mediaId)?.id ?? null,
+        completedEpisodes: serviceCompletedEpisodes(entry),
       })),
       hasClientSecret: Boolean(clientSecret),
-      lastSyncedAt: this.cache?.updatedAt ?? null,
-      refreshError: this.refreshError,
-      refreshing: this.listFlight?.key === this.cacheKey(),
-      selections: this.entries.map((entry) => ({
-        enabled: this.accepted(entry.mediaId),
+      lastSyncedAt: serviceCache?.updatedAt ?? null,
+      refreshError: serviceRefreshError,
+      refreshing: serviceListFlight?.key === serviceCacheKey(),
+      selections: serviceEntries.map((entry) => ({
+        enabled: serviceAccepted(entry.mediaId),
         mediaId: entry.mediaId,
       })),
-      subscriptions: [...this.subscriptions.values()],
-      visibleStatuses: this.visibleStatuses,
+      subscriptions: [...serviceSubscriptions.values()],
+      visibleStatuses: serviceVisibleStatuses,
     };
   }
-  writePreferences(tx: DatabaseConnection, visibleStatuses: AniListStatus[]) {
-    this.writeState("preferences", JSON.stringify(visibleStatuses), tx);
+  function serviceWritePreferences(tx: DatabaseConnection, visibleStatuses: AniListStatus[]) {
+    serviceWriteState("preferences", JSON.stringify(visibleStatuses), tx);
     return { visibleStatuses };
   }
-  refreshState() {
-    const rows = this.db.select().from(anilistState).all();
+  function serviceRefreshState() {
+    const rows = serviceDb.select().from(anilistState).all();
     const preferences = rows.find(({ id }) => id === "preferences");
-    this.visibleStatuses = preferences
+    serviceVisibleStatuses = preferences
       ? (JSON.parse(preferences.value) as AniListStatus[])
       : ["CURRENT", "PLANNING"];
     refreshRecords(
-      this.selections,
+      serviceSelections,
       rows.filter(({ id }) => id.startsWith("selection:"))
     );
     refreshRecords(
-      this.animeRules,
+      serviceAnimeRules,
       rows.filter(({ id }) => id.startsWith("anime-rule:"))
     );
     refreshRecords(
-      this.subscriptions,
+      serviceSubscriptions,
       rows.filter(
         ({ id }) =>
           !(
@@ -410,13 +437,13 @@ export class AniListService {
       )
     );
   }
-  configure(input: {
+  function serviceConfigure(input: {
     clientId?: string;
     clientSecret?: string;
     redirectUri?: string;
     userName: string;
   }) {
-    const redirectUri = input.redirectUri ?? this.config.redirectUri;
+    const redirectUri = input.redirectUri ?? serviceConfig.redirectUri;
     const redirect = new URL(redirectUri);
     if (
       !["tofu://oauth/anilist", "tofu-dev://oauth/anilist"].includes(redirect.href) &&
@@ -430,211 +457,212 @@ export class AniListService {
         detail: "The OAuth callback must be a local HTTP URL with an explicit port",
       });
     }
-    this.stopCallback();
-    this.config = {
-      ...this.config,
+    serviceStopCallback();
+    serviceConfig = {
+      ...serviceConfig,
       ...input,
-      clientId: input.clientId || this.config.clientId,
+      clientId: input.clientId || serviceConfig.clientId,
       redirectUri,
     };
-    this.writeState("config", JSON.stringify(this.config));
-    return this.snapshot();
+    serviceWriteState("config", JSON.stringify(serviceConfig));
+    return serviceSnapshot();
   }
-  connect(deviceId?: string) {
-    if (this.lifecycle.closed) {
+  const serviceConnect = Effect.fn("AniList.connect")(function* (deviceId?: string) {
+    if (serviceLifecycle.closed) {
       return problem(409, { detail: "AniList unavailable" });
     }
     if (
-      !this.config.clientId ||
-      (this.config.clientId === "9037" && this.config.redirectUri === "tofu-dev://oauth/anilist")
+      !serviceConfig.clientId ||
+      (serviceConfig.clientId === "9037" &&
+        serviceConfig.redirectUri === "tofu-dev://oauth/anilist")
     ) {
       return problem(409, {
         detail:
           "This development build needs its own AniList client. Set TOFU_ANILIST_CLIENT_ID and rebuild Tofu Dev.",
       });
     }
-    if (this.config.clientId === "9037" || !this.config.clientSecret) {
-      this.stopCallback();
-      return this.authorization.connect(this.config.clientId, this.config.redirectUri, deviceId);
+    if (serviceConfig.clientId === "9037" || !serviceConfig.clientSecret) {
+      serviceStopCallback();
+      return serviceAuthorization.connect(
+        serviceConfig.clientId,
+        serviceConfig.redirectUri,
+        deviceId
+      );
     }
-    if (!(this.config.clientId && this.config.clientSecret)) {
+    if (!(serviceConfig.clientId && serviceConfig.clientSecret)) {
       return problem(400, { detail: "Add your AniList OAuth client ID and secret" });
     }
-    this.stopCallback();
-    const config = { ...this.config };
+    serviceStopCallback();
+    const config = { ...serviceConfig };
     const redirect = new URL(config.redirectUri);
     const state = crypto.randomUUID();
-    this.oauthState = state;
-    const server = Effect.runSync(
-      Effect.result(
-        Effect.try({
-          catch: (cause) => cause,
-          try: () =>
-            Bun.serve({
-              fetch: async (request) => {
-                const url = new URL(request.url);
-                if (
-                  url.pathname !== redirect.pathname ||
-                  url.searchParams.get("state") !== this.oauthState ||
-                  this.oauthState !== state ||
-                  !url.searchParams.get("code")
-                ) {
-                  return new Response(
-                    "Invalid or expired OAuth callback. Restart the connection from Tofu.",
-                    { headers: { "cache-control": "no-store" }, status: 400 }
-                  );
-                }
-                this.oauthState = null;
-                const controller = new AbortController();
-                this.requests.add(controller);
-                const timeout = setTimeout(
-                  () =>
-                    controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
-                  15_000
-                );
-                using cleanup = new DisposableStack();
-                cleanup.defer(() => {
-                  clearTimeout(timeout);
-                  this.requests.delete(controller);
-                });
-                const exchanged = await Effect.runPromise(
-                  Effect.result(
-                    Effect.tryPromise({
-                      catch: (cause) => cause,
-                      try: () =>
-                        fetch(this.options.tokenEndpoint, {
-                          body: JSON.stringify({
-                            client_id: config.clientId,
-                            client_secret: config.clientSecret,
-                            code: url.searchParams.get("code"),
-                            grant_type: "authorization_code",
-                            redirect_uri: config.redirectUri,
-                          }),
-                          headers: {
-                            accept: "application/json",
-                            "content-type": "application/json",
-                          },
-                          method: "POST",
-                          signal: controller.signal,
-                        }),
-                    })
-                  )
-                );
-                if (Result.isFailure(exchanged)) {
-                  return new Response(
-                    "Unable to connect AniList. Restart the connection from Tofu.",
-                    { status: 502 }
-                  );
-                }
-                const response = exchanged.success;
-                const decoded = await Effect.runPromise(
-                  Effect.result(
-                    Effect.tryPromise({
-                      catch: (cause) => cause,
-                      try: () => response.json(),
-                    })
-                  )
-                );
-                if (Result.isFailure(decoded)) {
-                  return new Response(
-                    "Unable to connect AniList. Restart the connection from Tofu.",
-                    { status: 502 }
-                  );
-                }
-                const token = decoded.success as { access_token?: string };
-                if (
-                  !(
-                    response.ok &&
-                    token &&
-                    typeof token.access_token === "string" &&
-                    token.access_token
-                  ) ||
-                  this.lifecycle.closed ||
-                  this.config.clientId !== config.clientId
-                ) {
-                  return new Response(
-                    "Unable to connect AniList. Restart the connection from Tofu.",
-                    { status: 502 }
-                  );
-                }
-                const configured = this.options.plugins.configure("anilist", {
-                  apiKey: token.access_token,
-                  enabled: true,
-                });
-                if (configured instanceof ElysiaStatus) {
-                  return new Response(
-                    "Unable to connect AniList. Restart the connection from Tofu.",
-                    { status: configured.status }
-                  );
-                }
+    serviceOauthState = state;
+
+    // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+    const server = yield* Effect.result(
+      Effect.try({
+        catch: (cause) => cause,
+        try: () =>
+          Bun.serve({
+            fetch: async (request) => {
+              const url = new URL(request.url);
+              if (
+                url.pathname !== redirect.pathname ||
+                url.searchParams.get("state") !== serviceOauthState ||
+                serviceOauthState !== state ||
+                !url.searchParams.get("code")
+              ) {
                 return new Response(
-                  "AniList connected successfully. You can close this tab and return to Tofu.",
-                  {
-                    headers: {
-                      "cache-control": "no-store",
-                      "content-type": "text/plain; charset=utf-8",
-                      "referrer-policy": "no-referrer",
-                    },
-                  }
+                  "Invalid or expired OAuth callback. Restart the connection from Tofu.",
+                  { headers: { "cache-control": "no-store" }, status: 400 }
                 );
-              },
-              hostname: "127.0.0.1",
-              port: Number(redirect.port),
-            }),
-        })
-      )
+              }
+              serviceOauthState = null;
+              const controller = new AbortController();
+              serviceRequests.add(controller);
+              const timeout = setTimeout(
+                () =>
+                  controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
+                15_000
+              );
+              using cleanup = new DisposableStack();
+              cleanup.defer(() => {
+                clearTimeout(timeout);
+                serviceRequests.delete(controller);
+              });
+              const exchanged = await Effect.runPromise(
+                Effect.result(
+                  Effect.tryPromise({
+                    catch: (cause) => cause,
+                    try: () =>
+                      fetch(serviceOptions.tokenEndpoint, {
+                        body: JSON.stringify({
+                          client_id: config.clientId,
+                          client_secret: config.clientSecret,
+                          code: url.searchParams.get("code"),
+                          grant_type: "authorization_code",
+                          redirect_uri: config.redirectUri,
+                        }),
+                        headers: {
+                          accept: "application/json",
+                          "content-type": "application/json",
+                        },
+                        method: "POST",
+                        signal: controller.signal,
+                      }),
+                  })
+                )
+              );
+              if (Result.isFailure(exchanged)) {
+                return new Response(
+                  "Unable to connect AniList. Restart the connection from Tofu.",
+                  { status: 502 }
+                );
+              }
+              const response = exchanged.success;
+              const decoded = await Effect.runPromise(
+                Effect.result(
+                  Effect.tryPromise({
+                    catch: (cause) => cause,
+                    try: () => response.json(),
+                  })
+                )
+              );
+              if (Result.isFailure(decoded)) {
+                return new Response(
+                  "Unable to connect AniList. Restart the connection from Tofu.",
+                  { status: 502 }
+                );
+              }
+              const token = decoded.success as { access_token?: string };
+              if (
+                !(
+                  response.ok &&
+                  token &&
+                  typeof token.access_token === "string" &&
+                  token.access_token
+                ) ||
+                serviceLifecycle.closed ||
+                serviceConfig.clientId !== config.clientId
+              ) {
+                return new Response(
+                  "Unable to connect AniList. Restart the connection from Tofu.",
+                  { status: 502 }
+                );
+              }
+              const configured = serviceOptions.plugins.configure("anilist", {
+                apiKey: token.access_token,
+                enabled: true,
+              });
+              if (configured instanceof ElysiaStatus) {
+                return new Response(
+                  "Unable to connect AniList. Restart the connection from Tofu.",
+                  { status: configured.status }
+                );
+              }
+              return new Response(
+                "AniList connected successfully. You can close this tab and return to Tofu.",
+                {
+                  headers: {
+                    "cache-control": "no-store",
+                    "content-type": "text/plain; charset=utf-8",
+                    "referrer-policy": "no-referrer",
+                  },
+                }
+              );
+            },
+            hostname: "127.0.0.1",
+            port: Number(redirect.port),
+          }),
+      })
     );
+    // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
     if (Result.isFailure(server)) {
-      this.oauthState = null;
+      serviceOauthState = null;
       return problem(409, {
         detail:
           "The OAuth callback port is busy. Choose the same available port in Tofu and your AniList client.",
       });
     }
-    this.callbackServer = server.success;
-    this.callbackTimeout = setTimeout(() => this.stopCallback(), 600_000);
-    this.callbackTimeout.unref();
+    serviceCallbackServer = server.success;
+    serviceCallbackTimeout = setTimeout(() => serviceStopCallback(), 600_000);
+    serviceCallbackTimeout.unref();
     const url = new URL("https://anilist.co/api/v2/oauth/authorize");
     url.searchParams.set("client_id", config.clientId);
     url.searchParams.set("redirect_uri", config.redirectUri);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", state);
     return { url: url.href };
-  }
-  private stopCallback() {
-    this.authorization.close();
-    this.callbackServer?.stop(true);
-    this.callbackServer = null;
-    if (this.callbackTimeout) {
-      clearTimeout(this.callbackTimeout);
-      this.callbackTimeout = null;
+  });
+  function serviceStopCallback() {
+    serviceAuthorization.close();
+    serviceCallbackServer?.stop(true);
+    serviceCallbackServer = null;
+    if (serviceCallbackTimeout) {
+      clearTimeout(serviceCallbackTimeout);
+      serviceCallbackTimeout = null;
     }
-    this.oauthState = null;
+    serviceOauthState = null;
   }
-  /**
-   * Runs AniList requests under one controller that closing the service aborts, with a 15-second
-   * deadline. Provider failures are returned as a typed 502; `run` may return its own problems.
-   */
-  private async provider<Result>(run: (signal: AbortSignal) => Promise<Result>) {
+  const serviceProvider = Effect.fn("AniList.provider")(function* <Result>(
+    run: (signal: AbortSignal) => Effect.Effect<Result, unknown>
+  ) {
     const controller = new AbortController();
-    this.requests.add(controller);
+    serviceRequests.add(controller);
     const timeout = setTimeout(
       () => controller.abort(new DOMException("AniList request timed out", "TimeoutError")),
       15_000
     );
-    using cleanup = new DisposableStack();
-    cleanup.defer(() => {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
-    });
-    const response = await Effect.runPromise(
-      Effect.result(
-        Effect.tryPromise({
-          catch: (cause) => cause,
-          try: () => run(controller.signal),
-        })
-      )
+    const cleanup = yield* Effect.acquireRelease(
+      Effect.sync(() => new DisposableStack()),
+      (resource) => Effect.sync(() => resource.dispose())
     );
+    cleanup.defer(() => {
+      controller.abort();
+      clearTimeout(timeout);
+      serviceRequests.delete(controller);
+    });
+    const response = yield* Effect.result(run(controller.signal));
     if (Result.isFailure(response)) {
       const error = response.failure;
       if (error instanceof AniListUnavailable) {
@@ -643,84 +671,98 @@ export class AniListService {
       throw error;
     }
     return response.success;
-  }
-  async media(mediaId: number) {
-    if (this.lifecycle.closed) {
+  }, Effect.scoped);
+  const serviceMedia = Effect.fn("AniList.media")(function* (mediaId: number) {
+    if (serviceLifecycle.closed) {
       return problem(409, { detail: "AniList service closed" });
     }
-    const entry = this.entries.find((item) => item.mediaId === mediaId);
+    const entry = serviceEntries.find((item) => item.mediaId === mediaId);
     if (entry) {
       return entry as AniListMedia;
     }
-    return await this.provider(async (signal) => {
-      const { Media } = await this.sdk.Anime({ mediaId }, { accessToken: "", signal });
-      if (!Media || Media.id !== mediaId) {
-        return problem(404, { detail: "Anime not found on AniList" });
-      }
-      return catalogMedia(Media);
-    });
-  }
-  async catalog(filters: AniListCatalogFilters) {
+    return yield* serviceProvider((signal) =>
+      Effect.gen(function* () {
+        const { Media } = yield* Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => serviceSdk.Anime({ mediaId }, { accessToken: "", signal }),
+        });
+        if (!Media || Media.id !== mediaId) {
+          return problem(404, { detail: "Anime not found on AniList" });
+        }
+        return catalogMedia(Media);
+      }).pipe(Effect.scoped)
+    );
+  });
+  const serviceCatalog = Effect.fn("AniList.catalog")(function* (filters: AniListCatalogFilters) {
     const variables = catalogVariables(filters);
     if (variables instanceof ElysiaStatus) {
       return variables;
     }
-    return await this.provider(async (signal) => {
-      const { Page: page } = await this.sdk.Catalog(variables, { accessToken: "", signal });
-      if (
-        !page?.pageInfo ||
-        page.pageInfo.currentPage === null ||
-        page.pageInfo.hasNextPage === null ||
-        !page.media
-      ) {
-        return problem(502, { detail: "Invalid AniList catalog" });
-      }
-      return {
-        hasNextPage: page.pageInfo.hasNextPage,
-        media: page.media.flatMap((media) => (media ? [catalogMedia(media)] : [])),
-        page: page.pageInfo.currentPage,
-      };
-    });
-  }
-  private catalogOptionsCache: AniListCatalogOptions | null = null;
-  /**
-   * Runs an account request. `stale()` reports a returned 409 once the service closed, AniList was
-   * disabled or the account changed; callbacks check it after each provider write.
-   */
-  private async authenticatedRequest<Result>(
+    return yield* serviceProvider((signal) =>
+      Effect.gen(function* () {
+        const { Page: page } = yield* Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => serviceSdk.Catalog(variables, { accessToken: "", signal }),
+        });
+        if (
+          !page?.pageInfo ||
+          page.pageInfo.currentPage === null ||
+          page.pageInfo.hasNextPage === null ||
+          !page.media
+        ) {
+          return problem(502, { detail: "Invalid AniList catalog" });
+        }
+        return {
+          hasNextPage: page.pageInfo.hasNextPage,
+          media: page.media.flatMap((media) => (media ? [catalogMedia(media)] : [])),
+          page: page.pageInfo.currentPage,
+        };
+      }).pipe(Effect.scoped)
+    );
+  });
+  const serviceAuthenticatedRequest = Effect.fn("AniList.authenticatedRequest")(function* <Result>(
     run: (
       accessToken: string,
       signal: AbortSignal,
-      stale: () => ReturnType<AniListService["staleAccount"]>
-    ) => Promise<Result>
+      stale: () => ReturnType<typeof serviceStaleAccount>
+    ) => Effect.Effect<Result, unknown>
   ) {
-    this.checkCacheIdentity();
-    if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
+    serviceCheckCacheIdentity();
+    if (!serviceOptions.plugins.plugin("anilist").enabled || serviceLifecycle.closed) {
       return problem(409, { detail: "AniList plugin disabled" });
     }
-    const accessToken = this.options.plugins.plugin("anilist").apiKey;
+    const accessToken = serviceOptions.plugins.plugin("anilist").apiKey;
     if (!accessToken) {
       return problem(409, {
         detail: "Connect your AniList account to edit your list or favourites",
       });
     }
-    const key = this.cacheKey();
-    const stale = () => this.staleAccount(key);
-    return await this.provider(async (signal) => {
-      const result = await run(accessToken, signal, stale);
-      return stale() ?? result;
-    });
-  }
-  private staleAccount(key: string) {
-    return this.lifecycle.closed ||
-      !this.options.plugins.plugin("anilist").enabled ||
-      key !== this.cacheKey()
+    const key = serviceCacheKey();
+    const stale = () => serviceStaleAccount(key);
+    return yield* serviceProvider((signal) =>
+      Effect.gen(function* () {
+        const result = yield* run(accessToken, signal, stale);
+        return stale() ?? result;
+      }).pipe(Effect.scoped)
+    );
+  });
+  function serviceStaleAccount(key: string) {
+    return serviceLifecycle.closed ||
+      !serviceOptions.plugins.plugin("anilist").enabled ||
+      key !== serviceCacheKey()
       ? problem(409, { detail: "AniList account changed; reopen the anime editor" })
       : null;
   }
-  private async readEditor(mediaId: number, accessToken: string, signal: AbortSignal) {
-    const result = await this.sdk.Editor({ mediaId }, { accessToken, signal });
-    if (!result.Viewer?.id || (this.account && result.Viewer.id !== this.account.id)) {
+  const serviceReadEditor = Effect.fn("AniList.readEditor")(function* (
+    mediaId: number,
+    accessToken: string,
+    signal: AbortSignal
+  ) {
+    const result = yield* Effect.tryPromise({
+      catch: (cause) => cause,
+      try: () => serviceSdk.Editor({ mediaId }, { accessToken, signal }),
+    });
+    if (!result.Viewer?.id || (serviceAccount && result.Viewer.id !== serviceAccount.id)) {
       return problem(409, { detail: "Reload your AniList list after changing accounts" });
     }
     const editor = editorState(result, mediaId);
@@ -728,449 +770,513 @@ export class AniListService {
       return editor;
     }
     return { editor, result };
-  }
-  editor(mediaId: number) {
-    return this.authenticatedRequest(async (accessToken, signal) => {
-      const read = await this.readEditor(mediaId, accessToken, signal);
-      return read instanceof ElysiaStatus ? read : read.editor;
-    });
-  }
-  saveEntry(mediaId: number, body: AniListListUpdate) {
-    return this.mutateMedia(mediaId, () =>
-      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Each provider write is followed by its own account check and returned failure.
-      this.authenticatedRequest(async (accessToken, signal, stale) => {
-        const read = await this.readEditor(mediaId, accessToken, signal);
-        if (read instanceof ElysiaStatus) {
-          return read;
-        }
-        const { editor, result } = read;
-        const invalid =
-          stale() ?? validateEntryUpdate(body, editor, result.Media?.episodes ?? null);
-        if (invalid) {
-          return invalid;
-        }
-        const { SaveMediaListEntry: saved } = await this.sdk.SaveEntry(
-          {
-            ...body,
-            mediaId,
-            ...(editor.entry || body.status ? {} : { status: "PLANNING" as const }),
-          },
-          { accessToken, signal }
-        );
-        const changed = stale();
-        if (changed) {
-          return changed;
-        }
-        if (
-          !(
-            saved?.media &&
-            saved.mediaId === mediaId &&
-            isAniListStatus(saved.status) &&
-            saved.progress !== null
-          )
-        ) {
-          return problem(502, { detail: "AniList did not save the list entry" });
-        }
-        const found = new Map<number, AniListEntry>();
-        collectEntries({ hasNextChunk: false, lists: [{ entries: [saved] }] }, found);
-        const entry = found.get(mediaId);
-        if (!entry) {
-          return problem(502, { detail: "Invalid AniList list entry" });
-        }
-        this.entries = [...this.entries.filter((item) => item.mediaId !== mediaId), entry];
-        if (body.progress !== undefined) {
-          const key = `watched:${result.Viewer?.id}:${mediaId}`;
-          const episodes = Array.from({ length: entry.progress }, (_, index) => index + 1);
-          this.watched.set(key, episodes);
-          this.writeState(key, JSON.stringify(episodes));
-        }
-        this.persistEditedList();
-        const rule = this.animeRule(mediaId);
-        if (rule) {
-          const ruleSaved = await this.options.releaseAutomation.save(rule.id, {
-            ...rule,
-            afterEpisode: entry.progress,
+  });
+  const serviceEditor = Effect.fn("AniList.editor")(function* (mediaId: number) {
+    return yield* serviceAuthenticatedRequest((accessToken, signal) =>
+      Effect.gen(function* () {
+        const read = yield* serviceReadEditor(mediaId, accessToken, signal);
+        return read instanceof ElysiaStatus ? read : read.editor;
+      }).pipe(Effect.scoped)
+    );
+  });
+
+  // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceSaveEntry = Effect.fn("AniList.saveEntry")(function* (
+    mediaId: number,
+    body: AniListListUpdate
+  ) {
+    return yield* serviceMutateMedia(mediaId, () =>
+      serviceAuthenticatedRequest((accessToken, signal, stale) =>
+        Effect.gen(function* () {
+          const read = yield* serviceReadEditor(mediaId, accessToken, signal);
+          if (read instanceof ElysiaStatus) {
+            return read;
+          }
+          const { editor, result } = read;
+          const invalid =
+            stale() ?? validateEntryUpdate(body, editor, result.Media?.episodes ?? null);
+          if (invalid) {
+            return invalid;
+          }
+          const { SaveMediaListEntry: saved } = yield* Effect.tryPromise({
+            catch: (cause) => cause,
+            try: () =>
+              serviceSdk.SaveEntry(
+                {
+                  ...body,
+                  mediaId,
+                  ...(editor.entry || body.status ? {} : { status: "PLANNING" as const }),
+                },
+                { accessToken, signal }
+              ),
           });
-          if (ruleSaved instanceof ElysiaStatus) {
-            return ruleSaved;
+          const changed = stale();
+          if (changed) {
+            return changed;
           }
-        }
-        return this.snapshot();
-      })
+          if (
+            !(
+              saved?.media &&
+              saved.mediaId === mediaId &&
+              isAniListStatus(saved.status) &&
+              saved.progress !== null
+            )
+          ) {
+            return problem(502, { detail: "AniList did not save the list entry" });
+          }
+          const found = new Map<number, AniListEntry>();
+          collectEntries({ hasNextChunk: false, lists: [{ entries: [saved] }] }, found);
+          const entry = found.get(mediaId);
+          if (!entry) {
+            return problem(502, { detail: "Invalid AniList list entry" });
+          }
+          serviceEntries = [...serviceEntries.filter((item) => item.mediaId !== mediaId), entry];
+          if (body.progress !== undefined) {
+            const key = `watched:${result.Viewer?.id}:${mediaId}`;
+            const episodes = Array.from({ length: entry.progress }, (_, index) => index + 1);
+            serviceWatched.set(key, episodes);
+            serviceWriteState(key, JSON.stringify(episodes));
+          }
+          servicePersistEditedList();
+          const rule = serviceAnimeRule(mediaId);
+          if (rule) {
+            const ruleSaved = yield* serviceOptions.releaseAutomation.save(rule.id, {
+              ...rule,
+              afterEpisode: entry.progress,
+            });
+            if (ruleSaved instanceof ElysiaStatus) {
+              return ruleSaved;
+            }
+          }
+          return serviceSnapshot();
+        }).pipe(Effect.scoped)
+      )
     );
-  }
-  private persistEditedList() {
-    this.listRevision += 1;
-    if (this.cache) {
-      this.cache = { ...this.cache, entries: this.entries };
-      this.writeState("list-cache", JSON.stringify(this.cache));
+  });
+  // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
+  function servicePersistEditedList() {
+    serviceListRevision += 1;
+    if (serviceCache) {
+      serviceCache = { ...serviceCache, entries: serviceEntries };
+      serviceWriteState("list-cache", JSON.stringify(serviceCache));
     }
-    for (const subscription of this.subscriptions.values()) {
-      subscription.nextSyncAt = this.options.now();
-      this.persist(subscription);
+    for (const subscription of serviceSubscriptions.values()) {
+      subscription.nextSyncAt = serviceOptions.now();
+      servicePersist(subscription);
     }
   }
-  favourite(mediaId: number, enabled: boolean) {
-    return this.mutateMedia(mediaId, () =>
-      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Each provider write is followed by its own account check and returned failure.
-      this.authenticatedRequest(async (accessToken, signal, stale) => {
-        const read = await this.readEditor(mediaId, accessToken, signal);
-        if (read instanceof ElysiaStatus) {
-          return read;
-        }
-        const { editor } = read;
-        const changed = stale();
-        if (changed) {
-          return changed;
-        }
-        if (editor.isFavourite === null) {
-          return problem(502, { detail: "AniList favourite state unavailable" });
-        }
-        if (editor.isFavourite === enabled) {
+
+  // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceFavourite = Effect.fn("AniList.favourite")(function* (
+    mediaId: number,
+    enabled: boolean
+  ) {
+    return yield* serviceMutateMedia(mediaId, () =>
+      serviceAuthenticatedRequest((accessToken, signal, stale) =>
+        Effect.gen(function* () {
+          const read = yield* serviceReadEditor(mediaId, accessToken, signal);
+          if (read instanceof ElysiaStatus) {
+            return read;
+          }
+          const { editor } = read;
+          const changed = stale();
+          if (changed) {
+            return changed;
+          }
+          if (editor.isFavourite === null) {
+            return problem(502, { detail: "AniList favourite state unavailable" });
+          }
+          if (editor.isFavourite === enabled) {
+            return { isFavourite: enabled };
+          }
+          if (editor.isFavouriteBlocked) {
+            return problem(409, { detail: "AniList does not allow favouriting this anime" });
+          }
+          yield* Effect.tryPromise({
+            catch: (cause) => cause,
+            try: () => serviceSdk.ToggleAnimeFavourite({ mediaId }, { accessToken, signal }),
+          });
+          const toggled = stale();
+          if (toggled) {
+            return toggled;
+          }
+          const updated = yield* serviceReadEditor(mediaId, accessToken, signal);
+          if (updated instanceof ElysiaStatus) {
+            return updated;
+          }
+          if (updated.editor.isFavourite !== enabled) {
+            return problem(502, { detail: "AniList did not update the favourite" });
+          }
           return { isFavourite: enabled };
-        }
-        if (editor.isFavouriteBlocked) {
-          return problem(409, { detail: "AniList does not allow favouriting this anime" });
-        }
-        await this.sdk.ToggleAnimeFavourite({ mediaId }, { accessToken, signal });
-        const toggled = stale();
-        if (toggled) {
-          return toggled;
-        }
-        const updated = await this.readEditor(mediaId, accessToken, signal);
-        if (updated instanceof ElysiaStatus) {
-          return updated;
-        }
-        if (updated.editor.isFavourite !== enabled) {
-          return problem(502, { detail: "AniList did not update the favourite" });
-        }
-        return { isFavourite: enabled };
-      })
+        }).pipe(Effect.scoped)
+      )
     );
-  }
-  deleteEntry(mediaId: number) {
-    return this.mutateMedia(mediaId, () =>
-      this.authenticatedRequest(async (accessToken, signal, stale) => {
-        const read = await this.readEditor(mediaId, accessToken, signal);
-        if (read instanceof ElysiaStatus) {
-          return read;
-        }
-        const { editor } = read;
-        const changed = stale();
-        if (changed) {
-          return changed;
-        }
-        if (editor.entry) {
-          const { DeleteMediaListEntry } = await this.sdk.DeleteEntry(
-            { id: editor.entry.id },
-            { accessToken, signal }
-          );
-          const deleted = stale();
-          if (deleted) {
-            return deleted;
+  });
+  // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
+
+  // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceDeleteEntry = Effect.fn("AniList.deleteEntry")(function* (mediaId: number) {
+    return yield* serviceMutateMedia(mediaId, () =>
+      serviceAuthenticatedRequest((accessToken, signal, stale) =>
+        Effect.gen(function* () {
+          const read = yield* serviceReadEditor(mediaId, accessToken, signal);
+          if (read instanceof ElysiaStatus) {
+            return read;
           }
-          if (DeleteMediaListEntry?.deleted !== true) {
-            return problem(502, { detail: "AniList did not delete the list entry" });
+          const { editor } = read;
+          const changed = stale();
+          if (changed) {
+            return changed;
           }
-        }
-        const rule = this.animeRule(mediaId);
-        if (rule) {
-          this.options.automation.enableRule(rule.id, false);
-        }
-        this.entries = this.entries.filter((item) => item.mediaId !== mediaId);
-        const watchedKey = `watched:${this.account?.id}:${mediaId}`;
-        this.watched.delete(watchedKey);
-        this.db.delete(anilistState).where(eq(anilistState.id, watchedKey)).run();
-        this.persistEditedList();
-        return this.snapshot();
-      })
+          if (editor.entry) {
+            const entryId = editor.entry.id;
+            const { DeleteMediaListEntry } = yield* Effect.tryPromise({
+              catch: (cause) => cause,
+              try: () => serviceSdk.DeleteEntry({ id: entryId }, { accessToken, signal }),
+            });
+            const deleted = stale();
+            if (deleted) {
+              return deleted;
+            }
+            if (DeleteMediaListEntry?.deleted !== true) {
+              return problem(502, { detail: "AniList did not delete the list entry" });
+            }
+          }
+          const rule = serviceAnimeRule(mediaId);
+          if (rule) {
+            serviceOptions.automation.enableRule(rule.id, false);
+          }
+          serviceEntries = serviceEntries.filter((item) => item.mediaId !== mediaId);
+          const watchedKey = `watched:${serviceAccount?.id}:${mediaId}`;
+          serviceWatched.delete(watchedKey);
+          serviceDb.delete(anilistState).where(eq(anilistState.id, watchedKey)).run();
+          servicePersistEditedList();
+          return serviceSnapshot();
+        }).pipe(Effect.scoped)
+      )
     );
-  }
-  async catalogOptions() {
-    if (this.catalogOptionsCache) {
-      return this.catalogOptionsCache;
+  });
+  // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
+  const serviceCatalogOptions = Effect.fn("AniList.catalogOptions")(function* () {
+    if (serviceCatalogOptionsCache) {
+      return serviceCatalogOptionsCache;
     }
-    return await this.provider(async (signal) => {
-      const result = await this.sdk.CatalogOptions({}, { accessToken: "", signal });
-      this.catalogOptionsCache = {
-        genres: (result.GenreCollection ?? [])
-          .filter((genre): genre is string => genre !== null)
-          .toSorted((a, b) => a.localeCompare(b, "en-US")),
-        streaming: (result.ExternalLinkSourceCollection ?? [])
-          .flatMap((link) =>
-            link?.type === "STREAMING" && !link.isDisabled ? [{ id: link.id, name: link.site }] : []
-          )
-          .toSorted((a, b) => a.name.localeCompare(b.name, "en-US")),
-        tags: (result.MediaTagCollection ?? [])
-          .flatMap((tag) =>
-            tag && tag.isAdult === false && tag.category !== null
-              ? [{ category: tag.category, isAdult: tag.isAdult, name: tag.name }]
-              : []
-          )
-          .toSorted((a, b) => a.name.localeCompare(b.name, "en-US")),
-      };
-      return this.catalogOptionsCache;
-    });
-  }
-  private async authorize(token: string, current: () => boolean) {
-    const identity = await this.provider(async (signal) => {
-      const { Viewer } = await this.sdk.Viewer({}, { accessToken: token, signal });
-      return Viewer;
-    });
+    return yield* serviceProvider((signal) =>
+      Effect.gen(function* () {
+        const result = yield* Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => serviceSdk.CatalogOptions({}, { accessToken: "", signal }),
+        });
+        serviceCatalogOptionsCache = {
+          genres: (result.GenreCollection ?? [])
+            .filter((genre): genre is string => genre !== null)
+            .toSorted((a, b) => a.localeCompare(b, "en-US")),
+          streaming: (result.ExternalLinkSourceCollection ?? [])
+            .flatMap((link) =>
+              link?.type === "STREAMING" && !link.isDisabled
+                ? [{ id: link.id, name: link.site }]
+                : []
+            )
+            .toSorted((a, b) => a.name.localeCompare(b.name, "en-US")),
+          tags: (result.MediaTagCollection ?? [])
+            .flatMap((tag) =>
+              tag && tag.isAdult === false && tag.category !== null
+                ? [{ category: tag.category, isAdult: tag.isAdult, name: tag.name }]
+                : []
+            )
+            .toSorted((a, b) => a.name.localeCompare(b.name, "en-US")),
+        };
+        return serviceCatalogOptionsCache;
+      }).pipe(Effect.scoped)
+    );
+  });
+  const serviceAuthorize = Effect.fn("AniList.authorize")(function* (
+    token: string,
+    current: () => boolean
+  ) {
+    const identity = yield* serviceProvider((signal) =>
+      Effect.gen(function* () {
+        const { Viewer } = yield* Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => serviceSdk.Viewer({}, { accessToken: token, signal }),
+        });
+        return Viewer;
+      }).pipe(Effect.scoped)
+    );
     if (identity instanceof ElysiaStatus) {
       return identity;
     }
-    if (!(identity?.id && identity.name && current()) || this.lifecycle.closed) {
+    if (!(identity?.id && identity.name && current()) || serviceLifecycle.closed) {
       return problem(400, { detail: "AniList authorization expired" });
     }
-    this.options.plugins.configure("anilist", { apiKey: token, enabled: true });
-    this.entries = [];
-    this.account = { id: identity.id, name: identity.name };
-    this.writeState("profile", JSON.stringify(this.account));
-    this.connectedUser = identity.name;
-    return await this.list();
-  }
-  async receiveAuthorizationUrl(input: string, deviceId?: string) {
-    const received = await this.authorization.receiveUrl(input, deviceId);
+    serviceOptions.plugins.configure("anilist", { apiKey: token, enabled: true });
+    serviceEntries = [];
+    serviceAccount = { id: identity.id, name: identity.name };
+    serviceWriteState("profile", JSON.stringify(serviceAccount));
+    serviceConnectedUser = identity.name;
+    return yield* serviceList();
+  });
+  const serviceReceiveAuthorizationUrl = Effect.fn("AniList.receiveAuthorizationUrl")(function* (
+    input: string,
+    deviceId?: string
+  ) {
+    const received = yield* Effect.promise(() => serviceAuthorization.receiveUrl(input, deviceId));
     if (received instanceof ElysiaStatus) {
       return received;
     }
-    return this.snapshot();
+    return serviceSnapshot();
+  });
+  function serviceCancelAuthorization() {
+    serviceStopCallback();
+    return serviceSnapshot();
   }
-
-  cancelAuthorization() {
-    this.stopCallback();
-    return this.snapshot();
-  }
-  needsRefresh() {
-    this.checkCacheIdentity();
+  function serviceNeedsRefresh() {
+    serviceCheckCacheIdentity();
     return (
-      this.options.plugins.plugin("anilist").enabled &&
-      !this.lifecycle.closed &&
-      Boolean(this.options.plugins.plugin("anilist").apiKey || this.config.userName) &&
-      this.options.now() >= this.retryAt &&
-      (!this.cache || this.options.now() - this.cache.updatedAt >= 5 * 60_000)
+      serviceOptions.plugins.plugin("anilist").enabled &&
+      !serviceLifecycle.closed &&
+      Boolean(serviceOptions.plugins.plugin("anilist").apiKey || serviceConfig.userName) &&
+      serviceOptions.now() >= serviceRetryAt &&
+      (!serviceCache || serviceOptions.now() - serviceCache.updatedAt >= 5 * 60_000)
     );
   }
-  refresh() {
-    return this.needsRefresh() ? this.list() : Promise.resolve(this.snapshot());
-  }
-  /** Loads the account's list once per account at a time; failures are recorded and returned. */
-  list(): Promise<AniListState | ListFailure> {
-    this.checkCacheIdentity();
-    const key = this.cacheKey();
-    if (this.listFlight?.key === key) {
-      return this.listFlight.promise;
+  const serviceRefresh = Effect.fn("AniList.refresh")(function* () {
+    return serviceNeedsRefresh() ? yield* serviceList() : serviceSnapshot();
+  });
+  const serviceList = Effect.fn("AniList.list")(function* () {
+    serviceCheckCacheIdentity();
+    const key = serviceCacheKey();
+    if (serviceListFlight && serviceListFlight.key === key) {
+      return yield* serviceListFlight.operation;
     }
-    this.refreshError = null;
-    const reservation = Promise.withResolvers<AniListState | ListFailure>();
-    this.listFlight = { key, promise: reservation.promise };
-    const load = async () => {
-      using cleanup = new DisposableStack();
-      cleanup.defer(() => {
-        if (this.listFlight?.promise === reservation.promise) {
-          this.listFlight = null;
-        }
-      });
-      const loaded = await Effect.runPromise(
-        Effect.result(
-          Effect.tryPromise({
-            catch: (cause) => cause,
-            try: async () => {
-              const list = await this.loadList(key, this.options.plugins.plugin("anilist").apiKey);
-              return list instanceof ElysiaStatus ? list : this.snapshot();
-            },
+    serviceRefreshError = null;
+    const operation = yield* Effect.cached(
+      serviceLoadList(key, serviceOptions.plugins.plugin("anilist").apiKey).pipe(
+        Effect.map((result) => {
+          if (result instanceof ElysiaStatus) {
+            if (key === serviceCacheKey() && !serviceLifecycle.closed) {
+              serviceRefreshError = result.response.detail;
+              serviceRetryAt = serviceOptions.now() + 30_000;
+            }
+            return result;
+          }
+          return serviceSnapshot();
+        }),
+        Effect.tapCause((cause) =>
+          Effect.sync(() => {
+            if (key !== serviceCacheKey() || serviceLifecycle.closed) {
+              return;
+            }
+            const error = Cause.squash(cause);
+            serviceRefreshError =
+              error instanceof Error ? error.message : "Unable to refresh AniList";
+            serviceRetryAt = serviceOptions.now() + 30_000;
+          })
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (serviceListFlight?.operation === operation) {
+              serviceListFlight = null;
+            }
           })
         )
-      );
-      if (Result.isSuccess(loaded)) {
-        const failed = loaded.success;
-        if (failed instanceof ElysiaStatus) {
-          if (key === this.cacheKey() && !this.lifecycle.closed) {
-            this.refreshError = failed.response.detail;
-            this.retryAt = this.options.now() + 30_000;
-          }
-          reservation.resolve(failed);
-          return;
-        }
-        reservation.resolve(failed);
-      } else {
-        const error = loaded.failure;
-        if (key === this.cacheKey() && !this.lifecycle.closed) {
-          this.refreshError = error instanceof Error ? error.message : "Unable to refresh AniList";
-          this.retryAt = this.options.now() + 30_000;
-        }
-        reservation.reject(error);
-      }
-    };
-    void load();
-    return reservation.promise;
-  }
-  private async loadList(key: string, token: string) {
-    const revision = this.listRevision;
-    if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
+      )
+    );
+    serviceListFlight = { key, operation };
+    return yield* operation;
+  });
+
+  // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceLoadList = Effect.fn("AniList.loadList")(function* (key: string, token: string) {
+    const revision = serviceListRevision;
+    if (!serviceOptions.plugins.plugin("anilist").enabled || serviceLifecycle.closed) {
       return problem(409, { detail: "AniList plugin disabled" });
     }
-    if (!(this.options.plugins.plugin("anilist").apiKey || this.config.userName)) {
+    if (!(serviceOptions.plugins.plugin("anilist").apiKey || serviceConfig.userName)) {
       return problem(400, { detail: "Connect AniList or enter your public account name" });
     }
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Paging, identity and staleness checks belong to one list snapshot.
-    return await this.provider(async (signal) => {
-      const identity = token
-        ? (await this.sdk.Viewer({}, { accessToken: token, signal })).Viewer
-        : (await this.sdk.User({ name: this.config.userName }, { accessToken: token, signal }))
-            .User;
-      if (!identity?.id) {
-        return problem(404, { detail: "AniList account not found" });
-      }
-      const found = new Map<number, AniListEntry>();
-      let more = true;
-      for (let chunk = 1; more && chunk <= 30; chunk += 1) {
-        // biome-ignore lint/performance/noAwaitInLoops: AniList chunks are sequential and must stop when hasNextChunk is false.
-        const response = await this.sdk.Library(
-          { chunk, userId: identity.id },
-          { accessToken: token, signal }
-        );
-        const collection = response.MediaListCollection;
-        if (
-          !(collection && Array.isArray(collection.lists)) ||
-          typeof collection.hasNextChunk !== "boolean"
-        ) {
-          return problem(502, { detail: "Invalid AniList list" });
+    // Paging, identity and staleness checks belong to one list snapshot.
+    return yield* serviceProvider((signal) =>
+      Effect.gen(function* () {
+        const identity = token
+          ? (yield* Effect.tryPromise({
+              catch: (cause) => cause,
+              try: () => serviceSdk.Viewer({}, { accessToken: token, signal }),
+            })).Viewer
+          : (yield* Effect.tryPromise({
+              catch: (cause) => cause,
+              try: () =>
+                serviceSdk.User({ name: serviceConfig.userName }, { accessToken: token, signal }),
+            })).User;
+        if (!identity?.id) {
+          return problem(404, { detail: "AniList account not found" });
         }
-        more = collection.hasNextChunk;
-        collectEntries(collection, found);
-      }
-      if (more) {
-        return problem(400, { detail: "AniList list too large for a full sync" });
-      }
-      if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
-        return problem(409, { detail: "AniList plugin disabled" });
-      }
-      if (key !== this.cacheKey()) {
-        return problem(409, { detail: "The AniList account changed during refresh" });
-      }
-      if (revision !== this.listRevision) {
+        const found = new Map<number, AniListEntry>();
+        let more = true;
+        for (let chunk = 1; more && chunk <= 30; chunk += 1) {
+          // AniList chunks are sequential and must stop when hasNextChunk is false.
+          const response = yield* Effect.tryPromise({
+            catch: (cause) => cause,
+            try: () =>
+              serviceSdk.Library({ chunk, userId: identity.id }, { accessToken: token, signal }),
+          });
+          const collection = response.MediaListCollection;
+          if (
+            !(collection && Array.isArray(collection.lists)) ||
+            typeof collection.hasNextChunk !== "boolean"
+          ) {
+            return problem(502, { detail: "Invalid AniList list" });
+          }
+          more = collection.hasNextChunk;
+          collectEntries(collection, found);
+        }
+        if (more) {
+          return problem(400, { detail: "AniList list too large for a full sync" });
+        }
+        if (!serviceOptions.plugins.plugin("anilist").enabled || serviceLifecycle.closed) {
+          return problem(409, { detail: "AniList plugin disabled" });
+        }
+        if (key !== serviceCacheKey()) {
+          return problem(409, { detail: "The AniList account changed during refresh" });
+        }
+        if (revision !== serviceListRevision) {
+          return null;
+        }
+        serviceEntries = [...found.values()];
+        serviceAccount = identity;
+        serviceWriteState("profile", JSON.stringify(identity));
+        serviceConnectedUser = identity.name;
+        serviceCache = {
+          account: identity,
+          entries: serviceEntries,
+          key,
+          updatedAt: serviceOptions.now(),
+        };
+        serviceWriteState("list-cache", JSON.stringify(serviceCache));
+        serviceRetryAt = 0;
+        serviceRefreshError = null;
         return null;
-      }
-      this.entries = [...found.values()];
-      this.account = identity;
-      this.writeState("profile", JSON.stringify(identity));
-      this.connectedUser = identity.name;
-      this.cache = { account: identity, entries: this.entries, key, updatedAt: this.options.now() };
-      this.writeState("list-cache", JSON.stringify(this.cache));
-      this.retryAt = 0;
-      this.refreshError = null;
-      return null;
-    });
-  }
-  private accepted(mediaId: number) {
+      }).pipe(Effect.scoped)
+    );
+  });
+  // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
+  function serviceAccepted(mediaId: number) {
     return (
-      this.account !== null &&
-      this.selections.get(`selection:${this.account.id}:${mediaId}`) === true
+      serviceAccount !== null &&
+      serviceSelections.get(`selection:${serviceAccount.id}:${mediaId}`) === true
     );
   }
-  entry(mediaId: number) {
-    if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
+  function serviceEntry(mediaId: number) {
+    if (!serviceOptions.plugins.plugin("anilist").enabled || serviceLifecycle.closed) {
       return problem(409, { detail: "AniList plugin disabled" });
     }
-    const entry = this.entries.find((item) => item.mediaId === mediaId);
-    if (!(entry && this.account)) {
+    const entry = serviceEntries.find((item) => item.mediaId === mediaId);
+    if (!(entry && serviceAccount)) {
       return problem(404, { detail: "Load this anime from your AniList list first" });
     }
     return entry;
   }
-  private completedEpisodes(entry: AniListEntry) {
-    const local = this.watched.get(`watched:${this.account?.id}:${entry.mediaId}`) ?? [];
+  function serviceCompletedEpisodes(entry: AniListEntry) {
+    const local = serviceWatched.get(`watched:${serviceAccount?.id}:${entry.mediaId}`) ?? [];
     return [
       ...new Set([...Array.from({ length: entry.progress }, (_, index) => index + 1), ...local]),
     ].sort((a, b) => a - b);
   }
-  private animeRule(mediaId: number) {
+  function serviceAnimeRule(mediaId: number) {
     const id =
-      this.animeRules.get(`anime-rule:${this.account?.id}:${mediaId}`) ??
-      [...this.subscriptions.values()]
-        .filter((subscription) => subscription.userId === this.account?.id)
+      serviceAnimeRules.get(`anime-rule:${serviceAccount?.id}:${mediaId}`) ??
+      [...serviceSubscriptions.values()]
+        .filter((subscription) => subscription.userId === serviceAccount?.id)
         .flatMap((subscription) => subscription.bindings)
         .find((binding) => binding.mediaId === mediaId)?.ruleId;
-    return id ? this.options.automation.ruleSnapshot(id) : undefined;
+    return id ? serviceOptions.automation.ruleSnapshot(id) : undefined;
   }
-  prepareAutomation(mediaId: number, draft: AutomationDraft) {
-    const entry = this.entry(mediaId);
+  function servicePrepareAutomation(mediaId: number, draft: AutomationDraft) {
+    const entry = serviceEntry(mediaId);
     if (entry instanceof ElysiaStatus) {
       return entry;
     }
-    const accountId = this.account?.id;
+    const accountId = serviceAccount?.id;
     if (accountId === undefined) {
       return problem(404, { detail: "Load this anime from your AniList list first" });
     }
     return {
       accountId,
       draft: { ...draft, afterEpisode: entry.progress, aliases: entry.aliases, title: entry.title },
-      id: this.animeRule(mediaId)?.id ?? null,
+      id: serviceAnimeRule(mediaId)?.id ?? null,
       key: `anime-rule:${accountId}:${mediaId}`,
     };
   }
-  writeAutomationLink(
+  function serviceWriteAutomationLink(
     tx: DatabaseConnection,
     input: { accountId: number; key: string },
     ruleId: string
   ) {
-    if (this.lifecycle.closed || this.account?.id !== input.accountId) {
+    if (serviceLifecycle.closed || serviceAccount?.id !== input.accountId) {
       return problem(409, { detail: "AniList account changed; reload your list" });
     }
-    this.writeState(input.key, JSON.stringify(ruleId), tx);
+    serviceWriteState(input.key, JSON.stringify(ruleId), tx);
     return null;
   }
-  completeEpisode(
+  const serviceCompleteEpisode = Effect.fn("AniList.completeEpisode")(function* (
     mediaId: number,
     episode: number,
     completed: boolean,
     expectedAccountId?: number
   ) {
-    return this.mutateMedia(mediaId, () =>
-      this.updateEpisode(mediaId, episode, completed, expectedAccountId)
+    return yield* serviceMutateMedia(mediaId, () =>
+      serviceUpdateEpisode(mediaId, episode, completed, expectedAccountId)
     );
-  }
-  private async mutateMedia<Result>(mediaId: number, run: () => Promise<Result>): Promise<Result> {
-    const previous = this.episodeRuns.get(mediaId);
+  });
+  const serviceMutateMedia = Effect.fn("AniList.mutateMedia")(function* <Result>(
+    mediaId: number,
+    run: () => Effect.Effect<Result>
+  ) {
+    const previous = serviceEpisodeRuns.get(mediaId);
     const reservation = Promise.withResolvers<void>();
-    this.episodeRuns.set(mediaId, reservation.promise);
-    using cleanup = new DisposableStack();
+    serviceEpisodeRuns.set(mediaId, reservation.promise);
+    const cleanup = yield* Effect.acquireRelease(
+      Effect.sync(() => new DisposableStack()),
+      (resource) => Effect.sync(() => resource.dispose())
+    );
     cleanup.defer(() => {
-      if (this.episodeRuns.get(mediaId) === reservation.promise) {
-        this.episodeRuns.delete(mediaId);
+      if (serviceEpisodeRuns.get(mediaId) === reservation.promise) {
+        serviceEpisodeRuns.delete(mediaId);
       }
       reservation.resolve();
     });
-    await previous;
-    return await run();
-  }
-  private async updateEpisode(
+    if (previous) {
+      yield* Effect.promise(() => previous);
+    }
+    return yield* run();
+  }, Effect.scoped);
+
+  // biome-ignore-start lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceUpdateEpisode = Effect.fn("AniList.updateEpisode")(function* (
     mediaId: number,
     episode: number,
     completed: boolean,
     expectedAccountId?: number
   ) {
-    if (expectedAccountId !== undefined && this.account?.id !== expectedAccountId) {
+    if (expectedAccountId !== undefined && serviceAccount?.id !== expectedAccountId) {
       return problem(409, { detail: "AniList account changed; reopen the player from your list" });
     }
-    if (!this.options.plugins.plugin("anilist").enabled || this.lifecycle.closed) {
+    if (!serviceOptions.plugins.plugin("anilist").enabled || serviceLifecycle.closed) {
       return problem(409, { detail: "AniList plugin disabled" });
     }
-    const entry = this.entries.find((item) => item.mediaId === mediaId);
-    if (!(entry && this.account)) {
+    const entry = serviceEntries.find((item) => item.mediaId === mediaId);
+    if (!(entry && serviceAccount)) {
       return problem(404, { detail: "Load this anime from your AniList list first" });
     }
-    const accessToken = this.options.plugins.plugin("anilist").apiKey;
+    const accessToken = serviceOptions.plugins.plugin("anilist").apiKey;
     if (!accessToken) {
       return problem(409, { detail: "Connect your AniList account to sync episode progress" });
     }
     if (entry.episodes !== null && episode > entry.episodes) {
       return problem(400, { detail: "Episode exceeds the anime episode count" });
     }
-    const accountId = this.account?.id;
-    const watched = new Set(this.completedEpisodes(entry));
+    const accountId = serviceAccount?.id;
+    const watched = new Set(serviceCompletedEpisodes(entry));
     if (completed) {
       watched.add(episode);
     } else {
@@ -1180,72 +1286,79 @@ export class AniListService {
     while (watched.has(progress + 1)) {
       progress += 1;
     }
-    return await this.provider(async (signal) => {
-      const { Viewer } = await this.sdk.Viewer({}, { accessToken, signal });
-      if (
-        Viewer?.id !== accountId ||
-        this.options.plugins.plugin("anilist").apiKey !== accessToken
-      ) {
-        return problem(409, { detail: "Reload your AniList list after changing accounts" });
-      }
-      if (progress !== entry.progress) {
-        const { SaveMediaListEntry } = await this.sdk.SaveProgress(
-          { mediaId, progress },
-          { accessToken, signal }
+    return yield* serviceProvider((signal) =>
+      Effect.gen(function* () {
+        const { Viewer } = yield* Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => serviceSdk.Viewer({}, { accessToken, signal }),
+        });
+        if (
+          Viewer?.id !== accountId ||
+          serviceOptions.plugins.plugin("anilist").apiKey !== accessToken
+        ) {
+          return problem(409, { detail: "Reload your AniList list after changing accounts" });
+        }
+        if (progress !== entry.progress) {
+          const { SaveMediaListEntry } = yield* Effect.tryPromise({
+            catch: (cause) => cause,
+            try: () => serviceSdk.SaveProgress({ mediaId, progress }, { accessToken, signal }),
+          });
+          if (SaveMediaListEntry?.progress !== progress) {
+            return problem(502, { detail: "AniList did not save the episode progress" });
+          }
+        }
+        // Shutdown can change the lifecycle while provider effects are suspended.
+        if (
+          serviceLifecycle.closed ||
+          !serviceOptions.plugins.plugin("anilist").enabled ||
+          serviceAccount?.id !== accountId
+        ) {
+          return problem(409, {
+            detail: "AniList account changed during episode sync; reload the list",
+          });
+        }
+        const key = `watched:${accountId}:${mediaId}`;
+        const episodes = [...watched].sort((a, b) => a - b);
+        serviceWatched.set(key, episodes);
+        serviceWriteState(key, JSON.stringify(episodes));
+        serviceEntries = serviceEntries.map((item) =>
+          item.mediaId === mediaId ? { ...item, progress } : item
         );
-        if (SaveMediaListEntry?.progress !== progress) {
-          return problem(502, { detail: "AniList did not save the episode progress" });
+        serviceListRevision += 1;
+        if (serviceCache) {
+          serviceCache = { ...serviceCache, entries: serviceEntries };
+          serviceWriteState("list-cache", JSON.stringify(serviceCache));
         }
-      }
-      if (
-        this.lifecycle.closed ||
-        !this.options.plugins.plugin("anilist").enabled ||
-        this.account?.id !== accountId
-      ) {
-        return problem(409, {
-          detail: "AniList account changed during episode sync; reload the list",
-        });
-      }
-      const key = `watched:${accountId}:${mediaId}`;
-      const episodes = [...watched].sort((a, b) => a - b);
-      this.watched.set(key, episodes);
-      this.writeState(key, JSON.stringify(episodes));
-      this.entries = this.entries.map((item) =>
-        item.mediaId === mediaId ? { ...item, progress } : item
-      );
-      this.listRevision += 1;
-      if (this.cache) {
-        this.cache = { ...this.cache, entries: this.entries };
-        this.writeState("list-cache", JSON.stringify(this.cache));
-      }
-      const rule = this.animeRule(mediaId);
-      if (rule) {
-        const saved = await this.options.releaseAutomation.save(rule.id, {
-          ...rule,
-          afterEpisode: progress,
-        });
-        if (saved instanceof ElysiaStatus) {
-          return saved;
+        const rule = serviceAnimeRule(mediaId);
+        if (rule) {
+          const saved = yield* serviceOptions.releaseAutomation.save(rule.id, {
+            ...rule,
+            afterEpisode: progress,
+          });
+          if (saved instanceof ElysiaStatus) {
+            return saved;
+          }
         }
-      }
-      for (const subscription of this.subscriptions.values()) {
-        subscription.nextSyncAt = this.options.now();
-        this.persist(subscription);
-      }
-      return this.snapshot();
-    });
-  }
-  previewThreads(basePath: string, statuses: AniListStatus[]) {
+        for (const subscription of serviceSubscriptions.values()) {
+          subscription.nextSyncAt = serviceOptions.now();
+          servicePersist(subscription);
+        }
+        return serviceSnapshot();
+      }).pipe(Effect.scoped)
+    );
+  });
+  // biome-ignore-end lint/complexity/noExcessiveCognitiveComplexity: End of the existing operation.
+  function servicePreviewThreads(basePath: string, statuses: AniListStatus[]) {
     if (!isAbsolute(basePath)) {
       return problem(400, { detail: "Enter an absolute root folder path" });
     }
-    const { destinations } = this.options.engine.snapshot(null, false);
+    const { destinations } = serviceOptions.engine.snapshot(null, false);
     const trackedStatuses = new Set(statuses);
-    return this.entries
-      .filter((entry) => trackedStatuses.has(entry.status) && this.accepted(entry.mediaId))
+    return serviceEntries
+      .filter((entry) => trackedStatuses.has(entry.status) && serviceAccepted(entry.mediaId))
       .map((entry): AniListThreadProposal => {
         const folder = animeFolder(entry);
-        const collision = this.entries.some(
+        const collision = serviceEntries.some(
           (other) => other.mediaId !== entry.mediaId && animeFolder(other) === folder
         );
         const downloadPath = join(basePath, collision ? `${folder}-${entry.mediaId}` : folder);
@@ -1260,36 +1373,36 @@ export class AniListService {
         };
       });
   }
-  writeSelection(tx: DatabaseConnection, mediaIds: number[], enabled: boolean) {
+  function serviceWriteSelection(tx: DatabaseConnection, mediaIds: number[], enabled: boolean) {
     const selectedIds = new Set(mediaIds);
     if (
-      !this.account ||
-      mediaIds.some((id) => !this.entries.some((entry) => entry.mediaId === id))
+      !serviceAccount ||
+      mediaIds.some((id) => !serviceEntries.some((entry) => entry.mediaId === id))
     ) {
       return problem(400, { detail: "Load the AniList list before choosing its titles" });
     }
     for (const mediaId of mediaIds) {
-      this.writeState(`selection:${this.account.id}:${mediaId}`, JSON.stringify(enabled), tx);
+      serviceWriteState(`selection:${serviceAccount.id}:${mediaId}`, JSON.stringify(enabled), tx);
     }
-    for (const current of this.subscriptions.values()) {
+    for (const current of serviceSubscriptions.values()) {
       const subscription = structuredClone(current);
       for (const binding of subscription.bindings) {
         if (!enabled && selectedIds.has(binding.mediaId)) {
-          this.options.automation.enableRule(binding.ruleId, false, tx);
+          serviceOptions.automation.enableRule(binding.ruleId, false, tx);
           binding.active = false;
         }
       }
-      subscription.nextSyncAt = this.options.now();
-      this.writeState(subscription.id, JSON.stringify(subscription), tx);
+      subscription.nextSyncAt = serviceOptions.now();
+      serviceWriteState(subscription.id, JSON.stringify(subscription), tx);
     }
     return { enabled, mediaIds };
   }
-  private persist(subscription: AniListSubscription, connection?: DatabaseConnection) {
-    this.subscriptions.set(subscription.id, subscription);
-    this.writeState(subscription.id, JSON.stringify(subscription), connection);
+  function servicePersist(subscription: AniListSubscription, connection?: DatabaseConnection) {
+    serviceSubscriptions.set(subscription.id, subscription);
+    serviceWriteState(subscription.id, JSON.stringify(subscription), connection);
   }
-  reassignDestination(id: string, connection?: DatabaseConnection) {
-    for (const subscription of this.subscriptions.values()) {
+  function serviceReassignDestination(id: string, connection?: DatabaseConnection) {
+    for (const subscription of serviceSubscriptions.values()) {
       if (subscription.template.destinationId === id) {
         subscription.template.destinationId = "default";
       }
@@ -1300,22 +1413,22 @@ export class AniListService {
           }
         }
       }
-      this.persist(subscription, connection);
+      servicePersist(subscription, connection);
     }
   }
-  writeSubscription(
+  function serviceWriteSubscription(
     tx: DatabaseConnection,
     input: Pick<
       AniListSubscription,
       "template" | "statuses" | "enabled" | "intervalMinutes" | "organization"
     >
   ) {
-    const { destinations } = this.options.engine.snapshot(null, false);
+    const { destinations } = serviceOptions.engine.snapshot(null, false);
     if (!destinations.some((destination) => destination.id === input.template.destinationId)) {
       return problem(400, { detail: "Unknown destination" });
     }
     if (input.organization?.mode === "per-anime") {
-      const preview = this.previewThreads(input.organization.basePath, input.statuses);
+      const preview = servicePreviewThreads(input.organization.basePath, input.statuses);
       if (preview instanceof ElysiaStatus) {
         return preview;
       }
@@ -1339,75 +1452,66 @@ export class AniListService {
       error: null,
       id: crypto.randomUUID(),
       lastSyncAt: null,
-      nextSyncAt: this.options.now(),
-      userId: this.account?.id,
+      nextSyncAt: serviceOptions.now(),
+      userId: serviceAccount?.id,
     };
-    this.writeState(subscription.id, JSON.stringify(subscription), tx);
+    serviceWriteState(subscription.id, JSON.stringify(subscription), tx);
     return subscription;
   }
-  sync(id: string) {
-    const pending = this.runs.get(id);
+  const serviceSync = Effect.fn("AniList.sync")(function* (id: string) {
+    const pending = serviceRuns.get(id);
     if (pending) {
-      return pending;
+      return yield* pending;
     }
-    const subscription = this.subscriptions.get(id);
+    const subscription = serviceSubscriptions.get(id);
     if (!subscription) {
-      return Promise.resolve(problem(404, { detail: "Unknown AniList tracking" }));
+      return problem(404, { detail: "Unknown AniList tracking" });
     }
-    const reservation = Promise.withResolvers<Awaited<ReturnType<AniListService["reconcile"]>>>();
-    this.runs.set(id, reservation.promise);
-    const interrupted = () => {
-      if (!this.lifecycle.closed && this.subscriptions.get(id) === subscription) {
-        subscription.error = "AniList sync interrupted; retry or check the connection";
-        subscription.nextSyncAt = this.options.now() + 60_000;
-        this.persist(subscription);
-      }
-      return this.snapshot();
-    };
-    const reconcile = async () => {
-      using cleanup = new DisposableStack();
-      cleanup.defer(() => {
-        if (this.runs.get(id) === reservation.promise) {
-          this.runs.delete(id);
-        }
-      });
-      const reconciled = await Effect.runPromise(
-        Effect.result(
-          Effect.tryPromise({
-            catch: (cause) => cause,
-            try: async () => {
-              const state = await this.reconcile(subscription);
-              if (state instanceof ElysiaStatus) {
-                interrupted();
-              }
-              return state;
-            },
+    const task = yield* Effect.cached(
+      serviceReconcile(subscription).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            if (
+              result instanceof ElysiaStatus &&
+              !serviceLifecycle.closed &&
+              serviceSubscriptions.get(id) === subscription
+            ) {
+              subscription.error = "AniList sync interrupted; retry or check the connection";
+              subscription.nextSyncAt = serviceOptions.now() + 60_000;
+              servicePersist(subscription);
+            }
+          })
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (serviceRuns.get(id) === task) {
+              serviceRuns.delete(id);
+            }
           })
         )
-      );
-      if (Result.isFailure(reconciled)) {
-        reservation.reject(reconciled.failure);
-        return;
-      }
-      reservation.resolve(reconciled.success);
-    };
-    void reconcile();
-    return reservation.promise;
-  }
-  private current(subscription: AniListSubscription) {
+      )
+    );
+    serviceRuns.set(id, task);
+    return yield* task;
+  });
+  function serviceCurrent(subscription: AniListSubscription) {
     return (
-      !this.lifecycle.closed &&
-      this.options.plugins.plugin("anilist").enabled &&
+      !serviceLifecycle.closed &&
+      serviceOptions.plugins.plugin("anilist").enabled &&
       subscription.enabled &&
-      this.subscriptions.get(subscription.id) === subscription
+      serviceSubscriptions.get(subscription.id) === subscription
     );
   }
-  private async destinationId(subscription: AniListSubscription, entry: AniListEntry) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceDestinationId = Effect.fn("AniList.destinationId")(function* (
+    subscription: AniListSubscription,
+    entry: AniListEntry
+  ) {
     const { organization } = subscription;
     if (organization?.mode !== "per-anime") {
       return subscription.template.destinationId;
     }
-    const preview = this.previewThreads(organization.basePath, subscription.statuses);
+    const preview = servicePreviewThreads(organization.basePath, subscription.statuses);
     const proposal =
       organization.overrides.find((item) => item.mediaId === entry.mediaId) ??
       (preview instanceof ElysiaStatus
@@ -1418,7 +1522,7 @@ export class AniListService {
     }
     if (proposal.destinationId !== null) {
       if (
-        !this.options.engine
+        !serviceOptions.engine
           .snapshot(null, false)
           .destinations.some((destination) => destination.id === proposal.destinationId)
       ) {
@@ -1427,51 +1531,58 @@ export class AniListService {
       return proposal.destinationId;
     }
     const downloadPath = resolve(proposal.downloadPath);
-    const existing = this.options.engine
+    const existing = serviceOptions.engine
       .snapshot(null, false)
       .destinations.find((destination) => destination.downloadPath === downloadPath);
     if (existing) {
       return existing.id;
     }
-    const pending = this.destinationRuns.get(downloadPath);
+    const pending = serviceDestinationRuns.get(downloadPath);
     if (pending) {
-      const destination = await pending;
+      const destination = yield* Effect.promise(() => pending);
       if (destination instanceof ElysiaStatus) {
         return destination;
       }
       return destination.id;
     }
-    const task = this.options.engine.call("saveDestination", [
+    const task = serviceOptions.engine.call("saveDestination", [
       null,
       { downloadPath, name: proposal.name },
     ]);
-    this.destinationRuns.set(downloadPath, task);
-    using cleanup = new DisposableStack();
+    serviceDestinationRuns.set(downloadPath, task);
+    const cleanup = yield* Effect.acquireRelease(
+      Effect.sync(() => new DisposableStack()),
+      (resource) => Effect.sync(() => resource.dispose())
+    );
     cleanup.defer(() => {
-      this.destinationRuns.delete(downloadPath);
+      serviceDestinationRuns.delete(downloadPath);
     });
-    const created = await task;
+    const created = yield* Effect.promise(() => task);
     if (created instanceof ElysiaStatus) {
       return created;
     }
     return created.id;
-  }
-  private async follow(subscription: AniListSubscription, entry: AniListEntry) {
+  }, Effect.scoped);
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceFollow = Effect.fn("AniList.follow")(function* (
+    subscription: AniListSubscription,
+    entry: AniListEntry
+  ) {
     const binding = subscription.bindings.find((item) => item.mediaId === entry.mediaId);
     const previous =
-      this.animeRule(entry.mediaId) ??
-      (binding ? this.options.automation.ruleSnapshot(binding.ruleId) : undefined);
+      serviceAnimeRule(entry.mediaId) ??
+      (binding ? serviceOptions.automation.ruleSnapshot(binding.ruleId) : undefined);
     const template = previous ?? subscription.template;
-    const overridden = this.animeRules.has(`anime-rule:${this.account?.id}:${entry.mediaId}`);
+    const overridden = serviceAnimeRules.has(`anime-rule:${serviceAccount?.id}:${entry.mediaId}`);
     const destinationId =
-      previous?.destinationId ?? (await this.destinationId(subscription, entry));
+      previous?.destinationId ?? (yield* serviceDestinationId(subscription, entry));
     if (destinationId instanceof ElysiaStatus) {
       return destinationId;
     }
-    if (!(this.current(subscription) && this.accepted(entry.mediaId))) {
+    if (!(serviceCurrent(subscription) && serviceAccepted(entry.mediaId))) {
       return;
     }
-    const rule = await this.options.releaseAutomation.save(
+    const rule = yield* serviceOptions.releaseAutomation.save(
       previous?.id ?? null,
       {
         ...template,
@@ -1485,7 +1596,7 @@ export class AniListService {
         query: previous?.query ?? `Download "${entry.title}". ${subscription.template.query}`,
         title: entry.title,
       },
-      { key: `anime-rule:${this.account?.id}:${entry.mediaId}`, ownerId: "tofu.anilist" }
+      { key: `anime-rule:${serviceAccount?.id}:${entry.mediaId}`, ownerId: "tofu.anilist" }
     );
     if (rule instanceof ElysiaStatus) {
       return rule;
@@ -1496,181 +1607,704 @@ export class AniListService {
     } else {
       subscription.bindings.push({ active: true, mediaId: entry.mediaId, ruleId: rule.id });
     }
-    if (!(this.current(subscription) && this.accepted(entry.mediaId))) {
-      this.options.automation.enableRule(rule.id, false);
+    if (!(serviceCurrent(subscription) && serviceAccepted(entry.mediaId))) {
+      serviceOptions.automation.enableRule(rule.id, false);
       return;
     }
-    this.persist(subscription);
-    const ran = await this.options.releaseAutomation.run(rule.id);
+    servicePersist(subscription);
+    const ran = yield* serviceOptions.releaseAutomation.run(rule.id);
     return ran instanceof ElysiaStatus ? ran : undefined;
-  }
-  private async reconcile(subscription: AniListSubscription) {
+  });
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceReconcile = Effect.fn("AniList.reconcile")(function* (
+    subscription: AniListSubscription
+  ) {
     if (
-      !(subscription.enabled && this.options.plugins.plugin("anilist").enabled) ||
-      this.lifecycle.closed
+      !(subscription.enabled && serviceOptions.plugins.plugin("anilist").enabled) ||
+      serviceLifecycle.closed
     ) {
-      return this.snapshot();
+      return serviceSnapshot();
     }
-    const listed = await this.list();
+    const listed = yield* serviceList();
     if (listed instanceof ElysiaStatus) {
       return listed;
     }
     const { entries } = listed;
-    if (!this.current(subscription)) {
-      return this.snapshot();
+    if (!serviceCurrent(subscription)) {
+      return serviceSnapshot();
     }
-    if (subscription.userId !== undefined && subscription.userId !== this.account?.id) {
-      this.pause(subscription);
+    if (subscription.userId !== undefined && subscription.userId !== serviceAccount?.id) {
+      servicePause(subscription);
       return problem(409, { detail: "This tracking belongs to another AniList account" });
     }
-    subscription.userId = this.account?.id;
+    subscription.userId = serviceAccount?.id;
     const trackedStatuses = new Set(subscription.statuses);
     const selected = entries.filter(
-      (entry) => trackedStatuses.has(entry.status) && this.accepted(entry.mediaId)
+      (entry) => trackedStatuses.has(entry.status) && serviceAccepted(entry.mediaId)
     );
     for (const entry of selected) {
       if (
-        !this.options.plugins.plugin("anilist").enabled ||
-        this.lifecycle.closed ||
-        this.subscriptions.get(subscription.id) !== subscription
+        !serviceOptions.plugins.plugin("anilist").enabled ||
+        serviceLifecycle.closed ||
+        serviceSubscriptions.get(subscription.id) !== subscription
       ) {
         break;
       }
-      // biome-ignore lint/performance/noAwaitInLoops: preserve each title binding before running the next rule.
-      const followed = await this.follow(subscription, entry);
+      // preserve each title binding before running the next rule.
+      const followed = yield* serviceFollow(subscription, entry);
       if (followed instanceof ElysiaStatus) {
         return followed;
       }
     }
-    if (this.lifecycle.closed || this.subscriptions.get(subscription.id) !== subscription) {
-      return this.snapshot();
+    if (serviceLifecycle.closed || serviceSubscriptions.get(subscription.id) !== subscription) {
+      return serviceSnapshot();
     }
     for (const binding of subscription.bindings) {
       if (!selected.some((entry) => entry.mediaId === binding.mediaId)) {
-        this.options.automation.enableRule(binding.ruleId, false);
+        serviceOptions.automation.enableRule(binding.ruleId, false);
         binding.active = false;
       }
     }
-    subscription.lastSyncAt = this.options.now();
+    subscription.lastSyncAt = serviceOptions.now();
     subscription.nextSyncAt = subscription.lastSyncAt + subscription.intervalMinutes * 60_000;
     subscription.error = null;
-    this.persist(subscription);
-    return this.snapshot();
-  }
-  writeToggle(tx: DatabaseConnection, id: string, enabled: boolean) {
-    const current = this.subscriptions.get(id);
+    servicePersist(subscription);
+    return serviceSnapshot();
+  });
+  function serviceWriteToggle(tx: DatabaseConnection, id: string, enabled: boolean) {
+    const current = serviceSubscriptions.get(id);
     if (!current) {
       return problem(404, { detail: "Unknown AniList tracking" });
     }
     const subscription = {
       ...structuredClone(current),
       enabled,
-      nextSyncAt: this.options.now(),
+      nextSyncAt: serviceOptions.now(),
     };
     if (!enabled) {
       for (const binding of subscription.bindings) {
-        this.options.automation.enableRule(binding.ruleId, false, tx);
+        serviceOptions.automation.enableRule(binding.ruleId, false, tx);
         binding.active = false;
       }
     }
-    this.writeState(id, JSON.stringify(subscription), tx);
+    serviceWriteState(id, JSON.stringify(subscription), tx);
     return { enabled, id };
   }
-  deleteSubscription(tx: DatabaseConnection, id: string) {
-    const subscription = this.subscriptions.get(id);
+  function serviceDeleteSubscription(tx: DatabaseConnection, id: string) {
+    const subscription = serviceSubscriptions.get(id);
     if (!subscription) {
       return problem(404, { detail: "Unknown AniList tracking" });
     }
     for (const binding of subscription.bindings) {
-      this.options.automation.enableRule(binding.ruleId, false, tx);
+      serviceOptions.automation.enableRule(binding.ruleId, false, tx);
     }
     tx.delete(anilistState).where(eq(anilistState.id, id)).run();
     return { id, ok: true };
   }
-  private pause(subscription: AniListSubscription) {
+  function servicePause(subscription: AniListSubscription) {
     for (const binding of subscription.bindings) {
-      this.options.automation.enableRule(binding.ruleId, false);
+      serviceOptions.automation.enableRule(binding.ruleId, false);
       binding.active = false;
     }
-    this.persist(subscription);
+    servicePersist(subscription);
   }
-  suspend() {
-    this.stopCallback();
-    for (const controller of this.requests) {
+  function serviceSuspend() {
+    serviceStopCallback();
+    for (const controller of serviceRequests) {
       controller.abort();
     }
-    for (const subscription of this.subscriptions.values()) {
-      this.pause(subscription);
+    for (const subscription of serviceSubscriptions.values()) {
+      servicePause(subscription);
     }
   }
-
-  async start() {
-    if (this.lifecycle.started || this.lifecycle.closed) {
+  const serviceStart = Effect.fn("AniList.start")(function* () {
+    if (serviceLifecycle.started || serviceLifecycle.closed) {
       return;
     }
-    this.lifecycle.started = true;
-    await this.tick(true);
-    if (!this.lifecycle.closed) {
-      this.timer = setInterval(async () => {
-        const ticked = await Effect.runPromise(
-          Effect.result(
-            Effect.tryPromise({
-              catch: (cause) => cause,
-              try: () => this.tick(false),
-            })
-          )
-        );
-        if (Result.isFailure(ticked)) {
+    serviceLifecycle.started = true;
+    yield* serviceTick(true);
+    if (serviceLifecycle.closed) {
+      return;
+    }
+    const poll = serviceTick(false).pipe(
+      Effect.catchCause((cause) =>
+        Effect.sync(() => {
+          if (Cause.hasInterruptsOnly(cause)) {
+            return;
+          }
           const log = createLogger({
             component: "anilist",
-            error: ticked.failure,
+            error: Cause.squash(cause),
             operation: "poll",
           });
           log.setLevel("error");
           log.emit();
-        }
-      }, 15_000);
-      this.timer.unref();
-    }
-  }
-
-  async tick(force: boolean) {
-    if (this.lifecycle.closed) {
+        })
+      )
+    );
+    serviceTimer = yield* Effect.forkIn(
+      poll.pipe(
+        Effect.repeat(Schedule.spaced("15 seconds")),
+        Effect.delay("15 seconds"),
+        Effect.asVoid
+      ),
+      scope
+    );
+  });
+  const serviceTick = Effect.fn("AniList.tick")(function* (force: boolean) {
+    if (serviceLifecycle.closed) {
       return;
     }
-    await Promise.all(
-      [...this.subscriptions.values()]
+    yield* Effect.all(
+      [...serviceSubscriptions.values()]
         .filter(
           (subscription) =>
             subscription.enabled &&
             (force ||
               subscription.nextSyncAt === null ||
-              subscription.nextSyncAt <= this.options.now())
+              subscription.nextSyncAt <= serviceOptions.now())
         )
-        .map((subscription) => this.sync(subscription.id))
+        .map((subscription) => serviceSync(subscription.id)),
+      { concurrency: "unbounded" }
     );
-  }
-
-  async close() {
-    this.lifecycle.closed = true;
-    if (this.timer) {
-      clearInterval(this.timer);
+  });
+  const serviceClose = Effect.fn("AniList.close")(function* () {
+    serviceLifecycle.closed = true;
+    if (serviceTimer) {
+      yield* Fiber.interrupt(serviceTimer);
+      serviceTimer = null;
     }
-    this.stopCallback();
-    for (const controller of this.requests) {
+    serviceStopCallback();
+    for (const controller of serviceRequests) {
       controller.abort();
     }
-    await Promise.allSettled([
-      ...this.runs.values(),
-      ...this.episodeRuns.values(),
-      ...(this.listFlight ? [this.listFlight.promise] : []),
-    ]);
-  }
-}
+    yield* Effect.all(
+      [
+        ...serviceRuns.values(),
+        ...Array.from(serviceEpisodeRuns.values(), (promise) => Effect.promise(() => promise)),
+        ...(serviceListFlight ? [serviceListFlight.operation] : []),
+      ].map(Effect.exit),
+      { concurrency: "unbounded" }
+    );
+  });
 
-type ListFailure = Extract<Awaited<ReturnType<AniListService["loadList"]>>, { status: number }>;
+  serviceAuthorization = new AniListAuthorization((token, current) =>
+    Effect.runPromise(serviceAuthorize(token, current))
+  );
+  serviceRestore();
+  if (
+    options.client &&
+    (serviceConfig.clientId === "9037" || serviceConfig.redirectUri.startsWith("tofu"))
+  ) {
+    serviceConfig = { ...serviceConfig, ...options.client, clientSecret: "" };
+  } else if (
+    serviceConfig.clientId === "9037" &&
+    serviceConfig.redirectUri === "http://localhost:3000/"
+  ) {
+    serviceConfig.redirectUri = "tofu://oauth/anilist";
+    serviceConfig.clientSecret = "";
+  }
+  serviceCheckCacheIdentity();
+  const restoredCache = serviceCache as AniListCache | null;
+  if (restoredCache) {
+    serviceEntries = restoredCache.entries;
+    serviceAccount = restoredCache.account;
+    serviceConnectedUser = restoredCache.account.name;
+  }
+  yield* Effect.addFinalizer(() => serviceClose());
+  return {
+    cancelAuthorization: serviceCancelAuthorization,
+    catalog: serviceCatalog,
+    catalogOptions: serviceCatalogOptions,
+    close: serviceClose,
+    completeEpisode: serviceCompleteEpisode,
+    configure: serviceConfigure,
+    connect: serviceConnect,
+    deleteEntry: serviceDeleteEntry,
+    deleteSubscription: serviceDeleteSubscription,
+    editor: serviceEditor,
+    entry: serviceEntry,
+    favourite: serviceFavourite,
+    list: serviceList,
+    media: serviceMedia,
+    needsRefresh: serviceNeedsRefresh,
+    prepareAutomation: servicePrepareAutomation,
+    previewThreads: servicePreviewThreads,
+    reassignDestination: serviceReassignDestination,
+    receiveAuthorizationUrl: serviceReceiveAuthorizationUrl,
+    refresh: serviceRefresh,
+    refreshState: serviceRefreshState,
+    releases: serviceReleases,
+    saveEntry: serviceSaveEntry,
+    snapshot: serviceSnapshot,
+    start: serviceStart,
+    suspend: serviceSuspend,
+    sync: serviceSync,
+    tick: serviceTick,
+    writeAutomationLink: serviceWriteAutomationLink,
+    writePreferences: serviceWritePreferences,
+    writeSelection: serviceWriteSelection,
+    writeSubscription: serviceWriteSubscription,
+    writeToggle: serviceWriteToggle,
+  };
+});
+
+export type AniListService = AniList["Service"];
+export class AniList extends Context.Service<
+  AniList,
+  {
+    readonly releases: (mediaId: number) => Effect.Effect<
+      | ReturnType<typeof problem<409, { readonly detail: "AniList service closed" }>>
+      | ReturnType<typeof problem<404, { readonly detail: "Anime not found on AniList" }>>
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+      | {
+          errors: { sourceId: SourcePluginId; message: string }[];
+          releases: FeedRelease[];
+          search: {
+            aliases: string[];
+            resolved: boolean;
+            season: number | null;
+            warning: string | null;
+            episode: number | null;
+            queries: string[];
+            title: string;
+          };
+          torrents: TorrentSummary[];
+        }
+    >;
+    readonly snapshot: () => AniListState;
+    readonly writePreferences: (
+      tx: DatabaseConnection,
+      visibleStatuses: AniListStatus[]
+    ) => { visibleStatuses: MediaListStatus[] };
+    readonly refreshState: () => void;
+    readonly configure: (input: {
+      clientId?: string;
+      clientSecret?: string;
+      redirectUri?: string;
+      userName: string;
+    }) =>
+      | AniListState
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "The OAuth callback must be a local HTTP URL with an explicit port" }
+          >
+        >;
+    readonly connect: (deviceId?: string) => Effect.Effect<
+      | ReturnType<typeof problem<409, { readonly detail: "AniList unavailable" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            {
+              readonly detail: "This development build needs its own AniList client. Set TOFU_ANILIST_CLIENT_ID and rebuild Tofu Dev.";
+            }
+          >
+        >
+      | ReturnType<
+          typeof problem<
+            409,
+            {
+              readonly detail: `AniList connection needs local port ${string}. Close the app using that port and try again.`;
+            }
+          >
+        >
+      | { url: string }
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Add your AniList OAuth client ID and secret" }>
+        >
+      | ReturnType<
+          typeof problem<
+            409,
+            {
+              readonly detail: "The OAuth callback port is busy. Choose the same available port in Tofu and your AniList client.";
+            }
+          >
+        >
+    >;
+    readonly media: (
+      mediaId: number
+    ) => Effect.Effect<
+      | AniListMedia
+      | ReturnType<typeof problem<409, { readonly detail: "AniList service closed" }>>
+      | ReturnType<typeof problem<404, { readonly detail: "Anime not found on AniList" }>>
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly catalog: (
+      filters: AniListCatalogFilters
+    ) => Effect.Effect<
+      | ReturnType<
+          typeof problem<400, { readonly detail: "The minimum must not exceed the maximum" }>
+        >
+      | { hasNextPage: boolean; media: AniListMedia[]; page: number }
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly editor: (mediaId: number) => Effect.Effect<
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "AniList account changed; reopen the anime editor" }
+          >
+        >
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "Reload your AniList list after changing accounts" }
+          >
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Anime not found on AniList" }>>
+      | ReturnType<typeof problem<502, { readonly detail: "Invalid AniList list entry" }>>
+      | {
+          entry: {
+            advancedScores: { name: string; score: number }[];
+            customLists: string[];
+            progress: number;
+            status: MediaListStatus;
+            id: number;
+            mediaId: number;
+            score: number | null;
+            repeat: number | null;
+            priority: number | null;
+            private: boolean | null;
+            notes: string | null;
+            hiddenFromStatusLists: boolean | null;
+            startedAt: { year: number | null; month: number | null; day: number | null } | null;
+            completedAt: { year: number | null; month: number | null; day: number | null } | null;
+          } | null;
+          isFavourite: boolean | null;
+          isFavouriteBlocked: boolean | null;
+          options: {
+            advancedScoring: string[];
+            advancedScoringEnabled: boolean;
+            customLists: string[];
+            scoreFormat: ScoreFormat | null;
+          };
+        }
+      | ReturnType<typeof problem<409, { readonly detail: "AniList plugin disabled" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "Connect your AniList account to edit your list or favourites" }
+          >
+        >
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly saveEntry: (
+      mediaId: number,
+      body: AniListListUpdate
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<429, { readonly detail: string }>>
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Enter a title and at least one source" }>
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | AniListState
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "AniList account changed; reopen the anime editor" }
+          >
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Anime not found on AniList" }>>
+      | ReturnType<typeof problem<502, { readonly detail: "Invalid AniList list entry" }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Score does not match your AniList scoring format" }
+          >
+        >
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Progress exceeds the anime episode count" }>
+        >
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Choose an existing AniList custom list" }>
+        >
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Advanced scores do not match your AniList settings" }
+          >
+        >
+      | ReturnType<typeof problem<502, { readonly detail: "AniList did not save the list entry" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown release source" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown destination" }>>
+      | ReturnType<typeof problem<409, { readonly detail: "AniList plugin disabled" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "Connect your AniList account to edit your list or favourites" }
+          >
+        >
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly favourite: (
+      mediaId: number,
+      enabled: boolean
+    ) => Effect.Effect<
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "AniList account changed; reopen the anime editor" }
+          >
+        >
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "Reload your AniList list after changing accounts" }
+          >
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Anime not found on AniList" }>>
+      | ReturnType<typeof problem<502, { readonly detail: "Invalid AniList list entry" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "AniList account changed; reopen the anime editor" }
+          >
+        >
+      | ReturnType<typeof problem<502, { readonly detail: "AniList favourite state unavailable" }>>
+      | ReturnType<
+          typeof problem<409, { readonly detail: "AniList does not allow favouriting this anime" }>
+        >
+      | ReturnType<typeof problem<502, { readonly detail: "AniList did not update the favourite" }>>
+      | { isFavourite: boolean }
+      | ReturnType<typeof problem<409, { readonly detail: "AniList plugin disabled" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "Connect your AniList account to edit your list or favourites" }
+          >
+        >
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly deleteEntry: (
+      mediaId: number
+    ) => Effect.Effect<
+      | AniListState
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "AniList account changed; reopen the anime editor" }
+          >
+        >
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "Reload your AniList list after changing accounts" }
+          >
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Anime not found on AniList" }>>
+      | ReturnType<typeof problem<502, { readonly detail: "Invalid AniList list entry" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "AniList account changed; reopen the anime editor" }
+          >
+        >
+      | ReturnType<
+          typeof problem<502, { readonly detail: "AniList did not delete the list entry" }>
+        >
+      | ReturnType<typeof problem<409, { readonly detail: "AniList plugin disabled" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "Connect your AniList account to edit your list or favourites" }
+          >
+        >
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly catalogOptions: () => Effect.Effect<
+      AniListCatalogOptions | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly receiveAuthorizationUrl: (
+      input: string,
+      deviceId?: string
+    ) => Effect.Effect<
+      | AniListState
+      | ReturnType<typeof problem<400, { readonly detail: string }>>
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly cancelAuthorization: () => AniListState;
+    readonly needsRefresh: () => boolean;
+    readonly refresh: () => Effect.Effect<AniListState | ListFailure>;
+    readonly list: () => Effect.Effect<AniListState | ListFailure>;
+    readonly entry: (
+      mediaId: number
+    ) =>
+      | AniListEntry
+      | ReturnType<typeof problem<409, { readonly detail: "AniList plugin disabled" }>>
+      | ReturnType<
+          typeof problem<404, { readonly detail: "Load this anime from your AniList list first" }>
+        >;
+    readonly prepareAutomation: (
+      mediaId: number,
+      draft: AutomationDraft
+    ) =>
+      | ReturnType<typeof problem<409, { readonly detail: "AniList plugin disabled" }>>
+      | ReturnType<
+          typeof problem<404, { readonly detail: "Load this anime from your AniList list first" }>
+        >
+      | {
+          accountId: number;
+          draft: {
+            afterEpisode: number;
+            aliases: string[];
+            title: string;
+            automatic: boolean;
+            codecs: string[];
+            deleteReplacedFiles?: boolean | undefined;
+            destinationId: string;
+            enabled: boolean;
+            excludePacks: boolean;
+            includeExisting: boolean;
+            intervalMinutes: number;
+            languages: ("VF" | "VOSTFR" | "MULTI")[];
+            matchMode: "jev" | "exact" | "pattern";
+            paused: boolean;
+            priority: ("source" | "language" | "resolution" | "codec")[];
+            query: string;
+            resolutions: string[];
+            season: number | null;
+            sources: string[];
+            waitMinutes: number;
+          };
+          id: string | null;
+          key: string;
+        };
+    readonly writeAutomationLink: (
+      tx: DatabaseConnection,
+      input: { accountId: number; key: string },
+      ruleId: string
+    ) => ReturnType<
+      typeof problem<409, { readonly detail: "AniList account changed; reload your list" }>
+    > | null;
+    readonly completeEpisode: (
+      mediaId: number,
+      episode: number,
+      completed: boolean,
+      expectedAccountId?: number
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<429, { readonly detail: string }>>
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Enter a title and at least one source" }>
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | AniListState
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown release source" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown destination" }>>
+      | ReturnType<
+          typeof problem<404, { readonly detail: "Load this anime from your AniList list first" }>
+        >
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Episode exceeds the anime episode count" }>
+        >
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly previewThreads: (
+      basePath: string,
+      statuses: AniListStatus[]
+    ) =>
+      | ReturnType<typeof problem<400, { readonly detail: "Enter an absolute root folder path" }>>
+      | { destinationId: string | null; downloadPath: string; mediaId: number; name: string }[];
+    readonly writeSelection: (
+      tx: DatabaseConnection,
+      mediaIds: number[],
+      enabled: boolean
+    ) =>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Load the AniList list before choosing its titles" }
+          >
+        >
+      | { enabled: boolean; mediaIds: number[] };
+    readonly reassignDestination: (id: string, connection?: DatabaseConnection) => void;
+    readonly writeSubscription: (
+      tx: DatabaseConnection,
+      input: Pick<
+        AniListSubscription,
+        "template" | "statuses" | "enabled" | "intervalMinutes" | "organization"
+      >
+    ) =>
+      | AniListSubscription
+      | ReturnType<typeof problem<400, { readonly detail: "Enter an absolute root folder path" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown destination" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Check the proposed names, folders, and threads" }>
+        >;
+    readonly sync: (id: string) => Effect.Effect<
+      | ReturnType<typeof problem<429, { readonly detail: string }>>
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "File path outside the download folder" }>
+        >
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Enter a name and an absolute folder path" }>
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Tab not found" }>>
+      | ReturnType<typeof problem<404, { readonly detail: "Torrent not found" }>>
+      | ReturnType<
+          typeof problem<
+            404,
+            {
+              readonly detail: `The downloaded file is no longer present : ${string}. Restore it or verify the torrent before retrying.`;
+            }
+          >
+        >
+      | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Enter a title and at least one source" }>
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | AniListState
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown release source" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown destination" }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Connect AniList or enter your public account name" }
+          >
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "AniList account not found" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "AniList list too large for a full sync" }>
+        >
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Thread proposal not found" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "The selected thread no longer exists" }>>
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown AniList tracking" }>>
+    >;
+    readonly writeToggle: (
+      tx: DatabaseConnection,
+      id: string,
+      enabled: boolean
+    ) =>
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown AniList tracking" }>>
+      | { enabled: boolean; id: string };
+    readonly deleteSubscription: (
+      tx: DatabaseConnection,
+      id: string
+    ) =>
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown AniList tracking" }>>
+      | { id: string; ok: boolean };
+    readonly suspend: () => void;
+    readonly start: () => Effect.Effect<void>;
+    readonly tick: (force: boolean) => Effect.Effect<void>;
+    readonly close: () => Effect.Effect<void>;
+  }
+>()("tofu/anilist") {}
+export const aniListLayer = Layer.effect(AniList, make);
 
 export type AniListCatalog = Extract<
-  Awaited<ReturnType<AniListService["catalog"]>>,
+  Effect.Success<ReturnType<AniListService["catalog"]>>,
   { media: AniListMedia[] }
 >;

@@ -1,3 +1,4 @@
+import type { Effect } from "effect";
 import { normalizeTitle } from "../../lib/title";
 import type { AutomationPreferences } from "../automation/model";
 import { interpretLocally, localMatch } from "../automation/rules";
@@ -246,6 +247,6 @@ export function animeQueries(
 }
 
 export type AniListReleases = Extract<
-  Awaited<ReturnType<AniListService["releases"]>>,
+  Effect.Success<ReturnType<AniListService["releases"]>>,
   { releases: FeedRelease[] }
 >;
