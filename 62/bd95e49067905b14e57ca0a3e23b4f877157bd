@@ -1,0 +1,19 @@
+tests/remote/threads.test.ts
+  s_a8bc19e7eff5cf::t_5ac02aa9dae7bd 429-433,435-436,439-446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62bd95e49067905b14e57ca0a3e23b4f877157bd",
+  "prompts": {},
+  "sessions": {
+    "s_a8bc19e7eff5cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17923-e59e-7103-987b-9ff31c4ee16a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
