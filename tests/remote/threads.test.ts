@@ -426,28 +426,24 @@ test("saved servers keep their threads and permissions independent when one goes
         .devices({ id: secondFixture.connection.server.deviceId })
         .delete()
     );
-    await waitFor(
-      async () => {
-        const files = await Array.fromAsync(
-          new Bun.Glob("*.jsonl").scan({
-            absolute: true,
-            cwd: join(desktopApp.directory, "state", "logs"),
+    const blocked = await waitFor(
+      async () =>
+        success(
+          await desktop.client.desktop.servers({ id: secondFixture.identity.id }).state.get({
+            fetch: { signal: AbortSignal.timeout(20_000) },
           })
-        );
-        const contents = await Promise.all(files.map((file) => Bun.file(file).text()));
-        return contents.some((content) =>
-          content
-            .split("\n{")
-            .some(
-              (event) =>
-                event.includes('"invalidate-remote-state"') &&
-                event.includes(secondFixture.identity.id)
-            )
-        );
-      },
-      (failed) => failed,
+        ),
+      (state) => state.connection === "unauthorized",
       20_000
     );
+    expect(blocked.snapshot).toBeNull();
+    expect(blocked.failure?.status).toBe(401);
+    const lockedResponse = await fetch(`${desktop.url}/_furin/sync/changes`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+    expect(lockedResponse.status).toBe(200);
+    const locked = (await lockedResponse.json()) as { cursor: string };
+    expect(locked.cursor).toBe(before.cursor);
   }
   await waitFor(
     async () => {
