@@ -70,7 +70,7 @@ export function GlobalSearch({
     return () => window.removeEventListener("keydown", shortcut);
   }, [setOpen]);
   return (
-    <Dialog onOpenChange={setOpen} open={open}>
+    <Dialog onOpenChange={setOpen} open={Boolean(open)}>
       <DialogContent className="global-search-dialog" initialFocus={inputRef} showCloseButton>
         <DialogTitle className="sr-only">Search everything</DialogTitle>
         <DialogDescription className="sr-only">
@@ -79,9 +79,10 @@ export function GlobalSearch({
         </DialogDescription>
         {!!open && (
           <SearchContent
-            activeDestination={activeDestination}
+            activeDestination={typeof open === "object" ? open.destinationId : activeDestination}
             close={() => setOpen(false)}
             dashboard={dashboard}
+            initialQuery={typeof open === "object" ? open.query : ""}
             inputRef={inputRef}
           />
         )}
@@ -99,13 +100,15 @@ function SearchContent({
   activeDestination,
   close,
   inputRef,
+  initialQuery,
 }: {
   dashboard: LiveState;
   activeDestination: string | null;
   close: () => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
+  initialQuery: string;
 }) {
-  const model = useGlobalSearch({ activeDestination, close, dashboard });
+  const model = useGlobalSearch({ activeDestination, close, dashboard, initialQuery });
   const {
     recent,
     query,

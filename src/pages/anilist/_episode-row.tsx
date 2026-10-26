@@ -1,5 +1,6 @@
 import { useMutation } from "@teyik0/furin/client";
-import { DownloadIcon, PlayIcon } from "lucide-react";
+import { useSetAtom } from "jotai";
+import { DownloadIcon, PlayIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import type { AniListEntry, AniListMedia } from "../../api/modules/anilist/types";
 import type { LiveState } from "../../api/modules/dashboard/projection";
@@ -17,6 +18,7 @@ import type { AsyncAction as Action } from "../../hooks/use-async-action";
 import { api } from "../../lib/client";
 import { useRefresh } from "../../lib/navigation";
 import { playSoundCue } from "../../lib/sound-cues";
+import { globalSearchOpenAtom } from "../../state/workspace";
 
 type ReleaseStatus = "searching" | "ready" | "failed";
 
@@ -48,6 +50,7 @@ export function EpisodeRow({
   localSources,
 }: EpisodeRowProps) {
   const refresh = useRefresh();
+  const openSearch = useSetAtom(globalSearchOpenAtom);
   const addRelease = useMutation(api.discover.add.post);
   const completeEpisode = useMutation((episodeNumber: number, isCompleted: boolean) =>
     api.anilist
@@ -180,6 +183,22 @@ export function EpisodeRow({
             >
               <DownloadIcon data-icon="inline-start" />
               Download
+            </Button>
+          ) : null}
+          {!(release || torrent) && sources.length === 0 && releaseStatus !== "searching" ? (
+            <Button
+              aria-label={`Search manually for ${entry.title}, ${label.toLowerCase()}`}
+              onClick={() =>
+                openSearch({
+                  destinationId,
+                  query: `${entry.title}${episode === null ? "" : ` ${String(episode).padStart(2, "0")}`}`,
+                })
+              }
+              size="sm"
+              variant="outline"
+            >
+              <SearchIcon data-icon="inline-start" />
+              Search manually
             </Button>
           ) : null}
           {episode === null ? null : (

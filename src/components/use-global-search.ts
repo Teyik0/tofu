@@ -24,6 +24,7 @@ export interface GlobalSearchProps {
   activeDestination: string | null;
   close: () => void;
   dashboard: LiveState;
+  initialQuery?: string;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -31,7 +32,8 @@ export function useGlobalSearch({
   dashboard,
   activeDestination,
   close,
-}: Pick<GlobalSearchProps, "dashboard" | "activeDestination" | "close">) {
+  initialQuery = "",
+}: Pick<GlobalSearchProps, "dashboard" | "activeDestination" | "close" | "initialQuery">) {
   const router = useRouter();
   const refresh = useRefresh();
   const [recent, setRecent] = useAtom(recentSearchesAtom);
@@ -43,7 +45,7 @@ export function useGlobalSearch({
       dashboard.destinations[0]?.id ??
       ""
   );
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [scope, setScope] = useState<GlobalSearchScope>("all");
   const [review, setReview] = useState<SearchReleaseGroup | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

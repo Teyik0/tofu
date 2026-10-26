@@ -24,7 +24,7 @@ export const anilistBackPathAtom = atom<"/anilist" | "/anilist/notifications">("
 export const anilistHasUpdatesAtom = atom(false);
 export const anilistNotificationRevisionAtom = atom(0);
 export const themeAtom = atom<ThemePreference>("system");
-export const globalSearchOpenAtom = atom(false);
+export const globalSearchOpenAtom = atom<boolean | { query: string; destinationId: string }>(false);
 export const recentSearchesAtom = atom<string[]>([]);
 export const searchDestinationAtom = atom<string | null>(null);
 
