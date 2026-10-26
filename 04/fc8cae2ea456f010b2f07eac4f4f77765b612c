@@ -1,0 +1,23 @@
+.github/workflows/ci.yml
+  s_a8bc19e7eff5cf::t_597096bb7b4a81 35-39
+.github/workflows/release.yml
+  s_a8bc19e7eff5cf::t_91af92e619d4fb 55-59
+tests/remote/access.test.ts
+  s_a8bc19e7eff5cf::t_29b0b658e7ed46 123,170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04fc8cae2ea456f010b2f07eac4f4f77765b612c",
+  "prompts": {},
+  "sessions": {
+    "s_a8bc19e7eff5cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17923-e59e-7103-987b-9ff31c4ee16a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
