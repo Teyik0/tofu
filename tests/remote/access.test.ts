@@ -120,6 +120,7 @@ test("public login pages render without exposing the library or protected endpoi
   expect(privatePage.headers.get("location")).toBe("/signed-out");
 }, 30_000);
 
+// Two server startups and shutdowns retain their individual deadlines within the test budget.
 test("a persistent HTTPS browser session survives a new client and a server restart", async () => {
   await using app = await application();
   const { client, stop, url } = await app.start();
@@ -166,7 +167,7 @@ test("a persistent HTTPS browser session survives a new client and a server rest
   success(await phone.state.get());
   success(await phone.auth.logout.post());
   expect((await phone.session.get()).status).toBe(401);
-}, 20_000);
+}, 60_000);
 
 test("remote grants restrict management, file deletion and access outside storage roots", async () => {
   await using source = await peer();
