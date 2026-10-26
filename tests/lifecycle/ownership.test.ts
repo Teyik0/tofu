@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { application } from "../helpers/app";
 import { success } from "../helpers/assert";
 
+// Three startup attempts and two shutdowns each retain their own deadline.
 test("only one instance owns a data directory and a clean shutdown releases it", async () => {
   await using app = await application();
   const first = await app.start();
@@ -12,4 +13,4 @@ test("only one instance owns a data directory and a clean shutdown releases it",
   await first.stop();
   const restarted = await app.start();
   expect(success(await restarted.client.settings.get()).downloadLimit).toBe(123_456);
-});
+}, 90_000);
