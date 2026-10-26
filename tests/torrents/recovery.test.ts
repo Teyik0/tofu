@@ -39,6 +39,8 @@ test("a stale torrent cannot block a destination validated by another torrent", 
   );
 
   success(await server.client.torrents({ id: added.id }).delete({ deleteFiles: false }));
+  // Windows requires closing the remaining torrent file before renaming its parent directory.
+  success(await server.client.torrents({ id: current.id }).pause.post({}));
   const originalPath = join(app.directory, "original-downloads");
   await rename(app.downloadPath, originalPath);
   await mkdir(app.downloadPath);
