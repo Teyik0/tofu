@@ -1,0 +1,25 @@
+src/components/global-search.tsx
+  s_a8bc19e7eff5cf::t_4e41e7fd112c3d 73,82,85,103,109,111
+src/components/use-global-search.ts
+  s_a8bc19e7eff5cf::t_14534010efa4b7 27,35-36,48
+src/pages/anilist/_episode-row.tsx
+  s_a8bc19e7eff5cf::t_3eb4625a34565c 2-3,21,53,188-203
+src/state/workspace.ts
+  s_a8bc19e7eff5cf::t_f18aed03439018 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d0613172d3d606975fcd27d70428b1e68f42e31",
+  "prompts": {},
+  "sessions": {
+    "s_a8bc19e7eff5cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17923-e59e-7103-987b-9ff31c4ee16a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
