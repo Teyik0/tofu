@@ -74,10 +74,20 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Configure optional Apple signing
+        if: runner.os == 'macOS'
+        run: bun .github/scripts/release.ts signing
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+
       - name: Prepare release resources
         run: bun run setup
         env:
           NODE_ENV: production
+          # Older tags need an explicit ad hoc identity when signing secrets are absent.
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID || '-' }}
 
       - name: Validate version and architecture
         run: |
@@ -88,14 +98,6 @@ jobs:
           EXPECTED_PLATFORM: ${{ matrix.platform }}
 
       - run: bunx --bun ultracite check
-
-      - name: Configure optional Apple signing
-        if: runner.os == 'macOS'
-        run: bun .github/scripts/release.ts signing
-        env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
 
       - name: Build release and prepare the Hutch SDK
         run: |

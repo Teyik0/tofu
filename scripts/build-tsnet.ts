@@ -22,7 +22,7 @@ if ((await build.exited) !== 0) {
 }
 // Sign the additional native executable explicitly instead of assuming the SDK signs copied resources.
 if (process.platform === "darwin") {
-  const identity = process.env.ELECTROBUN_DEVELOPER_ID ?? "-";
+  const identity = process.env.ELECTROBUN_DEVELOPER_ID?.trim() || "-";
   const signing = Bun.spawn(
     [
       "codesign",
