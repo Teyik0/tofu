@@ -7,6 +7,9 @@ import type { ThemePreference } from "../api/modules/settings/model";
 import { api } from "../lib/client";
 import { destinationFromPath, isPreferencesPath, selectedTorrentId } from "../lib/navigation";
 import {
+  anilistBackPathAtom,
+  anilistHasUpdatesAtom,
+  anilistNotificationRevisionAtom,
   connectionAtom,
   dashboardAtom,
   sessionAtom,
@@ -26,19 +29,26 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
   const theme = useAtomValue(themeAtom);
   const setTheme = useSetAtom(themeAtom);
   const setBackPath = useSetAtom(settingsBackPathAtom);
+  const setAniListBackPath = useSetAtom(anilistBackPathAtom);
+  const setAniListHasUpdates = useSetAtom(anilistHasUpdatesAtom);
+  const setAniListNotificationRevision = useSetAtom(anilistNotificationRevisionAtom);
+  const administer = useAtomValue(sessionAtom)?.capabilities.administer === true;
   const setDashboard = useSetAtom(dashboardAtom);
   const setSession = useSetAtom(sessionAtom);
   const setConnection = useSetAtom(connectionAtom);
   const live = useAtomValue(dashboardAtom) ?? { ...dashboard, detailHost: null, host: null };
   const { currentPattern, search } = useRouter();
   const serverId = dashboard.server.id;
+  const inAniList = path === "/anilist" || path === "/anilist/notifications";
+  const destination = destinationFromPath(path, serverId);
   const serverTheme = dashboard.appearance.theme;
   // Library pages show the detail of this torrent; snapshots carry it to keep the pane live.
   const selected =
-    currentPattern === "/" || currentPattern === "/thread/:id"
+    currentPattern === "/" ||
+    (currentPattern === "/thread/:serverId/:threadId" && destination !== null)
       ? selectedTorrentId(
           live.torrents,
-          destinationFromPath(path),
+          destination,
           typeof search.torrent === "string" ? search.torrent : undefined
         )
       : null;
@@ -62,6 +72,36 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
       fetch: { cache: "no-store", credentials: "include" },
       url: window.location.origin,
     });
+    const controller = new AbortController();
+    let checkingNotifications = false;
+    const checkNotifications = async () => {
+      if (!administer || checkingNotifications || controller.signal.aborted) {
+        return;
+      }
+      checkingNotifications = true;
+      try {
+        await api.anilist.notifications.check.post(undefined, {
+          fetch: { signal: controller.signal },
+        });
+      } catch {
+        // The server owns retries; a failed wake-up check leaves the last badge intact.
+      } finally {
+        checkingNotifications = false;
+      }
+    };
+    const notifications = administer
+      ? client.subscribe(api.anilist.notifications.status.get.live(), ({ data, error }) => {
+          if (data && !error) {
+            setAniListHasUpdates(data.hasUpdates);
+            setAniListNotificationRevision(data.revision);
+          }
+        })
+      : null;
+    if (!administer) {
+      setAniListHasUpdates(false);
+      setAniListNotificationRevision(0);
+    }
+    void checkNotifications();
     const connection = client.subscribeConnection(({ status }) => {
       if (status === "unauthorized") {
         setSession(null);
@@ -69,6 +109,9 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
         window.location.assign("/signed-out?reason=expired");
       } else if (status !== "closed") {
         setConnection(status === "connected" ? "connected" : "reconnecting");
+        if (status === "connected") {
+          void checkNotifications();
+        }
       }
     });
     const subscription = client.subscribe(
@@ -95,18 +138,31 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
     const reconnect = (event: Event) => {
       if (event.type === "online" || document.visibilityState === "visible") {
         client.reconnect();
+        void checkNotifications();
       }
     };
     window.addEventListener("online", reconnect);
+    window.addEventListener("focus", checkNotifications);
     document.addEventListener("visibilitychange", reconnect);
     return () => {
       window.removeEventListener("online", reconnect);
+      window.removeEventListener("focus", checkNotifications);
       document.removeEventListener("visibilitychange", reconnect);
       subscription();
+      controller.abort();
+      notifications?.();
       connection();
       client.close();
     };
-  }, [selected, setConnection, setDashboard, setSession]);
+  }, [
+    administer,
+    selected,
+    setAniListHasUpdates,
+    setAniListNotificationRevision,
+    setConnection,
+    setDashboard,
+    setSession,
+  ]);
 
   useEffect(() => {
     // A pending invitation kept by /pair for reloads is never needed once the library opens.
@@ -126,6 +182,20 @@ export function TofuStateSync({ dashboard, path }: { dashboard: LibraryState; pa
       setBackPath(path);
     }
   }, [path, setBackPath]);
+
+  useEffect(() => {
+    if (path === "/anilist" || path === "/anilist/notifications") {
+      setAniListBackPath(path);
+    }
+  }, [path, setAniListBackPath]);
+
+  useEffect(() => {
+    if (inAniList) {
+      return;
+    }
+    const timeout = window.setTimeout(() => setAniListBackPath("/anilist"), 3 * 60_000);
+    return () => window.clearTimeout(timeout);
+  }, [inAniList, setAniListBackPath]);
 
   return null;
 }

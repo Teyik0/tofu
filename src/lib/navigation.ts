@@ -3,10 +3,10 @@ import { useCallback } from "react";
 import type { LibraryTorrent } from "../api/modules/dashboard/projection";
 
 type Router = ReturnType<typeof useRouter>;
-const REMOTE_THREAD_PATH = /^\/servers\/([^/]+)\/thread\/([^/]+)\/?$/;
+const THREAD_PATH = /^\/thread\/([^/]+)\/([^/]+)\/?$/;
 
-export function remoteThreadFromPath(path: string) {
-  const match = REMOTE_THREAD_PATH.exec(path);
+export function threadFromPath(path: string) {
+  const match = THREAD_PATH.exec(path);
   if (!(match?.[1] && match[2])) {
     return null;
   }
@@ -21,7 +21,7 @@ export function remoteThreadFromPath(path: string) {
   }
 }
 
-export type RemoteThreadSelection = NonNullable<ReturnType<typeof remoteThreadFromPath>>;
+export type ThreadSelection = NonNullable<ReturnType<typeof threadFromPath>>;
 
 export function isPreferencesPath(path: string) {
   return (
@@ -32,15 +32,12 @@ export function isPreferencesPath(path: string) {
   );
 }
 
-export function destinationFromPath(path: string) {
-  if (path === "/anilist") {
+export function destinationFromPath(path: string, serverId: string) {
+  if (path === "/anilist" || path.startsWith("/anilist/")) {
     return "anilist";
   }
-  try {
-    return path.startsWith("/thread/") ? decodeURIComponent(path.slice("/thread/".length)) : null;
-  } catch {
-    return null;
-  }
+  const thread = threadFromPath(path);
+  return thread?.serverId === serverId ? thread.threadId : null;
 }
 
 /**
@@ -91,6 +88,7 @@ export function useRefresh() {
 /** Opens a library page with `torrent` selected, or with its default selection when undefined. */
 export function showTorrent(
   router: Router,
+  serverId: string,
   destinationId: string | null,
   torrent: string | undefined
 ) {
@@ -98,34 +96,35 @@ export function showTorrent(
     destinationId === null
       ? router.navigate({ resetScroll: false, search: { torrent }, to: "/" })
       : router.navigate({
-          params: { id: destinationId },
+          params: { serverId, threadId: destinationId },
           resetScroll: false,
           search: { torrent },
-          to: "/thread/:id",
+          to: "/thread/:serverId/:threadId",
         })
   );
 }
 
 export async function showDestination(
   router: Router,
+  serverId: string,
   destinationId: string | null,
   activeDestination: string | null
 ) {
   if (destinationId && destinationId !== activeDestination) {
-    await showTorrent(router, destinationId, undefined);
+    await showTorrent(router, serverId, destinationId, undefined);
   } else {
     await ignoreSuperseded(router.refresh());
   }
 }
 
 export function backToWorkspace(router: Router, path: string) {
-  const destination = destinationFromPath(path);
+  const thread = threadFromPath(path);
   return ignoreSuperseded(
-    path.startsWith("/thread/") && destination !== null
+    thread
       ? router.navigate({
-          params: { id: destination },
+          params: thread,
           resetScroll: false,
-          to: "/thread/:id",
+          to: "/thread/:serverId/:threadId",
         })
       : router.navigate({ resetScroll: false, to: path === "/anilist" ? "/anilist" : "/" })
   );

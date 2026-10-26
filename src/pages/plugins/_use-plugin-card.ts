@@ -30,7 +30,7 @@ export function usePluginCard({ plugin, form }: Pick<PluginCardProps, "plugin" |
   const key = keyField.input ?? "";
   const limit = limitField.input ?? String(plugin.dailyLimit);
   const keyInput = useRef<HTMLInputElement>(null);
-  const keyed = plugin.id === "jev" || plugin.id === "c411";
+  const keyed = plugin.id === "c411";
   const errorId = `plugin-error-${plugin.id}`;
   const [feedback, setFeedback] = useState<PluginFeedback>({ error: null, keyRequired: false });
   const [isPending, setPending] = useState(false);
@@ -54,7 +54,7 @@ export function usePluginCard({ plugin, form }: Pick<PluginCardProps, "plugin" |
       keyInput.current?.focus();
       setPending(false);
       setFeedback({
-        error: `Add your ${plugin.id === "jev" ? "TypeSafe" : "C411"} API key before enabling this plugin.`,
+        error: "Add your C411 API key before enabling this plugin.",
         keyRequired: true,
       });
       return;

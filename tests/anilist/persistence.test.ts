@@ -25,6 +25,7 @@ test("AniList restores validated state and recalculates an invalid list cache", 
   expect(restored.visibleStatuses).toEqual(["PAUSED"]);
   expect(restored.entries[0]?.mediaId).toBe(10);
   expect(restored.accountId).toBe(42);
+  expect(restored.avatarImage).toBe("https://images.example.test/anilist-avatar.png");
   await server.stop();
   {
     using db = new Database(join(app.directory, "state/tofu.sqlite"));

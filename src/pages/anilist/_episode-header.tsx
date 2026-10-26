@@ -9,10 +9,10 @@ import { AniListCover } from "../../components/anilist/cover";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { DialogDescription, DialogTitle } from "../../components/ui/dialog";
-import type { useAniListEditor } from "../../hooks/use-anilist-editor";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import { api } from "../../lib/client";
 import { sessionAtom } from "../../state/workspace";
+import type { useAniListEditor } from "./hooks/_use-anilist-editor";
 export function EpisodeHeader({
   entry,
   authenticated,

@@ -13,14 +13,8 @@ test("AniList validates its OAuth callback and disconnecting removes account acc
   expect(success(await client.session.get()).capabilities.hostNative).toBe(false);
   expect(success(await client.state.get()).viewer?.capabilities.hostNative).toBe(false);
   expect((await client.desktop.open.post()).status).toBe(409);
-  success(
-    await client.anilist.put({
-      clientId: "52735",
-      redirectUri: "tofu-dev://oauth/anilist",
-      userName: "",
-    })
-  );
   const authorization = success(await client.anilist.connect.post({}));
+  expect(new URL(authorization.url).searchParams.get("client_id")).toBe("52735");
   expect(success(await client.anilist.open.post({ url: authorization.url }))).toEqual({
     opened: false,
     url: authorization.url,
@@ -36,6 +30,7 @@ test("AniList validates its OAuth callback and disconnecting removes account acc
   const connected = success(await client.anilist.callback.post({ url: callback }));
   expect(connected.authenticated).toBe(true);
   expect(connected.connectedUser).toBe("ExampleUser");
+  expect(connected.avatarImage).toBe("https://images.example.test/anilist-avatar.png");
   expect(connected.entries[0]?.mediaId).toBe(10);
   expect(JSON.stringify(connected)).not.toContain("test-anilist-token");
   expect((await client.anilist.callback.post({ url: callback })).status).toBe(400);
@@ -43,6 +38,7 @@ test("AniList validates its OAuth callback and disconnecting removes account acc
   success(await client.plugins({ id: "anilist" }).put({ apiKey: "", enabled: false }));
   const disconnected = success(await client.anilist.get());
   expect(disconnected.authenticated).toBe(false);
+  expect(disconnected.avatarImage).toBeNull();
   expect(disconnected.entries).toEqual([]);
   expect(
     (await client.anilist.entries({ mediaId: "10" }).editor.put({ notes: "Must not save" })).status

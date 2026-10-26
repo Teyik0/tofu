@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { ManagedRuntime } from "effect";
-import { Database, databaseLayer } from "../../src/api/lib/database-layer";
+import { Database, databaseLayer } from "../../src/api/lib/db";
 import { torrentRecords } from "../../src/db/schema";
 
 const seedRuntime = ManagedRuntime.make(databaseLayer);

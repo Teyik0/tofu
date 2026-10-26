@@ -1,7 +1,7 @@
 pre-commit:
   jobs:
     - name: format-and-lint
-      run: bun run fix
+      run: bun run fix --staged
       stage_fixed: true
 
     - name: typescript

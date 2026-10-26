@@ -26,7 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import type { useAniListCatalog } from "../../hooks/use-anilist-catalog";
 import {
   BrowseAdvancedFilters,
   CatalogMultiSelectFilter,
@@ -41,6 +40,7 @@ import {
   trackingOptions,
   type useLibraryFilters,
 } from "./_library-filters";
+import type { useAniListCatalog } from "./hooks/_use-anilist-catalog";
 
 type FilterModel = ReturnType<typeof useLibraryFilters>;
 type CatalogModel = ReturnType<typeof useAniListCatalog>;

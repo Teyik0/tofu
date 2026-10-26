@@ -1,7 +1,7 @@
 import { Effect, ManagedRuntime, Result } from "effect";
 import { createLogger, initLogger, toLoggerConfig } from "evlog";
 import { config } from "../../../../evlog.config";
-import { Database, databaseLayer } from "../../lib/database-layer";
+import { Database, databaseLayer } from "../../lib/db";
 import { serveWorker } from "../../lib/worker-rpc";
 import { openTorrentEngine, type TorrentEngine } from "./service";
 import type { EngineSnapshot } from "./types";

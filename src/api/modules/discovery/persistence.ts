@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 export const releaseSchema = Schema.Struct({
+  anilistId: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
   codec: Schema.NullOr(Schema.String),
   downloadUrl: Schema.String,
   episode: Schema.NullOr(Schema.Number),

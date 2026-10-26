@@ -4,7 +4,7 @@ import "@teyik0/furin/server-only";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { problem } from "elysia";
 import { authorizedDevices, deviceSessions, pairingInvitations } from "../../../db/schema";
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 import { grantsOf, holds } from "./grants";
 import type { DeviceKind, DeviceRole, SessionKind } from "./model";
 import { type AccessService, type Caller, DAY, type Device, type Invitation } from "./service";

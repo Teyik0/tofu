@@ -1,13 +1,14 @@
 import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
-import { Cause, Effect } from "effect";
-import { Elysia, ElysiaStatus, problem } from "elysia";
+import { Cause, Effect, Queue, Stream } from "effect";
+import { createContext, Elysia, ElysiaStatus, problem, sse } from "elysia";
 import { createLogger } from "evlog";
 import { sync } from "../../../sync";
 import { accessPlugin } from "../access/plugin";
 import { automationPlugin } from "../automation";
 import { draft } from "../automation/model";
 import { releaseAutomationPlugin } from "../automation/plugin";
+import type { FeedRelease } from "../discovery/model";
 import type { AniListCatalogFilters } from "./catalog";
 import { catalogSchema } from "./catalog";
 import {
@@ -19,13 +20,16 @@ import {
   episodeCompletionSchema,
   episodeParamsSchema,
   mediaParamsSchema,
+  notificationsSchema,
   selectionSchema,
   subscriptionSchema,
   threadPreviewSchema,
 } from "./model";
 import { anilistServicePlugin } from "./plugin";
+import type { AniListReleases } from "./releases";
 
 const invalidateLibrary = { path: "/anilist", type: "page" } as const;
+const { anilist: notificationMonitor } = createContext(anilistServicePlugin).prototype;
 
 export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/anilist" })
   .use(anilistServicePlugin)
@@ -34,6 +38,7 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
   .use(furinSync(sync))
   .use(furinInvalidate())
   .use(accessPlugin)
+  .onStart(() => Effect.runPromise(notificationMonitor.startNotifications(sync)))
   // The AniList account, list and automation belong to the server owner.
   .guard({ administration: true })
   .get("/", {}, ({ anilist, defer }) => {
@@ -61,6 +66,16 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
     }
     return anilist.snapshot();
   })
+  .get("/notifications", { query: notificationsSchema }, ({ anilist, query }) =>
+    Effect.runPromise(anilist.notifications(query))
+  )
+  .get("/notifications/status", {}, ({ anilist }) => anilist.notificationStatus())
+  .post("/notifications/check", { idempotent: false }, ({ anilist }) =>
+    Effect.runPromise(anilist.checkNotifications(true))
+  )
+  .post("/notifications/read", {}, ({ anilist }) =>
+    Effect.runPromise(anilist.notifications({ category: "all", page: 1 }, true))
+  )
   .post("/catalog", { body: catalogSchema }, ({ anilist, body }) =>
     Effect.runPromise(anilist.catalog(body as AniListCatalogFilters))
   )
@@ -100,6 +115,50 @@ export const anilistPlugin = new Elysia({ name: "tofu-anilist-api", prefix: "/an
     ({ anilist, params, invalidate }) => {
       invalidate(invalidateLibrary);
       return Effect.runPromise(anilist.deleteEntry(params.mediaId));
+    }
+  )
+  .post(
+    "/entries/:mediaId/releases/stream",
+    { params: mediaParamsSchema },
+    async function* ({ anilist, params, request, set }) {
+      set.headers["cache-control"] = "private, no-store";
+      const stream = Stream.callback<
+        | { type: "progress"; releases: FeedRelease[] }
+        | { type: "complete"; result: AniListReleases }
+        | { type: "error"; status: number; detail: string }
+      >((queue) =>
+        Effect.gen(function* () {
+          const result = yield* anilist.releases(params.mediaId, (releases) => {
+            Queue.offerUnsafe(queue, { releases, type: "progress" });
+          });
+          if (result instanceof ElysiaStatus) {
+            Queue.offerUnsafe(queue, {
+              detail: result.response.detail,
+              status: result.status,
+              type: "error",
+            });
+          } else {
+            Queue.offerUnsafe(queue, { result, type: "complete" });
+          }
+          Queue.endUnsafe(queue);
+        })
+      );
+      const iterator = Stream.toAsyncIterable(stream)[Symbol.asyncIterator]();
+      await using cleanup = new AsyncDisposableStack();
+      cleanup.defer(async () => {
+        await iterator.return?.();
+      });
+      for (;;) {
+        // biome-ignore lint/performance/noAwaitInLoops: Consume and forward each incremental search update in order.
+        const next = await Effect.runPromise(
+          Effect.tryPromise({ catch: (cause) => cause, try: () => iterator.next() }),
+          { signal: request.signal }
+        );
+        if (next.done) {
+          return;
+        }
+        yield sse({ data: next.value });
+      }
     }
   )
   .post("/entries/:mediaId/releases", { params: mediaParamsSchema }, ({ anilist, params }) =>

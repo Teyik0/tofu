@@ -71,12 +71,13 @@ if (provider) {
   const originalFetch = globalThis.fetch;
   const paths: Record<string, string> = {
     "anilist.co": "/anilist",
+    "api.ani.zip": "/anime-mapping",
     "api.github.com": "/github",
-    "api.typesafe.ai": "/jev",
     "c411.org": "/c411",
     "graphql.anilist.co": "/anilist",
     "nyaa.si": "/nyaa",
     "release-assets.githubusercontent.com": "/github-assets",
+    "tsundere.to": "/tsundere",
   };
   globalThis.fetch = Object.assign(
     async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {

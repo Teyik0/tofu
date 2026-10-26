@@ -9,7 +9,11 @@ const date = Schema.Struct({
   month: Schema.NullOr(Schema.Number),
   year: Schema.NullOr(Schema.Number),
 });
-const account = Schema.Struct({ id: Schema.Number, name: Schema.String });
+const account = Schema.Struct({
+  avatar: Schema.optional(Schema.NullOr(Schema.Struct({ large: Schema.NullOr(Schema.String) }))),
+  id: Schema.Number,
+  name: Schema.String,
+});
 const entry = Schema.Struct({
   airingStatus: Schema.optional(Schema.NullOr(Schema.String)),
   aliases: strings,

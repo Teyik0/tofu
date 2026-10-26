@@ -90,27 +90,50 @@ export function interpretLocally(
     title,
   };
 }
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep identity, episode, and quality rejection checks together.
 export function localMatch(rule: AutomationDraft, release: FeedRelease) {
+  if (
+    rule.anilistId !== undefined &&
+    release.anilistId !== undefined &&
+    rule.anilistId !== release.anilistId
+  ) {
+    return "The AniList identity does not match";
+  }
   const matches =
     rule.matchMode === "pattern"
       ? new RegExp(rule.title, "iu").test(release.title)
-      : [rule.title, ...(rule.aliases ?? [])].some(
+      : (rule.anilistId !== undefined &&
+          release.anilistId === rule.anilistId &&
+          release.sourceEpisode !== undefined) ||
+        [rule.title, ...(rule.aliases ?? [])].some(
           (title) => normalizeTitle(release.workTitle) === normalizeTitle(title)
         );
-  if (!matches && rule.matchMode !== "jev") {
+  if (!matches) {
     return "The title does not match";
   }
   if (rule.excludePacks && release.pack) {
     return "Packs are excluded";
   }
   if (
-    rule.afterEpisode !== undefined &&
-    rule.afterEpisode > 0 &&
-    (release.episode === null || release.episode <= rule.afterEpisode)
+    rule.episodeCount !== undefined &&
+    release.episode !== null &&
+    release.episode > rule.episodeCount
+  ) {
+    return "Episode exceeds the anime episode count";
+  }
+  if (
+    (rule.anilistId !== undefined && !release.pack && release.episode === null) ||
+    (rule.afterEpisode !== undefined &&
+      rule.afterEpisode > 0 &&
+      (release.episode === null || release.episode <= rule.afterEpisode))
   ) {
     return "Episode already watched or number unknown";
   }
-  if (rule.season !== null && release.season !== rule.season) {
+  if (
+    rule.season !== null &&
+    release.season !== rule.season &&
+    !(rule.anilistId === release.anilistId && release.sourceEpisode !== undefined)
+  ) {
     return "Season differs or is unknown";
   }
   if (rule.languages.length && !(release.language && rule.languages.includes(release.language))) {

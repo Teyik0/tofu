@@ -1,8 +1,7 @@
 import "@teyik0/furin/server-only";
 import { Context } from "effect";
 import { Elysia } from "elysia";
-import { databasePlugin } from "../../lib/db";
-import { services } from "../../lib/services-runtime";
+import { databasePlugin, services } from "../../lib/services-runtime";
 import { torrentServicePlugin } from "../torrents/plugin";
 import { Roots } from "./roots";
 

@@ -14,10 +14,15 @@ import type { LiveState } from "../api/modules/dashboard/projection";
 import type { Destination } from "../api/modules/destinations/model";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { errorMessage } from "../lib/errors";
-import type { RemoteThreadSelection } from "../lib/navigation";
+import type { ThreadSelection } from "../lib/navigation";
 import { isSupersededNavigation, showDestination } from "../lib/navigation";
 import type { ModalKind } from "../state/workspace";
-import { modalAtom, sessionAtom } from "../state/workspace";
+import {
+  anilistBackPathAtom,
+  anilistHasUpdatesAtom,
+  modalAtom,
+  sessionAtom,
+} from "../state/workspace";
 import { ActionTooltip } from "./action-tooltip";
 import { AniListIcon } from "./anilist/icon";
 import { DestinationIcon } from "./destination-icon";
@@ -65,12 +70,14 @@ function useShiftHeld() {
 function DestinationThreadActions({
   activeDestination,
   destination,
+  serverId,
   deletable,
   immediate,
   open,
 }: {
   activeDestination: string | null;
   destination: Destination;
+  serverId: string;
   deletable: boolean;
   immediate: boolean;
   open: (modal: ModalKind) => void;
@@ -84,7 +91,12 @@ function DestinationThreadActions({
       return;
     }
     action(async () => {
-      await showDestination(router, await deleteDestination(destination.id), activeDestination);
+      await showDestination(
+        router,
+        serverId,
+        await deleteDestination(destination.id),
+        activeDestination
+      );
     });
   };
   return (
@@ -139,11 +151,13 @@ export const DestinationSidebar = memo(
   }: {
     data: LiveState | null;
     active: string | null;
-    remoteThread: RemoteThreadSelection | null;
+    remoteThread: ThreadSelection | null;
   }) {
     const router = useRouter();
     const open = useSetAtom(modalAtom);
     const capabilities = useAtomValue(sessionAtom)?.capabilities;
+    const aniListBackPath = useAtomValue(anilistBackPathAtom);
+    const aniListHasUpdates = useAtomValue(anilistHasUpdatesAtom);
     const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
     const serverFilter = capabilities?.hostNative ? selectedServerId : null;
     const showCurrentServer = serverFilter === null || serverFilter === data?.server.id;
@@ -224,13 +238,16 @@ export const DestinationSidebar = memo(
                   <ActionTooltip>
                     <Link
                       aria-current={active === "anilist" ? "page" : undefined}
-                      aria-label="AniList"
+                      aria-label={aniListHasUpdates ? "AniList — new notifications" : "AniList"}
                       className="sidebar-shortcut sidebar-app-shortcut"
                       data-sidebar="menu-button"
                       resetScroll={false}
-                      to="/anilist"
+                      to={active === "anilist" ? "/anilist" : aniListBackPath}
                     >
                       <AniListIcon />
+                      {aniListHasUpdates ? (
+                        <span aria-hidden="true" className="anilist-notification-dot" />
+                      ) : null}
                     </Link>
                   </ActionTooltip>
                 </SidebarMenuItem>
@@ -251,9 +268,9 @@ export const DestinationSidebar = memo(
                         render={
                           <Link
                             aria-current={active === destination.id ? "page" : undefined}
-                            params={{ id: destination.id }}
+                            params={{ serverId: data.server.id, threadId: destination.id }}
                             resetScroll={false}
-                            to="/thread/:id"
+                            to="/thread/:serverId/:threadId"
                           />
                         }
                         tooltip={{
@@ -319,9 +336,9 @@ export const DestinationSidebar = memo(
                         render={
                           <Link
                             aria-current={active === destination.id ? "page" : undefined}
-                            params={{ id: destination.id }}
+                            params={{ serverId: data.server.id, threadId: destination.id }}
                             resetScroll={false}
-                            to="/thread/:id"
+                            to="/thread/:serverId/:threadId"
                           />
                         }
                         title={editable(destination.id)?.downloadPath ?? destination.name}
@@ -355,6 +372,7 @@ export const DestinationSidebar = memo(
                         destination={editable(destination.id) as Destination}
                         immediate={shiftHeld}
                         open={open}
+                        serverId={data.server.id}
                       />
                     ) : null}
                   </SidebarMenuItem>

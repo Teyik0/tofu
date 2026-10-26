@@ -4,7 +4,7 @@ import { ListFilterIcon, ServerIcon } from "lucide-react";
 import { useEffect } from "react";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
-import type { RemoteThreadSelection } from "../lib/navigation";
+import type { ThreadSelection } from "../lib/navigation";
 import { DestinationIcon } from "./destination-icon";
 import { Button } from "./ui/button";
 import {
@@ -27,7 +27,7 @@ function SidebarRemoteServer({
   duplicateNames,
   onNamesChange,
 }: {
-  activeRemoteThread: RemoteThreadSelection | null;
+  activeRemoteThread: ThreadSelection | null;
   server: { alias: string; name: string; serverId: string };
   visible: boolean;
   duplicateNames: ReadonlySet<string>;
@@ -98,9 +98,9 @@ function SidebarRemoteServer({
                 activeRemoteThread.threadId === thread.id
               }
               data-ambiguous={duplicateNames.has(thread.name)}
-              params={{ id: thread.id, serverId: server.serverId }}
+              params={{ serverId: server.serverId, threadId: thread.id }}
               resetScroll={false}
-              to="/servers/:serverId/thread/:id"
+              to="/thread/:serverId/:threadId"
             >
               <DestinationIcon name={thread.icon} />
               <span className="flex min-w-0 flex-1 flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
@@ -138,7 +138,7 @@ export function SidebarRemoteServers({
   duplicateNames,
   onNamesChange,
 }: {
-  activeRemoteThread: RemoteThreadSelection | null;
+  activeRemoteThread: ThreadSelection | null;
   currentServerId: string;
   selectedServerId: string | null;
   duplicateNames: ReadonlySet<string>;

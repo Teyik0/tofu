@@ -6,6 +6,8 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ### Changed
 
+- Remove the Jev/TypeSafe plugin and its settings, remote evaluations, and cache; migrate existing rules to local exact matching.
+
 - Rebuild the integration suite around 15 essential API scenarios with real server processes, local peers, HTTP provider fixtures, and shared resource cleanup; cover missing-file recovery across restarts and remote permissions.
 - Update the vendored Furin core and Electrobun packages to PR #163 revision `f272df9`, isolating route discovery imports before AOT while retaining the local AOT process-isolation patch.
 - Move stable release builds, signing, artifact preparation, and publication into GitHub Actions; use `bun run build` for local desktop builds.

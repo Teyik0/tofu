@@ -6,7 +6,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } fr
 import { problem } from "elysia";
 import { linkedServers } from "../../../db/schema";
 import { PROTOCOL_MAJOR } from "../../../lib/protocol";
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 import { animeEpisodeOffset, localAnimeSearch } from "../anilist/releases";
 import type { AniListEntry } from "../anilist/types";
 import type { AvailabilityQuery, EpisodeSource } from "./availability";

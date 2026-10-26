@@ -4,8 +4,9 @@ import { Elysia, ElysiaStatus } from "elysia";
 import { sync } from "../../../sync";
 import { accessPlugin } from "../access/plugin";
 import { automationPlugin } from ".";
-import { draft, preferences } from "./model";
+import { draft, interpretationSchema, preferences } from "./model";
 import { releaseAutomationPlugin } from "./plugin";
+import { interpretLocally } from "./rules";
 
 export const automationManagementPlugin = new Elysia({ name: "tofu-automation-management-api" })
   .use(automationPlugin)
@@ -26,6 +27,12 @@ export const automationManagementPlugin = new Elysia({ name: "tofu-automation-ma
       automation.refreshState();
       return result;
     }
+  )
+  .post(
+    "/automations/interpret",
+    { body: interpretationSchema, idempotent: false },
+    ({ automation, body }) =>
+      interpretLocally(body.query, body.destinationId, automation.snapshot().preferences)
   )
   .post("/automations/preview", { body: draft, idempotent: false }, ({ releaseAutomation, body }) =>
     Effect.runPromise(releaseAutomation.preview(body))

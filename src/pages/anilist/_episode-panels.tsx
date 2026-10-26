@@ -8,6 +8,7 @@ import type {
   AutomationState,
 } from "../../api/modules/automation/model";
 import type { LiveState } from "../../api/modules/dashboard/projection";
+import type { EpisodeSource } from "../../api/modules/library-links/availability";
 import { request } from "../../components/api";
 import { RuleFields } from "../../components/automation-fields";
 import { OptionSelect } from "../../components/option-select";
@@ -17,8 +18,6 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../componen
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../components/ui/field";
 import { Skeleton } from "../../components/ui/skeleton";
 import { TabsContent } from "../../components/ui/tabs";
-import type { useAniListEditor } from "../../hooks/use-anilist-editor";
-import type { useAniListReleases } from "../../hooks/use-anilist-releases";
 import type { AsyncAction as Action } from "../../hooks/use-async-action";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import { useAutomationDraftForm } from "../../hooks/use-automation-draft-form";
@@ -27,6 +26,8 @@ import { errorMessage } from "../../lib/errors";
 import { useRefresh } from "../../lib/navigation";
 import { EpisodeRow } from "./_episode-row";
 import { AniListEditorUnavailable, AniListListEditor } from "./_list-editor";
+import type { useAniListEditor } from "./hooks/_use-anilist-editor";
+import type { useAniListReleases } from "./hooks/_use-anilist-releases";
 
 const PART_NUMBER = /\bpart\s*(\d+)/i;
 
@@ -89,7 +90,11 @@ export function EpisodeDownloadsPanel({
   destinationId,
   setDestinationId,
   model,
+  episode: selectedEpisode,
+  localSources,
 }: {
+  episode?: number;
+  localSources?: EpisodeSource[];
   entry: AniListMedia | AniListEntry;
   dashboard: LiveState;
   automation: AutomationState;
@@ -98,7 +103,9 @@ export function EpisodeDownloadsPanel({
   model: ReleasesModel;
 }) {
   const { busy, error, action } = useAsyncAction("Unable to update this anime");
-  const { result, loading, reload, releaseStatus, numbered, packs, episodes } = model;
+  const { result, loading, reload, releaseStatus, numbered } = model;
+  const episodes = selectedEpisode === undefined ? model.episodes : [selectedEpisode];
+  const packs = selectedEpisode === undefined ? model.packs : [];
   const [remote, setRemote] = useState<
     NonNullable<
       Awaited<ReturnType<(typeof api)["linked-libraries"]["availability"]["post"]>>["data"]
@@ -202,9 +209,11 @@ export function EpisodeDownloadsPanel({
         </Button>
       </div>
       <p className="anime-sync-note">
-        {listed
-          ? "Mark episodes Completed to sync consecutive progress to AniList. Skipped episodes stay marked in Tofu until you catch up. An authenticated account is required."
-          : "Use My list to add this anime to AniList and sync watched episodes or customize its automation. You can download releases here without adding it to a list."}
+        {selectedEpisode === undefined
+          ? listed
+            ? "Mark episodes Completed to sync consecutive progress to AniList. Skipped episodes stay marked in Tofu until you catch up. An authenticated account is required."
+            : "Use My list to add this anime to AniList and sync watched episodes or customize its automation. You can download releases here without adding it to a list."
+          : `Choose a release for episode ${selectedEpisode}.`}
       </p>
       {loading ? (
         <p className="anime-sync-note" role="status">
@@ -255,7 +264,8 @@ export function EpisodeDownloadsPanel({
               entry={entry}
               episode={episode}
               key={episode}
-              releaseStatus={releaseStatus}
+              localSources={localSources}
+              releaseStatus={numbered.has(episode) ? "ready" : releaseStatus}
               releases={numbered.get(episode) ?? []}
               remote={remote}
               torrents={dashboard.torrents}

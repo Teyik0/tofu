@@ -1,7 +1,6 @@
 import { Effect, Result } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import { problem } from "elysia";
-import { parseJevResponse } from "../jev/service";
 import { parseRss } from "./feeds";
 import type { CredentialPluginId } from "./model";
 
@@ -33,28 +32,14 @@ export function normalizePluginCredential(id: CredentialPluginId, input: string)
 
 export const validatePluginCredential = Effect.fn("Plugins.validateCredentialResponse")(
   function* (options: { id: CredentialPluginId; apiKey: string; endpoint: string }) {
-    const { id, apiKey, endpoint } = options;
+    const { apiKey, endpoint } = options;
     const http = HttpClient.withScope(yield* HttpClient.HttpClient);
-    const questions = {
-      connected: { instructions: "Does the message say connection test?", type: "noul" as const },
-    };
     const url = new URL(endpoint);
-    if (id === "c411") {
-      url.searchParams.set("apikey", apiKey);
-      url.searchParams.set("t", "search");
-      url.searchParams.set("limit", "1");
-    }
-    const name = id === "c411" ? "C411" : "TypeSafe";
-    const request =
-      id === "jev"
-        ? HttpClientRequest.post(url, { headers: { authorization: `Bearer ${apiKey}` } }).pipe(
-            HttpClientRequest.bodyJsonUnsafe({
-              model: "jev-latest",
-              questions,
-              state: { message: "connection test" },
-            })
-          )
-        : HttpClientRequest.get(url);
+    url.searchParams.set("apikey", apiKey);
+    url.searchParams.set("t", "search");
+    url.searchParams.set("limit", "1");
+    const name = "C411";
+    const request = HttpClientRequest.get(url);
     const fetched = yield* Effect.result(
       http
         .execute(request)
@@ -79,20 +64,12 @@ export const validatePluginCredential = Effect.fn("Plugins.validateCredentialRes
         detail: `Unable to validate your ${name} API key (HTTP ${response.status})`,
       });
     }
-    const parsed =
-      id === "c411"
-        ? yield* Effect.result(
-            response.text.pipe(
-              Effect.flatMap((text) => parseRss(text, "c411")),
-              Effect.asVoid
-            )
-          )
-        : yield* Effect.result(
-            response.json.pipe(
-              Effect.flatMap((body) => parseJevResponse(body, questions)),
-              Effect.asVoid
-            )
-          );
+    const parsed = yield* Effect.result(
+      response.text.pipe(
+        Effect.flatMap((text) => parseRss(text, "c411")),
+        Effect.asVoid
+      )
+    );
     if (parsed._tag === "Failure") {
       return problem(502, {
         detail: `Unable to validate your ${name} API key. Check your connection and try again.`,

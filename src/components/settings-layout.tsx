@@ -17,7 +17,6 @@ type SettingsPath =
   | "/options/updates"
   | "/plugins"
   | "/plugins/sources"
-  | "/plugins/intelligence"
   | "/plugins/integrations";
 
 export function SettingsLayout({

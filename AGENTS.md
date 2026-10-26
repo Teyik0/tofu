@@ -141,6 +141,11 @@ interface TorrentEngineOptions {
 }
 ```
 
+## Furin and Electrobun dependency patches
+
+- Do not create, modify, or apply patches to Furin, Electrobun, or `@teyik0/furin-electrobun` without explicit user permission. This includes direct edits in `node_modules`, patch files, and patched vendored sources or package archives.
+- If a patch is absolutely necessary, explain why and describe the exact proposed changes, then request and wait for the user's explicit approval before making the patch.
+
 ## Isomorphic Eden client: mandatory and protected
 
 - Never modify `src/lib/client.ts` unless the user explicitly requests a change to that file. Architecture, startup, AOT, and desktop fixes do not authorize changing it.
@@ -218,6 +223,14 @@ return { torrent: data };
 - Use English for all project-authored content throughout the repository, including documentation, agent instructions, comments, identifiers, UI text, accessibility labels, errors, logs, scripts, tests, and configuration descriptions.
 - Translate existing non-English project-authored content into English when editing it. Write all new content in English.
 - Preserve proper names, external API contracts, user-provided data, and third-party content as required for correctness. Do not translate machine-readable values whose meaning depends on their exact spelling.
+
+## Development verification
+
+- Use `.agents/skills/tofu-verify/SKILL.md` to verify code changes.
+- Run `bun fix && bun tscheck` before handing off code changes.
+- Behavior changes require focused integration verification.
+- Run the full build for changes affecting packaging, native integration, startup, or the build pipeline.
+- Report the commands actually run, their results, and unverified behavior.
 
 ## Integration tests
 

@@ -20,7 +20,7 @@ export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
   .guard({ administration: true })
   .post("/plugins/:id/credentials/open", { idempotent: false }, ({ caller, desktop, params }) => {
     const sdk = nativeControl.tofuNativeSdk;
-    if (params.id !== "c411" && params.id !== "jev") {
+    if (params.id !== "c411") {
       return problem(400, { detail: "This plugin does not use an API key" });
     }
     const url = pluginCredentialPages[params.id];
@@ -42,23 +42,11 @@ export const pluginsPlugin = new Elysia({ name: "tofu-pluginmanagement-api" })
     invalidate({ path: "/plugins", type: "layout" });
     invalidate({ path: "/anilist", type: "page" });
   })
-  .post("/plugins/:id/test", async ({ anilist, releaseAutomation, jev, plugins, params }) => {
+  .post("/plugins/:id/test", async ({ anilist, releaseAutomation, plugins, params }) => {
     if (params.id === "anilist") {
       const listed = await Effect.runPromise(anilist.list());
       if (listed instanceof ElysiaStatus) {
         return listed;
-      }
-      return releaseAutomation.snapshot();
-    }
-    if (params.id === "jev") {
-      const evaluated = await Effect.runPromise(
-        jev.evaluate(
-          { message: "connection test" },
-          { connected: { instructions: "Does the message say connection test?", type: "noul" } }
-        )
-      );
-      if (evaluated instanceof ElysiaStatus) {
-        return evaluated;
       }
       return releaseAutomation.snapshot();
     }

@@ -26,10 +26,14 @@ export const route = defineRoute("/player/[id]")
     return { file, torrent: data };
   })
   .head(() => ({ meta: [{ title: "Player — Tofu" }] }))
-  .page(({ file, torrent }) => (
+  .page(({ dashboard, file, torrent }) => (
     <MediaPlayer
       // Leaving the player reloads the library outside the player's cross-origin isolation.
-      back={`/thread/${torrent.destinationId}?torrent=${torrent.id}`}
+      back={
+        dashboard
+          ? `/thread/${dashboard.server.id}/${encodeURIComponent(torrent.destinationId)}?torrent=${torrent.id}`
+          : "/"
+      }
       complete={file.progress === 1}
       index={file.index}
       mediaKey={`${torrent.id}:${file.index}:${file.length}`}

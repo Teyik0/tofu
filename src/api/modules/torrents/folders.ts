@@ -8,7 +8,7 @@ import { createLogger } from "evlog";
 import parseTorrent from "parse-torrent";
 import { watchedTorrentFiles } from "../../../db/schema";
 import { nativeControl } from "../../../native/control";
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 import { instance } from "../../lib/instance";
 import type { Destination } from "../destinations/model";
 import type { EnginePort } from "./service";

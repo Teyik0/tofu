@@ -91,16 +91,18 @@ export const draft = pipe(
   object({
     afterEpisode: optional(pipe(integerInput, integer(), minValue(0), maxValue(10_000))),
     aliases: optional(pipe(array(pipe(string(), maxLength(500))), maxLength(30))),
+    anilistId: optional(pipe(integerInput, integer(), minValue(1))),
     automatic: boolean(),
     codecs: pipe(array(pipe(string(), maxLength(20))), maxLength(6)),
     deleteReplacedFiles: optional(boolean()),
     destinationId: string(),
     enabled: boolean(),
+    episodeCount: optional(pipe(integerInput, integer(), minValue(1))),
     excludePacks: boolean(),
     includeExisting: boolean(),
     intervalMinutes: pipe(integerInput, integer(), minValue(1), maxValue(1440)),
     languages: pipe(array(language), maxLength(3)),
-    matchMode: union([literal("exact"), literal("pattern"), literal("jev")]),
+    matchMode: union([literal("exact"), literal("pattern")]),
     paused: boolean(),
     priority: criteria,
     query: pipe(string(), minLength(1), maxLength(2000)),
@@ -167,3 +169,8 @@ export interface AutomationDecision {
   supersedes?: { release: FeedRelease; torrentId: string } | null;
   torrentId: string | null;
 }
+
+export const interpretationSchema = object({
+  destinationId: string(),
+  query: pipe(string(), minLength(1), maxLength(2000)),
+});

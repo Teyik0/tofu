@@ -199,6 +199,7 @@ export function TorrentLibraryList({ model }: { model: ReturnType<typeof useTorr
     pending,
     torrents,
     selectedId,
+    serverId,
     add,
     act,
   } = model;
@@ -233,7 +234,7 @@ export function TorrentLibraryList({ model }: { model: ReturnType<typeof useTorr
               <button
                 aria-pressed={selectedId === torrent.id}
                 className="torrent-select"
-                onClick={() => void showTorrent(router, activeDestination, torrent.id)}
+                onClick={() => void showTorrent(router, serverId, activeDestination, torrent.id)}
                 type="button"
               >
                 <StatusGlyph progress={torrent.progress} size={34} status={torrent.status} />

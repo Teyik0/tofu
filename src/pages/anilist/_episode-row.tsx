@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AniListEntry, AniListMedia } from "../../api/modules/anilist/types";
 import type { LiveState } from "../../api/modules/dashboard/projection";
 import type { FeedRelease } from "../../api/modules/discovery/model";
+import type { EpisodeSource } from "../../api/modules/library-links/availability";
 import { bytes } from "../../components/format";
 import { OptionSelect } from "../../components/option-select";
 import { Badge } from "../../components/ui/badge";
@@ -25,6 +26,7 @@ interface EpisodeRowProps {
   destinationId: string;
   entry: AniListMedia | AniListEntry;
   episode: number | null;
+  localSources?: EpisodeSource[];
   releaseStatus: ReleaseStatus;
   releases: FeedRelease[];
   remote: NonNullable<
@@ -43,6 +45,7 @@ export function EpisodeRow({
   releaseStatus,
   action,
   remote,
+  localSources,
 }: EpisodeRowProps) {
   const refresh = useRefresh();
   const addRelease = useMutation(api.discover.add.post);
@@ -58,7 +61,16 @@ export function EpisodeRow({
     releases.find((item) => `${item.sourceId}:${item.id}` === chosen) ??
     releases.find((item) => item.infoHash !== null && torrentIds.has(item.infoHash)) ??
     releases[0];
-  const torrent = torrents.find((item) => item.id === release?.infoHash);
+  const local = localSources?.find(
+    (source) => source.episode === episode && torrents.some((item) => item.id === source.torrentId)
+  );
+  const torrent = torrents.find((item) => item.id === (local?.torrentId ?? release?.infoHash));
+  const downloaded =
+    torrent &&
+    !torrent.storageIssue &&
+    torrent.status !== "error" &&
+    torrent.status !== "checking" &&
+    (local?.progress === 1 || torrent.progress === 1);
   const remoteMatches = remote.flatMap((item) =>
     item.sources
       .filter((source) => source.episode === episode)
@@ -101,6 +113,7 @@ export function EpisodeRow({
         ) : null}
         {torrent || remoteMatches.length === 0 ? (
           <EpisodeStatus
+            downloaded={Boolean(downloaded)}
             releaseCount={releases.length}
             releaseStatus={releaseStatus}
             torrent={torrent}
@@ -147,9 +160,7 @@ export function EpisodeRow({
             </Button>
           ))}
           {torrent ? (
-            <Badge variant="secondary">
-              {torrent.progress === 1 ? "Downloaded" : torrent.status}
-            </Badge>
+            <Badge variant="secondary">{downloaded ? "Downloaded" : torrent.status}</Badge>
           ) : release ? (
             <Button
               disabled={busy || !destinationId}
@@ -230,10 +241,12 @@ function EpisodeReleasePicker({
 }
 
 function EpisodeStatus({
+  downloaded,
   torrent,
   releaseCount,
   releaseStatus,
 }: {
+  downloaded: boolean;
   torrent: LiveState["torrents"][number] | undefined;
   releaseCount: number;
   releaseStatus: ReleaseStatus;
@@ -244,7 +257,7 @@ function EpisodeStatus({
   let text = "No release found";
   if (torrent) {
     const progress = torrent.progress === null ? "—" : `${(torrent.progress * 100).toFixed(1)}%`;
-    text = torrent.progress === 1 ? "Downloaded" : `${torrent.status} · ${progress}`;
+    text = downloaded ? "Downloaded" : `${torrent.status} · ${progress}`;
   } else if (releaseCount) {
     text = `${releaseCount} release${releaseCount === 1 ? "" : "s"} available`;
   } else if (releaseStatus === "failed") {

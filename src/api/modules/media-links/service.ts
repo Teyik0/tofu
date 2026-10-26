@@ -3,7 +3,7 @@ import "@teyik0/furin/server-only";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { ElysiaStatus, problem } from "elysia";
 import { authorizedDevices, mediaLinks } from "../../../db/schema";
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 import type { EnginePort } from "../torrents/service";
 import type { FileStats } from "../torrents/types";
 

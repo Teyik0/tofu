@@ -3,8 +3,8 @@ import { dirname, join, normalize, sep } from "node:path";
 import { Elysia, problem, t } from "elysia";
 import { useLogger } from "evlog/elysia";
 import { version } from "libvlc-wasm/package.json";
-import { databasePlugin } from "../../lib/db";
 import { instance } from "../../lib/instance";
+import { databasePlugin } from "../../lib/services-runtime";
 import { accessPlugin } from "../access/plugin";
 
 // Builds copy the engine next to the server bundle; development and tests run from the project

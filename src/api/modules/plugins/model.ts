@@ -31,14 +31,13 @@ export const pluginFormSchema = object({
 
 export const pluginCredentialPages: Record<CredentialPluginId, string> = {
   c411: "https://c411.org/user/integrations",
-  jev: "https://console.typesafe.ai/keys",
 };
 
 export type SourcePluginId = string;
 
-export type PluginId = SourcePluginId | "jev" | "anilist";
+export type PluginId = SourcePluginId | "anilist";
 
-export type CredentialPluginId = "c411" | "jev";
+export type CredentialPluginId = "c411";
 
 export interface StoredPlugin extends PluginState {
   apiKey: string;

@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect, ManagedRuntime } from "effect";
 import { Elysia, t } from "elysia";
-import { Database, databaseLayer } from "../../src/api/lib/database-layer";
+import { Database, databaseLayer } from "../../src/api/lib/db";
 import { instance } from "../../src/api/lib/instance";
 import { torrentDestinations } from "../../src/db/schema";
 

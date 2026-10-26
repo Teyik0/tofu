@@ -132,50 +132,25 @@ export function animeEpisodeOffset(entry: AniListMedia, library: AniListEntry[])
   return offset;
 }
 
-export function animeEpisodeRelease(
-  entry: AniListMedia,
-  offset: number | null,
-  release: FeedRelease
-): FeedRelease | null {
-  if (
-    release.sourceEpisode !== undefined ||
-    !offset ||
-    release.episode === null ||
-    release.pack ||
-    partNumber.test(release.workTitle)
-  ) {
-    return release;
-  }
-  const work = normalizeTitle(release.workTitle);
-  const continuous = entry.aliases.some((alias) => {
-    const base = alias.replace(partSuffix, "");
-    const parsed = parseDiscovery(base);
-    return (
-      normalizeTitle(base) === work ||
-      (parsed.season !== null &&
-        parsed.season === release.season &&
-        normalizeTitle(parsed.title) === work)
-    );
-  });
-  if (!continuous) {
-    return release;
-  }
-  const episode = release.episode - offset;
-  return episode > 0 && (entry.episodes === null || episode <= entry.episodes)
-    ? { ...release, episode, sourceEpisode: release.episode }
-    : null;
-}
-
 export function animeReleaseCandidate(
   entry: AniListMedia,
   preferences: AutomationPreferences,
   release: FeedRelease
 ) {
+  if (release.anilistId !== undefined && release.anilistId !== entry.mediaId) {
+    return false;
+  }
   const aliases = [entry.title, ...entry.aliases];
   const requestedSeason =
     aliases.map((title) => parseDiscovery(title).season).find((season) => season !== null) ?? null;
   const releaseSeason = release.season ?? parseDiscovery(release.workTitle).season;
-  if (requestedSeason !== null && releaseSeason !== null && requestedSeason !== releaseSeason) {
+  const mapped = release.anilistId === entry.mediaId && release.sourceEpisode !== undefined;
+  if (
+    !mapped &&
+    requestedSeason !== null &&
+    releaseSeason !== null &&
+    requestedSeason !== releaseSeason
+  ) {
     return false;
   }
   const requestedPart = Number(entry.title.match(partNumber)?.[1] ?? 1);
@@ -184,7 +159,7 @@ export function animeReleaseCandidate(
       (release.sourceEpisode === undefined ? 1 : requestedPart)
   );
   if (
-    releasePart !== requestedPart ||
+    (!mapped && releasePart !== requestedPart) ||
     (entry.episodes !== null && release.episode !== null && release.episode > entry.episodes)
   ) {
     return false;
@@ -213,19 +188,21 @@ export function matchesAnimeRelease(
   const aliases = [entry.title, ...entry.aliases];
   const releaseSeason = release.season ?? parseDiscovery(release.workTitle).season;
   const work = normalizeTitle(release.workTitle);
-  const identity = aliases.some((alias) => {
-    if (normalizeTitle(alias) === work) {
-      return true;
-    }
-    const parsed = parseDiscovery(
-      release.sourceEpisode === undefined ? alias : alias.replace(partSuffix, "")
-    );
-    return (
-      parsed.season !== null &&
-      parsed.season === releaseSeason &&
-      normalizeTitle(parsed.title) === work
-    );
-  });
+  const identity =
+    release.anilistId === entry.mediaId ||
+    aliases.some((alias) => {
+      if (normalizeTitle(alias) === work) {
+        return true;
+      }
+      const parsed = parseDiscovery(
+        release.sourceEpisode === undefined ? alias : alias.replace(partSuffix, "")
+      );
+      return (
+        parsed.season !== null &&
+        parsed.season === releaseSeason &&
+        normalizeTitle(parsed.title) === work
+      );
+    });
   const matcher = {
     ...interpretLocally(entry.title, "default", preferences),
     aliases: [release.workTitle],

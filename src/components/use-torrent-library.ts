@@ -142,6 +142,7 @@ export function useTorrentLibrary({
     scoped,
     search,
     selectedId,
+    serverId: data.server.id,
     setError,
     setFilter,
     setModal,

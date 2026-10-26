@@ -4,6 +4,7 @@ import { HistoryIcon, SearchIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { LiveState } from "../api/modules/dashboard/projection";
 import { globalSearchOpenAtom } from "../state/workspace";
+import { AutomationEditor } from "./automation-editor";
 import {
   GlobalSearchResults,
   GlobalSearchReview,
@@ -119,6 +120,12 @@ function SearchContent({
     release,
     loading,
     updateQuery,
+    automation,
+    automationDraft,
+    automationRule,
+    setAutomationDraft,
+    setNotice,
+    setDestinationId,
   } = model;
   return (
     <Autocomplete.Root<SearchItem>
@@ -138,85 +145,112 @@ function SearchContent({
       open
       value={query}
     >
-      <div className="global-search-heading">
-        <Field>
-          <FieldLabel className="sr-only" htmlFor="global-search-input">
-            Search everything
-          </FieldLabel>
-          <InputGroup>
-            <InputGroupAddon>
-              <SearchIcon />
-            </InputGroupAddon>
-            <Autocomplete.Input
-              aria-label="Search everything"
-              disabled={busy}
-              id="global-search-input"
-              maxLength={1000}
-              placeholder="Search torrents and sources…"
-              ref={inputRef}
-              render={<InputGroupInput />}
-            />
-            <InputGroupAddon align="inline-end">
-              <kbd>Esc</kbd>
-            </InputGroupAddon>
-          </InputGroup>
-        </Field>
-      </div>
-      <Tabs
-        className="global-search-tabs"
-        onValueChange={(value) => {
-          if (value === "all" || value === "torrents" || value === "sources") {
-            setScope(value);
-            setReview(null);
-          }
-        }}
-        value={scope}
-      >
-        <TabsList aria-label="Search scope" className="global-search-scopes" variant="line">
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="torrents">My torrents</TabsTrigger>
-          <TabsTrigger value="sources">Sources</TabsTrigger>
-        </TabsList>
-        <TabsContent className="global-search-body" value={scope}>
-          {!query && recent.length > 0 && (
-            <div className="global-search-recent">
-              <span>
-                <HistoryIcon /> Recent searches
-              </span>
-              <div>
-                {recent.map((text) => (
-                  <Button key={text} onClick={() => updateQuery(text)} size="sm" variant="ghost">
-                    {text}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-          <GlobalSearchResults model={model} />
-          {items.length === 0 && !loading && (
-            <Empty className="global-search-empty">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
+      {automationDraft && automation && "plugins" in automation ? (
+        <div className="global-search-automation">
+          <AutomationEditor
+            close={() => setAutomationDraft(null)}
+            destinations={dashboard.host?.destinations ?? []}
+            initialDraft={automationDraft}
+            onSaved={(rule) => {
+              setAutomationDraft(null);
+              setReview(null);
+              setDestinationId(rule.destinationId);
+              setNotice("Automation saved. Manage it in Automations → Rules.");
+            }}
+            rule={automationRule}
+            state={automation}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="global-search-heading">
+            <Field>
+              <FieldLabel className="sr-only" htmlFor="global-search-input">
+                Search everything
+              </FieldLabel>
+              <InputGroup>
+                <InputGroupAddon>
                   <SearchIcon />
-                </EmptyMedia>
-                <EmptyTitle>{query ? "No matches found" : "One search, every thread"}</EmptyTitle>
-                <EmptyDescription>
-                  {query
-                    ? "Try another title or different keywords."
-                    : "Find your downloads or discover a release from your enabled sources."}
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+                </InputGroupAddon>
+                <Autocomplete.Input
+                  aria-label="Search everything"
+                  disabled={busy}
+                  id="global-search-input"
+                  maxLength={1000}
+                  placeholder="Search torrents and sources…"
+                  ref={inputRef}
+                  render={<InputGroupInput />}
+                />
+                <InputGroupAddon align="inline-end">
+                  <kbd>Esc</kbd>
+                </InputGroupAddon>
+              </InputGroup>
+            </Field>
+          </div>
+          <Tabs
+            className="global-search-tabs"
+            onValueChange={(value) => {
+              if (value === "all" || value === "torrents" || value === "sources") {
+                setScope(value);
+                setReview(null);
+              }
+            }}
+            value={scope}
+          >
+            <TabsList aria-label="Search scope" className="global-search-scopes" variant="line">
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="torrents">My torrents</TabsTrigger>
+              <TabsTrigger value="sources">Sources</TabsTrigger>
+            </TabsList>
+            <TabsContent className="global-search-body" value={scope}>
+              {!query && recent.length > 0 && (
+                <div className="global-search-recent">
+                  <span>
+                    <HistoryIcon /> Recent searches
+                  </span>
+                  <div>
+                    {recent.map((text) => (
+                      <Button
+                        key={text}
+                        onClick={() => updateQuery(text)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {text}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <GlobalSearchResults model={model} />
+              {items.length === 0 && !loading && (
+                <Empty className="global-search-empty">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <SearchIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>
+                      {query ? "No matches found" : "One search, every thread"}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {query
+                        ? "Try another title or different keywords."
+                        : "Find your downloads or discover a release from your enabled sources."}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+              {scope !== "torrents" && <GlobalSearchSourceStatus close={close} model={model} />}
+            </TabsContent>
+          </Tabs>
+          {!!(notice || error) && (
+            <Alert className="global-search-feedback" variant={error ? "destructive" : "default"}>
+              <AlertDescription role="status">{error ?? notice}</AlertDescription>
+            </Alert>
           )}
-          {scope !== "torrents" && <GlobalSearchSourceStatus close={close} model={model} />}
-        </TabsContent>
-      </Tabs>
-      {!!(notice || error) && (
-        <Alert className="global-search-feedback" variant={error ? "destructive" : "default"}>
-          <AlertDescription role="status">{error ?? notice}</AlertDescription>
-        </Alert>
+          {!!currentReview && !!release && <GlobalSearchReview model={model} />}
+        </>
       )}
-      {!!currentReview && !!release && <GlobalSearchReview model={model} />}
       <footer className="global-search-footer">
         <span>
           <kbd>↑</kbd>

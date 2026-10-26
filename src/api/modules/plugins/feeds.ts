@@ -4,6 +4,8 @@ import type { SourcePluginId } from "./model";
 
 const feedExpression1 = /^([\d.]+)\s*(Bytes|B|KiB|MiB|GiB|TiB|KB|MB|GB)$/i;
 const feedExpression2 = /\bS(\d{1,3})E(\d{1,4})\b/i;
+const releaseSeasonOnly = /\bS(\d{1,3})(?:v\d+)?\b/i;
+const releaseSeasonWords = /\b(?:season|saison)\s*(\d{1,3})\b/i;
 const feedExpression3 = /\s[-–]\s(\d{1,4})(?:v\d+)?(?:\s|\b)/i;
 const feedExpression4 = /\b(2160|1080|900|720|480)p\b/i;
 const feedExpression5 = /\b(VOSTFR|SUBFRENCH|FRENCH[ ._-]+(?:SUBS?|SUBTITLES))\b/i;
@@ -14,7 +16,7 @@ const feedExpression9 = /\b(x264|h[ .]?264|AVC)\b/i;
 const feedExpression10 = /\bAV1\b/i;
 const feedExpression11 = /^\[[^\]]+\]\s*/;
 const feedExpression12 =
-  /\s+S\d+E\d+\b|\s+[-–]\s+\d+(?:v\d+)?\b|\s+[[(](?:\d{3,4}p|batch|complete|multi|HEVC|AVC|AV1|x26[45])\b|\s+(?:VOSTFR|SUBFRENCH|MULTI|VF|FRENCH|TRUEFRENCH|\d{3,4}p)\b/i;
+  /\s+S\d+(?:E\d+|v\d+)?\b|\s+(?:season|saison)\s*\d+\b|\s+[-–]\s+\d+(?:v\d+)?\b|\s+[[(](?:\d{3,4}p|batch|complete|multi|HEVC|AVC|AV1|x26[45])\b|\s+(?:VOSTFR|SUBFRENCH|MULTI|VF|FRENCH|TRUEFRENCH|\d{3,4}p)\b/i;
 const feedExpression13 = /\b(batch|complete|complet|integrale|pack)\b/i;
 const feedExpression14 = /\bS\d+E\d+\s*[-–]\s*(?:E)?\d+\b/i;
 const feedExpression15 = /^(https?:\/\/|magnet:\?)/i;
@@ -87,20 +89,34 @@ const decodeTsundere = Schema.decodeUnknownEffect(
       entries: Schema.Array(
         Schema.Struct({
           codec: Schema.optional(Schema.String),
-          episode: Schema.optional(Schema.Number),
+          episode: Schema.optional(Schema.NullOr(Schema.Number)),
           episodeRange: Schema.optional(Schema.Json),
           id: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
           infohash: Schema.optional(Schema.NullOr(Schema.String)),
           language: Schema.optional(Schema.String),
+          metadata: Schema.optional(
+            Schema.NullOr(
+              Schema.Struct({
+                anilistId: Schema.optional(
+                  Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))
+                ),
+              })
+            )
+          ),
           publishedAt: Schema.optional(Schema.String),
           quality: Schema.optional(Schema.String),
-          season: Schema.optional(Schema.Number),
+          season: Schema.optional(Schema.NullOr(Schema.Number)),
           size: Schema.optional(Schema.Number),
           title: Schema.optional(Schema.String),
           torrentUrl: Schema.optional(Schema.NullOr(Schema.String)),
           url: Schema.optional(Schema.String),
         })
       ),
+      options: Schema.Struct({
+        codec: Schema.Array(Schema.String),
+        quality: Schema.Array(Schema.String),
+      }),
+      total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
     })
   )
 );
@@ -133,7 +149,8 @@ function fileSize(value: string | undefined) {
     ? null
     : Number(match[1]) * (unit.includes("i") ? 1024 : 1000) ** power;
 }
-export function releaseMetadata(title: string) {
+export function releaseMetadata(value: string) {
+  const title = value.replaceAll(".", " ");
   const seasonEpisode = title.match(feedExpression2);
   const episode = seasonEpisode?.[2] ?? title.match(feedExpression3)?.[1];
   const resolution = title.match(feedExpression4)?.[0].toLowerCase() ?? null;
@@ -144,9 +161,17 @@ export function releaseMetadata(title: string) {
     codec,
     episode: numberOrNull(episode),
     language,
-    pack: feedExpression13.test(title) || feedExpression14.test(title) || episodeRange.test(title),
+    pack:
+      feedExpression13.test(title) ||
+      feedExpression14.test(title) ||
+      episodeRange.test(title) ||
+      (episode === undefined && (releaseSeasonOnly.test(title) || releaseSeasonWords.test(title))),
     resolution,
-    season: numberOrNull(seasonEpisode?.[1]),
+    season: numberOrNull(
+      seasonEpisode?.[1] ??
+        title.match(releaseSeasonOnly)?.[1] ??
+        title.match(releaseSeasonWords)?.[1]
+    ),
     workTitle,
   } satisfies Partial<FeedRelease>;
 }
@@ -210,13 +235,11 @@ export const parseRss = Effect.fn("Feeds.parseRss")(function* (
     ];
   });
 });
-export const parseTsundere = Effect.fn("Feeds.parseTsundere")(function* (
-  body: string
-): Effect.fn.Return<FeedRelease[], FeedError> {
+export const parseTsundere = Effect.fn("Feeds.parseTsundere")(function* (body: string) {
   const document = yield* decodeTsundere(body).pipe(
     Effect.mapError((cause) => new FeedError({ cause, message: "Invalid JSON feed" }))
   );
-  return document.entries.flatMap((entry) => {
+  const releases = document.entries.flatMap((entry): FeedRelease[] => {
     if (typeof entry.title !== "string" || !validDownload(entry.torrentUrl)) {
       return [];
     }
@@ -230,6 +253,7 @@ export const parseTsundere = Effect.fn("Feeds.parseTsundere")(function* (
     return [
       {
         ...metadata,
+        anilistId: entry.metadata?.anilistId ?? undefined,
         codec: entry.codec ?? metadata.codec,
         downloadUrl: entry.torrentUrl,
         episode: numberOrNull(entry.episode) ?? metadata.episode,
@@ -248,6 +272,14 @@ export const parseTsundere = Effect.fn("Feeds.parseTsundere")(function* (
       },
     ];
   });
+  return {
+    identities: document.entries.map((entry) =>
+      String(entry.id ?? entry.torrentUrl ?? entry.url ?? entry.title)
+    ),
+    options: document.options,
+    releases,
+    total: document.total,
+  };
 });
 function asArray<T>(value: T | T[] | undefined): T[] {
   if (Array.isArray(value)) {

@@ -2,7 +2,7 @@ import "@teyik0/furin/server-only";
 import { and, eq } from "drizzle-orm";
 import { type Cause, Context, Effect, Layer } from "effect";
 import { playbackPositions, playbackSequences } from "../../../db/schema";
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 import type { PositionInput } from "./model";
 
 export class Playback extends Context.Service<

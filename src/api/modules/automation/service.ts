@@ -2,20 +2,9 @@ import { eq } from "drizzle-orm";
 import { Context, Effect, Layer, Result } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import { automationDecisions, automationPreferences, automationRules } from "../../../db/schema";
-import {
-  Database,
-  type DatabaseConnection,
-  type DatabaseTransaction,
-} from "../../lib/database-layer";
+import { Database, type DatabaseConnection, type DatabaseTransaction } from "../../lib/db";
 import { refreshRecords } from "../../lib/persisted-cache";
 import type { FeedRelease } from "../discovery/model";
-import {
-  interpretationQuestions,
-  Jev,
-  type JevService,
-  matchQuestions,
-  safeReleaseState,
-} from "../jev/service";
 import type { SourcePluginId } from "../plugins/model";
 import { publicRelease } from "../plugins/releases";
 import type {
@@ -33,13 +22,11 @@ import {
   compareQuality,
   compareReleases,
   defaultAutomationPreferences,
-  interpretLocally,
   localMatch,
   preferred,
 } from "./rules";
 
 export interface AutomationOptions {
-  jev: JevService;
   now: () => number;
 }
 
@@ -66,8 +53,7 @@ export interface IngestionInput {
 // The core persists decisions; integrations own discovery, scheduling and execution.
 const make = Effect.gen(function* () {
   const db = yield* Database;
-  const jev = yield* Jev;
-  const options: AutomationOptions = { jev, now: Date.now };
+  const options: AutomationOptions = { now: Date.now };
   const serviceDb = db;
   const serviceOptions = options;
 
@@ -143,69 +129,12 @@ const make = Effect.gen(function* () {
       decodeAutomationDecision
     );
   }
-  const serviceInterpret = Effect.fn("Automation.interpret")(function* (
-    query: string,
-    destinationId: string
-  ) {
-    const draft = interpretLocally(query, destinationId, servicePreferences);
-    const interpretation = interpretationQuestions(draft);
-    const result = yield* serviceOptions.jev.evaluate({ query }, interpretation.questions);
-    if (result instanceof ElysiaStatus) {
-      return result;
-    }
-    if (!result) {
-      return draft;
-    }
-    const read = <T>(id: string, values: T[], fallback: T) => {
-      const answer = result.answers[id];
-      return answer?.confidence !== undefined && answer.confidence >= 0.8
-        ? (values[Number(answer.choice)] ?? fallback)
-        : fallback;
-    };
-    const languages = read("languages", interpretation.languages, draft.languages);
-    const resolutions = read("resolutions", interpretation.resolutions, draft.resolutions);
-    return {
-      ...draft,
-      // An omitted format inherits preferences; only an explicit unrestricted request clears it.
-      languages: languages.length ? languages : draft.languages,
-      matchMode: "jev" as const,
-      priority: read("priority", interpretation.priorities, draft.priority),
-      resolutions: resolutions.length ? resolutions : draft.resolutions,
-      sources: read("sources", interpretation.orders, draft.sources),
-      title: read("title", interpretation.titles, draft.title),
-    };
-  });
   const serviceEvaluate = Effect.fn("Automation.evaluate")(function* (
     draft: AutomationDraft,
     release: FeedRelease
   ) {
-    const reason = localMatch(draft, release);
-    if (reason) {
-      return { probability: null, reason, uncertain: false };
-    }
-    if (draft.matchMode !== "jev") {
-      return { probability: null, reason: null, uncertain: false };
-    }
-    const answer = yield* serviceOptions.jev.evaluate(
-      { query: draft.query, release: safeReleaseState(release) },
-      matchQuestions()
-    );
-    if (answer instanceof ElysiaStatus) {
-      return answer;
-    }
-    if (!answer) {
-      const fallback = localMatch({ ...draft, matchMode: "exact" }, release);
-      return { probability: null, reason: fallback, uncertain: false };
-    }
-    const probability = Math.min(
-      answer?.answers.identity?.noul ?? 0.5,
-      answer?.answers.requirements?.noul ?? 0.5
-    );
-    return {
-      probability,
-      reason: probability < 0.75 ? "Jev match confidence below 75%" : null,
-      uncertain: probability < 0.95,
-    };
+    const reason = yield* Effect.sync(() => localMatch(draft, release));
+    return { probability: null, reason, uncertain: false };
   });
   function servicePersistRule(rule: AutomationRule, connection?: DatabaseConnection) {
     const currentDb = connection ?? serviceDb;
@@ -503,7 +432,6 @@ const make = Effect.gen(function* () {
       ) {
         continue;
       }
-      // charge the quota before evaluating each candidate; stop on provider failure.
       const evaluation = yield* serviceEvaluate(rule, release);
       if (evaluation instanceof ElysiaStatus) {
         return evaluation;
@@ -519,7 +447,6 @@ const make = Effect.gen(function* () {
     return { evaluations, groups };
   });
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
   function serviceChoose(
     rule: AutomationRule,
     key: string,
@@ -556,9 +483,7 @@ const make = Effect.gen(function* () {
       deadline,
       id,
       probability: evaluation?.probability ?? null,
-      reason: evaluation?.uncertain
-        ? "Uncertain Jev match — review required"
-        : "Title and formats accepted · ranked by priority",
+      reason: "Title and formats accepted · ranked by priority",
       release,
       status,
       supersedes:
@@ -658,7 +583,6 @@ const make = Effect.gen(function* () {
     enableRule: serviceEnableRule,
     evaluate: serviceEvaluate,
     ignoreDecision: serviceIgnoreDecision,
-    interpret: serviceInterpret,
     prepareIngestion: servicePrepareIngestion,
     prepareRule: servicePrepareRule,
     reassignDestination: serviceReassignDestination,
@@ -727,46 +651,10 @@ export class Automation extends Context.Service<
       waitMinutes: number;
     };
     readonly refreshState: () => void;
-    readonly interpret: (
-      query: string,
-      destinationId: string
-    ) => Effect.Effect<
-      | ReturnType<typeof problem<429, { readonly detail: string }>>
-      | ReturnType<typeof problem<409, { readonly detail: string }>>
-      | ReturnType<typeof problem<503, { readonly detail: string }>>
-      | {
-          afterEpisode?: number | undefined;
-          aliases?: string[] | undefined;
-          automatic: boolean;
-          codecs: string[];
-          deleteReplacedFiles?: boolean | undefined;
-          destinationId: string;
-          enabled: boolean;
-          excludePacks: boolean;
-          includeExisting: boolean;
-          intervalMinutes: number;
-          languages: ("VF" | "VOSTFR" | "MULTI")[];
-          matchMode: "jev" | "exact" | "pattern";
-          paused: boolean;
-          priority: ("source" | "language" | "resolution" | "codec")[];
-          query: string;
-          resolutions: string[];
-          season: number | null;
-          sources: string[];
-          title: string;
-          waitMinutes: number;
-        }
-    >;
     readonly evaluate: (
       draft: AutomationDraft,
       release: FeedRelease
-    ) => Effect.Effect<
-      | ReturnType<typeof problem<429, { readonly detail: string }>>
-      | ReturnType<typeof problem<409, { readonly detail: string }>>
-      | ReturnType<typeof problem<503, { readonly detail: string }>>
-      | { probability: null; reason: string | null; uncertain: boolean }
-      | { probability: number; reason: string | null; uncertain: boolean }
-    >;
+    ) => Effect.Effect<{ probability: null; reason: string | null; uncertain: boolean }>;
     readonly enableRule: (id: string, enabled: boolean, connection?: DatabaseConnection) => void;
     readonly reassignDestination: (tx: DatabaseConnection, id: string) => void;
     readonly prepareRule: (
@@ -775,9 +663,7 @@ export class Automation extends Context.Service<
       baselineCandidates?: AutomationCandidateInput[],
       ownership?: RuleOwnership
     ) => Effect.Effect<
-      | ReturnType<typeof problem<429, { readonly detail: string }>>
       | ReturnType<typeof problem<409, { readonly detail: string }>>
-      | ReturnType<typeof problem<503, { readonly detail: string }>>
       | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
       | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
       | ReturnType<
@@ -807,9 +693,7 @@ export class Automation extends Context.Service<
     readonly prepareIngestion: (
       input: IngestionInput
     ) => Effect.Effect<
-      | ReturnType<typeof problem<429, { readonly detail: string }>>
       | ReturnType<typeof problem<409, { readonly detail: string }>>
-      | ReturnType<typeof problem<503, { readonly detail: string }>>
       | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
       | { decisions: AutomationDecision[]; errors: string[]; revision: number; ruleId: string }
     >;

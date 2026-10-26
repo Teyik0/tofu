@@ -1,0 +1,730 @@
+{
+  "21": {
+    "mappings": {
+      "anilist_id": 21
+    },
+    "titles": {
+      "x-jat": "OP TV",
+      "ja": "ONE PIECE",
+      "it": "One Piece",
+      "ru": "Большой куш",
+      "tr": "Lastik Çocuk",
+      "bg": "Уан Пийс",
+      "tl": "One Piece",
+      "mn": "Уан Пийс",
+      "zh": "海贼",
+      "en": "One Piece",
+      "de": "One Piece",
+      "fr": "One Piece",
+      "es": "One Piece",
+      "ko": "원피스",
+      "pl": "One Piece",
+      "ar": "ون بيس",
+      "pt": "One Piece",
+      "no": "One Piece",
+      "pt-BR": "One Piece",
+      "da": "One Piece",
+      "fi": "One Piece",
+      "el": "Ντρέικ και το Κυνήγι του Θησαυρού",
+      "he": "וואן פיס",
+      "hu": "One Piece",
+      "th": "วันพีซ",
+      "my": "Budak Getah",
+      "vi": "Đảo hải tặc",
+      "id": "One Piece",
+      "uk": "Великий куш",
+      "zh-Hant": "海賊王",
+      "zh-Hans": "海贼王",
+      "bd": "ওয়ান পিস্",
+      "es-GA": "One Piece",
+      "fa": "وان پیس"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1
+      },
+      "2": {
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 2
+      },
+      "4": {
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 4
+      },
+      "9": {
+        "seasonNumber": 2,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 9
+      },
+      "10": {
+        "seasonNumber": 2,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 10
+      },
+      "12": {
+        "seasonNumber": 2,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 12
+      },
+      "13": {
+        "seasonNumber": 2,
+        "episodeNumber": 5,
+        "absoluteEpisodeNumber": 13
+      },
+      "17": {
+        "seasonNumber": 2,
+        "episodeNumber": 9,
+        "absoluteEpisodeNumber": 17
+      },
+      "25": {
+        "seasonNumber": 2,
+        "episodeNumber": 17,
+        "absoluteEpisodeNumber": 25
+      },
+      "28": {
+        "seasonNumber": 2,
+        "episodeNumber": 20,
+        "absoluteEpisodeNumber": 28
+      },
+      "1156": {
+        "seasonNumber": 23,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1156
+      },
+      "1180": {
+        "seasonNumber": 23,
+        "episodeNumber": 25,
+        "absoluteEpisodeNumber": 1180
+      }
+    }
+  },
+  "235": {
+    "mappings": {
+      "anilist_id": 235
+    },
+    "titles": {
+      "x-jat": "Conan",
+      "en": "Case Closed",
+      "de": "Detektiv Conan",
+      "hu": "Conan, a detektív",
+      "th": "ยอดนักสืบจิ๋วโคนัน เดอะซีรีส์",
+      "ro": "Detectivul Conan",
+      "vi": "Thám tử lừng danh Conan",
+      "id": "Detektif Conan",
+      "ja": "名探偵コナン",
+      "fr": "Détective Conan",
+      "it": "Detective Conan",
+      "es": "Detective Conan",
+      "ru": "Детектив Конан",
+      "ko": "명탐정 코난",
+      "pl": "Detektyw Conan",
+      "sv": "Mästerdetektiven Conan",
+      "ar": "المحقق كونان",
+      "pt": "Detective Conan",
+      "es-CA": "Detectiu Conan",
+      "cs": "Detektiv Conan",
+      "fi": "Salapoliisi Conan",
+      "tr": "Dedektif Conan",
+      "bg": "Детектив Конан",
+      "zh-Hant": "名偵探柯南",
+      "zh-Hans": "名侦探柯南",
+      "es-419": "Detective Conan",
+      "es-GA": "O detective Conan",
+      "fa": "کاراگاه کونان"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1
+      },
+      "2": {
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 2
+      },
+      "4": {
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 4
+      },
+      "9": {
+        "seasonNumber": 1,
+        "episodeNumber": 9,
+        "absoluteEpisodeNumber": 9
+      },
+      "10": {
+        "seasonNumber": 1,
+        "episodeNumber": 10,
+        "absoluteEpisodeNumber": 10
+      },
+      "12": {
+        "seasonNumber": 1,
+        "episodeNumber": 12,
+        "absoluteEpisodeNumber": 12
+      },
+      "13": {
+        "seasonNumber": 1,
+        "episodeNumber": 13,
+        "absoluteEpisodeNumber": 13
+      },
+      "17": {
+        "seasonNumber": 1,
+        "episodeNumber": 17,
+        "absoluteEpisodeNumber": 17
+      },
+      "25": {
+        "seasonNumber": 1,
+        "episodeNumber": 25,
+        "absoluteEpisodeNumber": 25
+      },
+      "28": {
+        "seasonNumber": 1,
+        "episodeNumber": 28,
+        "absoluteEpisodeNumber": 28
+      },
+      "1156": {
+        "seasonNumber": 33,
+        "episodeNumber": 9,
+        "absoluteEpisodeNumber": 1156
+      },
+      "1180": {
+        "seasonNumber": 33,
+        "episodeNumber": 33,
+        "absoluteEpisodeNumber": 1180
+      },
+      "1209": {
+        "seasonNumber": 34,
+        "episodeNumber": 23,
+        "absoluteEpisodeNumber": 1209
+      },
+      "1216": {
+        "seasonNumber": 34,
+        "episodeNumber": 30,
+        "absoluteEpisodeNumber": 1216
+      }
+    }
+  },
+  "1535": {
+    "mappings": {
+      "anilist_id": 1535
+    },
+    "titles": {
+      "x-jat": "DN",
+      "ja": "DEATH NOTE",
+      "it": "Death Note",
+      "pl": "Notatnik śmierci",
+      "ar": "مفكرة الموت",
+      "pt-BR": "Death Note",
+      "he": "מחברת המוות",
+      "lt": "Mirties Užrašai",
+      "tr": "Ölüm Defteri",
+      "bg": "Бележник на Смъртта",
+      "uk": "Записник Смерті",
+      "sr": "Sveska Smrti",
+      "fa": "دفترچه یادداشت مرگ",
+      "ur": "موت نوٹ",
+      "en": "Death Note",
+      "de": "Death Note",
+      "fr": "Death Note",
+      "es": "Death Note",
+      "ru": "Тетрадь cмерти",
+      "ko": "데스노트",
+      "pt": "Death Note",
+      "es-CA": "Death Note",
+      "cs": "Death Note - Zápisník smrti",
+      "fi": "Death Note",
+      "el": "Τετράδιο Θανάτου",
+      "hu": "Death Note - A halállista",
+      "th": "สมุดโน้ตกระชากวิญญาณ",
+      "ro": "Death Note - Carnetul morţii",
+      "sk": "Death Note - Zápisník smrti",
+      "vi": "Cuốn sổ tử thần",
+      "hr": "Bilježnica smrti",
+      "zh-Hant": "死亡筆記本",
+      "zh-Hans": "死亡笔记",
+      "es-419": "Death Note",
+      "mn": "Үхлийн Тэмдэглэл",
+      "hi": "डेथ नोट"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1
+      },
+      "2": {
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 2
+      },
+      "4": {
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 4
+      },
+      "9": {
+        "seasonNumber": 1,
+        "episodeNumber": 9,
+        "absoluteEpisodeNumber": 9
+      },
+      "10": {
+        "seasonNumber": 1,
+        "episodeNumber": 10,
+        "absoluteEpisodeNumber": 10
+      },
+      "12": {
+        "seasonNumber": 1,
+        "episodeNumber": 12,
+        "absoluteEpisodeNumber": 12
+      },
+      "13": {
+        "seasonNumber": 1,
+        "episodeNumber": 13,
+        "absoluteEpisodeNumber": 13
+      },
+      "17": {
+        "seasonNumber": 1,
+        "episodeNumber": 17,
+        "absoluteEpisodeNumber": 17
+      },
+      "25": {
+        "seasonNumber": 1,
+        "episodeNumber": 25,
+        "absoluteEpisodeNumber": 25
+      },
+      "28": {
+        "seasonNumber": 1,
+        "episodeNumber": 28,
+        "absoluteEpisodeNumber": 28
+      }
+    }
+  },
+  "154587": {
+    "mappings": {
+      "anilist_id": 154587
+    },
+    "titles": {
+      "x-jat": "Sousou no Frieren",
+      "uk": "Фрірен кінця шляху",
+      "ja": "葬送のフリーレン",
+      "en": "Frieren: Beyond Journey`s End",
+      "de": "Frieren: Nach dem Ende der Reise",
+      "fr": "Frieren",
+      "it": "Frieren - Oltre la Fine del Viaggio",
+      "es": "Frieren: Tras finalizar el viaje",
+      "ru": "Фрирен, провожающая в последний путь",
+      "pl": "Frieren. U kresu drogi",
+      "pt": "Frieren e a Jornada para o Além",
+      "pt-BR": "Frieren e a Jornada para o Além",
+      "he": "פרירן: מעבר לסוף המסע",
+      "th": "คำอธิษฐานในวันที่จากลา FRIEREN",
+      "zh-Hant": "葬送的芙莉蓮",
+      "zh-Hans": "葬送的芙莉莲",
+      "es-419": "Frieren: Más allá del final del viaje"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1
+      },
+      "2": {
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 2
+      },
+      "4": {
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 4
+      },
+      "9": {
+        "seasonNumber": 1,
+        "episodeNumber": 9,
+        "absoluteEpisodeNumber": 9
+      },
+      "10": {
+        "seasonNumber": 1,
+        "episodeNumber": 10,
+        "absoluteEpisodeNumber": 10
+      },
+      "12": {
+        "seasonNumber": 1,
+        "episodeNumber": 12,
+        "absoluteEpisodeNumber": 12
+      },
+      "13": {
+        "seasonNumber": 1,
+        "episodeNumber": 13,
+        "absoluteEpisodeNumber": 13
+      },
+      "17": {
+        "seasonNumber": 1,
+        "episodeNumber": 17,
+        "absoluteEpisodeNumber": 17
+      },
+      "25": {
+        "seasonNumber": 1,
+        "episodeNumber": 25,
+        "absoluteEpisodeNumber": 25
+      },
+      "28": {
+        "seasonNumber": 1,
+        "episodeNumber": 28,
+        "absoluteEpisodeNumber": 28
+      }
+    }
+  },
+  "170942": {
+    "mappings": {
+      "anilist_id": 170942
+    },
+    "titles": {
+      "x-jat": "Ao no Hako",
+      "zh-Hans": "青之箱",
+      "ja": "アオのハコ",
+      "en": "Blue Box",
+      "de": "Blue Box",
+      "fr": "Blue Box",
+      "it": "Blue Box",
+      "es": "La caja azul",
+      "ko": "푸른 상자",
+      "pl": "Niebieskie pudełko",
+      "sv": "Blue Box",
+      "ar": "‎الصندوق الأزرق",
+      "pt": "Blue Box",
+      "no": "Blue Box",
+      "pt-BR": "Blue Box",
+      "cs": "Mládí na hřišti",
+      "da": "Blue Box",
+      "nl": "Blue Box",
+      "fi": "Blue Box",
+      "el": "Blue Box",
+      "he": "האולם הכחול",
+      "hu": "Blue Box",
+      "th": "กล่องรักวัยใส",
+      "tr": "Blue Box",
+      "ro": "Blue Box",
+      "my": "Blue Box",
+      "vi": "Blue Box",
+      "id": "Blue Box",
+      "uk": "Блакитна скринька",
+      "hr": "Plava kutija",
+      "zh-Hant": "青春之箱",
+      "es-419": "La caja azul",
+      "tl": "Blue Box"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1
+      },
+      "2": {
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 2
+      },
+      "4": {
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 4
+      },
+      "9": {
+        "seasonNumber": 1,
+        "episodeNumber": 9,
+        "absoluteEpisodeNumber": 9
+      },
+      "10": {
+        "seasonNumber": 1,
+        "episodeNumber": 10,
+        "absoluteEpisodeNumber": 10
+      },
+      "12": {
+        "seasonNumber": 1,
+        "episodeNumber": 12,
+        "absoluteEpisodeNumber": 12
+      },
+      "13": {
+        "seasonNumber": 1,
+        "episodeNumber": 13,
+        "absoluteEpisodeNumber": 13
+      },
+      "17": {
+        "seasonNumber": 1,
+        "episodeNumber": 17,
+        "absoluteEpisodeNumber": 17
+      },
+      "25": {
+        "seasonNumber": 1,
+        "episodeNumber": 25,
+        "absoluteEpisodeNumber": 25
+      }
+    }
+  },
+  "21459": {
+    "mappings": {
+      "anilist_id": 21459
+    },
+    "titles": {
+      "x-jat": "bnha",
+      "en": "My Hero Academia",
+      "ar": "أكاديميتي للأبطال",
+      "bg": "Моята академия на героите",
+      "ja": "僕のヒーローアカデミア",
+      "fr": "My Hero Academia",
+      "ru": "Моя геройская академия",
+      "pl": "Akademia bohaterów",
+      "pt": "My Hero Academia",
+      "he": "אקדמיית הגיבורים שלי",
+      "zh-Hant": "我的英雄學院",
+      "zh-Hans": "我的英雄学院"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1
+      },
+      "2": {
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 2
+      },
+      "4": {
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 4
+      },
+      "9": {
+        "seasonNumber": 1,
+        "episodeNumber": 9,
+        "absoluteEpisodeNumber": 9
+      },
+      "10": {
+        "seasonNumber": 1,
+        "episodeNumber": 10,
+        "absoluteEpisodeNumber": 10
+      },
+      "12": {
+        "seasonNumber": 1,
+        "episodeNumber": 12,
+        "absoluteEpisodeNumber": 12
+      },
+      "13": {
+        "seasonNumber": 1,
+        "episodeNumber": 13,
+        "absoluteEpisodeNumber": 13
+      }
+    }
+  },
+  "131681": {
+    "mappings": {
+      "anilist_id": 131681
+    },
+    "titles": {
+      "x-jat": "snk5",
+      "ar": "الهجوم على العمالقة: الجزء الاخير (2022)",
+      "en": "Attack on Titan The Final Season (2022)",
+      "ja": "進撃の巨人 attack on titan The Final Season (2022)",
+      "de": "Attack on Titan: The Final Season - Part 2",
+      "fr": "L`Attaque des Titans - Saison Finale Partie 2",
+      "it": "L`Attacco dei Giganti - La Stagione Finale (2022)",
+      "th": "ผ่าพิภพไททัน ภาคอวสาน พาร์ท 2",
+      "zh-Hans": "进击的巨人 最终季 第二部分"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 4,
+        "episodeNumber": 17,
+        "absoluteEpisodeNumber": 76
+      },
+      "2": {
+        "seasonNumber": 4,
+        "episodeNumber": 18,
+        "absoluteEpisodeNumber": 77
+      },
+      "4": {
+        "seasonNumber": 4,
+        "episodeNumber": 20,
+        "absoluteEpisodeNumber": 79
+      },
+      "9": {
+        "seasonNumber": 4,
+        "episodeNumber": 25,
+        "absoluteEpisodeNumber": 84
+      },
+      "10": {
+        "seasonNumber": 4,
+        "episodeNumber": 26,
+        "absoluteEpisodeNumber": 85
+      },
+      "12": {
+        "seasonNumber": 4,
+        "episodeNumber": 28,
+        "absoluteEpisodeNumber": 87
+      }
+    }
+  },
+  "185874": {
+    "mappings": {
+      "anilist_id": 185874
+    },
+    "titles": {
+      "x-jat": "Bleach: Sennen Kessen Hen Saishuu Cour",
+      "ja": "BLEACH 千年血戦篇-禍進譚-",
+      "en": "Bleach: Thousand-Year Blood War - The Calamity",
+      "de": "Bleach: Thousand-Year Blood War - The Calamity"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 17,
+        "episodeNumber": 41,
+        "absoluteEpisodeNumber": 407
+      },
+      "2": {
+        "seasonNumber": 17,
+        "episodeNumber": 42,
+        "absoluteEpisodeNumber": 408
+      },
+      "4": {
+        "seasonNumber": 17,
+        "episodeNumber": 44,
+        "absoluteEpisodeNumber": 410
+      },
+      "9": {
+        "seasonNumber": 17,
+        "episodeNumber": 49,
+        "absoluteEpisodeNumber": 415
+      },
+      "10": {
+        "seasonNumber": 17,
+        "episodeNumber": 50,
+        "absoluteEpisodeNumber": 416
+      }
+    }
+  },
+  "189123": {
+    "mappings": {
+      "anilist_id": 189123
+    },
+    "titles": {
+      "x-jat": "Ao no Hako (2026)",
+      "en": "Blue Box (2026)",
+      "ja": "アオのハコ (2026)"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 2,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 26
+      },
+      "2": {
+        "seasonNumber": 2,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 27
+      },
+      "4": {
+        "seasonNumber": 2,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 29
+      }
+    }
+  },
+  "204011": {
+    "mappings": {
+      "anilist_id": 204011
+    },
+    "titles": {
+      "x-jat": "Psyren",
+      "ja": "PSYЯEN",
+      "en": "Psyren"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1
+      },
+      "2": {
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 2
+      },
+      "4": {
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 4
+      }
+    }
+  },
+  "171030": {
+    "mappings": {
+      "anilist_id": 171030
+    },
+    "titles": {
+      "x-jat": "wonpre",
+      "x-unk": "precure21",
+      "ja": "わんだふるぷりきゅあ!",
+      "en": "Wonderful Precure!",
+      "ru": "Чудесные Претти Кьюр!"
+    },
+    "episodes": {
+      "1": {
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "absoluteEpisodeNumber": 1
+      },
+      "2": {
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "absoluteEpisodeNumber": 2
+      },
+      "4": {
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "absoluteEpisodeNumber": 4
+      },
+      "9": {
+        "seasonNumber": 1,
+        "episodeNumber": 9,
+        "absoluteEpisodeNumber": 9
+      },
+      "10": {
+        "seasonNumber": 1,
+        "episodeNumber": 10,
+        "absoluteEpisodeNumber": 10
+      },
+      "12": {
+        "seasonNumber": 1,
+        "episodeNumber": 12,
+        "absoluteEpisodeNumber": 12
+      },
+      "13": {
+        "seasonNumber": 1,
+        "episodeNumber": 13,
+        "absoluteEpisodeNumber": 13
+      },
+      "17": {
+        "seasonNumber": 1,
+        "episodeNumber": 17,
+        "absoluteEpisodeNumber": 17
+      },
+      "25": {
+        "seasonNumber": 1,
+        "episodeNumber": 25,
+        "absoluteEpisodeNumber": 25
+      },
+      "28": {
+        "seasonNumber": 1,
+        "episodeNumber": 28,
+        "absoluteEpisodeNumber": 28
+      }
+    }
+  }
+}

@@ -24,7 +24,7 @@ import {
   torrentDestinations,
   torrentRecords,
 } from "../../../db/schema";
-import type { DatabaseInstance as Database, DatabaseConnection } from "../../lib/database-layer";
+import type { DatabaseInstance as Database, DatabaseConnection } from "../../lib/db";
 import type { Destination, DestinationInput, DestinationPresentation } from "../destinations/model";
 import type { Settings, SettingsInput } from "../settings/model";
 import type { ConnectionPolicy } from "./connections";

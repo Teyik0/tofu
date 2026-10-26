@@ -14,7 +14,7 @@ import {
   serverIdentity,
   sessionTransfers,
 } from "../../../db/schema";
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 import {
   cookieName,
   isPublicRequest,

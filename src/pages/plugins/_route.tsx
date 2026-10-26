@@ -1,7 +1,7 @@
 import { defineRoute } from "@teyik0/furin";
 import { useRouter } from "@teyik0/furin/link";
 import { useAtomValue } from "jotai";
-import { BrainCircuitIcon, CableIcon, GlobeIcon, PlugIcon, RefreshCwIcon } from "lucide-react";
+import { CableIcon, GlobeIcon, PlugIcon, RefreshCwIcon } from "lucide-react";
 import { startTransition, useActionState, useEffect, useState } from "react";
 import type { AutomationState } from "../../api/modules/automation/model";
 import { AccessRequired, SettingsSkeleton } from "../../components/access-required";
@@ -18,7 +18,6 @@ import { PluginGroup } from "./_plugin-group";
 const sections = [
   { icon: PlugIcon, label: "Installed", to: "/plugins" },
   { icon: GlobeIcon, label: "Sources", to: "/plugins/sources" },
-  { icon: BrainCircuitIcon, label: "Intelligence", to: "/plugins/intelligence" },
   { icon: CableIcon, label: "Integrations", to: "/plugins/integrations" },
 ] as const;
 
@@ -143,15 +142,6 @@ function PluginSections({
           ids={["nyaa", "tsundere", "c411"]}
           plugins={state.plugins}
           title="Torrent sources"
-        />
-      )}
-      {(path === "/plugins" || path === "/plugins/intelligence") && (
-        <PluginGroup
-          desktop={desktop}
-          forms={forms}
-          ids={["jev"]}
-          plugins={state.plugins}
-          title="Release intelligence"
         />
       )}
       {(path === "/plugins" || path === "/plugins/integrations") && (

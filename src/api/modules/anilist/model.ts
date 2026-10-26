@@ -169,3 +169,12 @@ export type AniListThreadProposal = Extract<
   AniListOrganization,
   { mode: "per-anime" }
 >["overrides"][number];
+
+export const notificationCategories = ["all", "airing", "media"] as const;
+
+export const notificationsSchema = object({
+  category: optional(picklist(notificationCategories), "all"),
+  page: optional(pipe(numericInput, integer(), minValue(1), maxValue(166)), 1),
+});
+
+export type NotificationFilters = InferOutput<typeof notificationsSchema>;

@@ -11,7 +11,13 @@ import { modalAtom } from "../state/workspace";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 
-export function TorrentDrop({ activeDestination }: { activeDestination: string | null }) {
+export function TorrentDrop({
+  activeDestination,
+  serverId,
+}: {
+  activeDestination: string | null;
+  serverId: string;
+}) {
   const open = useSetAtom(modalAtom);
   const router = useRouter();
   const refresh = useRefresh();
@@ -43,7 +49,7 @@ export function TorrentDrop({ activeDestination }: { activeDestination: string |
     } catch (cause) {
       setError(errorMessage(cause, "Unable to add the torrent"));
     } finally {
-      await (added ? showTorrent(router, activeDestination, added) : refresh());
+      await (added ? showTorrent(router, serverId, activeDestination, added) : refresh());
     }
   });
   useEffect(() => {

@@ -10,9 +10,9 @@ import {
   EmptyTitle,
 } from "../../components/ui/empty";
 import { Skeleton } from "../../components/ui/skeleton";
-import type { useAniListCatalog } from "../../hooks/use-anilist-catalog";
 import type { useAsyncAction } from "../../hooks/use-async-action";
 import { AnimeCard, AnimeRow } from "./_library-cards";
+import type { useAniListCatalog } from "./hooks/_use-anilist-catalog";
 
 type CatalogModel = ReturnType<typeof useAniListCatalog>;
 type Actions = ReturnType<typeof useAsyncAction>;
@@ -22,7 +22,6 @@ export function LibraryResults({
   catalog,
   entries,
   actions,
-  pollError,
   view,
   now,
   openMedia,
@@ -33,14 +32,12 @@ export function LibraryResults({
   catalog: CatalogModel;
   entries: (AniListMedia | AniListEntry)[];
   actions: Actions;
-  pollError: string | null;
   view: "cards" | "compact" | "list";
   now: number;
   openMedia: (entry: AniListMedia) => void;
   openSettings: () => void;
 }) {
-  const error = actions.error ?? pollError;
-  const { busy } = actions;
+  const { busy, error } = actions;
   const {
     error: currentCatalogError,
     loading: loadingCatalog,

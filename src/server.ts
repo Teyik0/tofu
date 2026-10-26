@@ -33,13 +33,18 @@ const app = new Elysia({ name: "tofu" })
       pagesDir: "./src/pages",
       sync,
     })
-  )
-  .listen({ port: instance.port });
+  );
 
-const shutdown = async () => {
-  await app.stop(true);
-  process.exit(process.exitCode ?? 0);
-};
+export default app;
 
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+if (import.meta.main) {
+  app.listen({ port: instance.port });
+
+  const shutdown = async () => {
+    await app.stop(true);
+    process.exit(process.exitCode ?? 0);
+  };
+
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+}

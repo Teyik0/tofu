@@ -120,8 +120,26 @@ test("saved servers keep their threads and permissions independent when one goes
     },
   });
 
-  const page = await fetch(`${desktop.url}/servers/${firstFixture.identity.id}/thread/default`);
+  const page = await fetch(`${desktop.url}/thread/${firstFixture.identity.id}/default`);
   expect(page.status).toBe(200);
+  const remoteHtml = await page.text();
+  expect(remoteHtml).toContain("Confirming desktop access");
+
+  const local = success(await desktop.client.state.get({ query: { detail: "false" } }));
+  const localThread = local.destinations.find((thread) => thread.id === "default");
+  if (!localThread) {
+    throw new Error("The desktop must have its own default thread");
+  }
+  const localPath = `/thread/${local.server.id}/${localThread.id}`;
+  const localPage = await fetch(`${desktop.url}${localPath}`);
+  expect(localPage.status).toBe(200);
+  const localHtml = await localPage.text();
+  expect(localHtml).toContain(`<h1>${localThread.name}</h1>`);
+  expect(remoteHtml).not.toContain(`<h1>${localThread.name}</h1>`);
+  expect(localHtml).toContain(`href="${localPath}"`);
+  expect(localHtml).not.toContain("Confirming desktop access");
+  const missing = await fetch(`${desktop.url}/thread/${local.server.id}/missing-thread`);
+  expect(missing.status).toBe(404);
 
   const initial = await waitFor(
     async () =>

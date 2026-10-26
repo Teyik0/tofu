@@ -23,8 +23,6 @@ import { storageRootsPlugin } from "./modules/destinations/storage";
 import { discoveryPlugin } from "./modules/discovery";
 import { discoveryServicePlugin } from "./modules/discovery/plugin";
 import { healthPlugin } from "./modules/health";
-import { jevManagementPlugin } from "./modules/jev";
-import { jevServicePlugin } from "./modules/jev/plugin";
 import { libraryAvailabilityPlugin, linkedLibrariesPlugin } from "./modules/library-links";
 import { mediaLinksApiPlugin, mediaLinksPlugin } from "./modules/media-links";
 import { playbackPlugin } from "./modules/playback";
@@ -38,11 +36,9 @@ import { updatesPlugin } from "./modules/updates";
 
 export const apiPlugin = new Elysia({ name: "tofu-api" })
   .use(evlog(toMiddlewareOptions(config)))
-  .derive(() => ({ log: useLogger() }))
   .use(anilistServicePlugin)
   .use(releaseAutomationPlugin)
   .use(discoveryServicePlugin)
-  .use(jevServicePlugin)
   .use(pluginRegistryPlugin)
   .use(torrentServicePlugin)
   .use(desktopNativeOpenPlugin)
@@ -50,15 +46,16 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
   .use(publicDocumentsPlugin)
   .use(mediaLinksPlugin)
   .use(httpPolicyPlugin)
-  .onBeforeHandle(({ log }) => {
-    log.set({
-      component: "api",
-      dataDir: instance.dataDir,
-      operation: "request",
-    });
-  })
   .group("/api", (app) =>
     app
+      .derive(() => ({ log: useLogger() }))
+      .onBeforeHandle(({ log }) => {
+        log.set({
+          component: "api",
+          dataDir: instance.dataDir,
+          operation: "request",
+        });
+      })
       .onStop(() => servicesRuntime.dispose())
       .use(accessRoutesPlugin)
       .use(mediaLinksApiPlugin)
@@ -76,7 +73,6 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
       .use(automationManagementPlugin)
       .use(discoveryPlugin)
       .use(pluginsPlugin)
-      .use(jevManagementPlugin)
       .use(playerPlugin)
       .use(desktopPlugin)
       .use(updatesPlugin)

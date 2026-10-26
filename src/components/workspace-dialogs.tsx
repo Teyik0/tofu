@@ -32,11 +32,11 @@ export function WorkspaceDialogs({
   const close = () => open(null);
   const done = async (id: string | null, destinationId: string | null) => {
     if (id) {
-      await showTorrent(router, destinationId ?? activeDestination, id);
+      await showTorrent(router, dashboard.server.id, destinationId ?? activeDestination, id);
     } else if (modal?.type === "remove" && modal.torrent.id === router.search.torrent) {
-      await showTorrent(router, activeDestination, undefined);
+      await showTorrent(router, dashboard.server.id, activeDestination, undefined);
     } else {
-      await showDestination(router, destinationId, activeDestination);
+      await showDestination(router, dashboard.server.id, destinationId, activeDestination);
     }
   };
 

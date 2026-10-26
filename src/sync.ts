@@ -2,7 +2,7 @@ import "@teyik0/furin/server-only";
 import type { FurinSyncOptions } from "@teyik0/furin/sync";
 import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
 import { createContext } from "elysia";
-import { db } from "./api/lib/db";
+import { db } from "./api/lib/services-runtime";
 import { accessPlugin } from "./api/modules/access/plugin";
 import { callers } from "./api/modules/access/service";
 

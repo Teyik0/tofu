@@ -2,18 +2,26 @@
 
 Both active packages are based on
 [Furin PR #163](https://github.com/Teyik0/furin/pull/163), commit
-`e2c37e99f9014bc99146d8cc43281b55bca94868`. Both packages are unmodified.
-Commit `614ab36` supersedes the former local session patch. No local Furin
-source patch is applied to either active package.
+`420af31d220ca035d15226d84d11c616c28c60dd`. Both packages are unmodified.
+No local Furin source patch is applied to either active package.
 
 | Active archive | SHA-256 |
 | --- | --- |
-| `furin-pr163-e2c37e9.tgz` | `6ca6a5cfba7b0503f0a482a6fb1ea484b1ac56a8c5ac00fc398723dc34ac730a` |
-| `furin-electrobun-pr163-e2c37e9.tgz` | `6736762453108237abb405af4c2c82ace3d81b483ebd250c2c3f52b5ea2f6fc2` |
+| `furin-pr163-420af31.tgz` | `d20017ad2c3771cb2e8d6055f0ed0372f12391023f57f0406d48f9c94396cddb` |
+| `furin-electrobun-pr163-420af31.tgz` | `faa17313b64377151fef6a476ac9c589c89ca86d005f06fa9338bdb15eade394` |
 
 Commit `e2c37e9` exposes `useDesktop` from `@teyik0/furin-electrobun/client`,
 with explicit availability states and acknowledged, validated browser-opening commands.
 This dependency update does not yet migrate Tofu's update UI to the hook.
+
+Commit `960800b` includes upstream discovery isolation and Sync adapter factories.
+An `adapter: () => drizzleSyncAdapter(...)` factory is prepared once during
+composition outside AOT, retaining transaction inference without initializing the
+adapter during compilation. Applications must also skip their own resource
+acquisition during AOT and avoid reading uninitialized services at module scope.
+Tofu has not yet migrated those eager service reads: `scripts/build.ts` still gives
+compilation its own temporary data directory and SQLite database, disposed on
+completion or failure. The superseded local discovery patch has been removed.
 
 Commit `ce5d778` adds `createSyncClient` through `@teyik0/furin/sync/client`
 for continuous live queries outside React, plus `createLocalSyncClient` through
@@ -90,7 +98,7 @@ while the protected isomorphic Eden client keeps direct in-process dispatch to
 
 ## Rebuilding
 
-Use an isolated Furin checkout at the exact upstream commit above, without local patches.
+Use an isolated Furin checkout at the exact upstream commit above, without patches.
 Install dependencies with Bun 1.4.4, then run `bun run build.ts` in
 `packages/core`, followed by `packages/electrobun`. Pack each package with
 `bun pm pack --filename /absolute/path/to/Tofu/vendor/<active-archive-name>`.
@@ -99,9 +107,8 @@ to avoid cross-file framework state.
 Packing resolves workspace catalog references to published ranges. Archives
 contain their upstream MIT licenses.
 
-The older unmodified `ce5d778` archives are retained as historical references.
-They are not active dependencies. The superseded local session patch and its
-patched archive have been retired.
+Only the two active archives are retained. Superseded archives and local Furin
+patches have been removed.
 
 The separate `../patches/libvlc-wasm@0.2.0.patch` is applied by Bun through
 `package.json`. It bounds VLC worker shutdown and the HTTP source chunk cache;

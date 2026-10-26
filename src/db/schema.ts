@@ -43,12 +43,6 @@ export const automationDecisions = sqliteTable("decisions", {
   value: text().notNull(),
 });
 
-export const automationJudgements = sqliteTable("judgements", {
-  createdAt: integer().notNull(),
-  id: text().primaryKey(),
-  value: text().notNull(),
-});
-
 export const automationReleases = sqliteTable("releases", {
   id: text().primaryKey(),
   value: text().notNull(),
@@ -214,7 +208,6 @@ export const schema = {
   anilistState,
   authorizedDevices,
   automationDecisions,
-  automationJudgements,
   automationPlugins,
   automationPreferences,
   automationReleases,

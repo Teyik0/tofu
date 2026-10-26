@@ -16,7 +16,7 @@ Built with **Bun · React · Furin · Electrobun · WebTorrent**, using **shadcn
 - **Keep things organized** — give each destination its own tab and folder.
 - **Search everywhere** — press `Cmd+K` (or `Ctrl+K`) to find torrents across all threads, search enabled sources, and review releases before downloading into a chosen thread.
 - **Stay in control** — pause, resume, set file priorities, manage trackers, and verify downloads.
-- **Follow new releases** — search Nyaa, Tsundere-Raws, and C411; automate downloads with optional Jev and AniList integrations.
+- **Follow new releases** — search Nyaa, Tsundere-Raws, and C411; automate downloads with optional AniList integration.
 - **Pick up where you left off** — downloads and settings survive restarts; background mode keeps transfers running.
 
 Files stay on disk unless you explicitly choose to delete them. Unavailable stats appear as `—`.
@@ -52,13 +52,17 @@ bun install
 bun run dev
 ```
 
-Run `bun run dev` to prepare the runtime, generate the AniList client, and open the native app and a browser against the same authenticated backend. Bun's Furin preload manages the desktop supervisor.
+Run `bun run dev` to prepare the runtime, generate the AniList client, and open the native app and a browser against the same authenticated backend. Furin manages the desktop supervisor. Use `bun run dev --web` to start only the web development server at `http://localhost:3000`, without launching the desktop app.
 
 Frontend CSS and React changes use HMR in the existing window. Backend changes restart
 its native host after releasing application resources; unsaved UI state is not preserved
 across those restarts. Stop any compiled development instance before starting `bun run dev`,
 since both normally use the same development profile.
 Known development failures and their reproductions are recorded in the [HMR investigation](docs/hmr-investigation.md).
+
+`bun run build` creates an optimized development app; `bun start` opens that existing build.
+Its Tofu profile is embedded separately from `NODE_ENV`, so the window stays **Tofu Dev**
+and AniList returns to `tofu-dev://oauth/anilist`. Rebuild after changing native configuration.
 
 ## 🧩 Plugins
 
@@ -69,7 +73,6 @@ Plugins are optional and start disabled. Enable them from **Plugins** in the sid
 | Nyaa | Torrent search and release feeds |
 | Tsundere-Raws | Recent releases from the official JSON feed |
 | C411 | Torznab search with your API key |
-| Jev · TypeSafe | Natural language search and release matching |
 | AniList | Track selected anime from Watching and Plan to Watch |
 
 [Plugin guide →](docs/plugins.md)
@@ -78,9 +81,9 @@ Plugins are optional and start disabled. Enable them from **Plugins** in the sid
 
 Each module exports its service class, Elysia plugin, and input types directly. Consumers declare their dependencies with `.use()`.
 
-Services and HTTP management are separate. `automationPlugin` has no endpoints; `automation/management.ts` retains the existing interface API. `AutomationService` depends on SQLite and Jev, not Discovery, torrent execution, or source providers. The built-in `ReleaseAutomationService` collects releases, submits candidates, and executes committed decisions. AniList owns its account/media bindings and uses that release integration.
+Services and HTTP management are separate. `automationPlugin` has no endpoints; `automation/management.ts` retains the existing interface API. `AutomationService` depends on SQLite, not Discovery, torrent execution, or source providers. The built-in `ReleaseAutomationService` collects releases, submits candidates, and executes committed decisions. AniList owns its account/media bindings and uses that release integration.
 
-Each application initializes its services before serving requests. Elysia service plugins construct their shared instances once at module initialization and expose them with `decorate`. The database has its own plugin. The torrent service plugin owns the worker and exposes the ready engine through `.use(torrentServicePlugin)`. The global `src/sync.ts` builds Furin's SQLite adapter and notifier, then routes opt in with `furinSync(sync)`. AniList, Jev, Discovery, automation, source registration, and updates live in their own service plugins.
+Each application initializes its services before serving requests. Elysia service plugins construct their shared instances once at module initialization and expose them with `decorate`. The database has its own plugin. The torrent service plugin owns the worker and exposes the ready engine through `.use(torrentServicePlugin)`. The global `src/sync.ts` builds Furin's SQLite adapter and notifier, then routes opt in with `furinSync(sync)`. AniList, Discovery, automation, source registration, and updates live in their own service plugins.
 
 Desktop single-instance locking, activation, and native event handoff are managed by the Furin native host. The API entry exports `apiPlugin`; `server.ts` declares the root Elysia application and mounts the API before the desktop integration and Furin on one listener. The server-side Eden client dispatches directly to `apiPlugin`, without importing the server entry or making a network request.
 
@@ -116,7 +119,7 @@ export const filmsPlugin = new Elysia({ name: "acme-films" })
   );
 ```
 
-Rules are reconciled by `(ownerId, key)`. Each configuration change increments `revision`; `prepareIngestion` and `writeIngestion` reject obsolete work. Integrations supply `{ contentKey, release }` candidates, active sources, existing torrent IDs, and collection errors. Network reads and Jev evaluations happen before the write transaction. Refresh in-memory state only after commit. For `includeExisting: false`, supply existing candidates when preparing a new rule; the core does not discover its own baseline.
+Rules are reconciled by `(ownerId, key)`. Each configuration change increments `revision`; `prepareIngestion` and `writeIngestion` reject obsolete work. Integrations supply `{ contentKey, release }` candidates, active sources, existing torrent IDs, and collection errors. Network reads happen before the write transaction. Refresh in-memory state only after commit. For `includeExisting: false`, supply existing candidates when preparing a new rule; the core does not discover its own baseline.
 
 The executor defaults to the rule's integration owner. Only `tofu.releases` rules are polled by Tofu's built-in scheduler; legacy rules remain compatible. An external integration is responsible for its own scheduling, execution, retries, and shutdown. Persisted `adding` decisions serve as pending actions. Report results with `writeDecisionResult`, supplying the collected rule revision. Execution is retryable, not exactly-once: use torrent hashes to recover an already added transfer. Manual approval persists across retries, and replacement removal waits until the new transfer completes.
 
@@ -126,7 +129,7 @@ The current candidate and policy contract remains release-oriented (`FeedRelease
 
 ## 🛠️ Development
 
-`bun run dev` launches `bun --hot src/server.ts` through Furin's desktop preload. Frontend changes use Fast Refresh; backend and native changes restart the managed process. `src/server.ts` exports the Elysia root, mounts the API before the desktop integration, declares the primary window, and owns application startup and shutdown. `src/desktop.ts` registers original Electrobun menus, tray and SDK capabilities; `src/native/host.ts` manages remote server windows. Furin owns authenticated local windows, session bootstrap and coordinated quit, restart and update installation.
+`bun run dev` launches `furin dev`; append `--web` to run only the web development server, or `--desktop` to open only the native app. Frontend changes use Fast Refresh; backend and native changes restart the managed process. `src/server.ts` exports the Elysia root, mounts the API before the desktop integration, declares the primary window, and owns application startup and shutdown. `src/desktop.ts` registers original Electrobun menus, tray and SDK capabilities; `src/native/host.ts` manages remote server windows. Furin owns authenticated local windows, session bootstrap and coordinated quit, restart and update installation.
 
 Packaging settings live in `furin.config.ts`. Development uses `NODE_ENV=development` and builds use production optimizations. The local `dev`, `build`, `db:generate`, and `db:push` scripts set `DATABASE_URL=./tofu-dev.sqlite` directly, independently of `NODE_ENV`; no environment file is needed. Run `bun run db:push` to apply schema changes locally. Release CI invokes the bundler directly without this local database override. The build-time variable does not configure a packaged application's launch environment. Without `DATABASE_URL` at runtime, the database is `tofu.sqlite` inside the resolved application data directory. The exported `instance` object defines application paths; the desktop host supplies its data directory through `FURIN_APP_DATA_DIR`. Each process owns one set of application services. Bundle outputs and release artifacts stay under `.furin/electrobun/`. `bun run tscheck` prepares the pinned Electrobun SDK before checking types; no desktop build is required. The vendored Furin and Electrobun integration archives are built together from [Furin PR #163, commit `e2c37e9`](https://github.com/Teyik0/furin/commit/e2c37e99f9014bc99146d8cc43281b55bca94868).
 

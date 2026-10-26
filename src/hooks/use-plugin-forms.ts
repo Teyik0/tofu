@@ -20,7 +20,6 @@ function usePluginForm(dailyLimit: number): PluginForm {
 
 export function usePluginForms(plugins: PluginState[]) {
   const c411 = usePluginForm(plugins.find((plugin) => plugin.id === "c411")?.dailyLimit ?? 1000);
-  const jev = usePluginForm(plugins.find((plugin) => plugin.id === "jev")?.dailyLimit ?? 1000);
   const nyaa = usePluginForm(plugins.find((plugin) => plugin.id === "nyaa")?.dailyLimit ?? 1000);
   const tsundere = usePluginForm(
     plugins.find((plugin) => plugin.id === "tsundere")?.dailyLimit ?? 1000
@@ -28,5 +27,5 @@ export function usePluginForms(plugins: PluginState[]) {
   const anilist = usePluginForm(
     plugins.find((plugin) => plugin.id === "anilist")?.dailyLimit ?? 1000
   );
-  return { anilist, c411, jev, nyaa, tsundere };
+  return { anilist, c411, nyaa, tsundere };
 }

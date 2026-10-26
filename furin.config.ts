@@ -5,7 +5,9 @@ import { defineDesktopConfig } from "@teyik0/furin-electrobun";
 import tailwind from "bun-plugin-tailwind";
 import { version } from "./package.json";
 
-const release = process.env.NODE_ENV === "production";
+const release = process.env.TOFU_PROFILE
+  ? process.env.TOFU_PROFILE === "release"
+  : process.env.NODE_ENV === "production";
 process.env.HUTCH_HOME ??= `${import.meta.dir}/.cache/hutch`;
 if (release && process.platform === "darwin" && !process.env.ELECTROBUN_DEVELOPER_ID) {
   // The "-" identity enables free ad hoc signing without an Apple Developer account.
@@ -62,6 +64,17 @@ export default defineConfig({
   }),
   pagesDir: "./src/pages",
   plugins: [
+    {
+      name: "tofu-instance-profile",
+      setup(builder) {
+        if ("config" in builder) {
+          builder.config.define = {
+            ...builder.config.define,
+            "process.env.TOFU_PROFILE": JSON.stringify(release ? "release" : "dev"),
+          };
+        }
+      },
+    },
     {
       name: "tofu-database-migrations",
       setup(builder) {

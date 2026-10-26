@@ -18,10 +18,19 @@ test("an anime episode downloads from a real peer and its watched progress syncs
   );
   success(await client.plugins({ id: "nyaa" }).put({ enabled: true }));
   success(await client.anilist.list.post({}));
-  const releases = success(await client.anilist.entries({ mediaId: "10" }).releases.post({}));
+  const inbox = success(await client.anilist.notifications.get({ query: { category: "airing" } }));
+  const [notification] = inbox.notifications;
+  expect(notification?.anime?.mediaId).toBe(10);
+  expect(notification?.episode).toBe(1);
+  const mediaId = String(notification?.anime?.mediaId);
+  const releases = success(await client.anilist.entries({ mediaId }).releases.post({}));
   expect(releases.errors).toEqual([]);
   expect(releases.releases).toHaveLength(1);
-  expect(releases.releases[0]).toMatchObject({ episode: 1, id: "episode-1", sourceId: "nyaa" });
+  expect(releases.releases[0]).toMatchObject({
+    episode: notification?.episode,
+    id: "episode-1",
+    sourceId: "nyaa",
+  });
   success(
     await client.discover.add.post({
       destinationId: "default",
@@ -41,6 +50,28 @@ test("an anime episode downloads from a real peer and its watched progress syncs
   const downloaded = success(await client.anilist.entries({ mediaId: "10" }).releases.post({}));
   expect(downloaded.torrents[0]?.id).toBe(source.id);
   expect(success(await client.anilist.get()).entries[0]?.progress).toBe(0);
+  upstream.state.published = false;
+  upstream.state.notifications.unshift({
+    __typename: "AiringNotification",
+    animeId: 20,
+    createdAt: Math.floor(Date.now() / 1000),
+    episode: 1,
+    id: 700,
+    media: { id: 20, synonyms: [], title: { english: "Example 2nd Season" }, type: "ANIME" },
+    type: "AIRING",
+  });
+  const downloadedInbox = success(await client.anilist.notifications.get());
+  expect(downloadedInbox.notifications.find((item) => item.id === 500)?.sources).toEqual([
+    expect.objectContaining({
+      episode: 1,
+      fileIndex: 0,
+      progress: 1,
+      status: "playable",
+      torrentId: source.id,
+    }),
+  ]);
+  expect(downloadedInbox.notifications.find((item) => item.id === 700)?.sources).toEqual([]);
+  expect(downloadedInbox.notifications.find((item) => item.episode === 2)?.sources).toEqual([]);
 
   success(
     await client.anilist

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Layer, ManagedRuntime } from "effect";
-import { databaseLayer } from "../../src/api/lib/database-layer";
+import { databaseLayer } from "../../src/api/lib/db";
 import { TorrentClient, torrentClientLayer } from "../../src/api/modules/torrents/layer";
 
 await using cleanup = new AsyncDisposableStack();

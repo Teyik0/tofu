@@ -93,11 +93,13 @@ export function ruleDraft(rule: AutomationRule): AutomationDraft {
   return {
     afterEpisode: rule.afterEpisode,
     aliases: rule.aliases,
+    anilistId: rule.anilistId,
     automatic: rule.automatic,
     codecs: rule.codecs,
     deleteReplacedFiles: rule.deleteReplacedFiles,
     destinationId: rule.destinationId,
     enabled: rule.enabled,
+    episodeCount: rule.episodeCount,
     excludePacks: rule.excludePacks,
     includeExisting: rule.includeExisting,
     intervalMinutes: rule.intervalMinutes,

@@ -2,7 +2,7 @@ import { Provider, useAtomValue } from "jotai";
 import type { ReactNode } from "react";
 import { type CSSProperties, useState } from "react";
 import type { LibraryState } from "../api/modules/dashboard/projection";
-import { destinationFromPath, isPreferencesPath, remoteThreadFromPath } from "../lib/navigation";
+import { destinationFromPath, isPreferencesPath, threadFromPath } from "../lib/navigation";
 import { createTofuStore, dashboardAtom, sessionAtom } from "../state/workspace";
 import { DestinationSidebar } from "./destination-sidebar";
 import { GlobalSearch } from "./global-search";
@@ -29,8 +29,9 @@ export function WorkspaceLayout({
     host: null,
   };
   const capabilities = useAtomValue(sessionAtom, { store })?.capabilities;
-  const activeDestination = destinationFromPath(path);
-  const remoteThread = remoteThreadFromPath(path);
+  const activeDestination = destinationFromPath(path, dashboard.server.id);
+  const thread = threadFromPath(path);
+  const remoteThread = thread && thread.serverId !== dashboard.server.id ? thread : null;
   return (
     <Provider store={store}>
       <TofuStateSync dashboard={loaded} path={path} />
@@ -49,9 +50,9 @@ export function WorkspaceLayout({
           <SidebarInset className="min-w-0 overflow-hidden">{children}</SidebarInset>
           {!!dashboard && remoteThread === null && (
             <>
-              <TorrentDrop activeDestination={activeDestination} />
+              <TorrentDrop activeDestination={activeDestination} serverId={dashboard.server.id} />
               <WorkspaceDialogs activeDestination={activeDestination} dashboard={dashboard} />
-              {capabilities?.hostNative ? <OpenedTorrents /> : null}
+              {capabilities?.hostNative ? <OpenedTorrents serverId={dashboard.server.id} /> : null}
               <GlobalSearch activeDestination={activeDestination} dashboard={dashboard} />
             </>
           )}

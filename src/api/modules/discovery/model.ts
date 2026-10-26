@@ -15,6 +15,7 @@ export const addReleaseSchema = object({
 });
 
 export interface FeedRelease {
+  anilistId?: number;
   codec: string | null;
   downloadUrl: string;
   episode: number | null;

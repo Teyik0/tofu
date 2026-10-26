@@ -14,16 +14,16 @@
   "author": "teyik0",
   "type": "module",
   "scripts": {
-    "build": "bun run setup && bun run codegen && DATABASE_URL=./tofu-dev.sqlite bun --bun furin-electrobun build --env=dev",
+    "build": "bun run setup && bun run codegen && bun scripts/build.ts",
     "codegen": "graphql-codegen --config scripts/anilist-codegen.ts",
     "db:generate": "DATABASE_URL=./tofu-dev.sqlite bunx --bun --no-install drizzle-kit generate",
     "db:push": "DATABASE_URL=./tofu-dev.sqlite bunx --bun --no-install drizzle-kit push",
-    "dev": "bun run setup && bun run codegen && DATABASE_URL=./tofu-dev.sqlite bun --hot src/server.ts",
+    "dev": "bun run setup && bun run codegen && DATABASE_URL=./tofu-dev.sqlite bun --bun furin dev",
     "fix": "ultracite fix",
     "iup": "bun update --interactive --recursive",
     "prepare": "lefthook install",
     "setup": "bun scripts/setup.ts",
-    "start": "open .furin/electrobun/build/dev-macos-arm64/Tofu.app",
+    "start": "open .furin/electrobun/build/dev-macos-arm64/Tofu-dev.app",
     "test": "bun run codegen && bun test --parallel --isolate --bail --max-concurrency 3 --timeout 30000",
     "tscheck": "bun --bun furin-electrobun prepare && bun check"
   },
@@ -31,8 +31,8 @@
     "@base-ui/react": "1.9.0",
     "@elysia/eden": "2.0.0-beta.5",
     "@formisch/react": "1.1.0",
-    "@teyik0/furin": "file:vendor/furin-pr163-e2c37e9.tgz",
-    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-e2c37e9.tgz",
+    "@teyik0/furin": "file:vendor/furin-pr163-420af31.tgz",
+    "@teyik0/furin-electrobun": "file:vendor/furin-electrobun-pr163-420af31.tgz",
     "bun-plugin-tailwind": "0.1.2",
     "class-variance-authority": "0.7.1",
     "cn": "^0.5.0",
@@ -77,7 +77,8 @@
     "bun": ">=1.4.3"
   },
   "patchedDependencies": {
-    "libvlc-wasm@0.2.0": "patches/libvlc-wasm@0.2.0.patch"
+    "libvlc-wasm@0.2.0": "patches/libvlc-wasm@0.2.0.patch",
+    "evlog@2.33.1": "patches/evlog@2.33.1.patch"
   },
   "trustedDependencies": [
     "node-datachannel"

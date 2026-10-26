@@ -17,17 +17,7 @@ export function PluginCredentials({
   plugin,
   form,
 }: Pick<PluginCardProps, "plugin" | "form"> & { model: ReturnType<typeof usePluginCard> }) {
-  const {
-    keyField,
-    limitField,
-    key,
-    limit,
-    keyInput,
-    errorId,
-    keyInvalid,
-    configurePlugin,
-    formId,
-  } = model;
+  const { keyField, key, keyInput, errorId, keyInvalid, configurePlugin, formId } = model;
   return (
     <Form
       id={formId}
@@ -41,13 +31,10 @@ export function PluginCredentials({
           orientation="responsive"
         >
           <FieldContent>
-            <FieldLabel htmlFor={`key-${plugin.id}`}>
-              {plugin.id === "c411" ? "C411 API key or Torznab link" : "TypeSafe API key"}
-            </FieldLabel>
+            <FieldLabel htmlFor={`key-${plugin.id}`}>C411 API key or Torznab link</FieldLabel>
             <FieldDescription>
-              {plugin.id === "jev"
-                ? "Get a key from TypeSafe, then paste it here. Validation uses one Jev call. Evaluated titles and metadata are sent to TypeSafe."
-                : "Open C411 API integrations, then paste your key or the full Torznab link. Tofu extracts the key automatically."}
+              Open C411 API integrations, then paste your key or the full Torznab link. Tofu
+              extracts the key automatically.
             </FieldDescription>
             <FieldDescription id={`key-help-${plugin.id}`}>
               {plugin.hasApiKey
@@ -62,13 +49,7 @@ export function PluginCredentials({
             autoComplete="off"
             id={`key-${plugin.id}`}
             onChange={(event) => keyField.onChange(event.target.value)}
-            placeholder={
-              plugin.hasApiKey
-                ? "Saved · type to replace"
-                : plugin.id === "c411"
-                  ? "API key or Torznab link"
-                  : "Your personal key"
-            }
+            placeholder={plugin.hasApiKey ? "Saved · type to replace" : "API key or Torznab link"}
             ref={(element) => {
               keyInput.current = element;
               keyField.props.ref(element);
@@ -77,32 +58,6 @@ export function PluginCredentials({
             value={key}
           />
         </Field>
-        {plugin.id === "jev" && (
-          <Field
-            className="plugins-limit"
-            data-invalid={Boolean(limitField.errors)}
-            orientation="horizontal"
-          >
-            <FieldContent>
-              <FieldLabel htmlFor="jev-daily-limit">Daily call limit</FieldLabel>
-              <FieldDescription>
-                {plugin.callsToday} call{plugin.callsToday === 1 ? "" : "s"} today · cached
-                evaluations are not billed again.
-              </FieldDescription>
-            </FieldContent>
-            <Input
-              {...limitField.props}
-              aria-invalid={Boolean(limitField.errors)}
-              id="jev-daily-limit"
-              max="100000"
-              min="1"
-              onChange={(event) => limitField.onChange(event.target.value)}
-              required
-              type="number"
-              value={limit}
-            />
-          </Field>
-        )}
       </FieldGroup>
     </Form>
   );
@@ -133,7 +88,7 @@ export function PluginActions({
         <a
           aria-disabled={isOpening || undefined}
           className={buttonVariants({ size: "sm", variant: "outline" })}
-          href={pluginCredentialPages[plugin.id === "c411" ? "c411" : "jev"]}
+          href={pluginCredentialPages.c411}
           onClick={(event) => {
             if (!desktop) {
               return;
@@ -157,7 +112,7 @@ export function PluginActions({
           target="_blank"
         >
           <ExternalLinkIcon data-icon="inline-start" />
-          {plugin.id === "c411" ? "Open C411 API integrations" : "Get a TypeSafe API key"}
+          Open C411 API integrations
         </a>
       )}
       {plugin.enabled === true && (

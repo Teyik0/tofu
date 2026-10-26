@@ -3,7 +3,7 @@ import { Clock, Context, Effect, Layer, Result, Schema, Semaphore } from "effect
 import { HttpClient } from "effect/http";
 import { ElysiaStatus, problem } from "elysia";
 import { automationPlugins } from "../../../db/schema";
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 import type { FeedRelease } from "../discovery/model";
 import { normalizePluginCredential, validatePluginCredential } from "./credentials";
 import { parseNyaaHtml, parseRss, parseTsundere } from "./feeds";
@@ -11,7 +11,6 @@ import type { PluginId, PluginState, SourcePluginId, StoredPlugin } from "./mode
 
 export const pluginEndpoints = {
   c411: "https://c411.org/api/torznab",
-  jev: "https://api.typesafe.ai/v1/systemone",
   nyaa: "https://nyaa.si/",
   tsundere: "https://tsundere.to/api/v1/feed.json",
 };
@@ -48,11 +47,6 @@ export const plugins: Pick<PluginState, "id" | "name" | "description">[] = [
     name: "Tsundere-Raws",
   },
   { description: "Torznab search with your personal key.", id: "c411", name: "C411" },
-  {
-    description: "Natural language request interpretation and title matching.",
-    id: "jev",
-    name: "Jev · TypeSafe",
-  },
 ];
 
 interface PluginsOptions {
@@ -87,6 +81,12 @@ const make = Effect.gen(function* () {
   const serviceRequests = new Map<PluginId, Set<AbortController>>();
   const serviceC411Queue = yield* Semaphore.make(1);
   let serviceC411NextAt = 0;
+  const serviceSearches = new Map<
+    string,
+    { expires: number; operation: ReturnType<typeof serviceFetchUncached> }
+  >();
+  const serviceTsundereQueue = yield* Semaphore.make(1);
+  let serviceTsundereCache: { expires: number; releases: FeedRelease[] } | null = null;
   function serviceSnapshot() {
     return Array.from(servicePlugins.values(), ({ apiKey, callsDay, ...plugin }) => ({
       ...plugin,
@@ -182,8 +182,17 @@ const make = Effect.gen(function* () {
       apiKey: input.apiKey === undefined ? plugin.apiKey : input.apiKey.trim(),
       error: null,
     };
-    if (next.enabled && (id === "c411" || id === "jev") && !next.apiKey) {
+    if (next.enabled && id === "c411" && !next.apiKey) {
       return problem(400, { detail: "Add your API key before enabling this plugin" });
+    }
+    if (id === "tsundere") {
+      serviceTsundereCache = null;
+      serviceAbort("tsundere");
+    }
+    for (const key of serviceSearches.keys()) {
+      if (key.startsWith(`${id}:`)) {
+        serviceSearches.delete(key);
+      }
     }
     servicePlugins.set(next.id, next);
     if (!next.enabled) {
@@ -196,7 +205,15 @@ const make = Effect.gen(function* () {
     if (!(id === "nyaa" || id === "tsundere" || id === "c411" || serviceSources.has(id))) {
       return problem(404, { detail: "Unknown plugin" });
     }
-    const releases = yield* serviceFetchSource(id, "");
+    for (const key of serviceSearches.keys()) {
+      if (key.startsWith(`${id}:`)) {
+        serviceSearches.delete(key);
+      }
+    }
+    if (id === "tsundere") {
+      serviceTsundereCache = null;
+    }
+    const releases = yield* serviceFetchUncached(id, "");
     if (releases instanceof ElysiaStatus) {
       return releases;
     }
@@ -206,7 +223,7 @@ const make = Effect.gen(function* () {
     id: string,
     input: { apiKey?: string; enabled: boolean; dailyLimit?: number }
   ) {
-    if (id !== "c411" && id !== "jev") {
+    if (id !== "c411") {
       return problem(400, { detail: "This plugin does not use an API key" });
     }
     const plugin = servicePlugins.get(id);
@@ -285,25 +302,6 @@ const make = Effect.gen(function* () {
     }
     return result;
   }, Effect.scoped);
-  function serviceReserveDailyCall(id: PluginId) {
-    const plugin = servicePlugins.get(id);
-    if (!plugin) {
-      throw new Error(`Unknown plugin ${id}`);
-    }
-    const day = new Date(serviceOptions.now()).toISOString().slice(0, 10);
-    if (plugin.callsDay !== day) {
-      plugin.callsDay = day;
-      plugin.callsToday = 0;
-    }
-    if (plugin.callsToday >= plugin.dailyLimit) {
-      return problem(429, {
-        detail: id === "jev" ? "Jev daily limit reached" : `${plugin.name} daily limit reached`,
-      });
-    }
-    plugin.callsToday += 1;
-    serviceStorePlugin(plugin);
-    return null;
-  }
   const serviceReserveC411 = Effect.fn("Plugins.reserveC411")(function* () {
     const now = yield* Clock.currentTimeMillis;
     const delay = Math.max(0, serviceC411NextAt - now);
@@ -312,7 +310,93 @@ const make = Effect.gen(function* () {
     }
     serviceC411NextAt = (yield* Clock.currentTimeMillis) + 4100;
   }, serviceC411Queue.withPermits(1));
-  const serviceFetchSource = Effect.fn("Plugins.fetchSource")(function* (
+  const serviceTsundereCatalog = Effect.fn("Plugins.tsundereCatalog")(function* () {
+    const plugin = servicePlugins.get("tsundere");
+    if (!plugin?.enabled || serviceLifecycle.closed) {
+      return [];
+    }
+    if (serviceTsundereCache && serviceTsundereCache.expires > serviceOptions.now()) {
+      return structuredClone(serviceTsundereCache.releases);
+    }
+    return yield* serviceRequest("tsundere", 30_000, null, () =>
+      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep bounded partition traversal and completeness validation together.
+      Effect.gen(function* () {
+        const pending: { filters: [string, string][]; dimensions: ("quality" | "codec")[] }[] = [
+          { dimensions: ["quality", "codec"], filters: [] },
+        ];
+        const releases = new Map<string, FeedRelease>();
+        const identities = new Set<string>();
+        let total = 0;
+        let requests = 0;
+        for (const partition of pending) {
+          requests += 1;
+          if (requests > 32) {
+            return problem(502, { detail: "Tsundere catalogue exceeds public filter coverage" });
+          }
+          const url = new URL(serviceOptions.endpoints.tsundere);
+          url.searchParams.set("limit", "250");
+          url.searchParams.set("provider", "nyaa.si");
+          for (const [name, value] of partition.filters) {
+            url.searchParams.set(name, value);
+          }
+          const fetched = yield* Effect.result(
+            Effect.gen(function* () {
+              const response = yield* http.get(url);
+              if (response.status < 200 || response.status >= 300) {
+                return problem(502, { detail: `Source unavailable (HTTP ${response.status})` });
+              }
+              return yield* parseTsundere(yield* response.text);
+            })
+          );
+          if (Result.isFailure(fetched)) {
+            const cause = fetched.failure;
+            return problem(502, {
+              detail:
+                cause instanceof Error && feedFailure.test(cause.message)
+                  ? cause.message
+                  : "Unable to read the Tsundere catalogue",
+            });
+          }
+          const page = fetched.success;
+          if (page instanceof ElysiaStatus) {
+            return page;
+          }
+          if (requests === 1) {
+            ({ total } = page);
+          }
+          if (new Set(page.identities).size < page.total) {
+            const [dimension] = partition.dimensions;
+            if (!dimension || page.options[dimension].length === 0) {
+              return problem(502, { detail: "Incomplete Tsundere catalogue" });
+            }
+            for (const value of new Set(page.options[dimension])) {
+              pending.push({
+                dimensions: partition.dimensions.slice(1),
+                filters: [...partition.filters, [dimension, value]],
+              });
+            }
+          }
+          for (const identity of page.identities) {
+            identities.add(identity);
+          }
+          for (const release of page.releases) {
+            releases.set(release.id, release);
+          }
+        }
+        if (identities.size < total) {
+          return problem(502, { detail: "Incomplete Tsundere catalogue" });
+        }
+        if (servicePlugins.get("tsundere") !== plugin || serviceLifecycle.closed) {
+          return problem(409, { detail: "Plugin request cancelled" });
+        }
+        const result = Array.from(releases.values());
+        serviceTsundereCache = { expires: serviceOptions.now() + 300_000, releases: result };
+        serviceRecordSuccess("tsundere");
+        return structuredClone(result);
+      }).pipe(Effect.scoped)
+    );
+  }, serviceTsundereQueue.withPermits(1));
+  const serviceFetchUncached = Effect.fn("Plugins.fetchUncached")(function* (
     sourceId: SourcePluginId,
     query: string
   ) {
@@ -360,14 +444,13 @@ const make = Effect.gen(function* () {
     if (sourceId !== "nyaa" && sourceId !== "tsundere" && sourceId !== "c411") {
       throw new Error(`Unknown source ${sourceId}`);
     }
+    if (sourceId === "tsundere") {
+      return yield* serviceTsundereCatalog();
+    }
     const url = new URL(serviceOptions.endpoints[sourceId]);
     if (sourceId === "nyaa") {
       url.searchParams.set("page", "rss");
       url.searchParams.set("q", query);
-    }
-    if (sourceId === "tsundere") {
-      url.searchParams.set("limit", "250");
-      url.searchParams.set("provider", "nyaa.si");
     }
     if (sourceId === "c411") {
       url.searchParams.set("t", "search");
@@ -403,10 +486,7 @@ const make = Effect.gen(function* () {
                   });
                 }
                 const text = yield* response.text;
-                releases =
-                  sourceId === "tsundere"
-                    ? yield* parseTsundere(text)
-                    : yield* parseRss(text, sourceId);
+                releases = yield* parseRss(text, sourceId);
               }
               return releases;
             })
@@ -424,7 +504,11 @@ const make = Effect.gen(function* () {
           if (releases instanceof ElysiaStatus) {
             return releases;
           }
-          if (!servicePlugins.get(sourceId)?.enabled || serviceLifecycle.closed) {
+          if (
+            servicePlugins.get(sourceId) !== plugin ||
+            !plugin.enabled ||
+            serviceLifecycle.closed
+          ) {
             return [];
           }
           plugin.error = null;
@@ -433,8 +517,53 @@ const make = Effect.gen(function* () {
         }).pipe(Effect.scoped)
     );
   });
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep cache reservation, lifecycle checks and failure eviction together.
+  const serviceFetchSource = Effect.fn("Plugins.fetchSource")(function* (
+    sourceId: SourcePluginId,
+    query: string,
+    cachedSearch = false
+  ) {
+    if (!servicePlugins.get(sourceId)?.enabled || serviceLifecycle.closed) {
+      return [];
+    }
+    if (!cachedSearch || sourceId === "tsundere") {
+      return yield* serviceFetchUncached(sourceId, query);
+    }
+    const key = `${sourceId}:${query}`;
+    const cached = serviceSearches.get(key);
+    if (cached && cached.expires > serviceOptions.now()) {
+      const result = yield* cached.operation;
+      return result instanceof ElysiaStatus ? result : structuredClone(result);
+    }
+    const operation = yield* Effect.cached(serviceFetchUncached(sourceId, query));
+    if (serviceSearches.size >= 100) {
+      const [oldest] = serviceSearches.keys();
+      if (oldest) {
+        serviceSearches.delete(oldest);
+      }
+    }
+    const reservation = { expires: Number.POSITIVE_INFINITY, operation };
+    serviceSearches.set(key, reservation);
+    const result = yield* operation.pipe(
+      Effect.onInterrupt(() =>
+        Effect.sync(() => {
+          if (serviceSearches.get(key) === reservation) {
+            serviceSearches.delete(key);
+          }
+        })
+      )
+    );
+    if (serviceSearches.get(key) === reservation) {
+      if (result instanceof ElysiaStatus) {
+        serviceSearches.delete(key);
+      } else {
+        reservation.expires = serviceOptions.now() + 60_000;
+      }
+    }
+    return result instanceof ElysiaStatus ? result : structuredClone(result);
+  });
   const serviceValidateCredential = Effect.fn("Plugins.validateCredential")(function* (
-    id: "c411" | "jev",
+    id: "c411",
     input: string,
     plugin: StoredPlugin
   ) {
@@ -445,37 +574,27 @@ const make = Effect.gen(function* () {
     if (!apiKey) {
       return problem(400, { detail: "Paste your API key before validating the connection" });
     }
-    if (id === "jev") {
-      const reserved = serviceReserveDailyCall(id);
-      if (reserved) {
-        return reserved;
-      }
-    }
-    const validated = yield* serviceRequest(
-      id,
-      15_000,
-      id === "c411" ? serviceReserveC411() : null,
-      (controller) =>
-        Effect.gen(function* () {
-          const rejected = yield* validatePluginCredential({
-            apiKey,
-            endpoint: serviceOptions.endpoints[id],
-            id,
-          }).pipe(Effect.provideService(HttpClient.HttpClient, client));
-          if (rejected) {
-            return rejected;
-          }
-          if (
-            serviceLifecycle.closed ||
-            controller.signal.aborted ||
-            servicePlugins.get(id) !== plugin
-          ) {
-            return problem(409, {
-              detail: "Plugin settings changed. Try validating the key again.",
-            });
-          }
-          return null;
-        }).pipe(Effect.scoped)
+    const validated = yield* serviceRequest(id, 15_000, serviceReserveC411(), (controller) =>
+      Effect.gen(function* () {
+        const rejected = yield* validatePluginCredential({
+          apiKey,
+          endpoint: serviceOptions.endpoints[id],
+          id,
+        }).pipe(Effect.provideService(HttpClient.HttpClient, client));
+        if (rejected) {
+          return rejected;
+        }
+        if (
+          serviceLifecycle.closed ||
+          controller.signal.aborted ||
+          servicePlugins.get(id) !== plugin
+        ) {
+          return problem(409, {
+            detail: "Plugin settings changed. Try validating the key again.",
+          });
+        }
+        return null;
+      }).pipe(Effect.scoped)
     );
     return validated ?? apiKey;
   });
@@ -532,6 +651,8 @@ const make = Effect.gen(function* () {
   }
   function serviceClose() {
     serviceLifecycle.closed = true;
+    serviceSearches.clear();
+    serviceTsundereCache = null;
     for (const id of serviceRequests.keys()) {
       serviceAbort(id);
     }
@@ -567,7 +688,6 @@ const make = Effect.gen(function* () {
     recordSuccess: serviceRecordSuccess,
     registerSource: serviceRegisterSource,
     request: serviceRequest,
-    reserveDailyCall: serviceReserveDailyCall,
     snapshot: serviceSnapshot,
     sourceIds: serviceSourceIds,
     test: serviceTest,
@@ -670,9 +790,7 @@ export class Plugins extends Context.Service<
           typeof problem<
             502,
             {
-              readonly detail:
-                | "Unable to validate your C411 API key. Check your connection and try again."
-                | "Unable to validate your TypeSafe API key. Check your connection and try again.";
+              readonly detail: "Unable to validate your C411 API key. Check your connection and try again.";
             }
           >
         >
@@ -680,9 +798,7 @@ export class Plugins extends Context.Service<
           typeof problem<
             400,
             {
-              readonly detail:
-                | "C411 rejected this API key. Generate a new key and try again."
-                | "TypeSafe rejected this API key. Generate a new key and try again.";
+              readonly detail: "C411 rejected this API key. Generate a new key and try again.";
             }
           >
         >
@@ -690,9 +806,7 @@ export class Plugins extends Context.Service<
           typeof problem<
             502,
             {
-              readonly detail:
-                | `Unable to validate your C411 API key (HTTP ${number})`
-                | `Unable to validate your TypeSafe API key (HTTP ${number})`;
+              readonly detail: `Unable to validate your C411 API key (HTTP ${number})`;
             }
           >
         >
@@ -714,12 +828,10 @@ export class Plugins extends Context.Service<
       | ReturnType<typeof problem<409, { readonly detail: "Plugin unavailable" }>>
       | ReturnType<typeof problem<409, { readonly detail: "Plugin request cancelled" }>>
     >;
-    readonly reserveDailyCall: (
-      id: PluginId
-    ) => ReturnType<typeof problem<429, { readonly detail: string }>> | null;
     readonly fetchSource: (
       sourceId: SourcePluginId,
-      query: string
+      query: string,
+      cachedSearch?: boolean
     ) => Effect.Effect<
       | FeedRelease[]
       | ReturnType<typeof problem<409, { readonly detail: "Plugin unavailable" }>>

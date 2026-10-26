@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { Context, Effect, Layer, Result } from "effect";
 import { problem } from "elysia";
 import { storageRoots } from "../../../db/schema";
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 
 const PATH_SEGMENTS = /[\\/]+/;
 const WINDOWS_DRIVE = /^[a-z]:/i;

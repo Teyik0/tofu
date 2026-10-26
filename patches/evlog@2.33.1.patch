@@ -1,0 +1,32 @@
+diff --git a/dist/elysia/index.mjs b/dist/elysia/index.mjs
+index 336aca83102996708838dc25b99bb49c2c64e309..998ac2cf2641447dde9f757f05b715b5520ba5fa 100644
+--- a/dist/elysia/index.mjs
++++ b/dist/elysia/index.mjs
+@@ -82,9 +82,9 @@ function evlog(options = {}) {
+ 			skipped,
+ 			logger
+ 		});
+-	}).derive({ as: "global" }, ({ request }) => {
++	}).derive("global", ({ request }) => {
+ 		return { log: requestState.get(request)?.logger };
+-	}).mapResponse({ as: "global" }, (ctx) => {
++	}).mapResponse("global", (ctx) => {
+ 		const { request } = ctx;
+ 		const state = requestState.get(request);
+ 		if (!state || state.skipped || emitted.has(request)) return;
+@@ -98,13 +98,13 @@ function evlog(options = {}) {
+ 			});
+ 			releaseLogger(state.logger);
+ 		});
+-	}).onAfterResponse({ as: "global" }, async ({ request, set }) => {
++	}).onAfterResponse("global", async ({ request, set }) => {
+ 		const state = requestState.get(request);
+ 		if (!state || state.skipped || emitted.has(request)) return;
+ 		emitted.add(request);
+ 		await state.finish({ status: set.status || 200 });
+ 		releaseLogger(state.logger);
+-	}).onError({ as: "global" }, async ({ request, error }) => {
++	}).onError("global", async ({ request, error }) => {
+ 		const state = requestState.get(request);
+ 		if (!state || state.skipped || emitted.has(request)) return;
+ 		emitted.add(request);

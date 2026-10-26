@@ -2,6 +2,9 @@ import { useMutation, useQuery } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
+import { normalizeTitle } from "../api/lib/title";
+import type { AutomationDraft, AutomationRule } from "../api/modules/automation/model";
+import { interpretLocally } from "../api/modules/automation/rules";
 import type { LibraryTorrent, LiveState } from "../api/modules/dashboard/projection";
 import type { SourcePluginId } from "../api/modules/plugins/model";
 import { useAsyncAction } from "../hooks/use-async-action";
@@ -44,6 +47,8 @@ export function useGlobalSearch({
   const [scope, setScope] = useState<GlobalSearchScope>("all");
   const [review, setReview] = useState<SearchReleaseGroup | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [automationDraft, setAutomationDraft] = useState<AutomationDraft | null>(null);
+  const [automationRule, setAutomationRule] = useState<AutomationRule>();
   const { busy, error, setError, run } = useAsyncAction("Unable to download the release");
   const { data: automation, error: pluginError } = useQuery(api.automation.get.live());
   const add = useMutation(api.discover.add.post);
@@ -89,16 +94,17 @@ export function useGlobalSearch({
     setReview(null);
     setNotice(null);
     setError(null);
+    setAutomationDraft(null);
   };
   const openTorrent = async (torrent: LibraryTorrent) => {
     setError(null);
     remember();
     try {
       await router.navigate({
-        params: { id: torrent.destinationId },
+        params: { serverId: dashboard.server.id, threadId: torrent.destinationId },
         resetScroll: false,
         search: { torrent: torrent.id },
-        to: "/thread/:id",
+        to: "/thread/:serverId/:threadId",
       });
       close();
     } catch (cause) {
@@ -113,6 +119,7 @@ export function useGlobalSearch({
     } else {
       remember();
       setReview(item.group);
+      setAutomationDraft(null);
       setNotice(null);
       setError(null);
     }
@@ -137,7 +144,42 @@ export function useGlobalSearch({
   };
 
   return {
+    automate: (selectedRelease = release) => {
+      if (!(selectedRelease && automation && "preferences" in automation)) {
+        return;
+      }
+      remember();
+      const existingRule = automation.automations.find(
+        (rule) =>
+          (!rule.ownerId || rule.ownerId === "tofu.manual") &&
+          rule.matchMode === "exact" &&
+          rule.destinationId === destinationId &&
+          rule.season === selectedRelease.season &&
+          normalizeTitle(rule.title) === normalizeTitle(selectedRelease.workTitle)
+      );
+      setAutomationRule(existingRule);
+      setAutomationDraft(
+        existingRule ?? {
+          ...interpretLocally(selectedRelease.workTitle, destinationId, automation.preferences),
+          afterEpisode:
+            selectedRelease.episode === null
+              ? 0
+              : Math.min(10_000, Math.floor(selectedRelease.episode)),
+          includeExisting: true,
+          query: selectedRelease.workTitle,
+          season: selectedRelease.season,
+          sources: [
+            selectedRelease.sourceId,
+            ...automation.preferences.sources.filter((id) => id !== selectedRelease.sourceId),
+          ],
+          title: selectedRelease.workTitle,
+        }
+      );
+      setNotice(null);
+    },
     automation,
+    automationDraft,
+    automationRule,
     busy,
     choose,
     currentReview,
@@ -162,7 +204,9 @@ export function useGlobalSearch({
     review,
     router,
     scope,
+    setAutomationDraft,
     setDestinationId,
+    setNotice,
     setReview,
     setScope,
     sourceIds,

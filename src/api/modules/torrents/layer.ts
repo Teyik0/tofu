@@ -5,7 +5,7 @@ import { ElysiaStatus } from "elysia";
 import { createLogger } from "evlog";
 import { version } from "../../../../package.json";
 import workerBundle from "../../../../runtime/engine-worker.worker" with { type: "file" };
-import { Database } from "../../lib/database-layer";
+import { Database } from "../../lib/db";
 import { instance } from "../../lib/instance";
 import { createWorkerClient } from "../../lib/worker-rpc";
 import type { DashboardState, EngineChange } from "./types";

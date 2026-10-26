@@ -1,11 +1,12 @@
 import { isAbsolute, join, resolve } from "node:path";
+import { invalidateSync, type SyncRuntimeOptions } from "@teyik0/furin/sync";
 import { eq } from "drizzle-orm";
 import { Cause, Context, Effect, Fiber, Layer, Result, Schedule, Schema } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
 import { anilistState } from "../../../db/schema";
-import { Database, type DatabaseConnection } from "../../lib/database-layer";
+import { Database, type DatabaseConnection } from "../../lib/db";
 import { instance } from "../../lib/instance";
 import { refreshRecords } from "../../lib/persisted-cache";
 import type { ReleaseAutomationService } from "../automation/integration";
@@ -14,11 +15,11 @@ import type { AutomationDraft } from "../automation/model";
 import { compareReleases, interpretLocally } from "../automation/rules";
 import type { AutomationService } from "../automation/service";
 import { Automation } from "../automation/service";
-import type { FeedRelease } from "../discovery/model";
+import { mappedAnimeQueries, mappedAnimeRelease } from "../discovery/anime-mapping";
+import type { DiscoveryResult, FeedRelease } from "../discovery/model";
 import { classicDiscovery, Discovery, type DiscoveryService } from "../discovery/service";
 import { collectSourceQueries } from "../discovery/sources";
-import type { JevService } from "../jev/service";
-import { animeSearchQuestions, Jev, type JevAnswer } from "../jev/service";
+import { type EpisodeSource, findEpisodeSources } from "../library-links/availability";
 import type { SourcePluginId } from "../plugins/model";
 import { publicRelease } from "../plugins/releases";
 import type { PluginsService } from "../plugins/service";
@@ -38,7 +39,12 @@ import {
   anilistRequestError,
   createAniListSdk,
 } from "./graphql/transport";
-import type { AniListListUpdate, AniListThreadProposal } from "./model";
+import type { AniListListUpdate, AniListThreadProposal, NotificationFilters } from "./model";
+import {
+  notificationAvailabilityQueries,
+  notificationTypes,
+  notificationView,
+} from "./notifications";
 import { AniListAuthorization } from "./oauth";
 import {
   decodeAniListAccount,
@@ -51,12 +57,8 @@ import {
   decodeAniListWatched,
 } from "./persistence";
 import {
-  animeEpisodeOffset,
-  animeEpisodeRelease,
   animeQueries,
   animeReleaseCandidate,
-  animeSearchPlan,
-  animeSeriesTitle,
   localAnimeSearch,
   matchesAnimeRelease,
 } from "./releases";
@@ -75,7 +77,6 @@ interface AniListOptions {
   discovery: DiscoveryService;
   endpoint: string;
   engine: EnginePort;
-  jev: JevService;
   now: () => number;
   plugins: PluginsService;
   releaseAutomation: ReleaseAutomationService;
@@ -88,7 +89,7 @@ interface AniListConfig {
   userName: string;
 }
 interface AniListCache {
-  account: { id: number; name: string };
+  account: ReturnType<typeof decodeAniListAccount>;
   entries: AniListEntry[];
   key: string;
   updatedAt: number;
@@ -98,14 +99,6 @@ export function isAniListStatus(value: string | null): value is AniListStatus {
     value !== null &&
     ["CURRENT", "PLANNING", "COMPLETED", "PAUSED", "DROPPED", "REPEATING"].includes(value)
   );
-}
-
-function confidentAnimeNumber(answer: JevAnswer | undefined) {
-  if ((answer?.confidence ?? 0) < 0.8) {
-    return null;
-  }
-  const value = Number(answer?.choice);
-  return Number.isInteger(value) && value > 0 ? value : null;
 }
 
 const folderMarks = /\p{M}/gu;
@@ -178,7 +171,6 @@ const make = Effect.gen(function* () {
   const automation = yield* Automation;
   const discovery = yield* Discovery;
   const engine = yield* TorrentClient;
-  const jev = yield* Jev;
   const plugins = yield* Plugins;
   const releaseAutomation = yield* ReleaseAutomation;
   const client = yield* Effect.tryPromise(() =>
@@ -190,7 +182,6 @@ const make = Effect.gen(function* () {
     discovery,
     endpoint: "https://graphql.anilist.co",
     engine,
-    jev,
     now: Date.now,
     plugins,
     releaseAutomation,
@@ -209,7 +200,7 @@ const make = Effect.gen(function* () {
   let serviceVisibleStatuses: AniListStatus[] = ["CURRENT", "PLANNING"];
   let serviceEntries: AniListEntry[] = [];
   let serviceConnectedUser: string | null = null;
-  let serviceAccount: { id: number; name: string } | null = null;
+  let serviceAccount: ReturnType<typeof decodeAniListAccount> | null = null;
   let serviceCache: AniListCache | null = null;
   let serviceListFlight: {
     key: string;
@@ -234,6 +225,23 @@ const make = Effect.gen(function* () {
     started: false,
   };
   let serviceTimer: Fiber.Fiber<void> | null = null;
+  let notificationTimer: Fiber.Fiber<void> | null = null;
+  let notificationStarted = false;
+  let notificationSync: SyncRuntimeOptions | null = null;
+  let notificationKey: string | null = null;
+  let notificationSignature: string | null = null;
+  let notificationIds = new Set<number>();
+  let notificationHasUpdates = false;
+  let notificationRevision = 0;
+  let notificationReadRevision = 0;
+  let notificationCheckedAt = 0;
+  let notificationNextCheckAt = 0;
+  let notificationBackoff = 0;
+  let notificationDirty = false;
+  let notificationFlight: {
+    key: string;
+    operation: ReturnType<typeof servicePollNotifications>;
+  } | null = null;
   let serviceCallbackServer: ReturnType<typeof Bun.serve> | null = null;
   let serviceCallbackTimeout: ReturnType<typeof setTimeout> | null = null;
   let serviceOauthState: string | null = null;
@@ -243,110 +251,88 @@ const make = Effect.gen(function* () {
     () => serviceOptions.plugins.plugin("anilist").apiKey
   );
   let serviceCatalogOptionsCache: AniListCatalogOptions | null = null;
-  const serviceAnimeSearch = Effect.fn("AniList.animeSearch")(function* (entry: AniListMedia) {
-    const interpretation = animeSearchQuestions(entry);
-    const fallback = localAnimeSearch(entry);
-    const result = yield* serviceOptions.jev.evaluate(
-      { anime: { aliases: entry.aliases, titles: interpretation.titles } },
-      interpretation.questions
-    );
-    if (result instanceof ElysiaStatus) {
-      return {
-        ...fallback,
-        warning: "Jev search interpretation unavailable; searching with local title matching.",
-      };
-    }
-    if (!result) {
-      return fallback;
-    }
-    const season = fallback.season ?? confidentAnimeNumber(result.answers.season);
-    const titles = interpretation.prefixes.map((values, index) => {
-      const answer = result.answers[`title_${index}`];
-      const original = fallback.seriesTitles[index] ?? fallback.seriesTitles[0] ?? entry.title;
-      // Equivalent prefixes can split confidence; manual searches still verify each release.
-      return answer?.confidence !== undefined && answer.confidence >= 0.5
-        ? animeSeriesTitle(values[Number(answer.choice)] ?? original, season)
-        : original;
-    });
-    const part = fallback.part ?? confidentAnimeNumber(result.answers.part);
-    return animeSearchPlan(entry, titles, season, part);
-  });
-  const serviceReleases = Effect.fn("AniList.releases")(function* (mediaId: number) {
+  const serviceReleases = Effect.fn("AniList.releases")(function* (
+    mediaId: number,
+    onProgress?: (releases: FeedRelease[]) => void
+  ) {
     const original = yield* serviceMedia(mediaId);
     if (original instanceof ElysiaStatus) {
       return original;
     }
-    const library = serviceSnapshot().entries;
-    const plan = yield* serviceAnimeSearch(original);
-    const { entry, titles } = plan;
+    const plan = localAnimeSearch(original);
+    const { entry } = plan;
+    const mapping = yield* serviceOptions.discovery.animeMapping(mediaId);
+    if (!mapping) {
+      return problem(502, { detail: "Episode mapping unavailable" });
+    }
+    const titles = mappedAnimeQueries(mapping, plan.titles);
     const sources = (["nyaa", "tsundere", "c411"] as const).filter(
       (id) => serviceOptions.plugins.plugin(id).enabled
     );
     const { preferences } = serviceOptions.automation.snapshot();
-    const offset = animeEpisodeOffset(entry, library);
-    const contextual = (release: FeedRelease) => animeEpisodeRelease(entry, offset, release);
-    const result = yield* collectSourceQueries({
+    const project = (result: DiscoveryResult) => {
+      const matches = (release: FeedRelease) => matchesAnimeRelease(entry, preferences, release);
+      const stored = serviceOptions.discovery
+        .cachedReleases()
+        .map((release) => mappedAnimeRelease(entry, mapping, release))
+        .filter((release): release is FeedRelease => release !== null)
+        .filter(matches);
+      const candidates = [
+        ...new Map(
+          [...stored, ...result.releases]
+            .map((release) => mappedAnimeRelease(entry, mapping, release))
+            .filter((release): release is FeedRelease => release !== null)
+            .filter((release) => animeReleaseCandidate(entry, preferences, release))
+            .map((release) => [`${release.sourceId}:${release.id}`, publicRelease(release)])
+        ).values(),
+      ];
+      const search = {
+        ...classicDiscovery(original.title),
+        aliases: entry.aliases,
+        resolved: true,
+        season: plan.season,
+        warning: plan.warning,
+      };
+      const ranked = candidates.filter(matches);
+      const matcher = { ...interpretLocally(entry.title, "default", preferences), season: null };
+      const releases = ranked
+        .filter(
+          (release) =>
+            !serviceLifecycle.closed && serviceOptions.plugins.plugin(release.sourceId).enabled
+        )
+        .sort((a, b) => compareReleases(matcher, a, b));
+      const hashes = new Set(releases.map((release) => release.infoHash));
+      for (const release of stored) {
+        if (release.infoHash) {
+          hashes.add(release.infoHash);
+        }
+      }
+      return {
+        errors: result.errors,
+        releases,
+        search,
+        torrents: serviceOptions.engine
+          .snapshot(null, false)
+          .torrents.filter((torrent) => hashes.has(torrent.id)),
+      };
+    };
+    onProgress?.(project({ errors: [], releases: [] }).releases);
+    const collected = yield* collectSourceQueries({
       accept: () => true,
       active: () => true,
+      concurrency: 3,
       enough: () => Effect.succeed(false),
+      progress: onProgress ? (partial) => onProgress(project(partial).releases) : undefined,
       queries: (source) => {
         if (source === "nyaa") {
           return animeQueries(entry, preferences, titles);
         }
         return source === "tsundere" ? titles.slice(0, 1) : titles;
       },
-      search: (sourceQuery, source) => serviceOptions.discovery.search(sourceQuery, [source]),
+      search: (sourceQuery, source) => serviceOptions.discovery.search(sourceQuery, [source], true),
       sources,
     });
-    const matches = (release: FeedRelease) => matchesAnimeRelease(entry, preferences, release);
-    const stored = serviceOptions.discovery
-      .cachedReleases()
-      .map(contextual)
-      .filter((release): release is FeedRelease => release !== null)
-      .filter(matches);
-    const candidates = [
-      ...new Map(
-        [...stored, ...result.releases]
-          .map(contextual)
-          .filter((release): release is FeedRelease => release !== null)
-          .filter((release) => animeReleaseCandidate(entry, preferences, release))
-          .map((release) => [`${release.sourceId}:${release.id}`, publicRelease(release)])
-      ).values(),
-    ];
-    const search = {
-      ...classicDiscovery(original.title),
-      aliases: entry.aliases,
-      resolved: true,
-      season: plan.season,
-      warning: plan.warning,
-    };
-    const currentJev = serviceOptions.plugins.plugin("jev");
-    const query = `Find releases for "${entry.title}". Allowed languages: ${preferences.languages.join(", ") || "any"}. Allowed resolutions: ${preferences.resolutions.join(", ") || "any"}. Allowed codecs: ${preferences.codecs.join(", ") || "any"}. ${offset ? `The preceding parts have ${offset} episodes; sourceEpisode uses continuous numbering and episode is relative to this part.` : ""}`;
-    const ranked =
-      currentJev?.enabled && currentJev.apiKey
-        ? yield* serviceOptions.discovery.rank(query, search, candidates, matches)
-        : candidates.filter(matches);
-    const matcher = { ...interpretLocally(entry.title, "default", preferences), season: null };
-    const releases = ranked
-      .filter(
-        (release) =>
-          !serviceLifecycle.closed && serviceOptions.plugins.plugin(release.sourceId).enabled
-      )
-      .sort((a, b) => compareReleases(matcher, a, b));
-    const hashes = new Set(releases.map((release) => release.infoHash));
-    for (const release of stored) {
-      if (release.infoHash) {
-        hashes.add(release.infoHash);
-      }
-    }
-    return {
-      errors: result.errors,
-      releases,
-      search,
-      torrents: serviceOptions.engine
-        .snapshot(null, false)
-        .torrents.filter((torrent) => hashes.has(torrent.id)),
-    };
+    return project(collected);
   });
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
@@ -412,6 +398,7 @@ const make = Effect.gen(function* () {
       authenticated: Boolean(serviceOptions.plugins.plugin("anilist").apiKey),
       authorizationError: serviceAuthorization.error,
       authorizationPending: serviceAuthorization.pending || serviceOauthState !== null,
+      avatarImage: serviceAccount?.avatar?.large ?? null,
       connectedUser: serviceConnectedUser,
       entries: serviceEntries.map((entry) => ({
         ...entry,
@@ -784,6 +771,259 @@ const make = Effect.gen(function* () {
     }
     return { editor, result };
   });
+  const serviceReadNotifications = Effect.fn("AniList.readNotifications")(function* (
+    filters: NotificationFilters,
+    reset: boolean,
+    accessToken: string,
+    signal: AbortSignal
+  ) {
+    const result = yield* Effect.tryPromise({
+      catch: (cause) => anilistRequestError(cause, signal),
+      try: (requestSignal) =>
+        serviceSdk.Notifications(
+          { page: filters.page, reset, types: notificationTypes[filters.category] },
+          { accessToken, signal: AbortSignal.any([signal, requestSignal]) }
+        ),
+    });
+    if (
+      !(result.Viewer && result.Page?.notifications && result.Page.pageInfo) ||
+      result.Page.pageInfo.hasNextPage === null ||
+      result.Viewer.unreadNotificationCount === null
+    ) {
+      return problem(502, { detail: "Invalid AniList notifications" });
+    }
+    if (serviceAccount && result.Viewer.id !== serviceAccount.id) {
+      return problem(409, { detail: "Reload your AniList list after changing accounts" });
+    }
+    const notifications = result.Page.notifications.flatMap((notification) =>
+      notification && "id" in notification ? [notificationView(notification)] : []
+    );
+
+    return {
+      hasNextPage: result.Page.pageInfo.hasNextPage,
+      notifications,
+      page: filters.page,
+      unreadCount: reset ? 0 : result.Viewer.unreadNotificationCount,
+    };
+  });
+  const serviceNotifications = Effect.fn("AniList.notifications")(function* (
+    filters: NotificationFilters,
+    reset = false
+  ) {
+    return yield* serviceAuthenticatedRequest((accessToken, signal) =>
+      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep authorization, read state and local availability in one authenticated operation.
+      Effect.gen(function* () {
+        const inbox = yield* serviceReadNotifications(filters, reset, accessToken, signal);
+        if (inbox instanceof ElysiaStatus) {
+          return inbox;
+        }
+        if (reset) {
+          notificationReadRevision += 1;
+          notificationHasUpdates = false;
+          notificationRevision += 1;
+          notificationDirty = true;
+          yield* servicePublishNotifications();
+        }
+        const queries = notificationAvailabilityQueries(inbox.notifications, serviceEntries);
+        const availability = yield* Effect.promise(() =>
+          findEpisodeSources(serviceOptions.engine, queries)
+        );
+        if (availability instanceof ElysiaStatus) {
+          return availability;
+        }
+        const sources = new Map<string, EpisodeSource[]>();
+        for (const item of availability) {
+          if (item instanceof ElysiaStatus) {
+            return item;
+          }
+          sources.set(item.key, item.sources);
+        }
+        return {
+          ...inbox,
+          notifications: inbox.notifications.map((notification) => ({
+            ...notification,
+            sources: sources.get(String(notification.id)) ?? [],
+          })),
+        };
+      })
+    );
+  });
+
+  function serviceNotificationStatus() {
+    return {
+      hasUpdates:
+        notificationKey === serviceCacheKey() &&
+        serviceOptions.plugins.plugin("anilist").enabled &&
+        Boolean(serviceOptions.plugins.plugin("anilist").apiKey) &&
+        notificationHasUpdates,
+      revision: notificationRevision,
+    };
+  }
+
+  const servicePublishNotifications = Effect.fn("AniList.publishNotifications")(function* () {
+    if (!(notificationSync && notificationDirty)) {
+      return;
+    }
+    const revision = notificationRevision;
+    const sync = notificationSync;
+    yield* Effect.promise(async () => {
+      await invalidateSync(sync, "/api/anilist/notifications/status");
+      await invalidateSync(sync, { path: "/anilist/notifications", type: "page" });
+    }).pipe(Effect.uninterruptible);
+    if (notificationRevision === revision) {
+      notificationDirty = false;
+    }
+  });
+
+  const servicePollNotifications = Effect.fn("AniList.pollNotifications")(function* (key: string) {
+    const readRevision = notificationReadRevision;
+    yield* servicePublishNotifications();
+    const result = yield* serviceAuthenticatedRequest((token, signal) =>
+      serviceReadNotifications({ category: "all", page: 1 }, false, token, signal).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            if (
+              key === serviceCacheKey() &&
+              error._tag === "AniListUnavailable" &&
+              error.retryAfter
+            ) {
+              notificationNextCheckAt = Math.max(
+                notificationNextCheckAt,
+                serviceOptions.now() + error.retryAfter
+              );
+            }
+          })
+        )
+      )
+    );
+    if (
+      key !== serviceCacheKey() ||
+      readRevision !== notificationReadRevision ||
+      serviceLifecycle.closed ||
+      !serviceOptions.plugins.plugin("anilist").enabled
+    ) {
+      return result instanceof ElysiaStatus ? result : serviceNotificationStatus();
+    }
+    if (result instanceof ElysiaStatus) {
+      notificationBackoff = Math.min(Math.max(120_000, notificationBackoff * 2), 15 * 60_000);
+      notificationNextCheckAt = Math.max(
+        notificationNextCheckAt,
+        serviceOptions.now() + notificationBackoff
+      );
+      const log = createLogger({ component: "anilist", operation: "poll-notifications" });
+      log.set({ upstreamError: result.response.detail });
+      log.setLevel("warn");
+      log.emit();
+      return result;
+    }
+    notificationCheckedAt = serviceOptions.now();
+    notificationNextCheckAt = notificationCheckedAt + 60_000;
+    notificationBackoff = 0;
+    const signature = JSON.stringify([result.notifications, result.unreadCount]);
+    if (signature !== notificationSignature) {
+      const incoming = result.notifications.some((item) => !notificationIds.has(item.id));
+      notificationHasUpdates =
+        result.unreadCount > 0 &&
+        (notificationHasUpdates || (notificationSignature !== null && incoming));
+      notificationIds = new Set(result.notifications.map((item) => item.id));
+      notificationSignature = signature;
+      notificationRevision += 1;
+      notificationDirty = true;
+    }
+    yield* servicePublishNotifications();
+    return serviceNotificationStatus();
+  });
+
+  const serviceCheckNotifications = Effect.fn("AniList.checkNotifications")(function* (
+    force = false
+  ) {
+    const key = serviceCacheKey();
+    if (notificationKey !== key || !serviceOptions.plugins.plugin("anilist").enabled) {
+      const changed = notificationSignature !== null || notificationHasUpdates;
+      notificationKey = key;
+      notificationSignature = null;
+      notificationReadRevision += 1;
+      notificationIds.clear();
+      notificationHasUpdates = false;
+      notificationCheckedAt = 0;
+      notificationNextCheckAt = 0;
+      notificationBackoff = 0;
+      if (changed) {
+        notificationRevision += 1;
+        notificationDirty = true;
+      }
+    }
+    if (
+      serviceLifecycle.closed ||
+      !serviceOptions.plugins.plugin("anilist").enabled ||
+      !serviceOptions.plugins.plugin("anilist").apiKey
+    ) {
+      yield* servicePublishNotifications();
+      return serviceNotificationStatus();
+    }
+    if (notificationFlight?.key === key) {
+      return yield* notificationFlight.operation;
+    }
+    const now = serviceOptions.now();
+    if (
+      now < notificationNextCheckAt &&
+      (!force || notificationBackoff || now - notificationCheckedAt < 5000)
+    ) {
+      yield* servicePublishNotifications();
+      return serviceNotificationStatus();
+    }
+    const operation = yield* Effect.cached(
+      servicePollNotifications(key).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (notificationFlight?.operation === operation) {
+              notificationFlight = null;
+            }
+          })
+        )
+      )
+    );
+    notificationFlight = { key, operation };
+    return yield* operation;
+  });
+
+  const serviceStartNotifications = Effect.fn("AniList.startNotifications")(function* (
+    sync: SyncRuntimeOptions
+  ) {
+    if (notificationStarted || serviceLifecycle.closed) {
+      return;
+    }
+    notificationStarted = true;
+    notificationSync = sync;
+    const poll = serviceCheckNotifications().pipe(
+      Effect.asVoid,
+      Effect.catchCause((cause) =>
+        Effect.sync(() => {
+          if (!Cause.hasInterruptsOnly(cause)) {
+            const log = createLogger({
+              component: "anilist",
+              error: Cause.squash(cause),
+              operation: "poll-notifications",
+            });
+            log.setLevel("error");
+            log.emit();
+            notificationBackoff = Math.min(Math.max(120_000, notificationBackoff * 2), 15 * 60_000);
+            notificationNextCheckAt = serviceOptions.now() + notificationBackoff;
+          }
+        })
+      )
+    );
+    notificationTimer = yield* Effect.forkIn(
+      Effect.forever(
+        Effect.gen(function* () {
+          yield* poll;
+          const remaining = notificationNextCheckAt - serviceOptions.now();
+          yield* Effect.sleep(remaining > 0 ? Math.max(1000, Math.min(60_000, remaining)) : 60_000);
+        })
+      ),
+      scope
+    );
+  });
   const serviceEditor = Effect.fn("AniList.editor")(function* (mediaId: number) {
     return yield* serviceAuthenticatedRequest((accessToken, signal) =>
       Effect.gen(function* () {
@@ -1040,7 +1280,7 @@ const make = Effect.gen(function* () {
     }
     serviceOptions.plugins.configure("anilist", { apiKey: token, enabled: true });
     serviceEntries = [];
-    serviceAccount = { id: identity.id, name: identity.name };
+    serviceAccount = { avatar: identity.avatar, id: identity.id, name: identity.name };
     serviceWriteState("profile", JSON.stringify(serviceAccount));
     serviceConnectedUser = identity.name;
     return yield* serviceList();
@@ -1241,7 +1481,14 @@ const make = Effect.gen(function* () {
     }
     return {
       accountId,
-      draft: { ...draft, afterEpisode: entry.progress, aliases: entry.aliases, title: entry.title },
+      draft: {
+        ...draft,
+        afterEpisode: entry.progress,
+        aliases: entry.aliases,
+        anilistId: entry.mediaId,
+        episodeCount: entry.episodes ?? undefined,
+        title: entry.title,
+      },
       id: serviceAnimeRule(mediaId)?.id ?? null,
       key: `anime-rule:${accountId}:${mediaId}`,
     };
@@ -1635,11 +1882,13 @@ const make = Effect.gen(function* () {
         ...template,
         afterEpisode: entry.progress,
         aliases: entry.aliases,
+        anilistId: entry.mediaId,
         destinationId,
         enabled:
           previous && (overridden || binding?.active)
             ? previous.enabled
             : subscription.template.enabled,
+        episodeCount: entry.episodes ?? undefined,
         query: previous?.query ?? `Download "${entry.title}". ${subscription.template.query}`,
         title: entry.title,
       },
@@ -1817,6 +2066,10 @@ const make = Effect.gen(function* () {
   });
   const serviceClose = Effect.fn("AniList.close")(function* () {
     serviceLifecycle.closed = true;
+    if (notificationTimer) {
+      yield* Fiber.interrupt(notificationTimer);
+      notificationTimer = null;
+    }
     if (serviceTimer) {
       yield* Fiber.interrupt(serviceTimer);
       serviceTimer = null;
@@ -1830,6 +2083,7 @@ const make = Effect.gen(function* () {
         ...serviceRuns.values(),
         ...Array.from(serviceEpisodeRuns.values(), (promise) => Effect.promise(() => promise)),
         ...(serviceListFlight ? [serviceListFlight.operation] : []),
+        ...(notificationFlight ? [notificationFlight.operation] : []),
       ].map(Effect.exit),
       { concurrency: "unbounded" }
     );
@@ -1863,6 +2117,7 @@ const make = Effect.gen(function* () {
     cancelAuthorization: serviceCancelAuthorization,
     catalog: serviceCatalog,
     catalogOptions: serviceCatalogOptions,
+    checkNotifications: serviceCheckNotifications,
     close: serviceClose,
     completeEpisode: serviceCompleteEpisode,
     configure: serviceConfigure,
@@ -1875,6 +2130,8 @@ const make = Effect.gen(function* () {
     list: serviceList,
     media: serviceMedia,
     needsRefresh: serviceNeedsRefresh,
+    notificationStatus: serviceNotificationStatus,
+    notifications: serviceNotifications,
     prepareAutomation: servicePrepareAutomation,
     previewThreads: servicePreviewThreads,
     reassignDestination: serviceReassignDestination,
@@ -1885,6 +2142,7 @@ const make = Effect.gen(function* () {
     saveEntry: serviceSaveEntry,
     snapshot: serviceSnapshot,
     start: serviceStart,
+    startNotifications: serviceStartNotifications,
     suspend: serviceSuspend,
     sync: serviceSync,
     tick: serviceTick,
@@ -1900,7 +2158,10 @@ export type AniListService = AniList["Service"];
 export class AniList extends Context.Service<
   AniList,
   {
-    readonly releases: (mediaId: number) => Effect.Effect<
+    readonly releases: (
+      mediaId: number,
+      onProgress?: (releases: FeedRelease[]) => void
+    ) => Effect.Effect<
       | ReturnType<typeof problem<409, { readonly detail: "AniList service closed" }>>
       | ReturnType<typeof problem<404, { readonly detail: "Anime not found on AniList" }>>
       | ReturnType<typeof problem<502, { readonly detail: string }>>
@@ -1919,6 +2180,30 @@ export class AniList extends Context.Service<
           torrents: TorrentSummary[];
         }
     >;
+    readonly notifications: (
+      filters: NotificationFilters,
+      reset?: boolean
+    ) => Effect.Effect<
+      | {
+          hasNextPage: boolean;
+          notifications: ReturnType<typeof notificationView>[];
+          page: number;
+          unreadCount: number;
+        }
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<404, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly notificationStatus: () => { hasUpdates: boolean; revision: number };
+    readonly checkNotifications: (
+      force?: boolean
+    ) => Effect.Effect<
+      | { hasUpdates: boolean; revision: number }
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<502, { readonly detail: string }>>
+    >;
+    readonly startNotifications: (sync: SyncRuntimeOptions) => Effect.Effect<void>;
     readonly snapshot: () => AniListState;
     readonly writePreferences: (
       tx: DatabaseConnection,
@@ -2199,6 +2484,8 @@ export class AniList extends Context.Service<
           draft: {
             afterEpisode: number;
             aliases: string[];
+            anilistId: number;
+            episodeCount?: number;
             title: string;
             automatic: boolean;
             codecs: string[];
@@ -2209,7 +2496,7 @@ export class AniList extends Context.Service<
             includeExisting: boolean;
             intervalMinutes: number;
             languages: ("VF" | "VOSTFR" | "MULTI")[];
-            matchMode: "jev" | "exact" | "pattern";
+            matchMode: "exact" | "pattern";
             paused: boolean;
             priority: ("source" | "language" | "resolution" | "codec")[];
             query: string;
@@ -2354,4 +2641,9 @@ export const aniListLayer = Layer.effect(AniList, make);
 export type AniListCatalog = Extract<
   Effect.Success<ReturnType<AniListService["catalog"]>>,
   { media: AniListMedia[] }
+>;
+
+export type AniListNotifications = Extract<
+  Effect.Success<ReturnType<AniListService["notifications"]>>,
+  { notifications: unknown[] }
 >;

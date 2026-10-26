@@ -2,7 +2,9 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
 const homeDir = homedir();
-const development = process.env.NODE_ENV !== "production";
+const development = process.env.TOFU_PROFILE
+  ? process.env.TOFU_PROFILE === "dev"
+  : process.env.NODE_ENV !== "production";
 const stateRoot = getStateRoot();
 const dataDir = resolve(
   process.env.FURIN_APP_DATA_DIR ?? join(stateRoot, development ? "Tofu-dev" : "Tofu")

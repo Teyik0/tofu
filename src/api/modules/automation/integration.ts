@@ -1,8 +1,9 @@
 import { Cause, Context, Effect, Fiber, Layer, Schedule } from "effect";
 import { ElysiaStatus, problem } from "elysia";
 import { createLogger } from "evlog";
-import type { DatabaseTransaction } from "../../lib/database-layer";
+import type { DatabaseTransaction } from "../../lib/db";
 import { normalizeTitle } from "../../lib/title";
+import { mappedAnimeQueries, mappedAnimeRelease } from "../discovery/anime-mapping";
 import type { DiscoverySearch, FeedRelease } from "../discovery/model";
 import type { DiscoveryService } from "../discovery/service";
 import { Discovery } from "../discovery/service";
@@ -25,6 +26,9 @@ export interface ReleaseAutomationOptions {
   now: () => number;
   plugins: PluginsService;
 }
+type MappingFailure = ReturnType<
+  typeof problem<502, { readonly detail: "Episode mapping unavailable" }>
+>;
 
 // Built-in release integration. The automation core never invokes this service.
 const make = Effect.gen(function* () {
@@ -94,30 +98,51 @@ const make = Effect.gen(function* () {
   const serviceAutomationDiscovery = Effect.fn("ReleaseAutomation.automationDiscovery")(function* (
     draft: AutomationDraft
   ) {
-    let titles = [draft.title, ...(draft.aliases ?? [])];
-    if (
-      draft.matchMode === "jev" &&
-      serviceOptions.plugins.plugin("jev").enabled &&
-      !draft.aliases?.length &&
-      draft.sources.some(
-        (sourceId) => sourceId !== "tsundere" && serviceOptions.plugins.plugin(sourceId).enabled
-      )
-    ) {
-      titles = yield* serviceOptions.discovery.titleAliases(draft.title);
+    const mapping =
+      draft.anilistId === undefined
+        ? null
+        : yield* serviceOptions.discovery.animeMapping(draft.anilistId);
+    if (draft.anilistId !== undefined && !mapping) {
+      return problem(502, { detail: "Episode mapping unavailable" });
     }
-    const queries =
+    const anime =
+      draft.anilistId === undefined
+        ? null
+        : {
+            aliases: draft.aliases ?? [],
+            episodes: draft.episodeCount ?? null,
+            mediaId: draft.anilistId,
+            title: draft.title,
+          };
+    const titles = [draft.title, ...(draft.aliases ?? [])];
+    const baseQueries =
       draft.matchMode === "pattern"
         ? [""]
         : [...new Map(titles.map((title) => [normalizeTitle(title), title])).values()].slice(0, 2);
+    const queries = mapping ? mappedAnimeQueries(mapping, baseQueries) : baseQueries;
     const result = yield* collectSourceQueries({
       accept: () => true,
       active: (source) => !serviceLifecycle.closed && serviceOptions.plugins.plugin(source).enabled,
-      enough: (releases) => serviceHasAutomationMatch(draft, releases),
+      enough: (found) =>
+        serviceHasAutomationMatch(
+          draft,
+          mapping && anime
+            ? found
+                .map((release) => mappedAnimeRelease(anime, mapping, release))
+                .filter((release): release is FeedRelease => release !== null)
+            : found
+        ),
       queries: (source) => (source === "tsundere" ? queries.slice(0, 1) : queries),
       search: (query, source) => serviceOptions.discovery.search(query, [source]),
       sources: draft.sources,
     });
-    return { ...result, releases: uniqueReleases(result.releases) };
+    const releases =
+      mapping && anime
+        ? result.releases
+            .map((release) => mappedAnimeRelease(anime, mapping, release))
+            .filter((release): release is FeedRelease => release !== null)
+        : result.releases;
+    return { ...result, releases: uniqueReleases(releases) };
   });
   const serviceHasAutomationMatch = Effect.fn("ReleaseAutomation.hasAutomationMatch")(function* (
     draft: AutomationDraft,
@@ -166,6 +191,9 @@ const make = Effect.gen(function* () {
       return validated;
     }
     const baseline = yield* serviceAutomationDiscovery(draft);
+    if (baseline instanceof ElysiaStatus) {
+      return baseline;
+    }
     return yield* serviceOptions.automation.prepareRule(
       id,
       draft,
@@ -198,22 +226,18 @@ const make = Effect.gen(function* () {
   });
   const servicePreview = Effect.fn("ReleaseAutomation.preview")(function* (draft: AutomationDraft) {
     const result = yield* serviceAutomationDiscovery(draft);
-    const evaluations = yield* Effect.all(
-      result.releases.map((release) => serviceOptions.automation.evaluate(draft, release)),
+    if (result instanceof ElysiaStatus) {
+      return result;
+    }
+    const evaluated = yield* Effect.forEach(
+      result.releases,
+      (release) =>
+        serviceOptions.automation
+          .evaluate(draft, release)
+          .pipe(Effect.map((evaluation) => ({ ...evaluation, release }))),
       { concurrency: "unbounded" }
     );
-    const failed = evaluations.find((evaluation) => evaluation instanceof ElysiaStatus);
-    if (failed) {
-      return failed;
-    }
-    const evaluated = result.releases.map((release, index) => ({
-      release,
-      ...(evaluations[index] as Extract<(typeof evaluations)[number], { uncertain: boolean }>),
-    }));
-    const candidates = evaluated.filter(
-      (candidate) =>
-        !candidate.reason && (candidate.probability === null || candidate.probability >= 0.75)
-    );
+    const candidates = evaluated.filter((candidate) => !candidate.reason);
     return {
       ...result,
       candidates: candidates
@@ -267,6 +291,9 @@ const make = Effect.gen(function* () {
     }
     yield* serviceCompleteReplacements(rule);
     const result = yield* serviceAutomationDiscovery(rule);
+    if (result instanceof ElysiaStatus) {
+      return result;
+    }
     if (!serviceCurrent(rule)) {
       return serviceSnapshot();
     }
@@ -612,6 +639,7 @@ export class ReleaseAutomation extends Context.Service<
       | ReturnType<typeof problem<429, { readonly detail: string }>>
       | ReturnType<typeof problem<409, { readonly detail: string }>>
       | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | MappingFailure
       | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
       | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
       | ReturnType<
@@ -643,6 +671,7 @@ export class ReleaseAutomation extends Context.Service<
       | ReturnType<typeof problem<429, { readonly detail: string }>>
       | ReturnType<typeof problem<409, { readonly detail: string }>>
       | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | MappingFailure
       | AutomationRule
       | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
       | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
@@ -657,6 +686,7 @@ export class ReleaseAutomation extends Context.Service<
       | ReturnType<typeof problem<429, { readonly detail: string }>>
       | ReturnType<typeof problem<409, { readonly detail: string }>>
       | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | MappingFailure
       | {
           candidates: (
             | { release: FeedRelease; probability: null; reason: string | null; uncertain: boolean }
@@ -678,6 +708,7 @@ export class ReleaseAutomation extends Context.Service<
       | ReturnType<typeof problem<429, { readonly detail: string }>>
       | ReturnType<typeof problem<409, { readonly detail: string }>>
       | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | MappingFailure
       | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
       | AutomationState
     >;

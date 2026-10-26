@@ -72,6 +72,7 @@ export interface AniListState {
   authenticated: boolean;
   authorizationError: string | null;
   authorizationPending: boolean;
+  avatarImage: string | null;
   clientId: string;
   connectedUser: string | null;
   entries: AniListEntry[];

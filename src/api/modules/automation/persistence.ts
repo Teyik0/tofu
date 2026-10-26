@@ -29,11 +29,13 @@ export const automationDraftSchema = Schema.Struct({
   ...preferencesFields,
   afterEpisode: Schema.optional(Schema.Number),
   aliases: Schema.optional(strings),
+  anilistId: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
   deleteReplacedFiles: Schema.optional(Schema.Boolean),
   destinationId: Schema.String,
   enabled: Schema.Boolean,
+  episodeCount: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
   includeExisting: Schema.Boolean,
-  matchMode: Schema.Literals(["exact", "pattern", "jev"]),
+  matchMode: Schema.Literals(["exact", "pattern"]),
   query: Schema.String,
   season: Schema.NullOr(Schema.Number),
   title: Schema.String,
@@ -71,7 +73,19 @@ const decisionSchema = Schema.Struct({
 export const decodeAutomationPreferences = Schema.decodeUnknownSync(
   Schema.fromJsonString(Schema.Struct(preferencesFields).mapFields(Struct.map(Schema.optional)))
 );
-export const decodeAutomationRule = Schema.decodeUnknownSync(Schema.fromJsonString(ruleSchema));
+const decodeRule = Schema.decodeUnknownSync(Schema.fromJsonString(ruleSchema));
+const aniListRuleKey = /^anime-rule:\d+:([1-9]\d*)$/;
+
+export function decodeAutomationRule(value: string) {
+  const rule = decodeRule(value);
+  if (rule.ownerId === "tofu.anilist" && rule.anilistId === undefined) {
+    const mediaId = Number(rule.key?.match(aniListRuleKey)?.[1]);
+    if (Number.isSafeInteger(mediaId) && mediaId > 0) {
+      return { ...rule, anilistId: mediaId };
+    }
+  }
+  return rule;
+}
 export const decodeAutomationDecision = Schema.decodeUnknownSync(
   Schema.fromJsonString(decisionSchema)
 );

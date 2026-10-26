@@ -8,10 +8,12 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
     c411Gate: Promise<void> | null;
     c411Requests: number[];
     failSource: boolean;
-    jevResponse: unknown;
-    jevRequests: number;
+    notificationRequests: { variables: Record<string, unknown>; token: string | null }[];
+    notifications: { type: string; [key: string]: unknown }[];
+    unreadCount: number;
     notes: string;
     progress: number;
+    listed: boolean;
     published: boolean;
     status: string;
     writes: { variables: Record<string, unknown>; token: string | null }[];
@@ -22,12 +24,14 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
     c411Gate: null,
     c411Requests: [],
     failSource: false,
-    jevRequests: 0,
-    jevResponse: null,
+    listed: true,
     notes: "",
+    notificationRequests: [],
+    notifications: [],
     progress: 0,
     published: true,
     status: "CURRENT",
+    unreadCount: 2,
     writes: [],
   };
   const media = {
@@ -40,9 +44,50 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
     synonyms: [],
     title: { english: "Example", native: null, romaji: "Example" },
   };
+  state.notifications.push(
+    {
+      __typename: "AiringNotification",
+      animeId: 10,
+      contexts: ["Episode ", " of ", " aired."],
+      createdAt: Math.floor(Date.now() / 1000) - 3600,
+      episode: 1,
+      id: 500,
+      media: { ...media, type: "ANIME" },
+      type: "AIRING",
+    },
+    {
+      __typename: "FollowingNotification",
+      context: " started following you.",
+      createdAt: Math.floor(Date.now() / 1000) - 7200,
+      id: 499,
+      type: "FOLLOWING",
+      user: {
+        avatar: { large: null },
+        name: "AnimeFriend",
+        siteUrl: "https://anilist.co/user/AnimeFriend",
+      },
+    },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      __typename: "AiringNotification",
+      animeId: 10,
+      contexts: ["Episode ", " of ", " aired."],
+      createdAt: Math.floor(Date.now() / 1000) - (index + 1) * 86_400,
+      episode: index + 2,
+      id: 498 - index,
+      media: { ...media, type: "ANIME" },
+      type: "AIRING",
+    }))
+  );
   const server = Bun.serve({
     // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keep the fixture's HTTP provider contracts together.
     async fetch(request) {
+      if (new URL(request.url).pathname === "/anime-mapping") {
+        return Response.json({
+          episodes: { "1": { absoluteEpisodeNumber: 1, episodeNumber: 1, seasonNumber: 1 } },
+          mappings: { anilist_id: 10 },
+          titles: { en: "Example" },
+        });
+      }
       if (new URL(request.url).pathname === "/c411") {
         state.c411Requests.push(Date.now());
         if (state.c411Gate) {
@@ -63,13 +108,6 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
         return new Response(`<rss><channel>${item}</channel></rss>`, {
           headers: { "content-type": "application/rss+xml" },
         });
-      }
-      if (new URL(request.url).pathname === "/jev") {
-        state.jevRequests += 1;
-        if (state.jevResponse !== null) {
-          return Response.json(state.jevResponse);
-        }
-        return new Response("Provider unavailable", { status: 503 });
       }
       state.anilistRequests += 1;
       if (state.anilistGate) {
@@ -108,6 +146,9 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
           return Response.json({ errors: [{ message: "Invalid token" }] }, { status: 401 });
         }
         state.writes.push({ token, variables });
+        if (query.includes("SaveMediaListEntry")) {
+          state.listed = true;
+        }
         if (typeof variables.progress === "number") {
           state.progress = variables.progress;
         }
@@ -129,6 +170,7 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
         });
       }
       const viewer = {
+        avatar: { large: "https://images.example.test/anilist-avatar.png" },
         id: 42,
         mediaListOptions: {
           animeList: { advancedScoring: [], advancedScoringEnabled: false, customLists: [] },
@@ -136,6 +178,29 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
         },
         name: "ExampleUser",
       };
+      if (query.includes("query Notifications")) {
+        if (token !== "Bearer test-anilist-token") {
+          return Response.json({ errors: [{ message: "Invalid token" }] }, { status: 401 });
+        }
+        state.notificationRequests.push({ token, variables });
+        if (variables.reset) {
+          state.unreadCount = 0;
+        }
+        const types = variables.types as string[] | undefined;
+        const notifications = state.notifications.filter(
+          (item) => !types || types.includes(item.type)
+        );
+        const page = Number(variables.page);
+        return Response.json({
+          data: {
+            Page: {
+              notifications: notifications.slice((page - 1) * 30, page * 30),
+              pageInfo: { currentPage: page, hasNextPage: page * 30 < notifications.length },
+            },
+            Viewer: { ...viewer, unreadNotificationCount: state.unreadCount },
+          },
+        });
+      }
       if (query.includes("query Viewer")) {
         return token === "Bearer test-anilist-token"
           ? Response.json({ data: { Viewer: viewer } })
@@ -143,7 +208,12 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
       }
       if (query.includes("query Library")) {
         return Response.json({
-          data: { MediaListCollection: { hasNextChunk: false, lists: [{ entries: [entry] }] } },
+          data: {
+            MediaListCollection: {
+              hasNextChunk: false,
+              lists: [{ entries: state.listed ? [entry] : [] }],
+            },
+          },
         });
       }
       if (query.includes("query Editor")) {
@@ -153,7 +223,7 @@ export function provider(source?: Awaited<ReturnType<typeof peer>>) {
               ...media,
               isFavourite: false,
               isFavouriteBlocked: false,
-              mediaListEntry: entry,
+              mediaListEntry: state.listed ? entry : null,
             },
             Viewer: viewer,
           },
