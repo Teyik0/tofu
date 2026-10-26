@@ -1,0 +1,19 @@
+tests/torrents/recovery.test.ts
+  s_a8bc19e7eff5cf::t_10e5558dd8ba27 42-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "71e198bb47e4d93554e8834428f051614340fcbb",
+  "prompts": {},
+  "sessions": {
+    "s_a8bc19e7eff5cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17923-e59e-7103-987b-9ff31c4ee16a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
