@@ -1,0 +1,35 @@
+README.md
+  s_a8bc19e7eff5cf::t_561cac0dba06de 55
+bun.lock
+  s_5552702b3ed0a5::t_299382fe38b947 11-12,381,383
+package.json
+  s_5552702b3ed0a5::t_bb5218f6d0689d 34-35
+src/server.ts
+  s_a8bc19e7eff5cf::t_5f683f2b8a7abb 40,42
+vendor/README.md
+  s_5552702b3ed0a5::t_81b8f3c2b1cfd7 3-7,10-19,22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a5424401981037546cc28b321dce1248ab8dced",
+  "prompts": {},
+  "sessions": {
+    "s_5552702b3ed0a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17921-f30a-7a93-9799-2f5932676827",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    },
+    "s_a8bc19e7eff5cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17923-e59e-7103-987b-9ff31c4ee16a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
