@@ -2,7 +2,16 @@ import { Database } from "bun:sqlite";
 import { spyOn } from "bun:test";
 import assert from "node:assert/strict";
 import { inspect } from "node:util";
+import { ManagedRuntime } from "effect";
 import { databasePath } from "../../drizzle.config";
+import { Database as ApplicationDatabase, databaseLayer } from "../../src/api/lib/db";
+import { automationReleases } from "../../src/db/schema";
+
+// Discovery restores this cache only after acquiring the database and torrent worker.
+const seedRuntime = ManagedRuntime.make(databaseLayer);
+const db = await seedRuntime.runPromise(ApplicationDatabase);
+db.insert(automationReleases).values({ id: "failed-startup", value: "{" }).run();
+await seedRuntime.dispose();
 
 const close = spyOn(Database.prototype, "close");
 const terminate = spyOn(Worker.prototype, "terminate");
@@ -15,7 +24,7 @@ const [startup] = await Promise.allSettled([import("../../src/server")]);
 assert.equal(startup?.status, "rejected");
 if (startup.status === "rejected") {
   const diagnostic = inspect(startup.reason, { depth: null });
-  assert.match(diagnostic, /SyntaxError/);
+  assert.match(diagnostic, /SchemaError/);
   assert.match(diagnostic, /JSON|Parse/i);
   console.error(diagnostic);
 }
