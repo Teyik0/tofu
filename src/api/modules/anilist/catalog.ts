@@ -1,4 +1,5 @@
-import { HTTPError } from "elysia";
+import { problem } from "elysia";
+import type { InferOutput } from "valibot";
 import {
   array,
   check,
@@ -13,9 +14,9 @@ import {
   pipe,
   string,
 } from "valibot";
-import type { AniListCatalogFilters, AniListMedia } from "../../../types";
 import { integerInput } from "../../lib/validation";
 import type { AniListMediaFragment, CatalogQueryVariables } from "./graphql/generated";
+import type { AniListMedia } from "./types";
 
 export type CatalogMedia = AniListMediaFragment;
 const mediaStatuses = ["RELEASING", "FINISHED", "NOT_YET_RELEASED", "CANCELLED", "HIATUS"] as const;
@@ -48,8 +49,9 @@ function enumValue<Value extends string>(input: string | undefined, values: read
     return;
   }
   const value = values.find((candidate) => candidate === input);
+  // catalogSchema restricts these values before a request reaches the service.
   if (value === undefined) {
-    throw new (HTTPError.id("BAD_REQUEST", 400))("Invalid AniList catalog filter");
+    throw new Error(`Unvalidated AniList catalog filter ${input}`);
   }
   return value;
 }
@@ -66,7 +68,7 @@ const count = optional(pipe(integerInput, integer(), minValue(0), maxValue(100_0
 export const catalogSchema = object({
   airingStatus: choices(mediaStatuses),
   countryOfOrigin: choices(["JP", "KR", "CN", "TW"]),
-  doujin: choices(["any", "only", "exclude"]),
+  doujin: optional(picklist(["any", "only", "exclude"])),
   durationMax: count,
   durationMin: count,
   episodesMax: count,
@@ -84,8 +86,10 @@ export const catalogSchema = object({
   genres: names,
   page: optional(pipe(integerInput, integer(), minValue(1), maxValue(1000))),
   search: optional(pipe(string(), maxLength(200))),
-  season: choices(["WINTER", "SPRING", "SUMMER", "FALL"]),
-  sort: choices(["title", "popularity", "score", "trending", "favourites", "added", "released"]),
+  season: optional(picklist(["WINTER", "SPRING", "SUMMER", "FALL"])),
+  sort: optional(
+    picklist(["title", "popularity", "score", "trending", "favourites", "added", "released"])
+  ),
   source: choices(mediaSources),
   streamingOn: optional(pipe(integerInput, integer(), minValue(1))),
   tags: names,
@@ -102,17 +106,18 @@ const mediaSort = {
   title: "TITLE_ROMAJI",
   trending: "TRENDING_DESC",
 } as const;
-export function catalogVariables(filters: AniListCatalogFilters): CatalogQueryVariables {
+/** Provider variables for valid filters, or a returned 400 when a range is inverted. */
+export function catalogVariables(filters: AniListCatalogFilters) {
   for (const [min, max] of [
     [filters.yearMin, filters.yearMax],
     [filters.episodesMin, filters.episodesMax],
     [filters.durationMin, filters.durationMax],
   ]) {
     if (min !== undefined && max !== undefined && min > max) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("The minimum must not exceed the maximum");
+      return problem(400, { detail: "The minimum must not exceed the maximum" });
     }
   }
-  return {
+  const variables: CatalogQueryVariables = {
     countryOfOrigin: filters.countryOfOrigin,
     duration_greater: filters.durationMin === undefined ? undefined : filters.durationMin - 1,
     duration_lesser: filters.durationMax === undefined ? undefined : filters.durationMax + 1,
@@ -139,6 +144,7 @@ export function catalogVariables(filters: AniListCatalogFilters): CatalogQueryVa
     tag_in: filters.tags?.length ? filters.tags : undefined,
     tag_not_in: filters.excludedTags?.length ? filters.excludedTags : undefined,
   };
+  return variables;
 }
 
 function catalogStatistics(media: CatalogMedia) {
@@ -200,3 +206,7 @@ export function catalogMedia(media: CatalogMedia): AniListMedia {
     title: aliases[0] ?? `Anime ${media.id}`,
   };
 }
+
+export type AniListCatalogFilters = InferOutput<typeof catalogSchema>;
+
+export type AniListCatalogSort = NonNullable<AniListCatalogFilters["sort"]>;

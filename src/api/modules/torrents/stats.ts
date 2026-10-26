@@ -1,6 +1,6 @@
 import type { EventEmitter } from "node:events";
 import type { Torrent } from "webtorrent";
-import type { PeerStats, TrackerStats } from "../../../types";
+import type { PeerStats, TrackerStats } from "./types";
 
 // WebTorrent 3.0.21 exposes its tracker client on discovery; keep this bridge in one file.
 interface TrackerClient extends EventEmitter {

@@ -1,4 +1,6 @@
-import type { AniListEntry, AniListThreadProposal, Destination } from "../../types";
+import type { AniListThreadProposal } from "../../api/modules/anilist/model";
+import type { AniListEntry } from "../../api/modules/anilist/types";
+import type { Destination } from "../../api/modules/destinations/model";
 import { OptionSelect } from "../option-select";
 import { Badge } from "../ui/badge";
 import { Field, FieldGroup, FieldLabel } from "../ui/field";

@@ -1,4 +1,4 @@
-import type { AniListStatus } from "../../types";
+import type { AniListStatus } from "../../api/modules/anilist/types";
 
 export const aniListStatusLabels: { value: AniListStatus; label: string }[] = [
   { label: "Watching", value: "CURRENT" },

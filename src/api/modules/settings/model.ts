@@ -1,3 +1,4 @@
+import type { InferOutput } from "valibot";
 import {
   boolean,
   check,
@@ -52,3 +53,19 @@ export const bandwidthInputSchema = union([
     bandwidthLimit
   ),
 ]);
+
+export interface Settings {
+  deleteTorrentFileAfterAdd: boolean;
+  downloadLimit: number;
+  downloadPath: string;
+  runInBackground: boolean;
+  seedingConnectionMode: SeedingConnectionMode;
+  theme: ThemePreference;
+  uploadLimit: number;
+}
+
+export type SettingsInput = InferOutput<typeof settingsPatchSchema>;
+
+export type ThemePreference = NonNullable<SettingsInput["theme"]>;
+
+export type SeedingConnectionMode = NonNullable<SettingsInput["seedingConnectionMode"]>;

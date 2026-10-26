@@ -6,14 +6,10 @@ import {
   InboxIcon,
   RefreshCwIcon,
 } from "lucide-react";
+import type { AutomationDecision, AutomationState } from "../api/modules/automation/model";
+import type { Destination } from "../api/modules/destinations/model";
+import type { FeedRelease } from "../api/modules/discovery/model";
 import { useNow } from "../hooks/use-now";
-import type {
-  AutomationDecision,
-  AutomationRule,
-  AutomationState,
-  Destination,
-  FeedRelease,
-} from "../types";
 import { sourceNames } from "./automation-fields";
 import { bytes, relative } from "./format";
 import { Badge } from "./ui/badge";
@@ -70,15 +66,12 @@ const groups: {
   },
 ];
 
-function explain(decision: AutomationDecision, rule: AutomationRule | undefined, now: number) {
+function explain(decision: AutomationDecision, now: number) {
   if (decision.status === "waiting") {
     return `Not your first choice. Downloads ${relative(decision.deadline, now)} unless a better version appears.`;
   }
   if (decision.status === "error") {
     return decision.reason;
-  }
-  if (decision.probability !== null && rule?.automatic !== false) {
-    return `Jev is ${Math.round(decision.probability * 100)} % sure this release matches “${rule?.title ?? "the rule"}”.`;
   }
   return "This rule asks before downloading.";
 }
@@ -181,7 +174,7 @@ export function AutomationInbox({
                       {decision.supersedes ? <span>Upgrade of an existing download</span> : null}
                     </div>
                     <ReleaseLine release={decision.release} />
-                    <p className="inbox-item-reason">{explain(decision, rule, now)}</p>
+                    <p className="inbox-item-reason">{explain(decision, now)}</p>
                     <div className="inbox-item-actions">
                       <Button
                         disabled={busy || !rule?.enabled || !source?.enabled}

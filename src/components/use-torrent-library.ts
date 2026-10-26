@@ -2,12 +2,12 @@ import { useMutation } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
 import { useSetAtom } from "jotai";
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
+import type { LibraryTorrent, LiveState } from "../api/modules/dashboard/projection";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
 import { selectedTorrentId, useRefresh } from "../lib/navigation";
 import { armSoundCues } from "../lib/sound-cues";
 import { modalAtom } from "../state/workspace";
-import type { DashboardState, TorrentSummary } from "../types";
 
 type Filter = "all" | "downloading" | "seeding" | "paused" | "error";
 export const filters: { id: Filter; label: string }[] = [
@@ -20,7 +20,7 @@ export const filters: { id: Filter; label: string }[] = [
 export const statusFilters = filters.filter(
   (item): item is { id: Exclude<Filter, "all">; label: string } => item.id !== "all"
 );
-const matches = (torrent: TorrentSummary, filter: Filter) =>
+const matches = (torrent: LibraryTorrent, filter: Filter) =>
   filter === "all" ||
   (filter === "downloading"
     ? ["downloading", "idle", "metadata", "checking"].includes(torrent.status)
@@ -31,7 +31,7 @@ export function useTorrentLibrary({
   requested,
 }: {
   activeDestination: string | null;
-  dashboard: DashboardState;
+  dashboard: LiveState;
   requested: string | undefined;
 }) {
   useEffect(() => armSoundCues(window), []);
@@ -72,9 +72,7 @@ export function useTorrentLibrary({
   }, [scoped]);
   const torrents = useMemo(() => {
     const query = search.toLocaleLowerCase("en-US");
-    const locations = new Map(
-      data.destinations.map((item) => [item.id, `${item.name} ${item.downloadPath}`])
-    );
+    const locations = new Map(data.destinations.map((item) => [item.id, item.name]));
     return scoped
       .filter(
         (torrent) =>
@@ -144,6 +142,7 @@ export function useTorrentLibrary({
     scoped,
     search,
     selectedId,
+    serverId: data.server.id,
     setError,
     setFilter,
     setModal,

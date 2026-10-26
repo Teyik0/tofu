@@ -1,5 +1,8 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
-import type { FilePriority } from "../types";
+import { useAtomValue } from "jotai";
+import type { TorrentHostDetail } from "../api/modules/dashboard/projection";
+import type { FilePriority } from "../api/modules/torrents/types";
+import { sessionAtom } from "../state/workspace";
 import { ActionTooltip } from "./action-tooltip";
 import { bytes, date, duration, percent, ratio, speed } from "./format";
 import { Icon } from "./icon";
@@ -115,17 +118,20 @@ export function DetailFiles({
   torrent,
   busy,
   act,
+  host,
 }: Pick<DetailActionsProps, "torrent" | "busy" | "act"> & {
+  host: TorrentHostDetail | null;
   model: ReturnType<typeof useDetailActions>;
 }) {
   const { setPriority, savingFile, downloadFile } = model;
+  const manage = useAtomValue(sessionAtom)?.capabilities.manage === true;
   return (
     <TabsContent value="Files">
       <div className="section-heading">
         <h3>
           {torrent.files.length} file{torrent.files.length > 1 ? "s" : ""}
         </h3>
-        <span className="muted">Choose what to download.</span>
+        <span className="muted">{manage ? "Choose what to download." : "Play or save files."}</span>
       </div>
       {torrent.files.length === 0 ? (
         <p className="panel-empty">Waiting for torrent metadata.</p>
@@ -136,7 +142,7 @@ export function DetailFiles({
               <div className="detail-file-heading">
                 <Icon name="file" />
                 <div className="detail-file-copy">
-                  <strong>{file.path}</strong>
+                  <strong>{host?.files[file.index]?.path ?? file.name}</strong>
                   <span className="mono">
                     {bytes(file.length)} · {percent(file.progress)}
                   </span>
@@ -144,7 +150,7 @@ export function DetailFiles({
               </div>
               <div className="detail-file-controls">
                 <Select
-                  disabled={busy}
+                  disabled={busy || !manage}
                   items={[
                     { label: "Skip", value: "skip" },
                     { label: "Normal", value: "normal" },
@@ -218,7 +224,9 @@ export function DetailTrackers({
   busy,
   act,
   open,
+  host,
 }: Pick<DetailActionsProps, "torrent" | "busy" | "act" | "open"> & {
+  host: TorrentHostDetail;
   model: ReturnType<typeof useDetailActions>;
 }) {
   const { announce, setTrackers, trackerLabels } = model;
@@ -226,11 +234,11 @@ export function DetailTrackers({
     <TabsContent value="Trackers">
       <div className="section-heading">
         <h3>
-          Trackers <span className="muted">{torrent.trackers.length}</span>
+          Trackers <span className="muted">{host.trackers.length}</span>
         </h3>
         <div className="inline-actions">
           <Button
-            disabled={busy || torrent.status === "paused" || !torrent.trackers.length}
+            disabled={busy || torrent.status === "paused" || !host.trackers.length}
             onClick={() => void act(torrent.id, () => announce.mutateAsync())}
             size="sm"
             type="button"
@@ -250,7 +258,7 @@ export function DetailTrackers({
           </Button>
         </div>
       </div>
-      {torrent.trackers.length ? (
+      {host.trackers.length ? (
         <div className="table-scroll">
           <table className="inner-table">
             <thead>
@@ -266,7 +274,7 @@ export function DetailTrackers({
               </tr>
             </thead>
             <tbody>
-              {torrent.trackers.map((row) => (
+              {host.trackers.map((row) => (
                 <tr key={row.url}>
                   <td className="tracker-url" title={row.message ?? row.url}>
                     <Icon name="globe" size={15} />
@@ -308,7 +316,7 @@ export function DetailTrackers({
                           onClick={() =>
                             void act(torrent.id, () =>
                               setTrackers.mutateAsync({
-                                urls: torrent.trackers
+                                urls: host.trackers
                                   .filter((tracker) => tracker.url !== row.url)
                                   .map((tracker) => tracker.url),
                               })
@@ -345,7 +353,11 @@ export function DetailTrackers({
   );
 }
 
-export function DetailPeers({ torrent, open }: Pick<DetailActionsProps, "torrent" | "open">) {
+export function DetailPeers({
+  torrent,
+  open,
+  host,
+}: Pick<DetailActionsProps, "torrent" | "open"> & { host: TorrentHostDetail }) {
   return (
     <TabsContent value="Peers">
       <div className="section-heading">
@@ -363,7 +375,7 @@ export function DetailPeers({ torrent, open }: Pick<DetailActionsProps, "torrent
           Add a peer
         </Button>
       </div>
-      {torrent.peerList.length ? (
+      {host.peerList.length ? (
         <div className="table-scroll">
           <table className="inner-table">
             <thead>
@@ -378,7 +390,7 @@ export function DetailPeers({ torrent, open }: Pick<DetailActionsProps, "torrent
               </tr>
             </thead>
             <tbody>
-              {torrent.peerList.map((peer) => (
+              {host.peerList.map((peer) => (
                 <tr key={peer.id}>
                   <td className="mono">{peer.address}</td>
                   <td>{peer.client}</td>
@@ -408,12 +420,15 @@ export function DetailPeers({ torrent, open }: Pick<DetailActionsProps, "torrent
   );
 }
 
-export function DetailInformation({ torrent }: Pick<DetailActionsProps, "torrent">) {
+export function DetailInformation({
+  torrent,
+  host,
+}: Pick<DetailActionsProps, "torrent"> & { host: TorrentHostDetail | null }) {
   return (
     <TabsContent value="Information">
       <dl className="info-grid">
         <Stat label="Torrent hash" value={torrent.id} />
-        <Stat label="Folder" value={torrent.savePath} />
+        {host ? <Stat label="Folder" value={host.savePath} /> : null}
         <Stat label="Added on" value={date(torrent.addedAt)} />
         <Stat label="Completed on" value={date(torrent.completedAt)} />
         <Stat label="Last transfer" value={date(torrent.lastTransferAt)} />

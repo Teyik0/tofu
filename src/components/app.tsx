@@ -2,9 +2,9 @@ import { useQuery } from "@teyik0/furin/client";
 import { useAtomValue } from "jotai";
 import { AlertCircleIcon, LayersIcon, PlusIcon, ZapIcon } from "lucide-react";
 import { version } from "../../package.json";
+import type { LibraryState, LibraryTorrentDetail } from "../api/modules/dashboard/projection";
 import { api } from "../lib/client";
-import { dashboardAtom } from "../state/workspace";
-import type { DashboardState, TorrentDetail } from "../types";
+import { dashboardAtom, sessionAtom } from "../state/workspace";
 import { ActionTooltip } from "./action-tooltip";
 import type { AutomationSection } from "./automation-center";
 import { DestinationIcon } from "./destination-icon";
@@ -25,16 +25,18 @@ export function App({
   detail,
   requested,
 }: {
-  dashboard: DashboardState;
+  dashboard: LibraryState;
   activeDestination: string | null;
   /** Detail read by the page loader for its selection. */
-  detail: TorrentDetail | null;
+  detail: LibraryTorrentDetail | null;
   /** Torrent requested by the `torrent` search param. */
   requested: string | undefined;
 }) {
-  const data = useAtomValue(dashboardAtom) ?? dashboard;
+  const data = useAtomValue(dashboardAtom) ?? { ...dashboard, detailHost: null, host: null };
+  const capabilities = useAtomValue(sessionAtom)?.capabilities;
   const model = useTorrentLibrary({ activeDestination, dashboard: data, requested });
   const { setModal, pending, error, setError, selectedId, destination, add, act } = model;
+  const folder = data.host?.destinations.find((item) => item.id === destination?.id)?.downloadPath;
   // The live stream follows the same selection; the loader detail covers the time until it does.
   const selectedDetail = [data.detail, detail].find((item) => item && item.id === selectedId);
   const summary = data.torrents.find((torrent) => torrent.id === selectedId);
@@ -48,25 +50,29 @@ export function App({
           </span>
           <div className="library-heading">
             <h1>{destination?.name ?? "All torrents"}</h1>
-            <span className="topbar-path" title={destination?.downloadPath ?? "Every destination"}>
-              {destination?.downloadPath ?? "Every destination"}
+            <span className="topbar-path" title={folder ?? data.server.name}>
+              {folder ?? (destination ? `On ${data.server.name}` : "Every destination")}
             </span>
           </div>
         </div>
         <div className="library-actions">
-          <AutomationsButton
-            open={(section) =>
-              setModal({
-                destinationId: activeDestination ?? "default",
-                section,
-                type: "automation",
-              })
-            }
-          />
-          <Button className="add-button" onClick={add}>
-            <PlusIcon data-icon="inline-start" />
-            Add a torrent
-          </Button>
+          {capabilities?.administer ? (
+            <AutomationsButton
+              open={(section) =>
+                setModal({
+                  destinationId: activeDestination ?? "default",
+                  section,
+                  type: "automation",
+                })
+              }
+            />
+          ) : null}
+          {capabilities?.manage ? (
+            <Button className="add-button" onClick={add}>
+              <PlusIcon data-icon="inline-start" />
+              Add a torrent
+            </Button>
+          ) : null}
         </div>
       </header>
       {error !== null && (
@@ -117,9 +123,13 @@ export function App({
         )}
       </div>
       <footer className="status-bar">
-        <span className="status-port">
-          Port <b>{data.session.port}</b>
-        </span>
+        {data.host ? (
+          <span className="status-port">
+            Port <b>{data.host.session.port}</b>
+          </span>
+        ) : (
+          <span className="status-port">{data.server.name}</span>
+        )}
         <span className="status-throughput">
           <span data-direction="down">
             <Icon name="download" size={12} />
@@ -131,8 +141,7 @@ export function App({
           </span>
         </span>
         <span className="status-version">
-          Tofu {version} <span>·</span>{" "}
-          {data.session.mode === "desktop" ? "Native app" : "Web workspace"}
+          Tofu {version} <span>·</span> {capabilities?.hostNative ? "Native app" : "Web workspace"}
         </span>
       </footer>
     </div>
@@ -141,7 +150,7 @@ export function App({
 
 /** Opens the automation Inbox directly when releases are waiting for a decision. */
 function AutomationsButton({ open }: { open: (section: AutomationSection) => void }) {
-  const { data } = useQuery(api.automation.get);
+  const { data } = useQuery(api.automation.get.live());
   const waiting =
     data && "decisions" in data
       ? data.decisions.filter(

@@ -4,8 +4,8 @@ import type {
   AutomationCriterion,
   AutomationDraft,
   AutomationPreferences,
-  SourcePluginId,
-} from "../types";
+} from "../api/modules/automation/model";
+import type { SourcePluginId } from "../api/modules/plugins/model";
 import { ActionTooltip } from "./action-tooltip";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -464,7 +464,6 @@ export function RuleFields({
                 items={[
                   { label: "Exact title name", value: "exact" },
                   { label: "Release name pattern", value: "pattern" },
-                  { label: "Jev + exact fallback", value: "jev" },
                 ]}
                 onValueChange={(value) => set("matchMode", value as AutomationDraft["matchMode"])}
                 value={draft.matchMode}
@@ -476,7 +475,6 @@ export function RuleFields({
                   <SelectGroup>
                     <SelectItem value="exact">Exact title name</SelectItem>
                     <SelectItem value="pattern">Release name pattern</SelectItem>
-                    <SelectItem value="jev">Jev + exact fallback</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>

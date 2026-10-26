@@ -1,7 +1,11 @@
-import type { FeedRelease, SourcePluginId } from "../../../types";
+import { Effect, Schema } from "effect";
+import type { FeedRelease } from "../discovery/model";
+import type { SourcePluginId } from "./model";
 
 const feedExpression1 = /^([\d.]+)\s*(Bytes|B|KiB|MiB|GiB|TiB|KB|MB|GB)$/i;
 const feedExpression2 = /\bS(\d{1,3})E(\d{1,4})\b/i;
+const releaseSeasonOnly = /\bS(\d{1,3})(?:v\d+)?\b/i;
+const releaseSeasonWords = /\b(?:season|saison)\s*(\d{1,3})\b/i;
 const feedExpression3 = /\s[-–]\s(\d{1,4})(?:v\d+)?(?:\s|\b)/i;
 const feedExpression4 = /\b(2160|1080|900|720|480)p\b/i;
 const feedExpression5 = /\b(VOSTFR|SUBFRENCH|FRENCH[ ._-]+(?:SUBS?|SUBTITLES))\b/i;
@@ -12,7 +16,7 @@ const feedExpression9 = /\b(x264|h[ .]?264|AVC)\b/i;
 const feedExpression10 = /\bAV1\b/i;
 const feedExpression11 = /^\[[^\]]+\]\s*/;
 const feedExpression12 =
-  /\s+S\d+E\d+\b|\s+[-–]\s+\d+(?:v\d+)?\b|\s+[[(](?:\d{3,4}p|batch|complete|multi|HEVC|AVC|AV1|x26[45])\b|\s+(?:VOSTFR|SUBFRENCH|MULTI|VF|FRENCH|TRUEFRENCH|\d{3,4}p)\b/i;
+  /\s+S\d+(?:E\d+|v\d+)?\b|\s+(?:season|saison)\s*\d+\b|\s+[-–]\s+\d+(?:v\d+)?\b|\s+[[(](?:\d{3,4}p|batch|complete|multi|HEVC|AVC|AV1|x26[45])\b|\s+(?:VOSTFR|SUBFRENCH|MULTI|VF|FRENCH|TRUEFRENCH|\d{3,4}p)\b/i;
 const feedExpression13 = /\b(batch|complete|complet|integrale|pack)\b/i;
 const feedExpression14 = /\bS\d+E\d+\s*[-–]\s*(?:E)?\d+\b/i;
 const feedExpression15 = /^(https?:\/\/|magnet:\?)/i;
@@ -32,41 +36,91 @@ const feedExpression28 = /<[^>]*>/g;
 const feedExpression29 = /href=["']([^"']*\/download\/\d+\.torrent)["']/;
 const episodeRange = /\s[-–]\s\d{1,4}(?:v\d+)?\s*[-–]\s*\d{1,4}\b/i;
 
-interface XmlAttribute {
-  "@name"?: string;
-  "@value"?: string;
-}
-interface RssItem {
-  enclosure?: { "@url"?: string; "@length"?: string };
-  guid?: string | { "#text"?: string };
-  link?: string;
-  "nyaa:infoHash"?: string;
-  "nyaa:seeders"?: number | string;
-  "nyaa:size"?: string;
-  pubDate?: string;
-  size?: string;
-  title?: string;
-  "torznab:attr"?: XmlAttribute | XmlAttribute[];
-}
-interface RssDocument {
-  rss?: { channel?: { item?: RssItem | RssItem[] } | "" };
-}
-interface TsundereEntry {
-  codec?: string;
-  episode?: number;
-  episodeRange?: unknown;
-  id?: string;
-  infohash?: string | null;
-  language?: string;
-  publishedAt?: string;
-  quality?: string;
-  season?: number;
-  size?: number;
-  title?: string;
-  torrentUrl?: string | null;
-  url?: string;
-}
-export function numberOrNull(value: unknown) {
+class FeedError extends Schema.TaggedError<FeedError>()("FeedError", {
+  cause: Schema.optional(Schema.Defect()),
+  message: Schema.String,
+}) {}
+const xmlAttribute = Schema.Struct({
+  "@name": Schema.optional(Schema.String),
+  "@value": Schema.optional(Schema.String),
+});
+const rssItem = Schema.Struct({
+  enclosure: Schema.optional(
+    Schema.Struct({
+      "@length": Schema.optional(Schema.String),
+      "@url": Schema.optional(Schema.String),
+    })
+  ),
+  guid: Schema.optional(
+    Schema.Union([Schema.String, Schema.Struct({ "#text": Schema.optional(Schema.String) })])
+  ),
+  link: Schema.optional(Schema.String),
+  "nyaa:infoHash": Schema.optional(Schema.String),
+  "nyaa:seeders": Schema.optional(Schema.Union([Schema.Number, Schema.String])),
+  "nyaa:size": Schema.optional(Schema.String),
+  pubDate: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
+  "torznab:attr": Schema.optional(
+    Schema.Union([xmlAttribute, Schema.Array(xmlAttribute).pipe(Schema.mutable)])
+  ),
+});
+const decodeRss = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    rss: Schema.optional(
+      Schema.Struct({
+        channel: Schema.optional(
+          Schema.Union([
+            Schema.Literal(""),
+            Schema.Struct({
+              item: Schema.optional(
+                Schema.Union([rssItem, Schema.Array(rssItem).pipe(Schema.mutable)])
+              ),
+            }),
+          ])
+        ),
+      })
+    ),
+  })
+);
+const decodeTsundere = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      entries: Schema.Array(
+        Schema.Struct({
+          codec: Schema.optional(Schema.String),
+          episode: Schema.optional(Schema.NullOr(Schema.Number)),
+          episodeRange: Schema.optional(Schema.Json),
+          id: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
+          infohash: Schema.optional(Schema.NullOr(Schema.String)),
+          language: Schema.optional(Schema.String),
+          metadata: Schema.optional(
+            Schema.NullOr(
+              Schema.Struct({
+                anilistId: Schema.optional(
+                  Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))
+                ),
+              })
+            )
+          ),
+          publishedAt: Schema.optional(Schema.String),
+          quality: Schema.optional(Schema.String),
+          season: Schema.optional(Schema.NullOr(Schema.Number)),
+          size: Schema.optional(Schema.Number),
+          title: Schema.optional(Schema.String),
+          torrentUrl: Schema.optional(Schema.NullOr(Schema.String)),
+          url: Schema.optional(Schema.String),
+        })
+      ),
+      options: Schema.Struct({
+        codec: Schema.Array(Schema.String),
+        quality: Schema.Array(Schema.String),
+      }),
+      total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    })
+  )
+);
+export function numberOrNull(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
     return null;
   }
@@ -95,7 +149,8 @@ function fileSize(value: string | undefined) {
     ? null
     : Number(match[1]) * (unit.includes("i") ? 1024 : 1000) ** power;
 }
-export function releaseMetadata(title: string) {
+export function releaseMetadata(value: string) {
+  const title = value.replaceAll(".", " ");
   const seasonEpisode = title.match(feedExpression2);
   const episode = seasonEpisode?.[2] ?? title.match(feedExpression3)?.[1];
   const resolution = title.match(feedExpression4)?.[0].toLowerCase() ?? null;
@@ -106,16 +161,24 @@ export function releaseMetadata(title: string) {
     codec,
     episode: numberOrNull(episode),
     language,
-    pack: feedExpression13.test(title) || feedExpression14.test(title) || episodeRange.test(title),
+    pack:
+      feedExpression13.test(title) ||
+      feedExpression14.test(title) ||
+      episodeRange.test(title) ||
+      (episode === undefined && (releaseSeasonOnly.test(title) || releaseSeasonWords.test(title))),
     resolution,
-    season: numberOrNull(seasonEpisode?.[1]),
+    season: numberOrNull(
+      seasonEpisode?.[1] ??
+        title.match(releaseSeasonOnly)?.[1] ??
+        title.match(releaseSeasonWords)?.[1]
+    ),
     workTitle,
   } satisfies Partial<FeedRelease>;
 }
-function validDownload(value: unknown): value is string {
+function validDownload(value: string | null | undefined): value is string {
   return typeof value === "string" && feedExpression15.test(value);
 }
-function hash(value: unknown) {
+function hash(value: string | null | undefined) {
   return typeof value === "string" && feedExpression16.test(value) ? value.toLowerCase() : null;
 }
 function date(value: string | undefined) {
@@ -123,18 +186,22 @@ function date(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] {
+export const parseRss = Effect.fn("Feeds.parseRss")(function* (
+  body: string,
+  sourceId: SourcePluginId
+): Effect.fn.Return<FeedRelease[], FeedError> {
   if (body.length > 8 * 1024 * 1024) {
-    throw new Error("Invalid RSS feed");
+    return yield* new FeedError({ message: "Invalid RSS feed" });
   }
-  let document: RssDocument;
-  try {
-    document = Bun.XML.parse(body) as RssDocument;
-  } catch (cause) {
-    throw new Error("Invalid RSS feed", { cause });
-  }
+  const parsed = yield* Effect.try({
+    catch: (cause) => new FeedError({ cause, message: "Invalid RSS feed" }),
+    try: () => Bun.XML.parse(body),
+  });
+  const document = yield* decodeRss(parsed).pipe(
+    Effect.mapError((cause) => new FeedError({ cause, message: "Invalid RSS feed" }))
+  );
   if (document.rss?.channel === undefined) {
-    throw new Error("RSS feed missing");
+    return yield* new FeedError({ message: "RSS feed missing" });
   }
   if (document.rss.channel === "") {
     return [];
@@ -167,13 +234,12 @@ export function parseRss(body: string, sourceId: SourcePluginId): FeedRelease[] 
       },
     ];
   });
-}
-export function parseTsundere(body: string): FeedRelease[] {
-  const document = JSON.parse(body) as { entries?: TsundereEntry[] };
-  if (!Array.isArray(document.entries)) {
-    throw new Error("Invalid JSON feed");
-  }
-  return document.entries.flatMap((entry) => {
+});
+export const parseTsundere = Effect.fn("Feeds.parseTsundere")(function* (body: string) {
+  const document = yield* decodeTsundere(body).pipe(
+    Effect.mapError((cause) => new FeedError({ cause, message: "Invalid JSON feed" }))
+  );
+  const releases = document.entries.flatMap((entry): FeedRelease[] => {
     if (typeof entry.title !== "string" || !validDownload(entry.torrentUrl)) {
       return [];
     }
@@ -187,6 +253,7 @@ export function parseTsundere(body: string): FeedRelease[] {
     return [
       {
         ...metadata,
+        anilistId: entry.metadata?.anilistId ?? undefined,
         codec: entry.codec ?? metadata.codec,
         downloadUrl: entry.torrentUrl,
         episode: numberOrNull(entry.episode) ?? metadata.episode,
@@ -205,7 +272,15 @@ export function parseTsundere(body: string): FeedRelease[] {
       },
     ];
   });
-}
+  return {
+    identities: document.entries.map((entry) =>
+      String(entry.id ?? entry.torrentUrl ?? entry.url ?? entry.title)
+    ),
+    options: document.options,
+    releases,
+    total: document.total,
+  };
+});
 function asArray<T>(value: T | T[] | undefined): T[] {
   if (Array.isArray(value)) {
     return value;

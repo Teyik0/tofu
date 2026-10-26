@@ -8,8 +8,8 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { useState } from "react";
+import type { LiveState } from "../api/modules/dashboard/projection";
 import { api } from "../lib/client";
-import type { AutomationSection, DashboardState } from "../types";
 import { AniListIcon } from "./anilist/icon";
 import { AutomationDiscovery } from "./automation-discovery";
 import { isPending } from "./automation-inbox";
@@ -26,20 +26,18 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from "./ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
-export type { AutomationSection } from "../types";
-
 export function AutomationCenter({
   dashboard,
   destinationId,
   section,
   close,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   destinationId: string;
   section: AutomationSection;
   close: () => void;
 }) {
-  const { data: live, error: loadingError } = useQuery(api.automation.get);
+  const { data: live, error: loadingError } = useQuery(api.automation.get.live());
   const state = live && "plugins" in live ? live : null;
   const [tab, setTab] = useState<AutomationSection>(() => section);
   const [target, setTarget] = useState(() => destinationId);
@@ -124,3 +122,11 @@ export function AutomationCenter({
     </Dialog>
   );
 }
+
+export type AutomationSection =
+  | "inbox"
+  | "rules"
+  | "anilist"
+  | "discover"
+  | "history"
+  | "preferences";

@@ -1,18 +1,11 @@
-import type { DesktopCapabilities } from "@teyik0/furin-electrobun/host";
-import { HTTPError } from "elysia";
+import { Effect } from "effect";
+import type { Utils } from "electrobun/main";
+import { problem } from "elysia";
 
-export function openExternalUrl(
-  shell: DesktopCapabilities["shell"],
-  url: string,
-  errorMessage: string
-) {
-  let opened: boolean;
-  try {
-    opened = shell.openExternal(url);
-  } catch {
-    opened = false;
-  }
-  if (!opened) {
-    throw new (HTTPError.id("BAD_GATEWAY", 502))(errorMessage);
-  }
+/** Opens a URL in the host's browser; a refusal is returned as a typed problem. */
+export function openExternalUrl(shell: typeof Utils, url: string, errorMessage: string) {
+  const opened = Effect.runSync(
+    Effect.try(() => shell.openExternal(url)).pipe(Effect.orElseSucceed(() => false))
+  );
+  return opened ? null : problem(502, { detail: errorMessage });
 }

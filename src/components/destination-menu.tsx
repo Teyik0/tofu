@@ -1,11 +1,11 @@
 import { useMutation } from "@teyik0/furin/client";
 import { PencilIcon, PinIcon, PinOffIcon, ShapesIcon, Trash2Icon } from "lucide-react";
 import type { ReactElement } from "react";
+import type { Destination } from "../api/modules/destinations/model";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
-import type { Destination } from "../types";
-import type { ModalKind } from "./modal";
+import type { ModalKind } from "../state/workspace";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -15,7 +15,28 @@ import {
   ContextMenuTrigger,
 } from "./ui/context-menu";
 
+/** Thread actions for administrators; other viewers get the plain thread link. */
 export function DestinationMenu({
+  children,
+  destination,
+  open,
+  deletable,
+}: {
+  children: ReactElement;
+  destination: Destination | undefined;
+  open: (modal: ModalKind) => void;
+  deletable: boolean;
+}) {
+  return destination ? (
+    <DestinationContextMenu deletable={deletable} destination={destination} open={open}>
+      {children}
+    </DestinationContextMenu>
+  ) : (
+    children
+  );
+}
+
+function DestinationContextMenu({
   children,
   destination,
   open,

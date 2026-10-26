@@ -1,14 +1,20 @@
 import { furinSync } from "@teyik0/furin/sync";
+import { Context, Effect } from "effect";
 import { Elysia } from "elysia";
+import { services } from "@/api/lib/services-runtime";
 import { sync } from "../../../sync";
-import { updatesServicePlugin } from "./plugin";
+import { accessPlugin } from "../access/plugin";
+import { Updates } from "./service";
 
 export const updatesPlugin = new Elysia({ name: "tofu-updates-api", prefix: "/updates" })
-  .use(updatesServicePlugin)
+  .decorate("updates", Context.get(services, Updates))
+  .use(accessPlugin)
   .use(furinSync(sync))
-  .guard({ sync: false })
-  .get("", { sync: { id: "tofu.updates", scope: {} } }, ({ updates }) => updates.snapshot())
-  .post("/check", ({ updates }) => updates.check())
-  .post("/prepare", ({ updates }) => updates.prepare())
-  .post("/install", ({ updates }) => updates.install())
-  .get("/download", ({ updates }) => updates.download());
+  .guard({ administration: true, idempotent: false })
+  .get("", ({ updates }) => updates.snapshot())
+  .post("/check", ({ updates }) => Effect.runPromise(updates.check()))
+  // Installing replaces the host application; only its owner decides.
+  .guard({ owner: true })
+  .post("/prepare", ({ updates }) => Effect.runPromise(updates.prepare()))
+  .post("/install", ({ updates }) => Effect.runPromise(updates.install()))
+  .get("/download", ({ updates }) => Effect.runPromise(updates.download()));

@@ -1,25 +1,13 @@
+import { Context } from "effect";
 import { Elysia } from "elysia";
-import { version } from "../../../../package.json";
-import { databasePlugin, db, instance, logs } from "../../lib/database-plugin";
-import { resources } from "../../lib/runtime";
+import { services, servicesRuntime } from "../../lib/services-runtime";
 import { TorrentFolders } from "./folders";
-import { WorkerTorrentEngine } from "./worker-client";
+import { TorrentClient } from "./layer";
 
-export const engine = await WorkerTorrentEngine.open(
-  {
-    dataDir: instance.dataDir,
-    downloadPath: instance.downloadPath,
-    network: { maxConns: 40, userAgent: `Tofu/${version}`, utp: false },
-  },
-  logs
-);
-resources.defer(engine.close.bind(engine));
-engine.mode = instance.desktop ? "desktop" : "server";
-await engine.assertReady();
-export const torrentFolders = new TorrentFolders({ dataDir: instance.dataDir, db, engine });
-resources.defer(torrentFolders.close.bind(torrentFolders));
+export const torrents = Context.get(services, TorrentClient);
 
-export const torrentServicePlugin = new Elysia({ name: "tofu-torrent-service" })
-  .use(databasePlugin)
-  .decorate("torrents", engine)
-  .decorate("torrentFolders", torrentFolders);
+export const torrentServicePlugin = new Elysia({ name: "tofu-torrent-service" }).decorate({
+  torrentFolders: Context.get(services, TorrentFolders),
+  torrentFoldersRuntime: servicesRuntime,
+  torrents,
+});

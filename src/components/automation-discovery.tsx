@@ -3,12 +3,14 @@ import { useMutation } from "@teyik0/furin/client";
 import { LoaderCircleIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import { pick } from "valibot";
+import type { DiscoveryResult } from "../api/modules/discovery/model";
 import { discoverySchema } from "../api/modules/discovery/model";
+import type { PluginState, SourcePluginId } from "../api/modules/plugins/model";
+import type { AsyncAction } from "../hooks/use-async-action";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
 import { playSoundCue } from "../lib/sound-cues";
-import type { AsyncAction, DiscoveryResult, PluginState, SourcePluginId } from "../types";
 import { request } from "./api";
 import { sourceNames } from "./automation-fields";
 import { ReleaseLine } from "./automation-inbox";
@@ -52,8 +54,6 @@ export function AutomationDiscovery({ state, dashboard, target, onTarget }: Auto
       plugin.enabled && (plugin.id === "nyaa" || plugin.id === "tsundere" || plugin.id === "c411")
   );
   const selectedSources = activeSources.filter((plugin) => !excludedSourceIds.has(plugin.id));
-  const jev = state.plugins.find((plugin) => plugin.id === "jev");
-  const naturalSearch = jev?.enabled === true && jev.hasApiKey;
   return (
     <AutomationSectionPanel
       error={error}
@@ -92,9 +92,7 @@ export function AutomationDiscovery({ state, dashboard, target, onTarget }: Auto
         >
           <Field>
             <FieldLabel className="sr-only" htmlFor="feed-search">
-              {naturalSearch
-                ? "Natural language search across sources"
-                : "Keyword search across sources"}
+              Keyword search across sources
             </FieldLabel>
             <div className="discover-search">
               <InputGroup>
@@ -104,7 +102,7 @@ export function AutomationDiscovery({ state, dashboard, target, onTarget }: Auto
                   aria-invalid={Boolean(searchField.errors)}
                   id="feed-search"
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder={naturalSearch ? "re zero ep9 season4" : "A title, keywords…"}
+                  placeholder="A title, keywords…"
                   required
                   value={search}
                 />
@@ -164,11 +162,7 @@ export function AutomationDiscovery({ state, dashboard, target, onTarget }: Auto
               <span className="automation-muted">Enable a source in Plugins to search.</span>
             )}
           </fieldset>
-          <p className="automation-muted">
-            {naturalSearch
-              ? "Title, season and episode in any order. English and Japanese titles are searched automatically."
-              : "Keywords are searched as typed. Enable Jev in Plugins for natural language search."}
-          </p>
+          <p className="automation-muted">Keywords are searched as typed.</p>
         </Form>
         {discovery?.search?.warning ? (
           <Alert>

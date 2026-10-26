@@ -13,7 +13,7 @@ import {
   TvIcon,
 } from "lucide-react";
 import { useId } from "react";
-import { type DestinationIconName, destinationIconNames } from "../types";
+import { type DestinationIconName, destinationIconNames } from "../api/modules/destinations/model";
 import { FieldLabel, FieldLegend, FieldSet } from "./ui/field";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 

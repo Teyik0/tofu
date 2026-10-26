@@ -1,6 +1,13 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "extends": ["ultracite/biome/core", "ultracite/biome/react"],
+  // Preserve the approved design artifact and GraphQL Code Generator's native output.
+  "files": {
+    "includes": [
+      "!docs/remote-servers/design/ui-prototype.html",
+      "!src/api/modules/anilist/graphql/generated.ts"
+    ]
+  },
   "javascript": {
     "globals": ["Bun"]
   },
@@ -33,7 +40,13 @@
       }
     },
     {
-      "includes": ["src/components/**"],
+      "includes": [
+        "src/components/**",
+        "src/pages/anilist/_*.{ts,tsx}",
+        "src/pages/options/connections/_*.tsx",
+        "src/pages/plugins/_plugin-*.tsx",
+        "src/pages/plugins/_use-plugin-card.ts"
+      ],
       "linter": {
         "rules": {
           "complexity": {

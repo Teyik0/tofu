@@ -9,18 +9,17 @@ import {
   type ZapIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { createAutomationMutations } from "../lib/automation-mutations";
-import { api } from "../lib/client";
 import type {
   AutomationDraft,
   AutomationRule,
-  AutomationSection,
   AutomationState,
-  DashboardState,
-  DiscoveryResult,
-  FeedRelease,
-} from "../types";
+} from "../api/modules/automation/model";
+import type { LiveState } from "../api/modules/dashboard/projection";
+import type { DiscoveryResult, FeedRelease } from "../api/modules/discovery/model";
+import { createAutomationMutations } from "../lib/automation-mutations";
+import { api } from "../lib/client";
 import { ActionTooltip } from "./action-tooltip";
+import type { AutomationSection } from "./automation-center";
 import { sourceNames } from "./automation-fields";
 import { relative } from "./format";
 import { OptionSelect } from "./option-select";
@@ -94,11 +93,13 @@ export function ruleDraft(rule: AutomationRule): AutomationDraft {
   return {
     afterEpisode: rule.afterEpisode,
     aliases: rule.aliases,
+    anilistId: rule.anilistId,
     automatic: rule.automatic,
     codecs: rule.codecs,
     deleteReplacedFiles: rule.deleteReplacedFiles,
     destinationId: rule.destinationId,
     enabled: rule.enabled,
+    episodeCount: rule.episodeCount,
     excludePacks: rule.excludePacks,
     includeExisting: rule.includeExisting,
     intervalMinutes: rule.intervalMinutes,
@@ -213,7 +214,7 @@ export function RuleCard({
 }
 
 export interface AutomationPanelProps {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   onTarget: (value: string) => void;
   setTab: (value: AutomationSection) => void;
   state: AutomationState;
@@ -233,12 +234,12 @@ export function AutomationThread({
   disabled,
   onChange,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   target: string;
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
-  const destination = dashboard.destinations.find((item) => item.id === target);
+  const destination = (dashboard.host?.destinations ?? []).find((item) => item.id === target);
   return (
     <div className="automation-thread">
       <Field className="automation-target" orientation="horizontal">
@@ -247,7 +248,10 @@ export function AutomationThread({
           disabled={disabled}
           id="automation-destination"
           onValueChange={onChange}
-          options={dashboard.destinations.map((item) => ({ label: item.name, value: item.id }))}
+          options={(dashboard.host?.destinations ?? []).map((item) => ({
+            label: item.name,
+            value: item.id,
+          }))}
           value={target}
         />
       </Field>

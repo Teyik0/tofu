@@ -1,34 +1,50 @@
 import { furin } from "@teyik0/furin";
+import { desktopApp } from "@teyik0/furin-electrobun/server";
+import { Elysia } from "elysia";
+import { initLogger, toLoggerConfig, toMiddlewareOptions } from "evlog";
+import { config } from "../evlog.config";
 import { apiPlugin } from "./api";
-import { instance } from "./api/lib/database-plugin";
-import { recordLog } from "./api/lib/diagnostics";
-import { onShutdown } from "./api/lib/lifecycle";
+import { instance } from "./api/lib/instance";
 import { sync } from "./sync";
 
-try {
-  apiPlugin.use(await furin({ pagesDir: "./src/pages", sync }));
+initLogger(toLoggerConfig(config));
 
-  if (import.meta.main) {
-    await apiPlugin.modules;
-    apiPlugin.listen({ hostname: "127.0.0.1", port: instance.port });
-    const shutdown = async () => {
-      await apiPlugin.stop(true);
-      process.exit(0);
-    };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
-  }
-} catch (error) {
-  recordLog({
-    component: "application",
-    dataDir: instance.dataDir,
-    error,
-    level: "error",
-    operation: "startup",
-  });
-  await onShutdown();
-  throw error;
+const app = new Elysia({ name: "tofu" })
+  .use(apiPlugin)
+  .use(
+    desktopApp(({ access, torrents }) => ({
+      admission: access.admit.bind(access),
+      background: () => torrents.settings().runInBackground === true,
+      window: {
+        frame: { height: 940, width: 1400 },
+        renderer: "native",
+        title: instance.name,
+      },
+    }))
+  )
+  .guard({ noStore: true })
+  .use(
+    await furin({
+      logger: {
+        ...toMiddlewareOptions(config),
+        exclude: ["/api/**"],
+        include: ["/**"],
+      },
+      pagesDir: "./src/pages",
+      sync,
+    })
+  );
+
+export default app;
+
+if (import.meta.main) {
+  app.listen({ port: instance.port });
+
+  const shutdown = async () => {
+    await app.stop(true);
+    process.exit(process.exitCode ?? 0);
+  };
+
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
 }
-
-// biome-ignore lint/performance/noBarrelFile: This entry point exports the shared application for Furin and the desktop host.
-export { apiPlugin as default } from "./api";

@@ -4,12 +4,87 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ## [Unreleased]
 
+### Changed
+
+- Remove the Jev/TypeSafe plugin and its settings, remote evaluations, and cache; migrate existing rules to local exact matching.
+
+- Rebuild the integration suite around 15 essential API scenarios with real server processes, local peers, HTTP provider fixtures, and shared resource cleanup; cover missing-file recovery across restarts and remote permissions.
+- Update the vendored Furin core and Electrobun packages to PR #163 revision `f272df9`, isolating route discovery imports before AOT while retaining the local AOT process-isolation patch.
+- Move stable release builds, signing, artifact preparation, and publication into GitHub Actions; use `bun run build` for local desktop builds.
+
+## [0.2.7] - 2026-10-19
+
 ### Added
 
+- Audio and subtitle track menus, keyboard seeking, and seek feedback in the media player.
+- Live desktop update download progress in the sidebar and Updates panel.
+
+### Changed
+
+- Replace the torrent table with a compact list beside a persistent detail inspector on desktop, stacking the panels on smaller screens. Adapt file priorities, actions, and detail controls to the narrower inspector.
+- Show destination paths in All torrents and search by torrent name, destination name, or path.
+- Check desktop updates through the native update manifest when available, avoiding GitHub API rate limits.
+
+### Fixed
+
+- Open completed media with file caching for local playback.
+- Limit Windows CI integration tests to two concurrent processes and allow more time for watch-mode server startup.
+- Wait for completed disk writes and seeding verification in storage deletion and AniList download tests.
+
+## [0.2.6] - 2026-10-18
+
+### Added
+
+- In-app media playback with VLC compiled to WebAssembly, including seeking, volume, fullscreen, embedded subtitles, and a system-player fallback.
+- Stream incomplete torrent files through byte-range requests that wait for verified pieces without changing saved file priorities.
 - Persistent local JSONL diagnostics for startup, shutdown, API mutations and failures, background services, and torrent storage errors, with credential redaction and 5 MiB rotation retaining three backups.
 - An **Open logs folder** action in general desktop settings, and original filesystem error codes, stacks, and expected and observed directory identities in storage diagnostics.
 
-## [0.2.3]
+### Fixed
+
+- Bound media response sizes and the player's media cache to limit memory use during playback, and cancel pending streaming reads when transfers stop or become unavailable.
+- Limit Windows release tests to two concurrent processes and install publisher dependencies before running the release script.
+
+## [0.2.5] - 2026-10-13
+
+### Added
+
+- Torrent storage validation with **Repair download** and **Locate files** actions, preserving paused state and reporting missing, inaccessible, or replaced destinations without recreating them automatically.
+- Download settings for deleting successfully imported `.torrent` files and controlling seeding connections, plus peer connection diagnostics.
+- Source registration and automation integration APIs with persisted configuration, rule revisions, and retryable execution.
+
+### Changed
+
+- Compose database, torrent, automation, AniList, discovery, plugin, Jev, and update services through Elysia plugins, replacing the central application host with explicit dependency and lifecycle ownership.
+- Separate automation policy and persistence from release discovery and execution, and keep management endpoints separate from service plugins.
+- Reorganize AniList library controls, cards, episode panels, and list editing, with improved release matching.
+- Use Elysia typed problem responses for API failures and Furin's native workflow runner for desktop smoke checks.
+- Publish torrent telemetry only while a browser is subscribed, while retaining background persistence, storage checks, and state-change notifications.
+
+### Fixed
+
+- Drain torrent storage before bounded network shutdown so transfer state persists cleanly.
+- Dispose initialized resources after startup failures and route-type generation, and preload the native host for desktop builds.
+
+## [0.2.4] - 2026-10-11
+
+### Added
+
+- Global search with `Cmd+K` / `Ctrl+K` across torrents, destination threads, and enabled release sources, with release review and destination selection before downloading.
+- AniList list editing with queued autosave for status, progress, score formats, custom lists, advanced scores, dates, notes, repeat counts, and favorites.
+- Cover-derived AniList preview colors, list status indicators, unread airing counts, multiple-format catalog filters, and episode downloads without adding anime to a personal list.
+- Plugin credential validation and links to API key pages; C411 accepts either an API key or a Torznab URL.
+- Short synthesized sound cues when torrents are added or removed.
+
+### Changed
+
+- Default new automation rules to 1080p/720p, H.264/H.265, and VOSTFR/MULTI preferences.
+
+### Fixed
+
+- Match multi-part anime releases against episode offsets from library history, and recognize more parenthesized episode numbers and French subtitle patterns in feeds.
+
+## [0.2.3] - 2026-10-10
 
 ### Fixed
 
@@ -17,7 +92,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 - Cover update handoff through the real Furin desktop host with a real peer transfer and verify downloaded bytes survive engine shutdown and reopening.
 - Bundle the native host's torrent parser so installed apps start without repository dependencies, and run native smoke tests from an isolated copy of the application.
 
-## [0.2.2]
+## [0.2.2] - 2026-10-10
 
 ### Added
 
@@ -60,7 +135,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 - Temporarily skip blocked-request cancellation tests on Windows because Bun 1.4.3 can crash during their teardown; retain coverage on macOS and Linux.
 - Generate Furin route and asset declarations before type checking on clean checkouts, without starting the development server.
 
-## [0.2.1]
+## [0.2.1] - 2026-10-10
 
 ### Added
 
@@ -80,7 +155,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 - Native AniList links open in the system browser without leaving the episode dialog.
 - Release publication validates native update metadata and archives for every supported target.
 
-## [0.2.0]
+## [0.2.0] - 2026-10-07
 
 ### Added
 
@@ -114,3 +189,14 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 - macOS Apple Silicon release pipeline with optional Apple signing and notarization.
 - English interface and documentation, Base UI components, and Bun's native XML parser for feeds.
 - MIT license, contribution and security policies, repository templates and Git hooks.
+
+[Unreleased]: https://github.com/Teyik0/tofu/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/Teyik0/tofu/releases/tag/v0.2.7
+[0.2.6]: https://github.com/Teyik0/tofu/releases/tag/v0.2.6
+[0.2.5]: https://github.com/Teyik0/tofu/releases/tag/v0.2.5
+[0.2.4]: https://github.com/Teyik0/tofu/releases/tag/v0.2.4
+[0.2.3]: https://github.com/Teyik0/tofu/releases/tag/v0.2.3
+[0.2.2]: https://github.com/Teyik0/tofu/releases/tag/v0.2.2
+[0.2.1]: https://github.com/Teyik0/tofu/releases/tag/v0.2.1
+[0.2.0]: https://github.com/Teyik0/tofu/releases/tag/v0.2.0
+[0.1.0]: https://github.com/Teyik0/tofu/releases/tag/v0.1.0

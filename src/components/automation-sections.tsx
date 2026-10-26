@@ -1,10 +1,10 @@
 import { useMutation } from "@teyik0/furin/client";
 import { HistoryIcon, RefreshCwIcon } from "lucide-react";
+import type { AutomationDecision } from "../api/modules/automation/model";
 import { useAsyncAction } from "../hooks/use-async-action";
 import { useNow } from "../hooks/use-now";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
-import type { AutomationDecision } from "../types";
 import { QueriedAniListPanel } from "./anilist/panel";
 import { AutomationInbox, isPending, ReleaseLine } from "./automation-inbox";
 import {
@@ -47,7 +47,7 @@ export function AutomationInboxSection({ state, dashboard, setTab }: AutomationP
       <AutomationInbox
         approve={(decision) => decide(decision, "approve")}
         busy={busy}
-        destinations={dashboard.destinations}
+        destinations={dashboard.host?.destinations ?? []}
         ignore={(decision) => decide(decision, "ignore")}
         openRules={() => setTab("rules")}
         state={state}
@@ -81,7 +81,7 @@ export function AutomationAniListSection({
         action={action}
         automations={state.automations}
         busy={busy}
-        destinations={dashboard.destinations}
+        destinations={dashboard.host?.destinations ?? []}
         key={target}
         openPreferences={() => setTab("preferences")}
         plugin={state.plugins.find((plugin) => plugin.id === "anilist")}

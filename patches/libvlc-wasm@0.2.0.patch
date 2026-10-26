@@ -1,3 +1,43 @@
+diff --git a/src/index.js b/src/index.js
+index 79633c892eb413784104ee9f5bb4a6d45b1a17fa..3d48777b7f74f9104e3da1ac1ad6a3b6842de17f 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -318,15 +318,26 @@ export class VLC extends Emitter {
+   async destroy() {
+     for (const t of this._timers) clearInterval(t);
+     this._timers.clear();
+-    await Promise.allSettled([...this._players.values()].map((p) => p.destroy()));
+-    // Stops the engine's timer; bounded, since a wedged worker is terminated anyway.
+-    await Promise.race([this._rpc('dispose').catch(() => {}), new Promise((r) => setTimeout(r, 500))]);
+-    this.worker.terminate();
+-    this._destroyed = true;
+-    // Nothing will answer now: settle whatever is still waiting.
+-    const err = new Error('VLC destroyed');
+-    for (const p of this._pending.values()) p.reject(err);
+-    this._pending.clear();
++    let deadline;
++    try {
++      // A stopped worker cannot answer player.stop() either. Bound the whole
++      // shutdown, including player destruction, before terminating the worker.
++      await Promise.race([
++        (async () => {
++          await Promise.allSettled([...this._players.values()].map((p) => p.destroy()));
++          await Promise.allSettled([this._rpc('dispose')]);
++        })(),
++        new Promise((resolve) => { deadline = setTimeout(resolve, 500); }),
++      ]);
++    } finally {
++      clearTimeout(deadline);
++      this.worker.terminate();
++      this._destroyed = true;
++      // Nothing will answer now: settle whatever is still waiting.
++      const err = new Error('VLC destroyed');
++      for (const p of this._pending.values()) p.reject(err);
++      this._pending.clear();
++    }
+   }
+
+   // --- internals ------------------------------------------------------------
 diff --git a/src/worker.js b/src/worker.js
 index bbbf2285837e51e478cb12d2ddd43de20cc69f8f..774a1a1354ec99fddbe613c63bf662f14ccf46d1 100644
 --- a/src/worker.js

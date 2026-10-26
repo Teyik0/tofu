@@ -1,6 +1,6 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
 import { memo, useId } from "react";
-import type { SpeedSample } from "../types";
+import type { SpeedSample } from "../api/modules/torrents/types";
 import { speed } from "./format";
 export const TrafficChart = memo(function TrafficChartView({
   samples,

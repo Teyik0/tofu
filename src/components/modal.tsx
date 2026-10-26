@@ -1,7 +1,15 @@
 import { Form, type FormStore, getDeepError, useField, useForm } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
+import { useAtomValue } from "jotai";
 import { FolderIcon, LinkIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
+import type {
+  LibraryTorrent,
+  LibraryTorrentDetail,
+  LiveState,
+} from "../api/modules/dashboard/projection";
+import type { OpenedTorrent } from "../api/modules/desktop/opening";
+import type { Destination, DestinationInput } from "../api/modules/destinations/model";
 import {
   addTorrentFormSchema,
   destinationFormSchema,
@@ -16,7 +24,8 @@ import { useAsyncAction } from "../hooks/use-async-action";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
 import { playSoundCue } from "../lib/sound-cues";
-import type { DashboardState, Destination, DestinationInput, FormModalKind } from "../types";
+import { sessionAtom } from "../state/workspace";
+import { BoundedDestination } from "./connections/storage-locations";
 import { DestinationIconPicker } from "./destination-icon";
 import { bytes } from "./format";
 import { TorrentFileInput } from "./torrent-file-input";
@@ -52,8 +61,6 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-
-export type { FormModalKind, ModalKind } from "../types";
 
 function ModalFrame({
   remove,
@@ -130,7 +137,7 @@ export function DeleteDestinationModal({
   done,
 }: {
   activeDestination: string | null;
-  data: DashboardState;
+  data: LiveState;
   destination: Destination;
   cancel: () => void;
   close: () => void;
@@ -190,7 +197,7 @@ type ModalSchema =
 interface ModalProps {
   activeDestination: string | null;
   close: () => void;
-  data: DashboardState;
+  data: LiveState;
   done: (id: string | null, destinationId: string | null) => Promise<void>;
   modal: FormModalKind;
 }
@@ -340,7 +347,7 @@ function DestinationFields({
   nameInvalid,
   pathInvalid,
   busy,
-  mode,
+  hostNative,
   onName,
   onPath,
   onError,
@@ -354,7 +361,8 @@ function DestinationFields({
   nameInvalid: boolean;
   pathInvalid: boolean;
   busy: boolean;
-  mode: DashboardState["session"]["mode"];
+  /** The host's own window can browse folders with its native dialog. */
+  hostNative: boolean;
   onName: (value: string) => void;
   onPath: (value: string) => void;
   onError: (message: string) => void;
@@ -400,7 +408,7 @@ function DestinationFields({
             required
             value={path}
           />
-          {mode === "desktop" ? (
+          {hostNative ? (
             <InputGroupAddon align="inline-end">
               <InputGroupButton disabled={busy} onClick={() => void browse()} type="button">
                 <FolderIcon />
@@ -511,7 +519,7 @@ function AddTorrentModal({ modal, data, close, done }: OperationProps<"add">) {
         id="torrent-destination"
         onChange={destinationField.onChange}
         options={data.destinations}
-        path={data.destinations.find((item) => item.id === destinationId)?.downloadPath}
+        path={data.host?.destinations.find((item) => item.id === destinationId)?.downloadPath}
         value={destinationId}
       />
       <details className="torrent-add-options">
@@ -613,7 +621,7 @@ function OpenTorrentModal({ modal, data, close, done }: OperationProps<"open">) 
         id="opened-torrent-destination"
         onChange={destinationField.onChange}
         options={data.destinations}
-        path={data.destinations.find((item) => item.id === destinationId)?.downloadPath}
+        path={data.host?.destinations.find((item) => item.id === destinationId)?.downloadPath}
         value={destinationId}
       />
       <details className="torrent-add-options">
@@ -644,12 +652,17 @@ function OpenTorrentModal({ modal, data, close, done }: OperationProps<"open">) 
 }
 
 function DropTorrentModal({ modal, data, close, done }: OperationProps<"drop">) {
+  const hostNative = useAtomValue(sessionAtom)?.capabilities.hostNative === true;
   const upload = useMutation(api.torrents.file.post);
   const createDestination = useMutation(api.destinations.post);
   const submission = useModalSubmission(done, close);
   const [files, setFiles] = useState(modal.files);
   const form = useForm({
-    initialInput: { destinationId: "default", name: "", path: data.settings.downloadPath },
+    initialInput: {
+      destinationId: "default",
+      name: "",
+      path: data.host?.settings.downloadPath ?? "",
+    },
     schema: dropTorrentFormSchema,
   });
   const destination = useField(form, { path: ["destinationId"] });
@@ -699,9 +712,14 @@ function DropTorrentModal({ modal, data, close, done }: OperationProps<"drop">) 
         disabled={busy}
         id="drop-destination"
         onChange={destination.onChange}
-        options={[...data.destinations, { id: "new", name: "Create a new tab…" }]}
+        options={
+          data.host
+            ? [...data.destinations, { id: "new", name: "Create a new tab…" }]
+            : data.destinations
+        }
         path={
-          data.destinations.find((item) => item.id === destinationId)?.downloadPath ?? path.input
+          data.host?.destinations.find((item) => item.id === destinationId)?.downloadPath ??
+          (data.host ? path.input : undefined)
         }
         value={destinationId}
       />
@@ -709,7 +727,7 @@ function DropTorrentModal({ modal, data, close, done }: OperationProps<"drop">) 
         <DestinationFields
           busy={busy}
           description={futureFolderDescription}
-          mode={data.session.mode}
+          hostNative={hostNative}
           name={name.input ?? ""}
           nameInvalid={Boolean(name.errors)}
           nameProps={name.props}
@@ -750,7 +768,7 @@ function useDestinationForm({
       destinationIcon: destination?.icon ?? "folder",
       moveFiles: false,
       name: destination?.name ?? "",
-      path: destination?.downloadPath ?? data.settings.downloadPath,
+      path: destination?.downloadPath ?? data.host?.settings.downloadPath ?? "",
       pinned: destination?.pinned ?? false,
     },
     schema: destinationFormSchema,
@@ -815,13 +833,27 @@ function useDestinationForm({
   };
 }
 
-function DestinationModal({
+function DestinationModal(props: Parameters<typeof OwnerDestinationModal>[0]) {
+  const session = useAtomValue(sessionAtom);
+  return session?.capabilities.owner ? (
+    <OwnerDestinationModal {...props} />
+  ) : (
+    <BoundedDestination
+      close={props.close}
+      destination={props.modal.destination}
+      done={props.done}
+    />
+  );
+}
+
+function OwnerDestinationModal({
   activeDestination,
   modal,
   data,
   close,
   done,
 }: OperationProps<"destination">) {
+  const hostNative = useAtomValue(sessionAtom)?.capabilities.hostNative === true;
   const model = useDestinationForm({ close, data, done, modal });
   const {
     submission,
@@ -883,7 +915,7 @@ function DestinationModal({
             ? "Downloads in this tab will use the new folder."
             : futureFolderDescription
         }
-        mode={data.session.mode}
+        hostNative={hostNative}
         name={name.input ?? ""}
         nameInvalid={Boolean(name.errors)}
         nameProps={name.props}
@@ -927,13 +959,17 @@ function trackerLines(text: string) {
     .filter(Boolean);
 }
 
-function TrackersModal({ modal, close, done }: OperationProps<"trackers">) {
+function TrackersModal({ modal, data, close, done }: OperationProps<"trackers">) {
   const update = useMutation((urls: string[]) =>
     api.torrents({ id: modal.torrent.id }).trackers.put({ urls })
   );
   const submission = useModalSubmission(done, close);
   const form = useForm({
-    initialInput: { trackers: modal.torrent.trackers.map((item) => item.url).join("\n") },
+    initialInput: {
+      trackers: (data.detailHost?.id === modal.torrent.id ? data.detailHost.trackers : [])
+        .map((item) => item.url)
+        .join("\n"),
+    },
     schema: trackersFormSchema,
   });
   const field = useField(form, { path: ["trackers"] });
@@ -1075,13 +1111,16 @@ export function Modal(props: ModalProps) {
 }
 
 function LocateTorrentModal({ modal, data, close, done }: OperationProps<"locate">) {
+  const hostNative = useAtomValue(sessionAtom)?.capabilities.hostNative === true;
   const locate = useMutation((downloadPath: string) =>
     api.torrents({ id: modal.torrent.id }).locate.post({ downloadPath })
   );
   const directory = useMutation(api.directory.post);
   const submission = useModalSubmission(done, close);
   const form = useForm({
-    initialInput: { downloadPath: modal.torrent.savePath },
+    initialInput: {
+      downloadPath: data.detailHost?.id === modal.torrent.id ? data.detailHost.savePath : "",
+    },
     schema: locateTorrentSchema,
   });
   const field = useField(form, { path: ["downloadPath"] });
@@ -1123,7 +1162,7 @@ function LocateTorrentModal({ modal, data, close, done }: OperationProps<"locate
             required
             value={field.input ?? ""}
           />
-          {data.session.mode === "desktop" && (
+          {hostNative && (
             <InputGroupAddon align="inline-end">
               <InputGroupButton
                 aria-label="Browse for torrent files"
@@ -1139,7 +1178,7 @@ function LocateTorrentModal({ modal, data, close, done }: OperationProps<"locate
         </InputGroup>
         <FieldDescription>
           Keep the paths declared by the torrent inside this folder, such as{" "}
-          {modal.torrent.files[0]?.path ?? "the original file name"}.
+          {data.detailHost?.files[0]?.path ?? "the original file name"}.
         </FieldDescription>
       </Field>
     </ModalForm>
@@ -1150,11 +1189,11 @@ function DestinationTorrentFileOptions({
   data,
   model,
 }: {
-  data: DashboardState;
+  data: LiveState;
   model: ReturnType<typeof useDestinationForm>;
 }) {
   const { autoAdd, deleteFile, busy } = model;
-  const global = data.settings.deleteTorrentFileAfterAdd ? "delete" : "keep";
+  const global = data.host?.settings.deleteTorrentFileAfterAdd ? "delete" : "keep";
   const items = [
     { label: `Use the global setting (${global})`, value: "inherit" },
     { label: "Always delete", value: "always" },
@@ -1244,3 +1283,13 @@ function DestinationMoveOptions({ model }: { model: ReturnType<typeof useDestina
     </>
   ) : null;
 }
+
+export type FormModalKind =
+  | { type: "add"; destinationId: string }
+  | { type: "drop"; files: File[] }
+  | { type: "open"; torrent: OpenedTorrent }
+  | { type: "destination"; destination: Destination | null }
+  | { type: "remove"; torrent: LibraryTorrent }
+  | { type: "trackers"; torrent: LibraryTorrentDetail }
+  | { type: "locate"; torrent: LibraryTorrentDetail }
+  | { type: "peer"; torrent: LibraryTorrentDetail };

@@ -1,154 +1,78 @@
 import "@teyik0/furin/server-only";
-import { desktopApp } from "@teyik0/furin-electrobun/server";
-import { Elysia, ValidationError } from "elysia";
-import { instance as configuredInstance } from "./lib/database-plugin";
-import { recordLog } from "./lib/diagnostics";
-import { currentInstanceConfig } from "./lib/instance";
-import { onReady, onShutdown } from "./lib/lifecycle";
-import { resources, runtime } from "./lib/runtime";
-import { desktopHooks, desktopRuntime } from "./modules/desktop/service";
 
-const routeModules = [
-  import("./modules/anilist"),
-  import("./modules/anilist/opening"),
-  import("./modules/automation/management"),
-  import("./modules/dashboard"),
-  import("./modules/desktop"),
-  import("./modules/destinations"),
-  import("./modules/discovery"),
-  import("./modules/health"),
-  import("./modules/jev"),
-  import("./modules/player"),
-  import("./modules/plugins"),
-  import("./modules/settings"),
-  import("./modules/torrents"),
-  import("./modules/torrents/plugin"),
-  import("./modules/updates"),
-  import("./lib/database-plugin"),
-  import("./modules/updates/plugin"),
-] as const;
+import { Elysia } from "elysia";
+import { toMiddlewareOptions } from "evlog";
+import { evlog, useLogger } from "evlog/elysia";
+import { config } from "../../evlog.config";
+import { httpPolicyPlugin } from "./lib/http-policy";
+import { instance } from "./lib/instance";
+import { servicesRuntime } from "./lib/services-runtime";
+import { accessRoutesPlugin } from "./modules/access";
+import { publicDocumentsPlugin } from "./modules/access/documents";
+import { accessPlugin } from "./modules/access/plugin";
+import { anilistPlugin } from "./modules/anilist";
+import { anilistOpeningPlugin } from "./modules/anilist/opening";
+import { anilistServicePlugin } from "./modules/anilist/plugin";
+import { automationManagementPlugin } from "./modules/automation/management";
+import { releaseAutomationPlugin } from "./modules/automation/plugin";
+import { dashboardPlugin } from "./modules/dashboard";
+import { desktopPlugin } from "./modules/desktop";
+import { desktopNativeOpenPlugin } from "./modules/desktop/native-open";
+import { destinationsPlugin } from "./modules/destinations";
+import { storageRootsPlugin } from "./modules/destinations/storage";
+import { discoveryPlugin } from "./modules/discovery";
+import { discoveryServicePlugin } from "./modules/discovery/plugin";
+import { healthPlugin } from "./modules/health";
+import { libraryAvailabilityPlugin, linkedLibrariesPlugin } from "./modules/library-links";
+import { mediaLinksApiPlugin, mediaLinksPlugin } from "./modules/media-links";
+import { playbackPlugin } from "./modules/playback";
+import { playerPlugin } from "./modules/player";
+import { pluginsPlugin } from "./modules/plugins";
+import { pluginRegistryPlugin } from "./modules/plugins/plugin";
+import { settingsPlugin } from "./modules/settings";
+import { torrentPlugin } from "./modules/torrents";
+import { torrentServicePlugin } from "./modules/torrents/plugin";
+import { updatesPlugin } from "./modules/updates";
 
-const [
-  { anilistPlugin },
-  { anilistOpeningPlugin },
-  { automationManagementPlugin },
-  { dashboardPlugin },
-  { desktopPlugin },
-  { destinationsPlugin },
-  { discoveryPlugin },
-  { healthPlugin },
-  { jevManagementPlugin },
-  { playerPlugin },
-  { pluginsPlugin },
-  { settingsPlugin },
-  { torrentPlugin },
-  { engine, torrentServicePlugin },
-  { updatesPlugin },
-  { instance },
-  { updates },
-] = await Promise.all(routeModules).catch(async (error: unknown) => {
-  recordLog({
-    component: "application",
-    dataDir: configuredInstance.dataDir,
-    error,
-    level: "error",
-    operation: "startup",
-  });
-  await Promise.allSettled(routeModules);
-  try {
-    await resources.disposeAsync();
-  } catch (cleanupError) {
-    // biome-ignore lint/style/useErrorCause: The cause is an AggregateError containing both failures.
-    throw new Error("Application startup and cleanup failed", {
-      cause: new AggregateError([error, cleanupError], "Startup and cleanup errors"),
-    });
-  }
-  throw error;
-});
-
-export const apiPlugin = new Elysia({
-  name: "tofu-api",
-  serve: { idleTimeout: 120, maxRequestBodySize: 9 * 1024 * 1024 },
-})
-  .use(
-    desktopApp({
-      ...desktopHooks,
-      onReady,
-      onShutdown,
-      onStartup(context) {
-        context.signal.throwIfAborted();
-        if (context.runtime.kind === "desktop") {
-          const configured = currentInstanceConfig(context.runtime);
-          if (configured.dataDir !== instance.dataDir || configured.profile !== instance.profile) {
-            throw new Error(
-              "The native host and Tofu must use the same instance profile and data directory"
-            );
-          }
-        }
-        runtime.current = context.runtime;
-        desktopRuntime.engine = engine;
-        if (context.runtime.kind === "desktop" && instance.profile === "release") {
-          const { desktop } = context.runtime;
-          updates.attachNative(desktop.updates, (latest) => {
-            desktop.notifications.show({
-              body: `Open ${instance.name} to update to the new version.`,
-              title: `${instance.name} : Tofu ${latest} is available`,
-            });
-          });
-        }
-        context.signal.throwIfAborted();
-      },
-      restrictWebToLoopback: true,
-    })
-  )
-  .request(({ request, set }) => {
-    const { pathname } = new URL(request.url);
-    // VLC runs in threads that share memory, which requires a cross-origin isolated player page.
-    if (pathname.startsWith("/player/") || pathname.startsWith("/api/player/")) {
-      set.headers["cross-origin-embedder-policy"] = "require-corp";
-      set.headers["cross-origin-opener-policy"] = "same-origin";
-      set.headers["cross-origin-resource-policy"] = "same-origin";
-    }
-  })
-  .error("global", ({ request, error }) => {
-    recordLog({
-      component: "api",
-      context: { method: request.method, path: new URL(request.url).pathname },
-      dataDir: instance.dataDir,
-      error: error instanceof ValidationError ? new Error("Request validation failed") : error,
-      level: "error",
-      operation: "request",
-    });
-  })
-  .afterResponse("global", ({ request, path, set }) => {
-    if (
-      path.startsWith("/api/") &&
-      (!["GET", "HEAD", "OPTIONS"].includes(request.method) ||
-        (typeof set.status === "number" && set.status >= 400))
-    ) {
-      recordLog({
-        component: "api",
-        context: { method: request.method, path, status: set.status ?? 200 },
-        dataDir: instance.dataDir,
-        level: typeof set.status === "number" && set.status >= 400 ? "warn" : "info",
-        operation: "response",
-      });
-    }
-  })
+export const apiPlugin = new Elysia({ name: "tofu-api" })
+  .use(evlog(toMiddlewareOptions(config)))
+  .use(anilistServicePlugin)
+  .use(releaseAutomationPlugin)
+  .use(discoveryServicePlugin)
+  .use(pluginRegistryPlugin)
+  .use(torrentServicePlugin)
+  .use(desktopNativeOpenPlugin)
+  .use(accessPlugin)
+  .use(publicDocumentsPlugin)
+  .use(mediaLinksPlugin)
+  .use(httpPolicyPlugin)
   .group("/api", (app) =>
     app
-      .use(torrentServicePlugin)
+      .derive(() => ({ log: useLogger() }))
+      .onBeforeHandle(({ log }) => {
+        log.set({
+          component: "api",
+          dataDir: instance.dataDir,
+          operation: "request",
+        });
+      })
+      .onStop(() => servicesRuntime.dispose())
+      .use(accessRoutesPlugin)
+      .use(mediaLinksApiPlugin)
+      .use(libraryAvailabilityPlugin)
+      .use(linkedLibrariesPlugin)
+      .use(playbackPlugin)
       .use(healthPlugin)
       .use(settingsPlugin)
       .use(dashboardPlugin)
       .use(torrentPlugin)
       .use(destinationsPlugin)
+      .use(storageRootsPlugin)
       .use(anilistPlugin)
       .use(anilistOpeningPlugin)
       .use(automationManagementPlugin)
       .use(discoveryPlugin)
       .use(pluginsPlugin)
-      .use(jevManagementPlugin)
       .use(playerPlugin)
       .use(desktopPlugin)
       .use(updatesPlugin)

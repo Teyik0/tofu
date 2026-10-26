@@ -1,6 +1,16 @@
-import { HTTPError, problem } from "elysia";
+import { Effect, Result, Schema } from "effect";
+import { ElysiaStatus, problem } from "elysia";
+
+const decodeCallbackState = Schema.decodeUnknownResult(Schema.Struct({ state: Schema.String }));
+const decodeDeclined = Schema.decodeUnknownResult(Schema.Struct({ error: Schema.NonEmptyString }));
+const decodeCallbackToken = Schema.decodeUnknownResult(
+  Schema.Struct({
+    access_token: Schema.NonEmptyString.check(Schema.isMaxLength(4096)),
+  })
+);
 
 interface AuthorizationAttempt {
+  deviceId?: string;
   processing: boolean;
   redirect: URL;
   state: string;
@@ -35,19 +45,24 @@ function callbackPage() {
   };
   history.replaceState(null, "", location.pathname);
   const status = document.getElementById("status");
-  try {
-    if (!payload.state || !(payload.access_token || payload.error)) {
-      throw new Error("Invalid or expired connection. Restart the connection from Tofu.");
-    }
-    const response = await fetch(location.pathname, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail ?? result.title ?? "Unable to connect AniList");
-    status.textContent = "AniList connected successfully. You can close this tab and return to Tofu.";
-  } catch (error) {
-    status.textContent = error instanceof Error ? error.message : "Unable to connect AniList. Return to Tofu and try again.";
+  if (!payload.state || !(payload.access_token || payload.error)) {
+    status.textContent = "Invalid or expired connection. Restart the connection from Tofu.";
+    return;
   }
+  const [request] = await Promise.allSettled([fetch(location.pathname, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
+  })]);
+  if (request.status === "rejected") {
+    status.textContent = "Unable to connect AniList. Return to Tofu and try again.";
+    return;
+  }
+  const response = request.value;
+  const [decoded] = await Promise.allSettled([response.json()]);
+  status.textContent = decoded.status === "rejected"
+    ? "Unable to connect AniList. Return to Tofu and try again."
+    : response.ok
+      ? "AniList connected successfully. You can close this tab and return to Tofu."
+      : decoded.value?.detail ?? decoded.value?.title ?? "Unable to connect AniList";
 })();
 </script></body></html>`,
     {
@@ -67,10 +82,11 @@ export class AniListAuthorization {
   private server: ReturnType<typeof Bun.serve> | null = null;
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private attempt: AuthorizationAttempt | null = null;
-  private readonly complete: (token: string, current: () => boolean) => Promise<void>;
+  /** Stores the token and loads the account; a returned problem means the connection failed. */
+  private readonly complete: (token: string, current: () => boolean) => Promise<unknown>;
   error: string | null = null;
 
-  constructor(complete: (token: string, current: () => boolean) => Promise<void>) {
+  constructor(complete: (token: string, current: () => boolean) => Promise<unknown>) {
     this.complete = complete;
   }
 
@@ -78,27 +94,34 @@ export class AniListAuthorization {
     return this.attempt !== null;
   }
 
-  connect(clientId: string, redirectUri: string) {
+  connect(clientId: string, redirectUri: string, deviceId?: string) {
     this.close();
     this.error = null;
     const redirect = new URL(redirectUri);
-    const attempt = { processing: false, redirect, state: crypto.randomUUID() };
+    const attempt = { deviceId, processing: false, redirect, state: crypto.randomUUID() };
     this.attempt = attempt;
-    try {
-      if (redirect.protocol === "http:") {
-        this.server = Bun.serve({
-          fetch: (request) => this.callback(request, redirect, attempt),
-          hostname: "127.0.0.1",
-          maxRequestBodySize: 16_384,
-          port: Number(redirect.port),
+    if (redirect.protocol === "http:") {
+      const server = Effect.runSync(
+        Effect.result(
+          Effect.try({
+            catch: (cause) => cause,
+            try: () =>
+              Bun.serve({
+                fetch: (request) => this.callback(request, redirect, attempt),
+                hostname: "127.0.0.1",
+                maxRequestBodySize: 16_384,
+                port: Number(redirect.port),
+              }),
+          })
+        )
+      );
+      if (Result.isFailure(server)) {
+        this.attempt = null;
+        return problem(409, {
+          detail: `AniList connection needs local port ${redirect.port}. Close the app using that port and try again.`,
         });
       }
-    } catch (cause) {
-      this.attempt = null;
-      throw new (HTTPError.id("CONFLICT", 409))(
-        `AniList connection needs local port ${redirect.port}. Close the app using that port and try again.`,
-        { cause }
-      );
+      this.server = server.success;
     }
     this.timeout = setTimeout(() => {
       if (this.pending) {
@@ -115,11 +138,12 @@ export class AniListAuthorization {
     return { url: url.href };
   }
 
-  async receiveUrl(input: string) {
+  async receiveUrl(input: string, deviceId?: string) {
     const { attempt } = this;
     const url = URL.parse(input);
     if (
       !(url && attempt && ["tofu:", "tofu-dev:"].includes(url.protocol)) ||
+      attempt.deviceId !== deviceId ||
       url.protocol !== attempt.redirect.protocol ||
       url.hostname !== "oauth" ||
       url.pathname !== "/anilist" ||
@@ -128,9 +152,9 @@ export class AniListAuthorization {
       url.port ||
       url.search
     ) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))(
-        "Invalid or expired OAuth callback. Restart the connection from Tofu."
-      );
+      return problem(400, {
+        detail: "Invalid or expired OAuth callback. Restart the connection from Tofu.",
+      });
     }
     const fragment = new URLSearchParams(url.hash.slice(1));
     const response = await this.accept(
@@ -143,7 +167,9 @@ export class AniListAuthorization {
     );
     if (!response.ok) {
       const result = (await response.json()) as { detail: string };
-      throw new (HTTPError.id("ANILIST_AUTHORIZATION_ERROR", response.status))(result.detail);
+      return response.status === 400
+        ? problem(400, { detail: result.detail })
+        : problem(502, { detail: result.detail });
     }
   }
 
@@ -164,17 +190,26 @@ export class AniListAuthorization {
     ) {
       return callbackProblem("Invalid callback origin", 403);
     }
-    const body: unknown = await request.json().catch(() => null);
-    return this.accept(body, attempt);
+    const body = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => request.json(),
+        })
+      )
+    );
+    if (Result.isFailure(body)) {
+      return callbackProblem("Invalid OAuth callback body", 400);
+    }
+    return this.accept(body.success, attempt);
   }
 
   private async accept(body: unknown, attempt: AuthorizationAttempt) {
     const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+    const state = decodeCallbackState(body);
     if (
-      !body ||
-      typeof body !== "object" ||
-      !("state" in body) ||
-      body.state !== attempt.state ||
+      Result.isFailure(state) ||
+      state.success.state !== attempt.state ||
       this.attempt !== attempt ||
       attempt.processing
     ) {
@@ -183,24 +218,17 @@ export class AniListAuthorization {
         400
       );
     }
-    if ("error" in body && body.error) {
+    if (Result.isSuccess(decodeDeclined(body))) {
       this.attempt = null;
       this.error = "AniList authorization was declined. Connect again when you are ready.";
       return callbackProblem(this.error, 400);
     }
-    if (
-      !("access_token" in body) ||
-      typeof body.access_token !== "string" ||
-      !body.access_token ||
-      body.access_token.length > 4096
-    ) {
+    const token = decodeCallbackToken(body);
+    if (Result.isFailure(token)) {
       return callbackProblem("Missing AniList access token", 400);
     }
     attempt.processing = true;
-    try {
-      await this.complete(body.access_token, () => this.attempt === attempt);
-      return Response.json({ connected: true }, { headers });
-    } catch {
+    const failed = () => {
       if (this.attempt === attempt) {
         this.error =
           "Unable to connect or load your AniList account. Return to Tofu and try again.";
@@ -209,11 +237,25 @@ export class AniListAuthorization {
         "Unable to connect or load your AniList account. Return to Tofu and try again.",
         502
       );
-    } finally {
+    };
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => {
       if (this.attempt === attempt) {
         this.attempt = null;
       }
+    });
+    const completed = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
+          catch: (cause) => cause,
+          try: () => this.complete(token.success.access_token, () => this.attempt === attempt),
+        })
+      )
+    );
+    if (Result.isFailure(completed) || completed.success instanceof ElysiaStatus) {
+      return failed();
     }
+    return Response.json({ connected: true }, { headers });
   }
 
   close() {

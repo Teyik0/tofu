@@ -1,26 +1,15 @@
+import { Context } from "effect";
 import { Elysia } from "elysia";
-import { recordLog } from "../../lib/diagnostics";
-import { resources } from "../../lib/runtime";
-import { discovery, discoveryServicePlugin } from "../discovery/plugin";
-import { plugins } from "../plugins/plugin";
-import { engine } from "../torrents/plugin";
-import { automation, automationPlugin } from ".";
-import { ReleaseAutomationService } from "./integration";
+import { services } from "../../lib/services-runtime";
+import { discoveryServicePlugin } from "../discovery/plugin";
+import { pluginRegistryPlugin } from "../plugins/plugin";
+import { torrentServicePlugin } from "../torrents/plugin";
+import { automationPlugin } from ".";
+import { ReleaseAutomation } from "./integration";
 
-export const releaseAutomation = new ReleaseAutomationService({
-  automation,
-  discovery,
-  engine,
-  now: Date.now,
-  plugins,
-});
 export const releaseAutomationPlugin = new Elysia({ name: "tofu-release-automation-integration" })
   .use(automationPlugin)
   .use(discoveryServicePlugin)
-  .decorate("releaseAutomation", releaseAutomation);
-resources.defer(releaseAutomation.close.bind(releaseAutomation));
-releaseAutomationPlugin.setup(() => {
-  void releaseAutomation.start().catch((error: unknown) => {
-    recordLog({ component: "automation", error, level: "error", operation: "start" });
-  });
-});
+  .use(pluginRegistryPlugin)
+  .use(torrentServicePlugin)
+  .decorate("releaseAutomation", Context.get(services, ReleaseAutomation));

@@ -1,9 +1,10 @@
 import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
+import type { LiveState } from "../api/modules/dashboard/projection";
 import { showDestination, showTorrent } from "../lib/navigation";
 import { modalAtom } from "../state/workspace";
-import type { DashboardState, FormModalKind } from "../types";
 import { AutomationCenter } from "./automation-center";
+import type { FormModalKind } from "./modal";
 import { DeleteDestinationModal, Modal } from "./modal";
 
 function operationKey(modal: FormModalKind) {
@@ -23,7 +24,7 @@ export function WorkspaceDialogs({
   dashboard,
   activeDestination,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   activeDestination: string | null;
 }) {
   const router = useRouter();
@@ -31,11 +32,11 @@ export function WorkspaceDialogs({
   const close = () => open(null);
   const done = async (id: string | null, destinationId: string | null) => {
     if (id) {
-      await showTorrent(router, destinationId ?? activeDestination, id);
+      await showTorrent(router, dashboard.server.id, destinationId ?? activeDestination, id);
     } else if (modal?.type === "remove" && modal.torrent.id === router.search.torrent) {
-      await showTorrent(router, activeDestination, undefined);
+      await showTorrent(router, dashboard.server.id, activeDestination, undefined);
     } else {
-      await showDestination(router, destinationId, activeDestination);
+      await showDestination(router, dashboard.server.id, destinationId, activeDestination);
     }
   };
 

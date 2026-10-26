@@ -1,15 +1,12 @@
 import { getDeepError, useField, useForm } from "@formisch/react";
 import { useMutation } from "@teyik0/furin/client";
 import { useState } from "react";
+import type { AniListThreadProposal } from "../../api/modules/anilist/model";
 import { trackingFormSchema } from "../../api/modules/anilist/model";
+import type { AniListStatus } from "../../api/modules/anilist/types";
+import type { AutomationDraft, AutomationPreferences } from "../../api/modules/automation/model";
 import { useNow } from "../../hooks/use-now";
 import { api } from "../../lib/client";
-import type {
-  AniListStatus,
-  AniListThreadProposal,
-  AutomationDraft,
-  AutomationPreferences,
-} from "../../types";
 import type { AniListPanelProps } from "./panel";
 import { aniListStatusLabel } from "./status";
 

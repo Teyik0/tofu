@@ -1,34 +1,32 @@
 import { eq } from "drizzle-orm";
-import { HTTPError } from "elysia";
+import { Context, Effect, Layer, Result } from "effect";
+import { ElysiaStatus, problem } from "elysia";
 import { automationDecisions, automationPreferences, automationRules } from "../../../db/schema";
+import { Database, type DatabaseConnection, type DatabaseTransaction } from "../../lib/db";
+import { refreshRecords } from "../../lib/persisted-cache";
+import type { FeedRelease } from "../discovery/model";
+import type { SourcePluginId } from "../plugins/model";
+import { publicRelease } from "../plugins/releases";
 import type {
   AutomationDecision,
   AutomationDraft,
   AutomationPreferences,
   AutomationRule,
-  FeedRelease,
-  SourcePluginId,
-} from "../../../types";
-import type { DatabaseConnection, DatabaseTransaction, TofuDatabase } from "../../lib/db";
-import { refreshRecords } from "../../lib/persisted-cache";
+} from "./model";
 import {
-  interpretationQuestions,
-  type JevService,
-  matchQuestions,
-  safeReleaseState,
-} from "../jev/service";
-import { publicRelease } from "../plugins/releases";
+  decodeAutomationDecision,
+  decodeAutomationPreferences,
+  decodeAutomationRule,
+} from "./persistence";
 import {
   compareQuality,
   compareReleases,
   defaultAutomationPreferences,
-  interpretLocally,
   localMatch,
   preferred,
 } from "./rules";
 
 export interface AutomationOptions {
-  jev: JevService;
   now: () => number;
 }
 
@@ -53,41 +51,20 @@ export interface IngestionInput {
 }
 
 // The core persists decisions; integrations own discovery, scheduling and execution.
-export class AutomationService {
-  readonly db: TofuDatabase;
-  private readonly rules = new Map<string, AutomationRule>();
-  private readonly decisions = new Map<string, AutomationDecision>();
-  private preferences: AutomationPreferences = defaultAutomationPreferences;
-  private readonly options: AutomationOptions;
-  constructor(db: TofuDatabase, options: AutomationOptions) {
-    this.options = options;
-    this.db = db;
-    const storedPreferences = this.db
-      .select()
-      .from(automationPreferences)
-      .where(eq(automationPreferences.id, "automation"))
-      .get();
-    if (storedPreferences) {
-      this.preferences = {
-        ...defaultAutomationPreferences,
-        ...(JSON.parse(storedPreferences.value) as Partial<AutomationPreferences>),
-      };
-    }
-    for (const row of this.db.select().from(automationRules).all()) {
-      const rule = { revision: 0, ...JSON.parse(row.value) } as AutomationRule;
-      this.rules.set(rule.id, rule);
-    }
-    for (const row of this.db.select().from(automationDecisions).all()) {
-      const decision = JSON.parse(row.value) as AutomationDecision;
-      this.decisions.set(decision.id, decision);
-    }
-  }
+const make = Effect.gen(function* () {
+  const db = yield* Database;
+  const options: AutomationOptions = { now: Date.now };
+  const serviceDb = db;
+  const serviceOptions = options;
 
-  snapshot() {
+  const serviceRules = new Map<string, AutomationRule>();
+  const serviceDecisions = new Map<string, AutomationDecision>();
+  let servicePreferences: AutomationPreferences = defaultAutomationPreferences;
+  function serviceSnapshot() {
     let historyCount = 0;
     return structuredClone({
-      automations: [...this.rules.values()],
-      decisions: [...this.decisions.values()]
+      automations: [...serviceRules.values()],
+      decisions: [...serviceDecisions.values()]
         .sort((a, b) => b.createdAt - a.createdAt)
         .filter((decision) => {
           if (decision.status !== "added" && decision.status !== "ignored") {
@@ -103,157 +80,120 @@ export class AutomationService {
             ? { ...decision.supersedes, release: publicRelease(decision.supersedes.release) }
             : null,
         })),
-      preferences: this.preferences,
-      updatedAt: this.options.now(),
+      preferences: servicePreferences,
+      updatedAt: serviceOptions.now(),
     });
   }
-  decisionRecords() {
-    return structuredClone([...this.decisions.values()]);
+  function serviceDecisionRecords() {
+    return structuredClone([...serviceDecisions.values()]);
   }
-  ruleSnapshot(id: string) {
-    const rule = this.rules.get(id);
+  function serviceRuleSnapshot(id: string) {
+    const rule = serviceRules.get(id);
     if (!rule) {
       return;
     }
     return structuredClone(rule);
   }
-  writePreferences(db: DatabaseConnection, preferences: AutomationPreferences) {
+  function serviceWritePreferences(
+    currentDb: DatabaseConnection,
+    preferences: AutomationPreferences
+  ) {
     const value = JSON.stringify(preferences);
-    db.insert(automationPreferences)
+    currentDb
+      .insert(automationPreferences)
       .values({ id: "automation", value })
       .onConflictDoUpdate({ set: { value }, target: automationPreferences.id })
       .run();
     return preferences;
   }
-  refreshState() {
-    const preferences = this.db
+  function serviceRefreshState() {
+    const preferences = serviceDb
       .select()
       .from(automationPreferences)
       .where(eq(automationPreferences.id, "automation"))
       .get();
-    this.preferences = preferences
+    servicePreferences = preferences
       ? {
           ...defaultAutomationPreferences,
-          ...(JSON.parse(preferences.value) as Partial<AutomationPreferences>),
+          ...decodeAutomationPreferences(preferences.value),
         }
       : defaultAutomationPreferences;
-    refreshRecords(this.rules, this.db.select().from(automationRules).all());
-    for (const rule of this.rules.values()) {
-      rule.revision ??= 0;
-    }
-    refreshRecords(this.decisions, this.db.select().from(automationDecisions).all());
-  }
-  async interpret(query: string, destinationId: string): Promise<AutomationDraft> {
-    const draft = interpretLocally(query, destinationId, this.preferences);
-    const interpretation = interpretationQuestions(draft);
-    const result = await this.options.jev.evaluate({ query }, interpretation.questions);
-    if (!result) {
-      return draft;
-    }
-    const read = <T>(id: string, values: T[], fallback: T) => {
-      const answer = result.answers[id];
-      return answer?.confidence !== undefined && answer.confidence >= 0.8
-        ? (values[Number(answer.choice)] ?? fallback)
-        : fallback;
-    };
-    const languages = read("languages", interpretation.languages, draft.languages);
-    const resolutions = read("resolutions", interpretation.resolutions, draft.resolutions);
-    return {
-      ...draft,
-      // An omitted format inherits preferences; only an explicit unrestricted request clears it.
-      languages: languages.length ? languages : draft.languages,
-      matchMode: "jev" as const,
-      priority: read("priority", interpretation.priorities, draft.priority),
-      resolutions: resolutions.length ? resolutions : draft.resolutions,
-      sources: read("sources", interpretation.orders, draft.sources),
-      title: read("title", interpretation.titles, draft.title),
-    };
-  }
-
-  async evaluate(draft: AutomationDraft, release: FeedRelease) {
-    const reason = localMatch(draft, release);
-    if (reason) {
-      return { probability: null, reason, uncertain: false };
-    }
-    if (draft.matchMode !== "jev") {
-      return { probability: null, reason: null, uncertain: false };
-    }
-    const answer = await this.options.jev.evaluate(
-      { query: draft.query, release: safeReleaseState(release) },
-      matchQuestions()
+    refreshRecords(
+      serviceRules,
+      serviceDb.select().from(automationRules).all(),
+      decodeAutomationRule
     );
-    if (!answer) {
-      const fallback = localMatch({ ...draft, matchMode: "exact" }, release);
-      return { probability: null, reason: fallback, uncertain: false };
-    }
-    const probability = Math.min(
-      answer?.answers.identity?.noul ?? 0.5,
-      answer?.answers.requirements?.noul ?? 0.5
+    refreshRecords(
+      serviceDecisions,
+      serviceDb.select().from(automationDecisions).all(),
+      decodeAutomationDecision
     );
-    return {
-      probability,
-      reason: probability < 0.75 ? "Jev match confidence below 75%" : null,
-      uncertain: probability < 0.95,
-    };
   }
-
-  private persistRule(rule: AutomationRule, connection?: DatabaseConnection) {
-    const db = connection ?? this.db;
+  const serviceEvaluate = Effect.fn("Automation.evaluate")(function* (
+    draft: AutomationDraft,
+    release: FeedRelease
+  ) {
+    const reason = yield* Effect.sync(() => localMatch(draft, release));
+    return { probability: null, reason, uncertain: false };
+  });
+  function servicePersistRule(rule: AutomationRule, connection?: DatabaseConnection) {
+    const currentDb = connection ?? serviceDb;
     const value = JSON.stringify(rule);
-    db.insert(automationRules)
+    currentDb
+      .insert(automationRules)
       .values({ id: rule.id, value })
       .onConflictDoUpdate({ set: { value }, target: automationRules.id })
       .run();
     if (!connection) {
-      this.rules.set(rule.id, rule);
+      serviceRules.set(rule.id, rule);
     }
   }
-  enableRule(id: string, enabled: boolean, connection?: DatabaseConnection) {
-    const rule = this.rules.get(id);
+  function serviceEnableRule(id: string, enabled: boolean, connection?: DatabaseConnection) {
+    const rule = serviceRules.get(id);
     if (rule) {
-      this.persistRule(
-        { ...rule, enabled, nextRunAt: this.options.now(), revision: rule.revision + 1 },
+      servicePersistRule(
+        { ...rule, enabled, nextRunAt: serviceOptions.now(), revision: rule.revision + 1 },
         connection
       );
     }
   }
-  reassignDestination(tx: DatabaseConnection, id: string) {
-    for (const rule of this.rules.values()) {
+  function serviceReassignDestination(tx: DatabaseConnection, id: string) {
+    for (const rule of serviceRules.values()) {
       if (rule.destinationId === id) {
-        this.persistRule({ ...rule, destinationId: "default", revision: rule.revision + 1 }, tx);
+        servicePersistRule({ ...rule, destinationId: "default", revision: rule.revision + 1 }, tx);
       }
     }
   }
-  private persistDecision(decision: AutomationDecision, connection?: DatabaseConnection) {
+  function servicePersistDecision(decision: AutomationDecision, connection?: DatabaseConnection) {
     const value = JSON.stringify(decision);
-    const db = connection ?? this.db;
-    db.insert(automationDecisions)
+    const currentDb = connection ?? serviceDb;
+    currentDb
+      .insert(automationDecisions)
       .values({ id: decision.id, value })
       .onConflictDoUpdate({ set: { value }, target: automationDecisions.id })
       .run();
     if (!connection) {
-      this.decisions.set(decision.id, decision);
+      serviceDecisions.set(decision.id, decision);
     }
   }
-  private rule(id: string) {
-    const rule = this.rules.get(id);
-    if (!rule) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown automation");
-    }
-    return rule;
-  }
-
-  async prepareRule(
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const servicePrepareRule = Effect.fn("Automation.prepareRule")(function* (
     id: string | null,
     draft: AutomationDraft,
     baselineCandidates: AutomationCandidateInput[] = [],
     ownership?: RuleOwnership
   ) {
-    this.validateDraft(draft);
-    let previous = id ? this.rule(id) : null;
+    const invalid = serviceValidateDraft(draft);
+    if (invalid) {
+      return invalid;
+    }
+    let previous = id ? (serviceRules.get(id) ?? null) : null;
+    if (id && !previous) {
+      return problem(404, { detail: "Unknown automation" });
+    }
     if (!previous && ownership) {
       previous =
-        [...this.rules.values()].find(
+        [...serviceRules.values()].find(
           (item) => item.ownerId === ownership.ownerId && item.key === ownership.key
         ) ?? null;
     }
@@ -263,11 +203,11 @@ export class AutomationService {
       ownership &&
       (previous.ownerId !== ownership.ownerId || (previous.key && previous.key !== ownership.key))
     ) {
-      throw new (HTTPError.id("CONFLICT", 409))("This rule belongs to another integration");
+      return problem(409, { detail: "This rule belongs to another integration" });
     }
     const rule: AutomationRule = {
       ...draft,
-      createdAt: previous?.createdAt ?? this.options.now(),
+      createdAt: previous?.createdAt ?? serviceOptions.now(),
       deleteReplacedFiles: draft.deleteReplacedFiles === true,
       error: null,
       executorId:
@@ -275,40 +215,51 @@ export class AutomationService {
       id: previous?.id ?? crypto.randomUUID(),
       key: ownership?.key ?? previous?.key,
       lastRunAt: previous?.lastRunAt ?? null,
-      nextRunAt: this.options.now(),
+      nextRunAt: serviceOptions.now(),
       ownerId: ownership?.ownerId ?? previous?.ownerId ?? "tofu.manual",
       revision: (previous?.revision ?? 0) + 1,
       status: "active",
     };
     const baseline =
-      previous || draft.includeExisting ? [] : await this.prepareBaseline(rule, baselineCandidates);
+      previous || draft.includeExisting
+        ? []
+        : yield* servicePrepareBaseline(rule, baselineCandidates);
+    if (baseline instanceof ElysiaStatus) {
+      return baseline;
+    }
     return { baseline, expectedRevision: previous?.revision ?? null, rule };
-  }
-  private validateDraft(draft: AutomationDraft) {
+  });
+  function serviceValidateDraft(draft: AutomationDraft) {
     if (draft.matchMode === "pattern") {
       if (draft.title.length > 256) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("Pattern too long");
+        return problem(400, { detail: "Pattern too long" });
       }
-      try {
-        new RegExp(draft.title, "iu").test("");
-      } catch (cause) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("Invalid pattern", { cause });
+      const pattern = Result.try(() => new RegExp(draft.title, "iu"));
+      if (Result.isFailure(pattern)) {
+        return problem(400, { detail: "Invalid pattern" });
       }
     }
     if (!(draft.title.trim() && draft.sources.length)) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Enter a title and at least one source");
+      return problem(400, { detail: "Enter a title and at least one source" });
     }
+    return null;
   }
-  private async prepareBaseline(rule: AutomationRule, candidates: AutomationCandidateInput[]) {
+  const servicePrepareBaseline = Effect.fn("Automation.prepareBaseline")(function* (
+    rule: AutomationRule,
+    candidates: AutomationCandidateInput[]
+  ) {
     const baseline: AutomationDecision[] = [];
     for (const { release, contentKey } of candidates) {
-      // biome-ignore lint/performance/noAwaitInLoops: evaluate each baseline before opening the write transaction.
-      const evaluation = await this.evaluate(rule, release);
+      // evaluate each baseline before opening the write transaction.
+      const evaluation = yield* serviceEvaluate(rule, release);
+      if (evaluation instanceof ElysiaStatus) {
+        return evaluation;
+      }
       if (!(evaluation.reason || evaluation.uncertain)) {
         baseline.push({
           automationId: rule.id,
           contentKey,
-          createdAt: this.options.now(),
+          createdAt: serviceOptions.now(),
           deadline: null,
           id: `${rule.id}:${contentKey}`,
           probability: null,
@@ -320,21 +271,16 @@ export class AutomationService {
       }
     }
     return baseline;
-  }
-  writeRule(
-    tx: DatabaseTransaction,
-    prepared: Awaited<ReturnType<AutomationService["prepareRule"]>>
-  ) {
+  });
+  function serviceWriteRule(tx: DatabaseTransaction, prepared: PreparedRule) {
     const stored = tx
       .select()
       .from(automationRules)
       .where(eq(automationRules.id, prepared.rule.id))
       .get();
-    const revision = stored
-      ? ((JSON.parse(stored.value) as Partial<AutomationRule>).revision ?? 0)
-      : null;
+    const revision = stored ? decodeAutomationRule(stored.value).revision : null;
     if (revision !== prepared.expectedRevision) {
-      throw new (HTTPError.id("CONFLICT", 409))("Automation changed; reload the rule");
+      return problem(409, { detail: "Automation changed; reload the rule" });
     }
     if (prepared.rule.ownerId && prepared.rule.key) {
       const conflict = tx
@@ -342,7 +288,7 @@ export class AutomationService {
         .from(automationRules)
         .all()
         .some((row) => {
-          const rule = JSON.parse(row.value) as AutomationRule;
+          const rule = decodeAutomationRule(row.value);
           return (
             rule.id !== prepared.rule.id &&
             rule.ownerId === prepared.rule.ownerId &&
@@ -350,60 +296,68 @@ export class AutomationService {
           );
         });
       if (conflict) {
-        throw new (HTTPError.id("CONFLICT", 409))(
-          "This integration already owns a rule with that key"
-        );
+        return problem(409, { detail: "This integration already owns a rule with that key" });
       }
     }
     for (const decision of prepared.baseline) {
-      this.persistDecision(decision, tx);
+      servicePersistDecision(decision, tx);
     }
-    this.persistRule(prepared.rule, tx);
+    servicePersistRule(prepared.rule, tx);
     return prepared.rule;
   }
-  deleteRule(tx: DatabaseConnection, id: string) {
-    this.rule(id);
+  function serviceDeleteRule(tx: DatabaseConnection, id: string) {
+    if (!serviceRules.has(id)) {
+      return problem(404, { detail: "Unknown automation" });
+    }
     for (const row of tx.select().from(automationDecisions).all()) {
-      const decision = JSON.parse(row.value) as AutomationDecision;
+      const decision = decodeAutomationDecision(row.value);
       if (
         decision.automationId === id &&
         decision.status !== "added" &&
         decision.status !== "ignored"
       ) {
-        this.persistDecision({ ...decision, reason: "Automation deleted", status: "ignored" }, tx);
+        servicePersistDecision(
+          { ...decision, reason: "Automation deleted", status: "ignored" },
+          tx
+        );
       }
     }
     tx.delete(automationRules).where(eq(automationRules.id, id)).run();
     return { ok: true };
   }
-
-  async prepareIngestion(input: IngestionInput) {
-    const rule = this.rule(input.ruleId);
-    if (!rule.enabled || rule.revision !== input.revision) {
-      throw new (HTTPError.id("CONFLICT", 409))("Automation changed; discard collected releases");
+  const servicePrepareIngestion = Effect.fn("Automation.prepareIngestion")(function* (
+    input: IngestionInput
+  ) {
+    const rule = serviceRules.get(input.ruleId);
+    if (!rule) {
+      return problem(404, { detail: "Unknown automation" });
     }
-    const { groups, evaluations } = await this.candidateGroups(rule, input);
+    if (!rule.enabled || rule.revision !== input.revision) {
+      return problem(409, { detail: "Automation changed; discard collected releases" });
+    }
+    const candidates = yield* serviceCandidateGroups(rule, input);
+    if (candidates instanceof ElysiaStatus) {
+      return candidates;
+    }
+    const { groups, evaluations } = candidates;
     const decisions: AutomationDecision[] = [];
     for (const [key, releases] of groups) {
-      const decision = this.choose(rule, key, releases, evaluations);
+      const decision = serviceChoose(rule, key, releases, evaluations);
       if (decision) {
         decisions.push(decision);
       }
     }
     return { decisions, errors: input.errors, revision: input.revision, ruleId: rule.id };
-  }
-  writeIngestion(
-    tx: DatabaseTransaction,
-    prepared: Awaited<ReturnType<AutomationService["prepareIngestion"]>>
-  ) {
+  });
+  function serviceWriteIngestion(tx: DatabaseTransaction, prepared: PreparedIngestion) {
     const ruleRow = tx
       .select()
       .from(automationRules)
       .where(eq(automationRules.id, prepared.ruleId))
       .get();
-    const rule = ruleRow ? ({ revision: 0, ...JSON.parse(ruleRow.value) } as AutomationRule) : null;
+    const rule = ruleRow ? decodeAutomationRule(ruleRow.value) : null;
     if (!rule?.enabled || rule.revision !== prepared.revision) {
-      throw new (HTTPError.id("CONFLICT", 409))("Automation changed; discard prepared decisions");
+      return problem(409, { detail: "Automation changed; discard prepared decisions" });
     }
     for (const decision of prepared.decisions) {
       const row = tx
@@ -411,7 +365,7 @@ export class AutomationService {
         .from(automationDecisions)
         .where(eq(automationDecisions.id, decision.id))
         .get();
-      const existing = row ? (JSON.parse(row.value) as AutomationDecision) : null;
+      const existing = row ? decodeAutomationDecision(row.value) : null;
       if (existing?.status === "ignored") {
         continue;
       }
@@ -421,15 +375,19 @@ export class AutomationService {
       ) {
         continue;
       }
-      this.persistDecision(decision, tx);
+      servicePersistDecision(decision, tx);
     }
-    rule.lastRunAt = this.options.now();
+    rule.lastRunAt = serviceOptions.now();
     rule.nextRunAt = rule.lastRunAt + rule.intervalMinutes * 60_000;
     rule.error = prepared.errors.length ? prepared.errors.join(" · ") : null;
-    this.persistRule(rule, tx);
+    servicePersistRule(rule, tx);
     return { ruleId: rule.id };
   }
-  private async candidateGroups(rule: AutomationRule, input: IngestionInput) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceCandidateGroups = Effect.fn("Automation.candidateGroups")(function* (
+    rule: AutomationRule,
+    input: IngestionInput
+  ) {
     const candidates = new Map(
       input.candidates
         .filter(
@@ -439,7 +397,7 @@ export class AutomationService {
         )
         .map((candidate) => [`${candidate.release.sourceId}:${candidate.release.id}`, candidate])
     );
-    for (const decision of this.decisions.values()) {
+    for (const decision of serviceDecisions.values()) {
       if (
         decision.automationId === rule.id &&
         ["waiting", "adding", "error"].includes(decision.status) &&
@@ -453,15 +411,15 @@ export class AutomationService {
       }
     }
     const groups = new Map<string, FeedRelease[]>();
-    const evaluations = new Map<string, Awaited<ReturnType<AutomationService["evaluate"]>>>();
+    const evaluations = new Map<string, Evaluation>();
     const handledHashes = new Set(
-      [...this.decisions.values()]
+      [...serviceDecisions.values()]
         .filter((decision) => decision.status === "added")
         .map((decision) => decision.torrentId)
     );
     const torrentIds = new Set(input.torrentIds);
     for (const [key, { release, contentKey }] of candidates) {
-      const previous = this.decisions.get(`${rule.id}:${contentKey}`);
+      const previous = serviceDecisions.get(`${rule.id}:${contentKey}`);
       const current = previous?.status === "added" ? previous : previous?.supersedes;
       if (
         (previous?.status === "added" && previous.supersedes) ||
@@ -474,8 +432,10 @@ export class AutomationService {
       ) {
         continue;
       }
-      // biome-ignore lint/performance/noAwaitInLoops: charge the quota before evaluating each candidate; stop on provider failure.
-      const evaluation = await this.evaluate(rule, release);
+      const evaluation = yield* serviceEvaluate(rule, release);
+      if (evaluation instanceof ElysiaStatus) {
+        return evaluation;
+      }
       if (evaluation.reason) {
         continue;
       }
@@ -485,25 +445,26 @@ export class AutomationService {
       groups.set(contentKey, group);
     }
     return { evaluations, groups };
-  }
-  private choose(
+  });
+
+  function serviceChoose(
     rule: AutomationRule,
     key: string,
     releases: FeedRelease[],
-    evaluations: Map<string, Awaited<ReturnType<AutomationService["evaluate"]>>>
+    evaluations: Map<string, Evaluation>
   ) {
     const id = `${rule.id}:${key}`;
-    const previous = this.decisions.get(id);
+    const previous = serviceDecisions.get(id);
     const [release] = releases.sort((a, b) => compareReleases(rule, a, b));
     if (
       !release ||
       (previous && previous.status === "ignored") ||
-      this.rules.get(rule.id)?.revision !== rule.revision
+      serviceRules.get(rule.id)?.revision !== rule.revision
     ) {
       return null;
     }
     const evaluation = evaluations.get(`${release.sourceId}:${release.id}`);
-    const deadline = previous?.deadline ?? this.options.now() + rule.waitMinutes * 60_000;
+    const deadline = previous?.deadline ?? serviceOptions.now() + rule.waitMinutes * 60_000;
     const approved =
       previous?.approved === true &&
       previous.release.id === release.id &&
@@ -511,20 +472,18 @@ export class AutomationService {
     let status: AutomationDecision["status"] = "adding";
     if (!approved && (!rule.automatic || evaluation?.uncertain)) {
       status = "review";
-    } else if (!(approved || preferred(rule, release)) && this.options.now() < deadline) {
+    } else if (!(approved || preferred(rule, release)) && serviceOptions.now() < deadline) {
       status = "waiting";
     }
     return {
       approved,
       automationId: rule.id,
       contentKey: key,
-      createdAt: previous?.createdAt ?? this.options.now(),
+      createdAt: previous?.createdAt ?? serviceOptions.now(),
       deadline,
       id,
       probability: evaluation?.probability ?? null,
-      reason: evaluation?.uncertain
-        ? "Uncertain Jev match — review required"
-        : "Title and formats accepted · ranked by priority",
+      reason: "Title and formats accepted · ranked by priority",
       release,
       status,
       supersedes:
@@ -534,23 +493,22 @@ export class AutomationService {
       torrentId: null,
     } satisfies AutomationDecision;
   }
-
-  approve(id: string) {
-    const decision = this.decisions.get(id);
+  function serviceApprove(id: string) {
+    const decision = serviceDecisions.get(id);
     if (!decision) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown release");
+      return problem(404, { detail: "Unknown release" });
     }
     if (decision.status !== "added" && decision.status !== "ignored") {
-      this.persistDecision({
+      servicePersistDecision({
         ...decision,
         approved: true,
         reason: "Approved manually",
         status: "adding",
       });
     }
-    return this.snapshot();
+    return serviceSnapshot();
   }
-  writeDecisionResult(input: {
+  function serviceWriteDecisionResult(input: {
     decision: AutomationDecision;
     revision: number;
     status: AutomationDecision["status"];
@@ -558,8 +516,8 @@ export class AutomationService {
     reason: string;
     supersedes?: AutomationDecision["supersedes"];
   }) {
-    const rule = this.rules.get(input.decision.automationId);
-    const current = this.decisions.get(input.decision.id);
+    const rule = serviceRules.get(input.decision.automationId);
+    const current = serviceDecisions.get(input.decision.id);
     if (
       !rule?.enabled ||
       rule.revision !== input.revision ||
@@ -570,7 +528,7 @@ export class AutomationService {
     ) {
       return false;
     }
-    this.persistDecision({
+    servicePersistDecision({
       ...current,
       reason: input.reason,
       status: input.status,
@@ -579,22 +537,238 @@ export class AutomationService {
     });
     return true;
   }
-  recordFailure(id: string, revision: number) {
-    const rule = this.rules.get(id);
+  function serviceRecordFailure(id: string, revision: number) {
+    const rule = serviceRules.get(id);
     if (rule?.revision === revision) {
-      this.persistRule({
+      servicePersistRule({
         ...rule,
         error: "Check interrupted; retry scheduled",
-        nextRunAt: this.options.now() + 60_000,
+        nextRunAt: serviceOptions.now() + 60_000,
       });
     }
   }
-  ignoreDecision(tx: DatabaseConnection, id: string) {
-    const decision = this.decisions.get(id);
+  function serviceIgnoreDecision(tx: DatabaseConnection, id: string) {
+    const decision = serviceDecisions.get(id);
     if (!decision) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown release");
+      return problem(404, { detail: "Unknown release" });
     }
-    this.persistDecision({ ...decision, reason: "Ignored manually", status: "ignored" }, tx);
+    servicePersistDecision({ ...decision, reason: "Ignored manually", status: "ignored" }, tx);
     return { ok: true };
   }
+  const storedPreferences = serviceDb
+    .select()
+    .from(automationPreferences)
+    .where(eq(automationPreferences.id, "automation"))
+    .get();
+  if (storedPreferences) {
+    servicePreferences = {
+      ...defaultAutomationPreferences,
+      ...decodeAutomationPreferences(storedPreferences.value),
+    };
+  }
+  for (const row of serviceDb.select().from(automationRules).all()) {
+    const rule = decodeAutomationRule(row.value);
+    serviceRules.set(rule.id, rule);
+  }
+  for (const row of serviceDb.select().from(automationDecisions).all()) {
+    const decision = decodeAutomationDecision(row.value);
+    serviceDecisions.set(decision.id, decision);
+  }
+
+  return {
+    approve: serviceApprove,
+    db,
+    decisionRecords: serviceDecisionRecords,
+    deleteRule: serviceDeleteRule,
+    enableRule: serviceEnableRule,
+    evaluate: serviceEvaluate,
+    ignoreDecision: serviceIgnoreDecision,
+    prepareIngestion: servicePrepareIngestion,
+    prepareRule: servicePrepareRule,
+    reassignDestination: serviceReassignDestination,
+    recordFailure: serviceRecordFailure,
+    refreshState: serviceRefreshState,
+    ruleSnapshot: serviceRuleSnapshot,
+    snapshot: serviceSnapshot,
+    writeDecisionResult: serviceWriteDecisionResult,
+    writeIngestion: serviceWriteIngestion,
+    writePreferences: serviceWritePreferences,
+    writeRule: serviceWriteRule,
+  };
+});
+
+export type AutomationService = Automation["Service"];
+export class Automation extends Context.Service<
+  Automation,
+  {
+    readonly snapshot: () => {
+      automations: AutomationRule[];
+      decisions: {
+        release: FeedRelease;
+        supersedes: { release: FeedRelease; torrentId: string } | null;
+        approved?: boolean;
+        automationId: string;
+        contentKey: string;
+        createdAt: number;
+        deadline: number | null;
+        id: string;
+        probability: number | null;
+        reason: string;
+        status: "waiting" | "review" | "adding" | "added" | "ignored" | "error";
+        torrentId: string | null;
+      }[];
+      preferences: {
+        automatic: boolean;
+        codecs: string[];
+        deleteReplacedFiles: boolean;
+        excludePacks: boolean;
+        intervalMinutes: number;
+        languages: ("VF" | "VOSTFR" | "MULTI")[];
+        paused: boolean;
+        priority: ("source" | "language" | "resolution" | "codec")[];
+        resolutions: string[];
+        sources: string[];
+        waitMinutes: number;
+      };
+      updatedAt: number;
+    };
+    readonly decisionRecords: () => AutomationDecision[];
+    readonly ruleSnapshot: (id: string) => AutomationRule | undefined;
+    readonly writePreferences: (
+      db: DatabaseConnection,
+      preferences: AutomationPreferences
+    ) => {
+      automatic: boolean;
+      codecs: string[];
+      deleteReplacedFiles: boolean;
+      excludePacks: boolean;
+      intervalMinutes: number;
+      languages: ("VF" | "VOSTFR" | "MULTI")[];
+      paused: boolean;
+      priority: ("source" | "language" | "resolution" | "codec")[];
+      resolutions: string[];
+      sources: string[];
+      waitMinutes: number;
+    };
+    readonly refreshState: () => void;
+    readonly evaluate: (
+      draft: AutomationDraft,
+      release: FeedRelease
+    ) => Effect.Effect<{ probability: null; reason: string | null; uncertain: boolean }>;
+    readonly enableRule: (id: string, enabled: boolean, connection?: DatabaseConnection) => void;
+    readonly reassignDestination: (tx: DatabaseConnection, id: string) => void;
+    readonly prepareRule: (
+      id: string | null,
+      draft: AutomationDraft,
+      baselineCandidates?: AutomationCandidateInput[],
+      ownership?: RuleOwnership
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Enter a title and at least one source" }>
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | { baseline: AutomationDecision[]; expectedRevision: number | null; rule: AutomationRule }
+    >;
+    readonly writeRule: (
+      tx: DatabaseTransaction,
+      prepared: PreparedRule
+    ) =>
+      | AutomationRule
+      | ReturnType<typeof problem<409, { readonly detail: "Automation changed; reload the rule" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "This integration already owns a rule with that key" }
+          >
+        >;
+    readonly deleteRule: (
+      tx: DatabaseConnection,
+      id: string
+    ) =>
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | { ok: boolean };
+    readonly prepareIngestion: (
+      input: IngestionInput
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | { decisions: AutomationDecision[]; errors: string[]; revision: number; ruleId: string }
+    >;
+    readonly writeIngestion: (
+      tx: DatabaseTransaction,
+      prepared: PreparedIngestion
+    ) =>
+      | ReturnType<
+          typeof problem<409, { readonly detail: "Automation changed; discard prepared decisions" }>
+        >
+      | { ruleId: string };
+    readonly approve: (id: string) =>
+      | {
+          automations: AutomationRule[];
+          decisions: {
+            release: FeedRelease;
+            supersedes: { release: FeedRelease; torrentId: string } | null;
+            approved?: boolean;
+            automationId: string;
+            contentKey: string;
+            createdAt: number;
+            deadline: number | null;
+            id: string;
+            probability: number | null;
+            reason: string;
+            status: "waiting" | "review" | "adding" | "added" | "ignored" | "error";
+            torrentId: string | null;
+          }[];
+          preferences: {
+            automatic: boolean;
+            codecs: string[];
+            deleteReplacedFiles: boolean;
+            excludePacks: boolean;
+            intervalMinutes: number;
+            languages: ("VF" | "VOSTFR" | "MULTI")[];
+            paused: boolean;
+            priority: ("source" | "language" | "resolution" | "codec")[];
+            resolutions: string[];
+            sources: string[];
+            waitMinutes: number;
+          };
+          updatedAt: number;
+        }
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown release" }>>;
+    readonly writeDecisionResult: (input: {
+      decision: AutomationDecision;
+      revision: number;
+      status: AutomationDecision["status"];
+      torrentId: string | null;
+      reason: string;
+      supersedes?: AutomationDecision["supersedes"];
+    }) => boolean;
+    readonly recordFailure: (id: string, revision: number) => void;
+    readonly ignoreDecision: (
+      tx: DatabaseConnection,
+      id: string
+    ) => ReturnType<typeof problem<404, { readonly detail: "Unknown release" }>> | { ok: boolean };
+    readonly db: Database["Service"];
+  }
+>()("tofu/automation") {}
+export const automationLayer = Layer.effect(Automation, make);
+
+// Successful results, narrowed structurally because ElysiaStatus generics are invariant.
+type Evaluation = Extract<
+  Effect.Success<ReturnType<AutomationService["evaluate"]>>,
+  { uncertain: boolean }
+>;
+export interface PreparedRule {
+  baseline: AutomationDecision[];
+  expectedRevision: number | null;
+  rule: AutomationRule;
+}
+interface PreparedIngestion {
+  decisions: AutomationDecision[];
+  errors: string[];
+  revision: number;
+  ruleId: string;
 }

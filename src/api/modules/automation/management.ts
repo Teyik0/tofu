@@ -1,103 +1,95 @@
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia, HTTPError } from "elysia";
+import { Effect } from "effect";
+import { Elysia, ElysiaStatus } from "elysia";
 import { sync } from "../../../sync";
+import { accessPlugin } from "../access/plugin";
 import { automationPlugin } from ".";
-import { draft, preferences } from "./model";
+import { draft, interpretationSchema, preferences } from "./model";
 import { releaseAutomationPlugin } from "./plugin";
+import { interpretLocally } from "./rules";
 
 export const automationManagementPlugin = new Elysia({ name: "tofu-automation-management-api" })
   .use(automationPlugin)
   .use(releaseAutomationPlugin)
+  .use(accessPlugin)
   .use(furinSync(sync))
+  .guard({ administration: true })
   .get("/automation", ({ releaseAutomation }) => releaseAutomation.snapshot())
   .put(
     "/automation/preferences",
     {
       body: preferences,
-      sync: { invalidate: { path: "/", type: "layout" } },
     },
-    async ({ automation, body, mutation }) => {
+    async ({ automation, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
       const result = await mutation((tx) => automation.writePreferences(tx, body));
       automation.refreshState();
       return result;
     }
   )
-  .post("/automations/preview", { body: draft, sync: false }, ({ releaseAutomation, body }) =>
-    releaseAutomation.preview(body)
+  .post(
+    "/automations/interpret",
+    { body: interpretationSchema, idempotent: false },
+    ({ automation, body }) =>
+      interpretLocally(body.query, body.destinationId, automation.snapshot().preferences)
+  )
+  .post("/automations/preview", { body: draft, idempotent: false }, ({ releaseAutomation, body }) =>
+    Effect.runPromise(releaseAutomation.preview(body))
   )
   .post(
     "/automations",
-    {
-      body: draft,
-      sync: { invalidate: { path: "/", type: "layout" } },
-    },
-    async ({ automation, releaseAutomation, torrents, body, mutation }) => {
-      const service = automation;
-      const prepared = await releaseAutomation.prepareRule(null, body);
-      const result = await mutation((tx) => {
-        if (
-          !torrents
-            .snapshot(null, false)
-            .destinations.some((destination) => destination.id === prepared.rule.destinationId)
-        ) {
-          throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
-        }
-        return service.writeRule(tx, prepared);
-      });
-      service.refreshState();
+    { body: draft },
+    async ({ automation, releaseAutomation, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
+      const prepared = await Effect.runPromise(releaseAutomation.prepareRule(null, body));
+      if (prepared instanceof ElysiaStatus) {
+        return prepared;
+      }
+      const result = await mutation((tx) => releaseAutomation.writeRule(tx, prepared));
+      automation.refreshState();
       return result;
     }
   )
   .put(
     "/automations/:id",
-    {
-      body: draft,
-      sync: { invalidate: { path: "/", type: "layout" } },
-    },
-    async ({ automation, releaseAutomation, torrents, params, body, mutation }) => {
-      const service = automation;
-      const prepared = await releaseAutomation.prepareRule(params.id, body);
-      const result = await mutation((tx) => {
-        if (
-          !torrents
-            .snapshot(null, false)
-            .destinations.some((destination) => destination.id === prepared.rule.destinationId)
-        ) {
-          throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
-        }
-        return service.writeRule(tx, prepared);
-      });
-      service.refreshState();
+    { body: draft },
+    async ({ automation, releaseAutomation, params, body, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
+      const prepared = await Effect.runPromise(releaseAutomation.prepareRule(params.id, body));
+      if (prepared instanceof ElysiaStatus) {
+        return prepared;
+      }
+      const result = await mutation((tx) => releaseAutomation.writeRule(tx, prepared));
+      automation.refreshState();
       return result;
     }
   )
-  .delete(
-    "/automations/:id",
-    {
-      sync: { invalidate: { path: "/", type: "layout" } },
-    },
-    async ({ automation, params, mutation }) => {
-      const service = automation;
-      const result = await mutation((tx) => service.deleteRule(tx, params.id));
-      service.refreshState();
-      return result;
-    }
+  .delete("/automations/:id", {}, async ({ automation, params, mutation, invalidate }) => {
+    invalidate({ path: "/", type: "layout" });
+
+    const result = await mutation((tx) => automation.deleteRule(tx, params.id));
+    automation.refreshState();
+    return result;
+  })
+  .post("/automations/:id/run", { idempotent: false }, ({ releaseAutomation, params }) =>
+    Effect.runPromise(releaseAutomation.run(params.id))
   )
-  .post("/automations/:id/run", { sync: false }, ({ releaseAutomation, params }) =>
-    releaseAutomation.run(params.id)
-  )
-  .post("/automation-decisions/:id/approve", { sync: false }, ({ releaseAutomation, params }) =>
-    releaseAutomation.approve(params.id)
+  .post(
+    "/automation-decisions/:id/approve",
+    { idempotent: false },
+    ({ releaseAutomation, params }) => Effect.runPromise(releaseAutomation.approve(params.id))
   )
   .post(
     "/automation-decisions/:id/ignore",
-    {
-      sync: { invalidate: { path: "/", type: "layout" } },
-    },
-    async ({ automation, params, mutation }) => {
-      const service = automation;
-      const result = await mutation((tx) => service.ignoreDecision(tx, params.id));
-      service.refreshState();
+    {},
+    async ({ automation, params, mutation, invalidate }) => {
+      invalidate({ path: "/", type: "layout" });
+
+      const result = await mutation((tx) => automation.ignoreDecision(tx, params.id));
+      automation.refreshState();
       return result;
     }
   );

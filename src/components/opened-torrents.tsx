@@ -2,13 +2,13 @@ import { useMutation } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
+import type { OpenedTorrent } from "../api/modules/desktop/opening";
 import { api } from "../lib/client";
 import { showTorrent } from "../lib/navigation";
 import { modalAtom } from "../state/workspace";
-import type { OpenedTorrent } from "../types";
 
 /** Shows the add dialog for each magnet link or .torrent file opened from the system. */
-export function OpenedTorrents() {
+export function OpenedTorrents({ serverId }: { serverId: string }) {
   const router = useRouter();
   const [modal, open] = useAtom(modalAtom);
   const [waiting, setWaiting] = useState<OpenedTorrent[]>([]);
@@ -58,12 +58,12 @@ export function OpenedTorrents() {
     }
     handled.current.add(next.id);
     if (next.existing) {
-      void showTorrent(router, next.existing.destinationId, next.infoHash);
+      void showTorrent(router, serverId, next.existing.destinationId, next.infoHash);
       void dismiss.mutateAsync(next.id);
       return;
     }
     open({ torrent: next, type: "open" });
-  }, [dismiss, modal, open, router, waiting]);
+  }, [dismiss, modal, open, router, serverId, waiting]);
 
   return null;
 }

@@ -1,21 +1,23 @@
-import { HTTPError } from "elysia";
-import type {
-  AutomationDecision,
-  AutomationDraft,
-  AutomationRule,
-  AutomationState,
-  DiscoveryResult,
-  EnginePort,
-  FeedRelease,
-} from "../../../types";
-import { recordLog } from "../../lib/diagnostics";
+import { Cause, Context, Effect, Fiber, Layer, Schedule } from "effect";
+import { ElysiaStatus, problem } from "elysia";
+import { createLogger } from "evlog";
+import type { DatabaseTransaction } from "../../lib/db";
 import { normalizeTitle } from "../../lib/title";
+import { mappedAnimeQueries, mappedAnimeRelease } from "../discovery/anime-mapping";
+import type { DiscoverySearch, FeedRelease } from "../discovery/model";
 import type { DiscoveryService } from "../discovery/service";
+import { Discovery } from "../discovery/service";
 import { collectSourceQueries, uniqueReleases } from "../discovery/sources";
+import type { SourcePluginId } from "../plugins/model";
 import { publicRelease } from "../plugins/releases";
 import type { PluginsService } from "../plugins/service";
+import { Plugins } from "../plugins/service";
+import { TorrentClient } from "../torrents/layer";
+import type { EnginePort } from "../torrents/service";
+import type { AutomationDecision, AutomationDraft, AutomationRule, AutomationState } from "./model";
 import { compareReleases, contentKey } from "./rules";
-import type { AutomationService, RuleOwnership } from "./service";
+import type { AutomationService, PreparedRule, RuleOwnership } from "./service";
+import { Automation } from "./service";
 
 export interface ReleaseAutomationOptions {
   automation: AutomationService;
@@ -24,26 +26,40 @@ export interface ReleaseAutomationOptions {
   now: () => number;
   plugins: PluginsService;
 }
+type MappingFailure = ReturnType<
+  typeof problem<502, { readonly detail: "Episode mapping unavailable" }>
+>;
 
 // Built-in release integration. The automation core never invokes this service.
-export class ReleaseAutomationService {
-  private readonly options: ReleaseAutomationOptions;
-  private readonly lifecycle: { closed: boolean; started: boolean } = {
+const make = Effect.gen(function* () {
+  const automation = yield* Automation;
+  const discovery = yield* Discovery;
+  const engine = yield* TorrentClient;
+  const plugins = yield* Plugins;
+  const options: ReleaseAutomationOptions = {
+    automation,
+    discovery,
+    engine,
+    now: Date.now,
+    plugins,
+  };
+
+  const serviceOptions = options;
+  const scope = yield* Effect.scope;
+
+  const serviceLifecycle: { closed: boolean; started: boolean } = {
     closed: false,
     started: false,
   };
-  private readonly runs = new Map<string, Promise<AutomationState>>();
-  private readonly replacements = new Map<string, Promise<void>>();
-  private readonly additions = new Map<string, Promise<void>>();
-  private timer: ReturnType<typeof setInterval> | null = null;
-  constructor(options: ReleaseAutomationOptions) {
-    this.options = options;
-  }
-  snapshot(): AutomationState {
-    const state = this.options.automation.snapshot();
-    const plugins = this.options.plugins.snapshot();
+  const serviceRuns = new Map<string, ReturnType<typeof serviceExecute>>();
+  const serviceReplacements = new Map<string, Effect.Effect<void>>();
+  const serviceAdditions = new Map<string, Effect.Effect<void>>();
+  let serviceTimer: Fiber.Fiber<void> | null = null;
+  function serviceSnapshot(): AutomationState {
+    const state = serviceOptions.automation.snapshot();
+    const currentPlugins = serviceOptions.plugins.snapshot();
     const enabledSources = new Set(
-      plugins.filter((plugin) => plugin.enabled).map((plugin) => plugin.id)
+      currentPlugins.filter((plugin) => plugin.enabled).map((plugin) => plugin.id)
     );
     return {
       ...state,
@@ -53,84 +69,116 @@ export class ReleaseAutomationService {
           status = "paused";
         } else if (!rule.sources.some((id) => enabledSources.has(id))) {
           status = "source-disabled";
-        } else if (this.runs.has(rule.id)) {
+        } else if (serviceRuns.has(rule.id)) {
           status = "running";
         } else if (rule.error) {
           status = "error";
         }
         return { ...rule, status };
       }),
-      plugins,
+      plugins: currentPlugins,
     };
   }
-  private current(rule: AutomationRule) {
-    const current = this.options.automation.ruleSnapshot(rule.id);
+  function serviceCurrent(rule: AutomationRule) {
+    const current = serviceOptions.automation.ruleSnapshot(rule.id);
     return (
-      !this.lifecycle.closed && current?.enabled === true && current.revision === rule.revision
+      !serviceLifecycle.closed && current?.enabled === true && current.revision === rule.revision
     );
   }
-  private rule(id: string) {
-    const rule = this.options.automation.ruleSnapshot(id);
+  function serviceRule(id: string) {
+    const rule = serviceOptions.automation.ruleSnapshot(id);
     if (!rule) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown automation");
+      return problem(404, { detail: "Unknown automation" });
     }
     if (rule.executorId && rule.executorId !== "tofu.releases") {
-      throw new (HTTPError.id("CONFLICT", 409))("This rule belongs to another executor");
+      return problem(409, { detail: "This rule belongs to another executor" });
     }
     return rule;
   }
-  private async automationDiscovery(draft: AutomationDraft): Promise<DiscoveryResult> {
-    let titles = [draft.title, ...(draft.aliases ?? [])];
-    if (
-      draft.matchMode === "jev" &&
-      this.options.plugins.plugin("jev").enabled &&
-      !draft.aliases?.length &&
-      draft.sources.some(
-        (sourceId) => sourceId !== "tsundere" && this.options.plugins.plugin(sourceId).enabled
-      )
-    ) {
-      titles = await this.options.discovery.titleAliases(draft.title);
+  const serviceAutomationDiscovery = Effect.fn("ReleaseAutomation.automationDiscovery")(function* (
+    draft: AutomationDraft
+  ) {
+    const mapping =
+      draft.anilistId === undefined
+        ? null
+        : yield* serviceOptions.discovery.animeMapping(draft.anilistId);
+    if (draft.anilistId !== undefined && !mapping) {
+      return problem(502, { detail: "Episode mapping unavailable" });
     }
-    const queries =
+    const anime =
+      draft.anilistId === undefined
+        ? null
+        : {
+            aliases: draft.aliases ?? [],
+            episodes: draft.episodeCount ?? null,
+            mediaId: draft.anilistId,
+            title: draft.title,
+          };
+    const titles = [draft.title, ...(draft.aliases ?? [])];
+    const baseQueries =
       draft.matchMode === "pattern"
         ? [""]
         : [...new Map(titles.map((title) => [normalizeTitle(title), title])).values()].slice(0, 2);
-    const result = await collectSourceQueries({
+    const queries = mapping ? mappedAnimeQueries(mapping, baseQueries) : baseQueries;
+    const result = yield* collectSourceQueries({
       accept: () => true,
-      active: (source) => !this.lifecycle.closed && this.options.plugins.plugin(source).enabled,
-      enough: (releases) => this.hasAutomationMatch(draft, releases),
+      active: (source) => !serviceLifecycle.closed && serviceOptions.plugins.plugin(source).enabled,
+      enough: (found) =>
+        serviceHasAutomationMatch(
+          draft,
+          mapping && anime
+            ? found
+                .map((release) => mappedAnimeRelease(anime, mapping, release))
+                .filter((release): release is FeedRelease => release !== null)
+            : found
+        ),
       queries: (source) => (source === "tsundere" ? queries.slice(0, 1) : queries),
-      search: (query, source) => this.options.discovery.search(query, [source]),
+      search: (query, source) => serviceOptions.discovery.search(query, [source]),
       sources: draft.sources,
     });
-    return { ...result, releases: uniqueReleases(result.releases) };
-  }
-
-  private async hasAutomationMatch(draft: AutomationDraft, releases: FeedRelease[]) {
+    const releases =
+      mapping && anime
+        ? result.releases
+            .map((release) => mappedAnimeRelease(anime, mapping, release))
+            .filter((release): release is FeedRelease => release !== null)
+        : result.releases;
+    return { ...result, releases: uniqueReleases(releases) };
+  });
+  const serviceHasAutomationMatch = Effect.fn("ReleaseAutomation.hasAutomationMatch")(function* (
+    draft: AutomationDraft,
+    releases: FeedRelease[]
+  ) {
     for (const release of releases) {
-      // biome-ignore lint/performance/noAwaitInLoops: stop evaluating once a primary match is accepted.
-      if (!(await this.options.automation.evaluate(draft, release)).reason) {
+      // stop evaluating once a primary match is accepted.
+      const evaluation = yield* serviceOptions.automation.evaluate(draft, release);
+      if (evaluation instanceof ElysiaStatus) {
+        return false;
+      }
+      if (!evaluation.reason) {
         return true;
       }
     }
     return false;
-  }
-
-  async prepareRule(id: string | null, draft: AutomationDraft, ownership?: RuleOwnership) {
-    const sources = new Set(this.options.plugins.sourceIds());
+  });
+  const servicePrepareRule = Effect.fn("ReleaseAutomation.prepareRule")(function* (
+    id: string | null,
+    draft: AutomationDraft,
+    ownership?: RuleOwnership
+  ) {
+    const sources = new Set(serviceOptions.plugins.sourceIds());
     if (draft.sources.some((source) => !sources.has(source))) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown release source");
+      return problem(400, { detail: "Unknown release source" });
     }
     if (
-      !this.options.engine
+      !serviceOptions.engine
         .snapshot(null, false)
         .destinations.some((destination) => destination.id === draft.destinationId)
     ) {
-      throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
+      return problem(400, { detail: "Unknown destination" });
     }
-    let existing = id ? this.options.automation.ruleSnapshot(id) : undefined;
+    let existing = id ? serviceOptions.automation.ruleSnapshot(id) : undefined;
     if (!existing && ownership) {
-      existing = this.options.automation
+      existing = serviceOptions.automation
         .snapshot()
         .automations.find(
           (rule) => rule.ownerId === ownership.ownerId && rule.key === ownership.key
@@ -138,45 +186,58 @@ export class ReleaseAutomationService {
     }
     // Validate before performing an optional baseline search.
     const owned = ownership ? { ...ownership, executorId: "tofu.releases" } : undefined;
-    const validated = await this.options.automation.prepareRule(id, draft, [], owned);
-    if (existing || draft.includeExisting) {
+    const validated = yield* serviceOptions.automation.prepareRule(id, draft, [], owned);
+    if (validated instanceof ElysiaStatus || existing || draft.includeExisting) {
       return validated;
     }
-    const baseline = await this.automationDiscovery(draft);
-    return this.options.automation.prepareRule(
+    const baseline = yield* serviceAutomationDiscovery(draft);
+    if (baseline instanceof ElysiaStatus) {
+      return baseline;
+    }
+    return yield* serviceOptions.automation.prepareRule(
       id,
       draft,
       baseline.releases.map((release) => ({ contentKey: contentKey(release), release })),
       owned
     );
+  });
+  function serviceWriteRule(tx: DatabaseTransaction, prepared: PreparedRule) {
+    if (
+      !serviceOptions.engine
+        .snapshot(null, false)
+        .destinations.some((destination) => destination.id === prepared.rule.destinationId)
+    ) {
+      return problem(400, { detail: "Unknown destination" });
+    }
+    return serviceOptions.automation.writeRule(tx, prepared);
   }
-  async save(id: string | null, draft: AutomationDraft, ownership?: RuleOwnership) {
-    const prepared = await this.prepareRule(id, draft, ownership);
-    const result = this.options.automation.db.transaction((tx) => {
-      if (
-        !this.options.engine
-          .snapshot(null, false)
-          .destinations.some((destination) => destination.id === prepared.rule.destinationId)
-      ) {
-        throw new (HTTPError.id("BAD_REQUEST", 400))("Unknown destination");
-      }
-      return this.options.automation.writeRule(tx, prepared);
-    });
-    this.options.automation.refreshState();
+  const serviceSave = Effect.fn("ReleaseAutomation.save")(function* (
+    id: string | null,
+    draft: AutomationDraft,
+    ownership?: RuleOwnership
+  ) {
+    const prepared = yield* servicePrepareRule(id, draft, ownership);
+    if (prepared instanceof ElysiaStatus) {
+      return prepared;
+    }
+    const result = serviceOptions.automation.db.transaction((tx) => serviceWriteRule(tx, prepared));
+    serviceOptions.automation.refreshState();
     return result;
-  }
-  async preview(draft: AutomationDraft) {
-    const result = await this.automationDiscovery(draft);
-    const evaluated = await Promise.all(
-      result.releases.map(async (release) => ({
-        release,
-        ...(await this.options.automation.evaluate(draft, release)),
-      }))
+  });
+  const servicePreview = Effect.fn("ReleaseAutomation.preview")(function* (draft: AutomationDraft) {
+    const result = yield* serviceAutomationDiscovery(draft);
+    if (result instanceof ElysiaStatus) {
+      return result;
+    }
+    const evaluated = yield* Effect.forEach(
+      result.releases,
+      (release) =>
+        serviceOptions.automation
+          .evaluate(draft, release)
+          .pipe(Effect.map((evaluation) => ({ ...evaluation, release }))),
+      { concurrency: "unbounded" }
     );
-    const candidates = evaluated.filter(
-      (candidate) =>
-        !candidate.reason && (candidate.probability === null || candidate.probability >= 0.75)
-    );
+    const candidates = evaluated.filter((candidate) => !candidate.reason);
     return {
       ...result,
       candidates: candidates
@@ -184,127 +245,159 @@ export class ReleaseAutomationService {
         .map((candidate) => ({ ...candidate, release: publicRelease(candidate.release) })),
       releases: candidates.map((candidate) => publicRelease(candidate.release)),
     };
-  }
-  async run(id: string): Promise<AutomationState> {
-    const existing = this.runs.get(id);
+  });
+  const serviceRun = Effect.fn("ReleaseAutomation.run")(function* (id: string) {
+    const existing = serviceRuns.get(id);
     if (existing) {
-      return existing;
+      return yield* existing;
     }
-    const rule = this.rule(id);
-    const task = this.execute(rule).catch(() => {
-      if (this.current(rule)) {
-        this.options.automation.recordFailure(id, rule.revision);
-      }
-      return this.snapshot();
-    });
-    this.runs.set(id, task);
-    try {
-      return await task;
-    } finally {
-      this.runs.delete(id);
+    const rule = serviceRule(id);
+    if (rule instanceof ElysiaStatus) {
+      return rule;
     }
-  }
-
-  private async execute(rule: AutomationRule) {
-    if (!this.current(rule)) {
-      return this.snapshot();
+    const task = yield* Effect.cached(
+      Effect.gen(function* () {
+        const result = yield* serviceExecute(rule);
+        if (result instanceof ElysiaStatus && serviceCurrent(rule)) {
+          serviceOptions.automation.recordFailure(id, rule.revision);
+        }
+        return result;
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (serviceRuns.get(id) === task) {
+              serviceRuns.delete(id);
+            }
+          })
+        )
+      )
+    );
+    serviceRuns.set(id, task);
+    return yield* task;
+  });
+  const serviceExecute = Effect.fn("ReleaseAutomation.execute")(function* (rule: AutomationRule) {
+    if (!serviceCurrent(rule)) {
+      return serviceSnapshot();
     }
     const enabledSources = new Set(
-      this.options.plugins
+      serviceOptions.plugins
         .snapshot()
         .filter((plugin) => plugin.enabled)
         .map((plugin) => plugin.id)
     );
     const activeSources = rule.sources.filter((source) => enabledSources.has(source));
     if (!activeSources.length) {
-      return this.snapshot();
+      return serviceSnapshot();
     }
-    await this.completeReplacements(rule);
-    const result = await this.automationDiscovery(rule);
-    if (!this.current(rule)) {
-      return this.snapshot();
+    yield* serviceCompleteReplacements(rule);
+    const result = yield* serviceAutomationDiscovery(rule);
+    if (result instanceof ElysiaStatus) {
+      return result;
     }
-    const prepared = await this.options.automation.prepareIngestion({
+    if (!serviceCurrent(rule)) {
+      return serviceSnapshot();
+    }
+    const prepared = yield* serviceOptions.automation.prepareIngestion({
       activeSources,
       candidates: result.releases.map((release) => ({ contentKey: contentKey(release), release })),
       errors: result.errors.map((error) => error.message),
       revision: rule.revision,
       ruleId: rule.id,
-      torrentIds: this.options.engine.snapshot(null, false).torrents.map((torrent) => torrent.id),
+      torrentIds: serviceOptions.engine.snapshot(null, false).torrents.map((torrent) => torrent.id),
     });
-    if (!this.current(rule)) {
-      return this.snapshot();
+    if (prepared instanceof ElysiaStatus) {
+      return prepared;
     }
-    this.options.automation.db.transaction((tx) =>
-      this.options.automation.writeIngestion(tx, prepared)
+    if (!serviceCurrent(rule)) {
+      return serviceSnapshot();
+    }
+    const written = serviceOptions.automation.db.transaction((tx) =>
+      serviceOptions.automation.writeIngestion(tx, prepared)
     );
-    this.options.automation.refreshState();
+    if (written instanceof ElysiaStatus) {
+      return written;
+    }
+    serviceOptions.automation.refreshState();
     // "adding" is the durable action journal: a crash leaves the decision retryable.
-    for (const decision of this.options.automation.decisionRecords()) {
+    for (const decision of serviceOptions.automation.decisionRecords()) {
       if (decision.automationId === rule.id && decision.status === "adding") {
-        // biome-ignore lint/performance/noAwaitInLoops: serialize additions after the decisions commit.
-        await this.addDecision(decision, rule);
+        // serialize additions after the decisions commit.
+        yield* serviceAddDecision(decision, rule);
       }
     }
-    return this.snapshot();
-  }
-  private async completeReplacements(rule: AutomationRule) {
-    const existing = this.replacements.get(rule.id);
-    if (existing) {
-      return existing;
+    return serviceSnapshot();
+  });
+  const serviceCompleteReplacements = Effect.fn("ReleaseAutomation.completeReplacements")(
+    function* (rule: AutomationRule) {
+      const existing = serviceReplacements.get(rule.id);
+      if (existing) {
+        return yield* existing;
+      }
+      const task = yield* Effect.cached(
+        serviceFinishReplacements(rule).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (serviceReplacements.get(rule.id) === task) {
+                serviceReplacements.delete(rule.id);
+              }
+            })
+          )
+        )
+      );
+      serviceReplacements.set(rule.id, task);
+      yield* task;
     }
-    const task = this.finishReplacements(rule);
-    this.replacements.set(rule.id, task);
-    try {
-      await task;
-    } finally {
-      this.replacements.delete(rule.id);
-    }
-  }
-  private async finishReplacements(rule: AutomationRule) {
-    for (const decision of this.options.automation.decisionRecords()) {
+  );
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceFinishReplacements = Effect.fn("ReleaseAutomation.finishReplacements")(function* (
+    rule: AutomationRule
+  ) {
+    for (const decision of serviceOptions.automation.decisionRecords()) {
       if (
         decision.automationId !== rule.id ||
         decision.status !== "added" ||
         !decision.supersedes ||
-        !this.current(rule)
+        !serviceCurrent(rule)
       ) {
         continue;
       }
-      const { torrents } = this.options.engine.snapshot(null, false);
+      const { torrents } = serviceOptions.engine.snapshot(null, false);
       const current = torrents.find((torrent) => torrent.id === decision.torrentId);
       if (current?.progress !== 1 || current.error) {
         continue;
       }
       const oldId = decision.supersedes.torrentId;
-      const shared = [...this.options.automation.decisionRecords()].some(
+      const shared = [...serviceOptions.automation.decisionRecords()].some(
         (other) =>
           other.id !== decision.id &&
           (other.torrentId === oldId || other.supersedes?.torrentId === oldId)
       );
-      try {
-        if (
-          oldId !== decision.torrentId &&
-          !shared &&
-          torrents.some((torrent) => torrent.id === oldId)
-        ) {
-          // biome-ignore lint/performance/noAwaitInLoops: finish each persisted replacement before the next.
-          await this.options.engine.remove(oldId, rule.deleteReplacedFiles === true);
+      if (
+        oldId !== decision.torrentId &&
+        !shared &&
+        torrents.some((torrent) => torrent.id === oldId)
+      ) {
+        // finish each persisted replacement before the next.
+        const removed = yield* Effect.promise(() =>
+          serviceOptions.engine.call("remove", [oldId, rule.deleteReplacedFiles === true])
+        );
+        if (removed instanceof ElysiaStatus) {
+          decision.status = "error";
+          decision.reason = removed.response.detail;
+          continue;
         }
-        decision.supersedes = null;
-        if (shared) {
-          decision.reason = "Better version downloaded · old version used by another rule";
-        } else {
-          decision.reason =
-            rule.deleteReplacedFiles === true
-              ? "Better version downloaded · old files deleted"
-              : "Better version downloaded · old files kept";
-        }
-      } catch {
-        decision.reason = "Better version downloaded · retry removing the old version";
       }
-      if (!this.lifecycle.closed) {
-        this.options.automation.writeDecisionResult({
+      decision.supersedes = null;
+      if (shared) {
+        decision.reason = "Better version downloaded · old version used by another rule";
+      } else {
+        decision.reason =
+          rule.deleteReplacedFiles === true
+            ? "Better version downloaded · old files deleted"
+            : "Better version downloaded · old files kept";
+      }
+      if (!serviceLifecycle.closed) {
+        serviceOptions.automation.writeDecisionResult({
           decision,
           reason: decision.reason ?? "",
           revision: rule.revision,
@@ -314,54 +407,68 @@ export class ReleaseAutomationService {
         });
       }
     }
-  }
-
-  private async addDecision(decision: AutomationDecision, rule: AutomationRule) {
-    const pending = this.additions.get(decision.id);
+  });
+  const serviceAddDecision = Effect.fn("ReleaseAutomation.addDecision")(function* (
+    decision: AutomationDecision,
+    rule: AutomationRule
+  ) {
+    const pending = serviceAdditions.get(decision.id);
     if (pending) {
-      return pending;
+      return yield* pending;
     }
-    const task = this.executeAddition(decision, rule);
-    this.additions.set(decision.id, task);
-    try {
-      await task;
-    } finally {
-      this.additions.delete(decision.id);
-    }
-  }
-  private async executeAddition(decision: AutomationDecision, rule: AutomationRule) {
+    const task = yield* Effect.cached(
+      serviceExecuteAddition(decision, rule).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (serviceAdditions.get(decision.id) === task) {
+              serviceAdditions.delete(decision.id);
+            }
+          })
+        )
+      )
+    );
+    serviceAdditions.set(decision.id, task);
+    yield* task;
+  });
+  const serviceExecuteAddition = Effect.fn("ReleaseAutomation.executeAddition")(function* (
+    decision: AutomationDecision,
+    rule: AutomationRule
+  ) {
     if (
       !(
-        this.current(rule) &&
+        serviceCurrent(rule) &&
         rule.sources.includes(decision.release.sourceId) &&
-        this.options.plugins.plugin(decision.release.sourceId).enabled
+        serviceOptions.plugins.plugin(decision.release.sourceId).enabled
       )
     ) {
       return;
     }
-    try {
-      const existing = this.options.engine
-        .snapshot(null, false)
-        .torrents.find((item) => item.id === decision.release.infoHash);
-      const torrent =
-        existing ??
-        (await this.options.discovery.addRelease(
-          decision.release.sourceId,
-          decision.release.id,
-          rule.destinationId,
-          rule.paused,
-          () =>
-            this.current(rule) &&
-            this.options.automation
-              .decisionRecords()
-              .some(
-                (current) =>
-                  current.id === decision.id &&
-                  current.status === "adding" &&
-                  current.release.id === decision.release.id &&
-                  current.release.sourceId === decision.release.sourceId
-              )
-        ));
+    const existing = serviceOptions.engine
+      .snapshot(null, false)
+      .torrents.find((item) => item.id === decision.release.infoHash);
+    const torrent =
+      existing ??
+      (yield* serviceOptions.discovery.addRelease(
+        decision.release.sourceId,
+        decision.release.id,
+        rule.destinationId,
+        rule.paused,
+        () =>
+          serviceCurrent(rule) &&
+          serviceOptions.automation
+            .decisionRecords()
+            .some(
+              (current) =>
+                current.id === decision.id &&
+                current.status === "adding" &&
+                current.release.id === decision.release.id &&
+                current.release.sourceId === decision.release.sourceId
+            )
+      ));
+    if (torrent instanceof ElysiaStatus) {
+      decision.status = "error";
+      decision.reason = torrent.response.detail;
+    } else {
       decision.torrentId = torrent.id;
       decision.status = "added";
       if (existing) {
@@ -371,15 +478,9 @@ export class ReleaseAutomationService {
           ? "Better version added · old version kept until the download completes"
           : "Added to the thread folder";
       }
-    } catch {
-      if (decision.status === "ignored") {
-        return;
-      }
-      decision.status = "error";
-      decision.reason = "Unable to add the torrent; retrying on the next check";
     }
-    if (!this.lifecycle.closed) {
-      this.options.automation.writeDecisionResult({
+    if (!serviceLifecycle.closed) {
+      serviceOptions.automation.writeDecisionResult({
         decision,
         reason: decision.reason,
         revision: rule.revision,
@@ -387,95 +488,243 @@ export class ReleaseAutomationService {
         torrentId: decision.torrentId,
       });
     }
-  }
-  async approve(id: string) {
-    this.options.automation.approve(id);
-    const decision = this.options.automation.decisionRecords().find((item) => item.id === id);
+  });
+  const serviceApprove = Effect.fn("ReleaseAutomation.approve")(function* (id: string) {
+    const approved = serviceOptions.automation.approve(id);
+    if (approved instanceof ElysiaStatus) {
+      return approved;
+    }
+    const decision = serviceOptions.automation.decisionRecords().find((item) => item.id === id);
     if (!decision) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Unknown release");
+      return problem(404, { detail: "Unknown release" });
     }
     if (decision.status === "added" || decision.status === "ignored") {
-      return this.snapshot();
+      return serviceSnapshot();
     }
-    const owner = this.options.automation.ruleSnapshot(decision.automationId);
+    const owner = serviceOptions.automation.ruleSnapshot(decision.automationId);
     if (owner?.executorId && owner.executorId !== "tofu.releases") {
-      return this.snapshot();
+      return serviceSnapshot();
     }
-    await this.addDecision(decision, this.rule(decision.automationId));
-    return this.snapshot();
-  }
-  async start() {
-    if (this.lifecycle.started || this.lifecycle.closed) {
+    const rule = serviceRule(decision.automationId);
+    if (rule instanceof ElysiaStatus) {
+      return rule;
+    }
+    yield* serviceAddDecision(decision, rule);
+    return serviceSnapshot();
+  });
+  const serviceStart = Effect.fn("ReleaseAutomation.start")(function* () {
+    if (serviceLifecycle.started || serviceLifecycle.closed) {
       return;
     }
-    this.lifecycle.started = true;
-    try {
-      await Promise.all(
-        this.options.automation
-          .snapshot()
-          .automations.filter(
-            (rule) => rule.enabled && (!rule.executorId || rule.executorId === "tofu.releases")
-          )
-          .map((rule) => this.run(rule.id))
-      );
-    } finally {
-      if (!this.lifecycle.closed) {
-        this.timer = setInterval(() => {
-          void this.tick().catch((error: unknown) => {
-            recordLog({ component: "automation", error, level: "error", operation: "poll" });
+    serviceLifecycle.started = true;
+    yield* Effect.all(
+      serviceOptions.automation
+        .snapshot()
+        .automations.filter(
+          (rule) => rule.enabled && (!rule.executorId || rule.executorId === "tofu.releases")
+        )
+        .map((rule) => serviceRun(rule.id)),
+      { concurrency: "unbounded" }
+    );
+    if (serviceLifecycle.closed) {
+      return;
+    }
+    const poll = serviceTick().pipe(
+      Effect.catchCause((cause) =>
+        Effect.sync(() => {
+          if (Cause.hasInterruptsOnly(cause)) {
+            return;
+          }
+          const log = createLogger({
+            component: "automation",
+            error: Cause.squash(cause),
+            operation: "poll",
           });
-        }, 15_000);
-        this.timer.unref();
-      }
-    }
-  }
-  async tick() {
-    if (this.lifecycle.closed) {
+          log.setLevel("error");
+          log.emit();
+        })
+      )
+    );
+    serviceTimer = yield* Effect.forkIn(
+      poll.pipe(
+        Effect.repeat(Schedule.spaced("15 seconds")),
+        Effect.delay("15 seconds"),
+        Effect.asVoid
+      ),
+      scope
+    );
+  });
+  const serviceTick = Effect.fn("ReleaseAutomation.tick")(function* () {
+    if (serviceLifecycle.closed) {
       return;
     }
-    await Promise.all(
-      this.options.automation
+    yield* Effect.all(
+      serviceOptions.automation
         .snapshot()
         .automations.filter(
           (rule) =>
             rule.enabled &&
             (!rule.executorId || rule.executorId === "tofu.releases") &&
-            !this.runs.has(rule.id)
+            !serviceRuns.has(rule.id)
         )
-        .map((rule) => this.completeReplacements(rule))
+        .map((rule) => serviceCompleteReplacements(rule)),
+      { concurrency: "unbounded" }
     );
-    await Promise.all(
-      this.options.automation
+    yield* Effect.all(
+      serviceOptions.automation
         .snapshot()
         .automations.filter(
           (rule) =>
             rule.enabled &&
             (!rule.executorId || rule.executorId === "tofu.releases") &&
             (rule.nextRunAt === null ||
-              rule.nextRunAt <= this.options.now() ||
-              this.options.automation
+              rule.nextRunAt <= serviceOptions.now() ||
+              serviceOptions.automation
                 .decisionRecords()
                 .some(
                   (decision) =>
                     decision.automationId === rule.id &&
                     decision.status === "waiting" &&
                     decision.deadline !== null &&
-                    decision.deadline <= this.options.now()
+                    decision.deadline <= serviceOptions.now()
                 ))
         )
-        .map((rule) => this.run(rule.id))
+        .map((rule) => serviceRun(rule.id)),
+      { concurrency: "unbounded" }
     );
-  }
-  async close() {
-    if (this.lifecycle.closed) {
+  });
+  const serviceClose = Effect.fn("ReleaseAutomation.close")(function* () {
+    if (serviceLifecycle.closed) {
       return;
     }
-    this.lifecycle.closed = true;
-    if (this.timer) {
-      clearInterval(this.timer);
+    serviceLifecycle.closed = true;
+    if (serviceTimer) {
+      yield* Fiber.interrupt(serviceTimer);
+      serviceTimer = null;
     }
-    await Promise.allSettled(this.runs.values());
-    await Promise.allSettled(this.replacements.values());
-    await Promise.allSettled(this.additions.values());
+    yield* Effect.all([...serviceRuns.values()].map(Effect.exit), { concurrency: "unbounded" });
+    yield* Effect.all([...serviceReplacements.values()].map(Effect.exit), {
+      concurrency: "unbounded",
+    });
+    yield* Effect.all([...serviceAdditions.values()].map(Effect.exit), {
+      concurrency: "unbounded",
+    });
+  });
+
+  yield* Effect.addFinalizer(() => serviceClose());
+  return {
+    approve: serviceApprove,
+    close: serviceClose,
+    prepareRule: servicePrepareRule,
+    preview: servicePreview,
+    run: serviceRun,
+    save: serviceSave,
+    snapshot: serviceSnapshot,
+    start: serviceStart,
+    tick: serviceTick,
+    writeRule: serviceWriteRule,
+  };
+});
+
+export type ReleaseAutomationService = ReleaseAutomation["Service"];
+export class ReleaseAutomation extends Context.Service<
+  ReleaseAutomation,
+  {
+    readonly snapshot: () => AutomationState;
+    readonly prepareRule: (
+      id: string | null,
+      draft: AutomationDraft,
+      ownership?: RuleOwnership
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<429, { readonly detail: string }>>
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | MappingFailure
+      | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Enter a title and at least one source" }>
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | { baseline: AutomationDecision[]; expectedRevision: number | null; rule: AutomationRule }
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown release source" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown destination" }>>
+    >;
+    readonly writeRule: (
+      tx: DatabaseTransaction,
+      prepared: PreparedRule
+    ) =>
+      | AutomationRule
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown destination" }>>
+      | ReturnType<typeof problem<409, { readonly detail: "Automation changed; reload the rule" }>>
+      | ReturnType<
+          typeof problem<
+            409,
+            { readonly detail: "This integration already owns a rule with that key" }
+          >
+        >;
+    readonly save: (
+      id: string | null,
+      draft: AutomationDraft,
+      ownership?: RuleOwnership
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<429, { readonly detail: string }>>
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | MappingFailure
+      | AutomationRule
+      | ReturnType<typeof problem<400, { readonly detail: "Pattern too long" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Invalid pattern" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "Enter a title and at least one source" }>
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown release source" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Unknown destination" }>>
+    >;
+    readonly preview: (draft: AutomationDraft) => Effect.Effect<
+      | ReturnType<typeof problem<429, { readonly detail: string }>>
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | MappingFailure
+      | {
+          candidates: (
+            | { release: FeedRelease; probability: null; reason: string | null; uncertain: boolean }
+            | {
+                release: FeedRelease;
+                probability: number;
+                reason: string | null;
+                uncertain: boolean;
+              }
+          )[];
+          releases: FeedRelease[];
+          errors: { sourceId: SourcePluginId; message: string }[];
+          search?: DiscoverySearch;
+        }
+    >;
+    readonly run: (
+      id: string
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<429, { readonly detail: string }>>
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<typeof problem<503, { readonly detail: string }>>
+      | MappingFailure
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | AutomationState
+    >;
+    readonly approve: (
+      id: string
+    ) => Effect.Effect<
+      | AutomationState
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown automation" }>>
+      | ReturnType<
+          typeof problem<409, { readonly detail: "This rule belongs to another executor" }>
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown release" }>>
+    >;
+    readonly start: () => Effect.Effect<void>;
+    readonly tick: () => Effect.Effect<void>;
+    readonly close: () => Effect.Effect<void>;
   }
-}
+>()("tofu/release-automation") {}
+export const releaseAutomationLayer = Layer.effect(ReleaseAutomation, make);

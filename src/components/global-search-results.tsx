@@ -1,5 +1,5 @@
 import { Autocomplete } from "@base-ui/react/autocomplete";
-import { ArrowUpRightIcon, DownloadIcon, LoaderCircleIcon } from "lucide-react";
+import { ArrowUpRightIcon, DownloadIcon, LoaderCircleIcon, ZapIcon } from "lucide-react";
 import { sourceNames } from "./automation-fields";
 import { bytes, percent, torrentStatusLabel } from "./format";
 import { OptionSelect } from "./option-select";
@@ -68,32 +68,48 @@ export function GlobalSearchResults({ model }: { model: ReturnType<typeof useGlo
               (torrent) => torrent.id.toLowerCase() === item.group.key
             );
             return (
-              <Autocomplete.Item
-                className="global-search-result"
-                data-reviewed={currentReview?.key === item.group.key || undefined}
-                disabled={busy}
-                key={item.group.key}
-                onClick={() => choose(item)}
-                value={item}
-              >
-                <span className="global-search-release-icon">
-                  <DownloadIcon />
-                </span>
-                <div className="global-search-result-copy">
-                  <strong>{first.title}</strong>
-                  <span>
-                    {[
-                      ...new Set(item.group.releases.map((entry) => sourceNames[entry.sourceId])),
-                    ].join(" / ")}{" "}
-                    · {first.language ?? "—"} · {bytes(first.size)} · {first.seeders ?? "—"} seeds
+              <div className="global-search-result-entry" key={item.group.key}>
+                <Autocomplete.Item
+                  className="global-search-result"
+                  data-reviewed={currentReview?.key === item.group.key || undefined}
+                  disabled={busy}
+                  key={item.group.key}
+                  onClick={() => choose(item)}
+                  value={item}
+                >
+                  <span className="global-search-release-icon">
+                    <DownloadIcon />
                   </span>
-                </div>
-                <span className="global-search-result-action">
-                  {duplicate
-                    ? `Already in ${data.destinations.find((thread) => thread.id === duplicate.destinationId)?.name ?? "a thread"}`
-                    : "Review"}
-                </span>
-              </Autocomplete.Item>
+                  <div className="global-search-result-copy">
+                    <strong>{first.title}</strong>
+                    <span>
+                      {[
+                        ...new Set(item.group.releases.map((entry) => sourceNames[entry.sourceId])),
+                      ].join(" / ")}{" "}
+                      · {first.language ?? "—"} · {bytes(first.size)} · {first.seeders ?? "—"} seeds
+                    </span>
+                  </div>
+                  <span className="global-search-result-action">
+                    {duplicate
+                      ? `Already in ${data.destinations.find((thread) => thread.id === duplicate.destinationId)?.name ?? "a thread"}`
+                      : "Review"}
+                  </span>
+                </Autocomplete.Item>
+                {data.host ? (
+                  <Button
+                    aria-label={`Automate ${first.workTitle}`}
+                    disabled={busy || !model.automation || !data.host.destinations.length}
+                    onClick={() => {
+                      model.setReview(item.group);
+                      model.automate(first);
+                    }}
+                    size="icon-sm"
+                    variant="ghost"
+                  >
+                    <ZapIcon />
+                  </Button>
+                ) : null}
+              </div>
             );
           })}
         </Autocomplete.Group>
@@ -170,8 +186,18 @@ export function GlobalSearchSourceStatus({
 }
 
 export function GlobalSearchReview({ model }: { model: ReturnType<typeof useGlobalSearch> }) {
-  const { setDestinationId, busy, data, destination, release, existing, openTorrent, download } =
-    model;
+  const {
+    setDestinationId,
+    busy,
+    data,
+    destination,
+    release,
+    existing,
+    openTorrent,
+    download,
+    automate,
+    automation,
+  } = model;
   if (!release) {
     return null;
   }
@@ -184,6 +210,17 @@ export function GlobalSearchReview({ model }: { model: ReturnType<typeof useGlob
           {release.seeders ?? "—"} seeds
         </span>
       </div>
+      {data.host ? (
+        <Button
+          disabled={busy || !automation || !data.host.destinations.length}
+          onClick={() => automate()}
+          size="sm"
+          variant="ghost"
+        >
+          <ZapIcon data-icon="inline-start" />
+          Automate
+        </Button>
+      ) : null}
       {existing ? (
         <Button disabled={busy} onClick={() => void openTorrent(existing)}>
           <ArrowUpRightIcon data-icon="inline-start" />
@@ -215,7 +252,7 @@ export function GlobalSearchReview({ model }: { model: ReturnType<typeof useGlob
         </div>
       )}
       {destination && !existing && (
-        <span className="global-search-destination-path">{destination.downloadPath}</span>
+        <span className="global-search-destination-path">{destination.name}</span>
       )}
     </div>
   );

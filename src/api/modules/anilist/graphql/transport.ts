@@ -1,7 +1,41 @@
-import { HTTPError } from "elysia";
+import { Schema } from "effect";
 import type { DocumentNode } from "graphql";
 import { ClientError, GraphQLClient, type Variables } from "graphql-request";
 import { getSdk } from "./generated";
+
+/**
+ * Expected provider failures never retain upstream request data or credentials.
+ */
+export class AniListUnavailable extends Schema.TaggedError<AniListUnavailable>()(
+  "AniListUnavailable",
+  {
+    message: Schema.String,
+    retryAfter: Schema.optional(Schema.Number),
+  }
+) {}
+
+export class AniListCancelled extends Schema.TaggedError<AniListCancelled>()(
+  "AniListCancelled",
+  {}
+) {}
+
+export function anilistRequestError(cause: unknown, signal: AbortSignal) {
+  if (signal.aborted) {
+    return new AniListCancelled({});
+  }
+  if (cause instanceof ClientError) {
+    const retryAfter = cause.response.headers.get("retry-after");
+    const seconds = retryAfter ? Number(retryAfter) : 0;
+    return new AniListUnavailable({
+      message:
+        cause.response.status >= 400
+          ? `AniList unavailable (HTTP ${cause.response.status})`
+          : "AniList: account or list inaccessible",
+      retryAfter: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined,
+    });
+  }
+  return new AniListUnavailable({ message: "AniList unavailable" });
+}
 
 interface RequestOptions {
   accessToken?: string;
@@ -17,37 +51,13 @@ export function createAniListSdk(endpoint: string, token: () => string) {
       options?: RequestOptions
     ): Promise<Result> => {
       const accessToken = options?.accessToken ?? token();
-      try {
-        return await client.request<Result>({
-          document,
-          requestHeaders: accessToken ? { authorization: `Bearer ${accessToken}` } : {},
-          signal: options?.signal,
-          // The SDK supplies generated operation variables; this adapts its generic
-          // requester to graphql-request's transport-only Variables constraint.
-          variables: variables as Variables | undefined,
-        });
-      } catch (cause) {
-        if (
-          options?.signal.aborted &&
-          !(
-            options.signal.reason instanceof DOMException &&
-            options.signal.reason.name === "TimeoutError"
-          )
-        ) {
-          throw cause;
-        }
-        if (cause instanceof ClientError) {
-          const message =
-            cause.response.status >= 400
-              ? `AniList unavailable (HTTP ${cause.response.status})`
-              : "AniList: account or list inaccessible";
-          // Do not expose upstream query variables or credentials in API errors.
-          // biome-ignore lint/style/useErrorCause: ClientError contains sensitive upstream request and response data.
-          throw new (HTTPError.id("BAD_GATEWAY", 502))(message);
-        }
-        // biome-ignore lint/style/useErrorCause: Transport errors may contain upstream request details or credentials.
-        throw new (HTTPError.id("BAD_GATEWAY", 502))("AniList unavailable");
-      }
+      return await client.request<Result>({
+        document,
+        requestHeaders: accessToken ? { authorization: `Bearer ${accessToken}` } : {},
+        signal: options?.signal,
+        // Adapt generated operation variables to the transport's generic constraint.
+        variables: variables as Variables | undefined,
+      });
     }
   );
 }
