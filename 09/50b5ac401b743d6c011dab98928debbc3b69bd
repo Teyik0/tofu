@@ -1,0 +1,21 @@
+.github/workflows/release.yml
+  s_a8bc19e7eff5cf::t_8a3e223075a634 77-84,89-90
+scripts/build-tsnet.ts
+  s_a8bc19e7eff5cf::t_72bcdd3c0035d6 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0950b5ac401b743d6c011dab98928debbc3b69bd",
+  "prompts": {},
+  "sessions": {
+    "s_a8bc19e7eff5cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17923-e59e-7103-987b-9ff31c4ee16a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
