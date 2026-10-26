@@ -9,6 +9,7 @@ import { peer } from "../helpers/peer";
 import { waitFor } from "../helpers/poll";
 import { remoteRelay } from "../helpers/remote-relay";
 
+// This scenario includes four server lifecycles plus reconnects; each operation keeps its own deadline.
 test("saved servers keep their threads and permissions independent when one goes offline", async () => {
   await using source = await peer();
   await using firstApp = await application();
@@ -473,4 +474,4 @@ test("saved servers keep their threads and permissions independent when one goes
     ).status
   ).toBe(401);
   await desktop.stop();
-}, 60_000);
+}, 120_000);
