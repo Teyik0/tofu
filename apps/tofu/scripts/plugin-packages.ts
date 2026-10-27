@@ -351,7 +351,8 @@ function validateUI(value: unknown, pluginId: string): PluginUI {
         typeof page.title !== "string" ||
         typeof page.path !== "string" ||
         typeof page.pinnable !== "boolean" ||
-        typeof page.route !== "function"
+        (typeof page.route !== "function" &&
+          (!page.route || typeof page.route !== "object" || page.route.__type !== "FURIN_ROUTE"))
       ) {
         throw new Error(`Plugin ${pluginId} exports invalid or duplicate native pages`);
       }
@@ -426,7 +427,7 @@ async function generateFromRegistry(
           const layout = join(host, "src/pages/(app)/_route.tsx");
           await writeChanged(
             path,
-            `${generatedHeader}\nimport { ui } from ${JSON.stringify(moduleSpecifier(path, clientPath))};\nimport { route as threadLayout } from ${JSON.stringify(moduleSpecifier(path, layout))};\nconst page = ui.pages?.[${pageIndex}];\nif (!page) { throw new Error("The installed plugin page is unavailable"); }\nexport const route = page.route({ threadLayout });\n`
+            `${generatedHeader}\nimport { ui } from ${JSON.stringify(moduleSpecifier(path, clientPath))};\nimport { route as threadLayout } from ${JSON.stringify(moduleSpecifier(path, layout))};\nconst page = ui.pages?.[${pageIndex}];\nif (!page) { throw new Error("The installed plugin page is unavailable"); }\nexport const route = typeof page.route === "function" ? page.route({ threadLayout }) : page.route;\n`
           );
         })
       );

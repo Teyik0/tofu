@@ -85,6 +85,8 @@ Application services are Effect services. `apps/tofu/src/api/lib/services-layer.
 
 `apps/tofu/src/api/index.ts` declares the shared `apiPlugin` root, installs desktop initialization before API routes, and initializes the plugin host before listening. `apps/tofu/src/server.ts` attaches Furin to that same root and owns listening and shutdown. The server-side Eden client uses `treaty(apiPlugin).use(furinSync).api` for direct dispatch without a network request. Browser clients use the current origin with credentials and caching disabled.
 
+AniList owns its shared layout, library page, and notifications page in `package/anilist/src/ui.tsx`; the desktop only mounts those route declarations.
+
 Installed plugins retain their native pages, sidebar contributions, thread actions, settings, and scoped authentication. Their browser UI receives the same redacted library state as the workspace. The host keeps plugin API authorization separate from AniList and disposes plugin work before closing the Effect service graph.
 
 An integration can consume the automation service without mounting its management API:

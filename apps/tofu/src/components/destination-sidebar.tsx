@@ -253,7 +253,7 @@ export const DestinationSidebar = memo(
                   </ActionTooltip>
                 </SidebarMenuItem>
               ) : null}
-              {capabilities?.administer ? <PluginSidebarPages exclude="anilist" pinned /> : null}
+              {capabilities?.administer ? <PluginSidebarPages exclude="/anilist" pinned /> : null}
               {data?.destinations
                 .filter((destination) => destination.pinned && showCurrentServer)
                 .map((destination) => (

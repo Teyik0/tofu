@@ -6,10 +6,14 @@ import { provider } from "../helpers/provider";
 test("AniList catalog browsing and list edits use the provider and retain saved changes", async () => {
   await using upstream = provider();
   await using app = await application({
-    entry: "tests/helpers/providers-server.ts",
     provider: upstream.url,
   });
-  const { client } = await app.start();
+  const { client, url } = await app.start();
+  const page = await fetch(`${url}/anilist`);
+  expect(page.status).toBe(200);
+  const html = await page.text();
+  expect(html).toContain("AniList — Tofu");
+  expect(html).toContain("anilist-page-header");
   const catalog = success(await client.anilist.catalog.post({ search: "Example" }));
   expect(catalog.media).toHaveLength(1);
   expect(catalog.media[0]).toMatchObject({ mediaId: 10, title: "Example" });

@@ -19,6 +19,9 @@ test("installed plugins preserve settings, credentials and downloaded files acro
     throw initialError;
   }
   expect(initial.plugins.find((entry) => entry.id === "fixture")?.enabled).toBe(true);
+  const page = await fetch(`${first.url}/extensions/fixture/status`);
+  expect(page.status).toBe(200);
+  expect(await page.text()).toContain("Fixture plugin page");
   const { error: settingsError } = await first.client
     .extensions({ id: "fixture" })
     .settings.patch({ patch: { label: "Retained" } });

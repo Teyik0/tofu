@@ -26,10 +26,29 @@ test("AniList notifications retain unread state, filter and paginate, and mark t
     }
   );
   await using app = await application({
-    entry: "tests/helpers/providers-server.ts",
     provider: upstream.url,
   });
-  const { client } = await app.start();
+  const { client, url } = await app.start();
+  const extensions = success(await client.extensions.get());
+  expect(extensions.plugins.find((plugin) => plugin.id === "anilist")?.pages).toEqual([
+    expect.objectContaining({ id: "library", path: "/anilist" }),
+    expect.objectContaining({ id: "notifications", path: "/anilist/notifications" }),
+  ]);
+  success(
+    await client
+      .extensions({ id: "anilist" })
+      .pages({ pageId: "notifications" })
+      .post({ pinned: true })
+  );
+  const pinned = success(await client.extensions.get());
+  expect(pinned.plugins.find((plugin) => plugin.id === "anilist")?.pages).toContainEqual(
+    expect.objectContaining({ id: "notifications", path: "/anilist/notifications", pinned: true })
+  );
+  const page = await fetch(`${url}/anilist/notifications`);
+  expect(page.status).toBe(200);
+  const html = await page.text();
+  expect(html).toContain("Notifications · AniList — Tofu");
+  expect(html).toContain("anilist-page-header");
   expect((await client.anilist.notifications.get()).status).toBe(409);
   expect(upstream.state.notificationRequests).toEqual([]);
   success(

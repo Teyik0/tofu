@@ -1,11 +1,26 @@
 import { defineRoute } from "@teyik0/furin";
-import type { PluginRouteContext } from "@tofu/plugins/routes";
-import { useContext } from "react";
+import { BellIcon } from "lucide-react";
 import { AniListIcon } from "./components/icon";
-import { AniListLibrary } from "./components/library";
-import { aniListContext } from "./pages/_context";
+import { AniListLayout } from "./pages/layout";
+import { AniListLibraryPage } from "./pages/library";
+import { AniListNotificationsPage } from "./pages/notifications";
+
+declare module "@teyik0/furin/routes" {
+  interface FileRoutes {
+    "/__tofu_anilist/_route": {
+      kind: "layout";
+      parent: undefined;
+      pathParams: Record<never, never>;
+    };
+  }
+}
 
 export const ui = {
+  layout: defineRoute("/__tofu_anilist/_route")
+    .config({ mode: "ssr" })
+    // Privileged account data is loaded by authorized browsers after mount.
+    .loader(() => ({ requestedAt: Date.now() }))
+    .layout(AniListLayout),
   pages: [
     {
       availableWhenDisabled: true,
@@ -13,21 +28,23 @@ export const ui = {
       id: "library",
       path: "/anilist",
       pinnable: true,
-      route(_context: PluginRouteContext) {
-        return defineRoute("/__tofu_plugin")
-          .config({ mode: "ssr" })
-          .page(() => {
-            const context = useContext(aniListContext);
-            return context ? (
-              <AniListLibrary
-                automationState={context.automation}
-                openSettings={context.openSettings}
-                state={context.anilist}
-              />
-            ) : null;
-          });
-      },
+      route: defineRoute("/__tofu_plugin")
+        .config({ mode: "ssr" })
+        .head(() => ({ meta: [{ title: "AniList — Tofu" }] }))
+        .page(AniListLibraryPage),
       title: "AniList",
+    },
+    {
+      availableWhenDisabled: true,
+      icon: BellIcon,
+      id: "notifications",
+      path: "/anilist/notifications",
+      pinnable: true,
+      route: defineRoute("/__tofu_plugin")
+        .config({ mode: "ssr" })
+        .head(() => ({ meta: [{ title: "Notifications · AniList — Tofu" }] }))
+        .page(AniListNotificationsPage),
+      title: "AniList notifications",
     },
   ] as const,
 };

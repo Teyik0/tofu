@@ -48,7 +48,18 @@ export async function extensionHost() {
       })
     );
     await cp(join(import.meta.dir, "extension-plugin.ts"), join(source, "server.ts"));
-    await Bun.write(join(source, "client.js"), "export const ui = {};\n");
+    await Bun.write(
+      join(source, "client.js"),
+      `
+      import { defineRoute } from "@teyik0/furin";
+      export const ui = { pages: [{
+        id: "status", title: "Fixture status", path: "status", pinnable: true,
+        route: defineRoute("/__tofu_plugin").config({ mode: "ssr" })
+          .head(() => ({ meta: [{ title: "Fixture status" }] }))
+          .page(() => "Fixture plugin page"),
+      }] };
+    `
+    );
     await installPlugin({
       hostDirectory: host,
       replace: false,

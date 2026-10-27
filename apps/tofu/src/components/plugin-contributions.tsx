@@ -130,13 +130,13 @@ export function PluginContributionsProvider({
 
 export function PluginSidebarPages({ pinned, exclude }: { pinned: boolean; exclude?: string }) {
   const { plugins, registry, path } = usePluginContributions();
-  const pages = plugins
-    .filter((plugin) => plugin.id !== exclude)
-    .flatMap((plugin) =>
-      plugin.pages
-        .filter((page) => page.available && page.created && page.pinned === pinned)
-        .map((page) => ({ ...page, pluginId: plugin.id }))
-    );
+  const pages = plugins.flatMap((plugin) =>
+    plugin.pages
+      .filter(
+        (page) => page.path !== exclude && page.available && page.created && page.pinned === pinned
+      )
+      .map((page) => ({ ...page, pluginId: plugin.id }))
+  );
   const links = pages.map((page) => {
     const Icon =
       registry

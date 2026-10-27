@@ -15,6 +15,8 @@ Notable changes to Tofu are tracked here. Release tags follow the version in app
 
 ### Fixed
 
+- Keep AniList's complete notifications page and shared layout in the autonomous plugin, with distinct page URLs and independent pinning.
+
 - Keep AniList administration authorization local to its own API so linked-library callers retain their permissions.
 - Initialize required services and the plugin host before listening, and dispose plugin work before releasing the service graph.
 - Preserve plugin settings, credentials, and real downloads across disable, re-enable, and application restart.

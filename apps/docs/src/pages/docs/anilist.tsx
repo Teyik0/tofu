@@ -42,8 +42,9 @@ export const route = defineRoute("/docs/anilist")
       <p>
         <code>package/anilist</code> exports <code>createAniListPlugin</code>. It uses one{" "}
         <code>definePlugin</code> with its Elysia API, native page contribution, custom
-        authentication declaration, and lifecycle cleanup. Its route factory receives the same{" "}
-        <code>threadLayout</code> as third-party plugins.
+        authentication declaration, and lifecycle cleanup. The package declares its shared layout,
+        library page, and notifications page as native Furin routes. Desktop route files only mount
+        those declarations.
       </p>
       <p>
         The package owns its service, GraphQL operations, persistent cache, and Drizzle table. The

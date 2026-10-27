@@ -34,7 +34,7 @@ export interface PluginPage<Route = unknown> {
   id: string;
   path: string;
   pinnable: boolean;
-  route: PluginRouteFactory<Route>;
+  route: (Route & { readonly __type: "FURIN_ROUTE" }) | PluginRouteFactory<Route>;
   title: string;
 }
 

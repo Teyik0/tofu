@@ -382,7 +382,7 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
                 id: page.id,
                 path:
                   definition.id === "anilist"
-                    ? "/anilist"
+                    ? page.path
                     : `/extensions/${definition.id}/${page.id}`,
                 pinnable: page.pinnable,
                 pinned: created?.pinned ?? false,

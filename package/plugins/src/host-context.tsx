@@ -8,7 +8,11 @@ export interface PluginHost {
   openSearch: (value: boolean | { query: string; destinationId: string }) => void;
   playSound: (cue: "added" | "removed") => void;
   refresh: () => Promise<void>;
-  session: { capabilities: { hostNative: boolean }; caller: { deviceKind?: string | null } } | null;
+  session: {
+    capabilities: { administer: boolean; hostNative: boolean };
+    caller: { deviceKind?: string | null };
+    server: { name: string };
+  } | null;
   toggleSidebar?: () => void;
 }
 
