@@ -1,0 +1,7 @@
+import { treaty } from "@elysia/eden";
+import { furinSync } from "@teyik0/furin/client";
+import type { PluginAPI } from "@tofu/plugins";
+import type { createPlugin } from "../server";
+
+const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
+export const client = treaty<PluginAPI<ReturnType<typeof createPlugin>>>(`${origin}/api/plugins/{{id}}`).use(furinSync);

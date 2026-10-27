@@ -34,8 +34,8 @@ jobs:
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version-file: native/tailscale/go.mod
-          cache-dependency-path: native/tailscale/go.sum
+          go-version-file: apps/tofu/native/tailscale/go.mod
+          cache-dependency-path: apps/tofu/native/tailscale/go.sum
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -45,8 +45,8 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            .cache/hutch
-          key: tofu-${{ runner.os }}-${{ runner.arch }}-bun-1.4.3-${{ hashFiles('bun.lock', 'furin.config.ts') }}
+            apps/tofu/.cache/hutch
+          key: tofu-${{ runner.os }}-${{ runner.arch }}-bun-1.4.3-${{ hashFiles('bun.lock', 'apps/tofu/furin.config.ts') }}
 
       - name: Install Linux native dependencies
         if: runner.os == 'Linux'
@@ -58,7 +58,7 @@ jobs:
 
       - run: bun run build
 
-      - run: bun check
+      - run: bun run tscheck
 
       # Integration tests spawn real servers; limit contention on Windows runners.
       - run: bun run test ${{ runner.os == 'Windows' && '--parallel=2' || '' }}

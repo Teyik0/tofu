@@ -1,0 +1,6 @@
+[run]
+bun = true
+
+[serve.static]
+plugins = ["@teyik0/furin/strip-plugin"]
+env = "FURIN_PUBLIC_*"

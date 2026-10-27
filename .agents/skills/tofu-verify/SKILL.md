@@ -25,20 +25,20 @@ introduced by the change. Report both accurately.
 
 Choose existing scenarios by the behavior affected. Useful entry points:
 
-- Torrent transfers: tests/torrents/transfers.test.ts
-- Torrent lifecycle: tests/torrents/lifecycle.test.ts
-- Startup and cleanup: tests/lifecycle/
-- Remote access and synchronization: tests/remote/
-- AniList: tests/anilist/
-- Plugins and automation: tests/plugins/
-- Updates: tests/updates/
+- Torrent transfers: apps/tofu/tests/torrents/transfers.test.ts
+- Torrent lifecycle: apps/tofu/tests/torrents/lifecycle.test.ts
+- Startup and cleanup: apps/tofu/tests/lifecycle/
+- Remote access and synchronization: apps/tofu/tests/remote/
+- AniList: apps/tofu/tests/anilist/
+- Plugins and automation: apps/tofu/tests/plugins/
+- Updates: apps/tofu/tests/updates/
 
 Inspect the relevant tests before selecting files.
 
 Run focused files or directories through the existing package script:
 
 ```sh
-bun run test tests/torrents/transfers.test.ts
+bun run --filter @tofu/desktop test tests/torrents/transfers.test.ts
 ```
 
 This preserves code generation and the repository's test runner settings.
@@ -46,7 +46,7 @@ This preserves code generation and the repository's test runner settings.
 For a reproducible logic bug, demonstrate the failure before the fix
 when practical, then rerun the same scenario after it.
 
-Inspect tests/helpers/ before creating fixtures. Follow AGENTS.md's
+Inspect apps/tofu/tests/helpers/ before creating fixtures. Follow AGENTS.md's
 integration rules; keep test setup out of production code.
 
 When shared fixtures or services change, include the existing scenarios
@@ -57,7 +57,7 @@ that consume them.
 Run bun run build when packaging, native integration, startup, or build
 behavior changes.
 
-Inspect the existing scripts/ workflows before selecting native checks.
+Inspect the existing apps/tofu/scripts/ workflows before selecting native checks.
 Use isolated state and temporary downloads. Do not use the developer's
 running application or personal database as a test fixture.
 

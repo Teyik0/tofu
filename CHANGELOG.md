@@ -1,16 +1,25 @@
 # Changelog
 
-Notable changes to Tofu are tracked here. Release tags follow the version in package.json.
+Notable changes to Tofu are tracked here. Release tags follow the version in apps/tofu/package.json.
 
 ## [Unreleased]
 
 ### Changed
 
-- Remove the Jev/TypeSafe plugin and its settings, remote evaluations, and cache; migrate existing rules to local exact matching.
+- Integrate Tofu 0.2.8 into the experimental workspace, retaining the plugin SDK, autonomous AniList package, documentation app, and scaffolder.
+- Compose the updated Effect service graph through injected AniList capabilities and shared SDK data contracts without importing the desktop from packages.
+- Migrate typed Eden clients to `treaty(...).use(furinSync)` and adapt generated plugin routes to Furin's file-based layout inference.
+- Preserve plugin pages, sidebar contributions, thread actions, scoped authentication, and settings in the split torrent workspace and remote-access model.
+- Remove the Jev/TypeSafe integration and migrate existing rules to local exact matching.
+- Update release resources, signing order, CI paths, native packaging, and generated-plugin verification for the workspace layout.
 
-- Rebuild the integration suite around 15 essential API scenarios with real server processes, local peers, HTTP provider fixtures, and shared resource cleanup; cover missing-file recovery across restarts and remote permissions.
-- Update the vendored Furin core and Electrobun packages to PR #163 revision `f272df9`, isolating route discovery imports before AOT while retaining the local AOT process-isolation patch.
-- Move stable release builds, signing, artifact preparation, and publication into GitHub Actions; use `bun run build` for local desktop builds.
+### Fixed
+
+- Keep AniList's complete notifications page and shared layout in the autonomous plugin, with distinct page URLs and independent pinning.
+
+- Keep AniList administration authorization local to its own API so linked-library callers retain their permissions.
+- Initialize required services and the plugin host before listening, and dispose plugin work before releasing the service graph.
+- Preserve plugin settings, credentials, and real downloads across disable, re-enable, and application restart.
 
 ## [0.2.7] - 2026-10-19
 

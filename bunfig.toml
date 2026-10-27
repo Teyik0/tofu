@@ -1,5 +1,3 @@
-preload = ["@teyik0/furin-electrobun/preload"]
-
 [run]
 bun = true
 

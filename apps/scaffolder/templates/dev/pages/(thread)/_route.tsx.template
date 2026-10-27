@@ -1,0 +1,8 @@
+import { defineRoute } from "@teyik0/furin";
+import { context } from "../../fixtures";
+import { PreviewShell } from "../../shell";
+
+// Host-owned native layout: Furin transforms this source for both dev and production.
+export const route = defineRoute("/(thread)/_route").config({ mode: "ssr" })
+  .loader(() => ({ ...context }))
+  .layout(({ children }) => <PreviewShell>{children}</PreviewShell>);

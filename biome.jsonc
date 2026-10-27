@@ -5,7 +5,7 @@
   "files": {
     "includes": [
       "!docs/remote-servers/design/ui-prototype.html",
-      "!src/api/modules/anilist/graphql/generated.ts"
+      "!package/anilist/src/server/graphql/generated.ts"
     ]
   },
   "javascript": {
@@ -31,7 +31,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/api/modules/anilist/graphql/schema.graphql"],
+      "includes": ["package/anilist/src/server/graphql/schema.graphql"],
       "formatter": {
         "enabled": false
       },
@@ -41,11 +41,14 @@
     },
     {
       "includes": [
-        "src/components/**",
-        "src/pages/anilist/_*.{ts,tsx}",
-        "src/pages/options/connections/_*.tsx",
-        "src/pages/plugins/_plugin-*.tsx",
-        "src/pages/plugins/_use-plugin-card.ts"
+        "apps/tofu/src/components/**",
+        "package/anilist/src/components/**",
+        "package/anilist/src/pages/**",
+        "package/ui/src/**",
+        "apps/tofu/src/pages/anilist/_*.{ts,tsx}",
+        "apps/tofu/src/pages/options/connections/_*.tsx",
+        "apps/tofu/src/pages/plugins/_plugin-*.tsx",
+        "apps/tofu/src/pages/plugins/_use-plugin-card.ts"
       ],
       "linter": {
         "rules": {
@@ -59,7 +62,7 @@
       }
     },
     {
-      "includes": ["src/styles.css"],
+      "includes": ["apps/tofu/src/styles.css"],
       "assist": {
         "actions": {
           "source": {

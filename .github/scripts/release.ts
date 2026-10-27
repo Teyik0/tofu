@@ -1,9 +1,9 @@
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { version } from "../../package.json";
+import { version } from "../../apps/tofu/package.json";
 import { hostDesktopTarget, installerExtension, installerName, releaseTargets } from "./platform";
 
-const artifacts = ".furin/electrobun/artifacts";
+const artifacts = "apps/tofu/.furin/electrobun/artifacts";
 const temporary = process.env.RUNNER_TEMP;
 const keychain = temporary ? join(temporary, "tofu-signing.keychain-db") : null;
 async function command(args: string[]) {

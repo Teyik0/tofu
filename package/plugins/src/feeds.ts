@@ -1,0 +1,359 @@
+import { Effect, Schema } from "effect";
+import type { FeedRelease } from "./discovery-model";
+import type { SourcePluginId } from "./plugin-model";
+
+const feedExpression1 = /^([\d.]+)\s*(Bytes|B|KiB|MiB|GiB|TiB|KB|MB|GB)$/i;
+const feedExpression2 = /\bS(\d{1,3})E(\d{1,4})\b/i;
+const releaseSeasonOnly = /\bS(\d{1,3})(?:v\d+)?\b/i;
+const releaseSeasonWords = /\b(?:season|saison)\s*(\d{1,3})\b/i;
+const feedExpression3 = /\s[-–]\s(\d{1,4})(?:v\d+)?(?:\s|\b)/i;
+const feedExpression4 = /\b(2160|1080|900|720|480)p\b/i;
+const feedExpression5 = /\b(VOSTFR|SUBFRENCH|FRENCH[ ._-]+(?:SUBS?|SUBTITLES))\b/i;
+const feedExpression6 = /\bMULTI\b/i;
+const feedExpression7 = /\b(VF|FRENCH|TRUEFRENCH)\b/i;
+const feedExpression8 = /\b(x265|h[ .]?265|HEVC)\b/i;
+const feedExpression9 = /\b(x264|h[ .]?264|AVC)\b/i;
+const feedExpression10 = /\bAV1\b/i;
+const feedExpression11 = /^\[[^\]]+\]\s*/;
+const feedExpression12 =
+  /\s+S\d+(?:E\d+|v\d+)?\b|\s+(?:season|saison)\s*\d+\b|\s+[-–]\s+\d+(?:v\d+)?\b|\s+[[(](?:\d{3,4}p|batch|complete|multi|HEVC|AVC|AV1|x26[45])\b|\s+(?:VOSTFR|SUBFRENCH|MULTI|VF|FRENCH|TRUEFRENCH|\d{3,4}p)\b/i;
+const feedExpression13 = /\b(batch|complete|complet|integrale|pack)\b/i;
+const feedExpression14 = /\bS\d+E\d+\s*[-–]\s*(?:E)?\d+\b/i;
+const feedExpression15 = /^(https?:\/\/|magnet:\?)/i;
+const feedExpression16 = /^[a-f\d]{40}$/i;
+const feedExpression17 = /&amp;/g;
+const feedExpression18 = /&quot;/g;
+const feedExpression19 = /&#(?:x([a-f\d]+)|(\d+));/gi;
+const feedExpression20 = /&lt;/g;
+const feedExpression21 = /&gt;/g;
+const feedExpression22 = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+const feedExpression23 = /<a\b([^>]+)>([\s\S]*?)<\/a>/gi;
+const feedExpression24 = /href=["']\/?view\/\d+["']/;
+const feedExpression25 = /class=["'][^"']*comments/;
+const feedExpression26 = /href=["']([^"']+)["']/;
+const feedExpression27 = /title=["']([^"']+)["']/;
+const feedExpression28 = /<[^>]*>/g;
+const feedExpression29 = /href=["']([^"']*\/download\/\d+\.torrent)["']/;
+const episodeRange = /\s[-–]\s\d{1,4}(?:v\d+)?\s*[-–]\s*\d{1,4}\b/i;
+
+class FeedError extends Schema.TaggedError<FeedError>()("FeedError", {
+  cause: Schema.optional(Schema.Defect()),
+  message: Schema.String,
+}) {}
+const xmlAttribute = Schema.Struct({
+  "@name": Schema.optional(Schema.String),
+  "@value": Schema.optional(Schema.String),
+});
+const rssItem = Schema.Struct({
+  enclosure: Schema.optional(
+    Schema.Struct({
+      "@length": Schema.optional(Schema.String),
+      "@url": Schema.optional(Schema.String),
+    })
+  ),
+  guid: Schema.optional(
+    Schema.Union([Schema.String, Schema.Struct({ "#text": Schema.optional(Schema.String) })])
+  ),
+  link: Schema.optional(Schema.String),
+  "nyaa:infoHash": Schema.optional(Schema.String),
+  "nyaa:seeders": Schema.optional(Schema.Union([Schema.Number, Schema.String])),
+  "nyaa:size": Schema.optional(Schema.String),
+  pubDate: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
+  "torznab:attr": Schema.optional(
+    Schema.Union([xmlAttribute, Schema.Array(xmlAttribute).pipe(Schema.mutable)])
+  ),
+});
+const decodeRss = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    rss: Schema.optional(
+      Schema.Struct({
+        channel: Schema.optional(
+          Schema.Union([
+            Schema.Literal(""),
+            Schema.Struct({
+              item: Schema.optional(
+                Schema.Union([rssItem, Schema.Array(rssItem).pipe(Schema.mutable)])
+              ),
+            }),
+          ])
+        ),
+      })
+    ),
+  })
+);
+const decodeTsundere = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      entries: Schema.Array(
+        Schema.Struct({
+          codec: Schema.optional(Schema.String),
+          episode: Schema.optional(Schema.NullOr(Schema.Number)),
+          episodeRange: Schema.optional(Schema.Json),
+          id: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
+          infohash: Schema.optional(Schema.NullOr(Schema.String)),
+          language: Schema.optional(Schema.String),
+          metadata: Schema.optional(
+            Schema.NullOr(
+              Schema.Struct({
+                anilistId: Schema.optional(
+                  Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))
+                ),
+              })
+            )
+          ),
+          publishedAt: Schema.optional(Schema.String),
+          quality: Schema.optional(Schema.String),
+          season: Schema.optional(Schema.NullOr(Schema.Number)),
+          size: Schema.optional(Schema.Number),
+          title: Schema.optional(Schema.String),
+          torrentUrl: Schema.optional(Schema.NullOr(Schema.String)),
+          url: Schema.optional(Schema.String),
+        })
+      ),
+      options: Schema.Struct({
+        codec: Schema.Array(Schema.String),
+        quality: Schema.Array(Schema.String),
+      }),
+      total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    })
+  )
+);
+export function numberOrNull(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+function fileSize(value: string | undefined) {
+  const match = value?.match(feedExpression1);
+  if (!match) {
+    return null;
+  }
+  const powers: Record<string, number> = {
+    b: 0,
+    bytes: 0,
+    gb: 3,
+    gib: 3,
+    kb: 1,
+    kib: 1,
+    mb: 2,
+    mib: 2,
+    tib: 4,
+  };
+  const unit = match[2]?.toLowerCase() ?? "";
+  const power = powers[unit];
+  return power === undefined
+    ? null
+    : Number(match[1]) * (unit.includes("i") ? 1024 : 1000) ** power;
+}
+export function releaseMetadata(value: string) {
+  const title = value.replaceAll(".", " ");
+  const seasonEpisode = title.match(feedExpression2);
+  const episode = seasonEpisode?.[2] ?? title.match(feedExpression3)?.[1];
+  const resolution = title.match(feedExpression4)?.[0].toLowerCase() ?? null;
+  const language = detectLanguage(title);
+  const codec = detectCodec(title);
+  const workTitle = title.replace(feedExpression11, "").split(feedExpression12)[0]?.trim() ?? title;
+  return {
+    codec,
+    episode: numberOrNull(episode),
+    language,
+    pack:
+      feedExpression13.test(title) ||
+      feedExpression14.test(title) ||
+      episodeRange.test(title) ||
+      (episode === undefined && (releaseSeasonOnly.test(title) || releaseSeasonWords.test(title))),
+    resolution,
+    season: numberOrNull(
+      seasonEpisode?.[1] ??
+        title.match(releaseSeasonOnly)?.[1] ??
+        title.match(releaseSeasonWords)?.[1]
+    ),
+    workTitle,
+  } satisfies Partial<FeedRelease>;
+}
+function validDownload(value: string | null | undefined): value is string {
+  return typeof value === "string" && feedExpression15.test(value);
+}
+function hash(value: string | null | undefined) {
+  return typeof value === "string" && feedExpression16.test(value) ? value.toLowerCase() : null;
+}
+function date(value: string | undefined) {
+  const parsed = Date.parse(value ?? "");
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export const parseRss = Effect.fn("Feeds.parseRss")(function* (
+  body: string,
+  sourceId: SourcePluginId
+): Effect.fn.Return<FeedRelease[], FeedError> {
+  if (body.length > 8 * 1024 * 1024) {
+    return yield* new FeedError({ message: "Invalid RSS feed" });
+  }
+  const parsed = yield* Effect.try({
+    catch: (cause) => new FeedError({ cause, message: "Invalid RSS feed" }),
+    try: () => Bun.XML.parse(body),
+  });
+  const document = yield* decodeRss(parsed).pipe(
+    Effect.mapError((cause) => new FeedError({ cause, message: "Invalid RSS feed" }))
+  );
+  if (document.rss?.channel === undefined) {
+    return yield* new FeedError({ message: "RSS feed missing" });
+  }
+  if (document.rss.channel === "") {
+    return [];
+  }
+  const items = document.rss.channel.item;
+  return asArray(items).flatMap((item) => {
+    const downloadUrl = item.enclosure?.["@url"] ?? item.link;
+    if (typeof item.title !== "string" || !validDownload(downloadUrl)) {
+      return [];
+    }
+    const attributes = asArray(item["torznab:attr"]);
+    const attribute = (name: string) =>
+      attributes.find((entry) => entry["@name"] === name)?.["@value"];
+    const guid = typeof item.guid === "string" ? item.guid : item.guid?.["#text"];
+    return [
+      {
+        ...releaseMetadata(item.title),
+        downloadUrl,
+        id:
+          sourceId === "c411"
+            ? Bun.SHA256.hash(String(guid ?? downloadUrl), "hex")
+            : String(guid ?? downloadUrl),
+        infoHash: hash(item["nyaa:infoHash"] ?? attribute("infohash")),
+        pageUrl: guid?.startsWith("http") ? guid : null,
+        publishedAt: date(item.pubDate),
+        seeders: numberOrNull(item["nyaa:seeders"] ?? attribute("seeders")),
+        size: numberOrNull(item.size ?? item.enclosure?.["@length"]) ?? fileSize(item["nyaa:size"]),
+        sourceId,
+        title: item.title,
+      },
+    ];
+  });
+});
+export const parseTsundere = Effect.fn("Feeds.parseTsundere")(function* (body: string) {
+  const document = yield* decodeTsundere(body).pipe(
+    Effect.mapError((cause) => new FeedError({ cause, message: "Invalid JSON feed" }))
+  );
+  const releases = document.entries.flatMap((entry): FeedRelease[] => {
+    if (typeof entry.title !== "string" || !validDownload(entry.torrentUrl)) {
+      return [];
+    }
+    const metadata = releaseMetadata(entry.title);
+    const languages: Record<string, FeedRelease["language"]> = {
+      FRENCH: "VF",
+      MULTI: "MULTI",
+      MULTi: "MULTI",
+      SUBFRENCH: "VOSTFR",
+    };
+    return [
+      {
+        ...metadata,
+        anilistId: entry.metadata?.anilistId ?? undefined,
+        codec: entry.codec ?? metadata.codec,
+        downloadUrl: entry.torrentUrl,
+        episode: numberOrNull(entry.episode) ?? metadata.episode,
+        id: String(entry.id ?? entry.torrentUrl),
+        infoHash: hash(entry.infohash),
+        language: languages[entry.language ?? ""] ?? metadata.language,
+        pack: Boolean(entry.episodeRange) || metadata.pack,
+        pageUrl: validDownload(entry.url) ? entry.url : null,
+        publishedAt: date(entry.publishedAt),
+        resolution: entry.quality ?? metadata.resolution,
+        season: numberOrNull(entry.season) ?? metadata.season,
+        seeders: null,
+        size: numberOrNull(entry.size),
+        sourceId: "tsundere" as const,
+        title: entry.title,
+      },
+    ];
+  });
+  return {
+    identities: document.entries.map((entry) =>
+      String(entry.id ?? entry.torrentUrl ?? entry.url ?? entry.title)
+    ),
+    options: document.options,
+    releases,
+    total: document.total,
+  };
+});
+function asArray<T>(value: T | T[] | undefined): T[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value !== undefined) {
+    return [value];
+  }
+  return [];
+}
+function detectLanguage(title: string): FeedRelease["language"] {
+  if (feedExpression5.test(title)) {
+    return "VOSTFR";
+  }
+  if (feedExpression6.test(title)) {
+    return "MULTI";
+  }
+  if (feedExpression7.test(title)) {
+    return "VF";
+  }
+  return null;
+}
+function detectCodec(title: string) {
+  if (feedExpression8.test(title)) {
+    return "H.265";
+  }
+  if (feedExpression9.test(title)) {
+    return "H.264";
+  }
+  if (feedExpression10.test(title)) {
+    return "AV1";
+  }
+  return null;
+}
+
+function decodeHtml(value: string) {
+  return value
+    .replace(feedExpression17, "&")
+    .replace(feedExpression18, '"')
+    .replace(feedExpression19, (_match, hex: string | undefined, decimal: string | undefined) =>
+      String.fromCodePoint(
+        Math.min(0x10_ff_ff, Number.parseInt(hex ?? decimal ?? "0", hex ? 16 : 10))
+      )
+    )
+    .replace(feedExpression20, "<")
+    .replace(feedExpression21, ">");
+}
+export function parseNyaaHtml(body: string, base: string): FeedRelease[] {
+  return [...body.matchAll(feedExpression22)].flatMap((row) => {
+    const text = row[1] ?? "";
+    const anchor = [...text.matchAll(feedExpression23)].find(
+      (match) => feedExpression24.test(match[1] ?? "") && !feedExpression25.test(match[1] ?? "")
+    );
+    const href = anchor?.[1]?.match(feedExpression26)?.[1];
+    const name =
+      anchor?.[1]?.match(feedExpression27)?.[1] ?? anchor?.[2]?.replace(feedExpression28, "");
+    const download = text.match(feedExpression29)?.[1];
+    if (!(href && name && download)) {
+      return [];
+    }
+    const title = decodeHtml(name).trim();
+    return [
+      {
+        ...releaseMetadata(title),
+        downloadUrl: new URL(download, base).href,
+        id: new URL(href, base).href,
+        infoHash: null,
+        pageUrl: new URL(href, base).href,
+        publishedAt: null,
+        seeders: null,
+        size: null,
+        sourceId: "nyaa" as const,
+        title,
+      },
+    ];
+  });
+}

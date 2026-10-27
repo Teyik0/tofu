@@ -1,0 +1,60 @@
+{
+  "name": "@tofu/plugins",
+  "version": "0.0.0",
+  "description": "Experimental trusted plugin SDK for Tofu",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./domain": "./src/domain.ts",
+    "./domain-schemas": "./src/domain-schemas.ts",
+    "./automation-read-api": "./src/automation-read-api.ts",
+    "./server": "./src/server.ts",
+    "./client": "./src/client.ts",
+    "./routes": {
+      "types": "./src/routes.ts",
+      "browser": "./src/routes.client.ts",
+      "default": "./src/routes.ts"
+    },
+    "./automation-model": "./src/automation-model.ts",
+    "./destination-model": "./src/destination-model.ts",
+    "./validation": "./src/validation.ts",
+    "./core-actions-api": "./src/core-actions-api.ts",
+    "./plugin-model": "./src/plugin-model.ts",
+    "./api-errors": "./src/api-errors.ts",
+    "./automation-rules": "./src/automation-rules.ts",
+    "./title": "./src/title.ts",
+    "./source-queries": "./src/source-queries.ts",
+    "./releases": "./src/releases.ts",
+    "./discovery-query": "./src/discovery-query.ts",
+    "./discovery-model": "./src/discovery-model.ts",
+    "./torrent-types": "./src/torrent-types.ts",
+    "./settings-model": "./src/settings-model.ts",
+    "./anime-mapping": "./src/anime-mapping.ts",
+    "./feeds": "./src/feeds.ts",
+    "./availability": "./src/availability.ts",
+    "./torrent-capabilities": "./src/torrent-capabilities.ts",
+    "./automation-persistence": "./src/automation-persistence.ts",
+    "./discovery-persistence": "./src/discovery-persistence.ts",
+    "./library-state": "./src/library-state.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/server.ts --target=bun --packages=external --outdir=dist && bun build ./src/client.ts --target=browser --packages=external --outdir=dist/client",
+    "test": "bun test --bail --timeout 30000 tests/auth-cancellation.test.ts && bun test --bail --timeout 30000 --path-ignore-patterns '**/auth-cancellation.test.ts' tests",
+    "tscheck": "bun x tsc --noEmit"
+  },
+  "dependencies": {
+    "@elysia/eden": "catalog:",
+    "@teyik0/furin": "catalog:",
+    "effect": "catalog:",
+    "elysia": "catalog:",
+    "evlog": "catalog:",
+    "react": "catalog:",
+    "typebox": "catalog:",
+    "valibot": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

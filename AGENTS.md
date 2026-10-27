@@ -7,11 +7,11 @@ Always use ponytail skills when starting a feature.
 
 This repository uses the Effect Typescript library.
 
-Before writing any Effect code, first read `node_modules/effect/AGENTS.md`
+Before writing any Effect code, first read `apps/tofu/node_modules/effect/AGENTS.md`
 **completely**, and follow the links in the file when required.
 
 If you need to learn more about particular Effect apis and concepts that the
-guide doesn't cover, search through the source code in `node_modules/effect/src`.
+guide doesn't cover, search through the source code in `apps/tofu/node_modules/effect/src`.
 
 ## Application service pattern
 
@@ -94,9 +94,10 @@ export type Plugin = typeof plugin;
 
 ## Elysia application composition
 
-- `api/index.ts` declares the API plugin as `apiPlugin` and composes API routes inside `.group("/api", ...)`.
-- Keep desktop host initialization, network admission and lifecycle hooks on the root application in `server.ts`, before route plugins install wrappers.
-- The server-side Eden client dispatches directly to `apiPlugin`; network requests enter through the root application and its desktop network guards. Do not add another HTTP listener or custom client transport.
+- `api/index.ts` declares the shared Elysia application as `apiPlugin`. Install `desktopApp()` first and compose API routes inside `.group("/api", ...)`; do not prefix the whole application.
+- `server.ts` attaches Furin to that same instance, exports it as the default application, and owns listening and process shutdown. Do not create a second root application or an `app.ts` entry.
+- Keep desktop host initialization and lifecycle hooks on the shared application in `api/index.ts`, before route plugins install wrappers.
+- The server-side Eden client and network requests use the same `apiPlugin` instance. Desktop network guards distinguish listener dispatch from direct in-process Eden calls. Do not add another HTTP listener or custom client transport.
 - Preserve inferred API types from the route plugins. Initialize dependencies and mount routes before listening.
 
 ## No interfaces that mirror implementations
@@ -149,15 +150,15 @@ interface TorrentEngineOptions {
 ## Isomorphic Eden client: mandatory and protected
 
 - Never modify `src/lib/client.ts` unless the user explicitly requests a change to that file. Architecture, startup, AOT, and desktop fixes do not authorize changing it.
-- The server branch must remain `treaty(apiPlugin).use(furinSync).api`, with direct in-process Eden dispatch and no network request. The separate root application handles network admission; direct server-side dispatch to the API plugin is intentional.
+- The server branch must remain `treaty(apiPlugin).use(furinSync).api`, with direct in-process Eden dispatch and no network request. `apiPlugin` is also the listening root; desktop network guards intentionally allow direct in-process dispatch.
 - The browser branch must use `treaty<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).use(furinSync).api`.
 - Never add a custom `fetcher`, manual `app.handle()` dispatch, an internal HTTP origin, request-scoped `AsyncLocalStorage`, or cookie/origin/header forwarding for this client.
 
 Required implementation:
 
 ```ts
-import { treaty } from "@elysia/eden";
 import { createIsomorphicFn } from "@teyik0/furin";
+import { treaty } from "@elysia/eden";
 import { furinSync } from "@teyik0/furin/client";
 import { type Api, apiPlugin } from "@/api";
 
@@ -167,7 +168,7 @@ export const api = createIsomorphicFn()
     () =>
       treaty<Api>(window.location.origin, {
         fetch: { cache: "no-store", credentials: "include" },
-      }).use(furinSync).api,
+      }).use(furinSync).api
   )();
 ```
 
@@ -242,3 +243,10 @@ return { torrent: data };
 - Put shared fixtures, resource cleanup, and assertion helpers in `tests/helpers/`. Keep endpoint calls visible in the tests rather than wrapping them in request helpers.
 - Keep AniList tests in `tests/anilist/` and omit redundant `anilist-` filename prefixes.
 - Keep test-only exports, configuration, branches, adapters, and dependency injection out of runtime code. Simulate external dependencies only at the existing HTTP or native SDK boundaries.
+
+## Experimental workspace
+
+- The desktop lives in `apps/tofu`, the plugin SDK in `package/plugins`, and the autonomous AniList package in `package/anilist`. Documentation and scaffolding are separate applications.
+- The shared desktop Elysia application follows the constant composition rules above. Plugin SDK factories are allowed when they instantiate independent runtimes with injected typed capabilities and disposal scopes; do not make an autonomous package import a host application.
+- Run `bun run tscheck`, `bun run fix`, `bun run test`, and `bun run build:desktop` after changes. UI and native integration changes also require `bun run test:native`. Run Git hooks before committing and pushing.
+- Do not use default function parameter values. Keep WebTorrent on Bun and preserve downloaded files unless the explicit deletion option is supplied.

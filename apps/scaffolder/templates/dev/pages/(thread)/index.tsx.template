@@ -1,0 +1,6 @@
+import { defineRoute } from "@teyik0/furin";
+import { ui } from "../../../src/client";
+
+const Settings = ui.settings;
+export const route = defineRoute("/(thread)").config({ mode: "ssr" })
+  .page(() => <section><h2>Plugin settings</h2><Settings /></section>);

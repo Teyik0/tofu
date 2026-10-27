@@ -1,0 +1,8 @@
+preload = ["@teyik0/furin-electrobun/preload"]
+
+[run]
+bun = true
+
+[serve.static]
+plugins = ["bun-plugin-tailwind", "@teyik0/furin/strip-plugin"]
+env = "FURIN_PUBLIC_*"
