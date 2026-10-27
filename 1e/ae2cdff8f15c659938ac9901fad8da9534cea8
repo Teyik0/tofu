@@ -1,0 +1,57 @@
+CHANGELOG.md
+  s_f68d379c908547::t_5d3f3c56f5b565 18-19
+README.md
+  s_f68d379c908547::t_4c24ec8dba0491 88-89
+apps/docs/src/pages/docs/anilist.tsx
+  s_f68d379c908547::t_24a6fae27247f0 45-47
+apps/tofu/scripts/plugin-packages.ts
+  s_f68d379c908547::t_02275910cfbdb5 354-355,430
+apps/tofu/src/api/plugin-host.ts
+  s_f68d379c908547::t_847a49b31967d2 385
+apps/tofu/src/components/destination-sidebar.tsx
+  s_f68d379c908547::t_b22b9b46d862fd 256
+apps/tofu/src/components/plugin-contributions.tsx
+  s_f68d379c908547::t_2165fe54cc512d 133-139
+apps/tofu/src/pages/anilist/_route.tsx
+  s_f68d379c908547::t_d4e1264e3d08c8 1,3
+apps/tofu/src/pages/anilist/index.tsx
+  s_f68d379c908547::t_f180683e4f6474 1,3
+apps/tofu/src/pages/anilist/notifications/index.tsx
+  s_f68d379c908547::t_a73d2e3bb97639 1,3
+apps/tofu/tests/anilist/catalog.test.ts
+  s_f68d379c908547::t_97f81f684cc3de 11-16
+apps/tofu/tests/anilist/notifications.test.ts
+  s_f68d379c908547::t_149fb0457331e1 31-51
+apps/tofu/tests/extensions.test.ts
+  s_f68d379c908547::t_0bc8ff491f722b 22-24
+apps/tofu/tests/helpers/extension-host.ts
+  s_f68d379c908547::t_1ab5cd02afdea9 51-62
+package/anilist/src/pages/layout.tsx
+  s_f68d379c908547::t_6bb203246fe8bf 1-136
+package/anilist/src/pages/library.tsx
+  s_f68d379c908547::t_bc25a659069cf3 1-14
+package/anilist/src/pages/notifications/index.tsx
+  s_f68d379c908547::t_0768f4931ca115 1-205
+package/anilist/src/ui.tsx
+  s_f68d379c908547::t_8813b8859a2e1c 2,4-16,19-23,31-34,37-48
+package/plugins/src/host-context.tsx
+  s_f68d379c908547::t_a259d657807e3c 11-15
+package/plugins/src/ui.ts
+  s_f68d379c908547::t_ef54354fca55a8 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1eae2cdff8f15c659938ac9901fad8da9534cea8",
+  "prompts": {},
+  "sessions": {
+    "s_f68d379c908547": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17e20-86d8-7ff2-b956-c276a2e93fa4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "teyik0 <teyik0.fr@icloud.com>"
+    }
+  }
+}
