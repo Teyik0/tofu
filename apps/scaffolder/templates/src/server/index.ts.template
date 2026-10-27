@@ -14,7 +14,6 @@ export function createPlugin(core: PluginCore) {
     version: "0.0.0",
     api: (context: PluginContext<typeof settingsSchema>) => {
       const { settings, auth } = context;
-      const identity = { id: "{{id}}.settings", scope: {} };
       const api = createPluginApi(context)
         .use(core)
         .get("/status", ({ core: host }) => ({
@@ -24,13 +23,15 @@ export function createPlugin(core: PluginCore) {
         }))
         .get("/settings", {
           query: Type.Object({ threadId: Type.Optional(Type.String()) }),
-          sync: identity,
         }, ({ query }) => settings.get(query.threadId))
         .patch("/settings", {
           body: Type.Partial(settingsSchema),
           query: Type.Object({ threadId: Type.Optional(Type.String()) }),
-          sync: { invalidate: identity },
-        }, ({ body, query }) => settings.update(body, query.threadId));
+        }, async ({ body, query, invalidate }) => {
+          const result = await settings.update(body, query.threadId);
+          invalidate("/api/plugins/{{id}}/settings");
+          return result;
+        });
       return api;
     },
     settings: { schema: settingsSchema, defaults: { greeting: "Hello from your plugin" } },

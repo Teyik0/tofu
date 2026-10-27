@@ -48,15 +48,20 @@ jobs:
       - name: Preserve LF line endings
         run: git config --global core.autocrlf false
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: apps/tofu/native/tailscale/go.mod
+          cache-dependency-path: apps/tofu/native/tailscale/go.sum
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.3
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.bun/install/cache
@@ -67,13 +72,26 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2
 
-      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun install --frozen-lockfile
 
-      - run: bun run setup
+      - name: Configure optional Apple signing
+        if: runner.os == 'macOS'
+        run: bun .github/scripts/release.ts signing
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+
+      - name: Prepare release resources
+        run: bun run setup
+        env:
+          NODE_ENV: production
+          # Older tags need an explicit ad hoc identity when signing secrets are absent.
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID || '-' }}
 
       - name: Validate version and architecture
         run: |
-          bun apps/tofu/scripts/release.ts validate
+          bun .github/scripts/release.ts validate
           bun -e 'const { version } = await Bun.file("apps/tofu/package.json").json(); if (process.env.RELEASE_TAG !== `v${version}`) throw new Error("The release tag must match package.json");'
         env:
           EXPECTED_ARCH: ${{ matrix.arch }}
@@ -81,23 +99,22 @@ jobs:
 
       - run: bunx --bun ultracite check
 
-      - name: Configure optional Apple signing
-        if: runner.os == 'macOS'
-        run: bun apps/tofu/scripts/release.ts signing
-        env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-
       - name: Build release and prepare the Hutch SDK
-        run: bun run build:release
+        run: |
+          bun run codegen
+          bun run --filter @tofu/desktop build:release
+        env:
+          NODE_ENV: production
+
+      - name: Prepare release artifacts
+        run: bun .github/scripts/release.ts artifacts
 
       - run: bun run tscheck
 
       # Native host tests spawn their own Bun processes; limit contention on Windows runners.
-      - run: bun run test
+      - run: bun run test ${{ runner.os == 'Windows' && '--parallel=2' || '' }}
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tofu-${{ matrix.platform }}-${{ matrix.arch }}
           path: apps/tofu/.furin/electrobun/artifacts/*
@@ -107,7 +124,7 @@ jobs:
 
       - name: Remove signing files
         if: always() && runner.os == 'macOS'
-        run: bun apps/tofu/scripts/release.ts cleanup
+        run: bun .github/scripts/release.ts cleanup
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -119,7 +136,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
 
@@ -127,15 +144,15 @@ jobs:
         with:
           bun-version: 1.4.3
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: tofu-*
           merge-multiple: true
           path: apps/tofu/.furin/electrobun/artifacts
 
-      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun install --frozen-lockfile
 
       - name: Publish GitHub release
-        run: bun apps/tofu/scripts/release.ts publish
+        run: bun .github/scripts/release.ts publish
         env:
           GH_TOKEN: ${{ github.token }}

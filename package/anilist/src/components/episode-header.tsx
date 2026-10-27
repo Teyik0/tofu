@@ -1,30 +1,31 @@
 import { useMutation } from "@teyik0/furin/client";
-import type { AniListEntry, AniListMedia, DashboardState } from "@tofu/plugins/domain";
-import { ActionTooltip } from "@tofu/ui/action-tooltip";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { Button, buttonVariants } from "@tofu/ui/button";
-import { DialogDescription, DialogTitle } from "@tofu/ui/dialog";
-import { useAsyncAction } from "@tofu/ui/use-async-action";
+import { usePluginHost } from "@tofu/plugins/client";
 import { cn } from "cn";
 import { ExternalLinkIcon, HeartIcon } from "lucide-react";
 import { type CSSProperties, useState } from "react";
+import { ActionTooltip } from "../../../ui/src/action-tooltip";
+import { Alert, AlertDescription } from "../../../ui/src/ui/alert";
+import { Button, buttonVariants } from "../../../ui/src/ui/button";
+import { DialogDescription, DialogTitle } from "../../../ui/src/ui/dialog";
+import { useAsyncAction } from "../../../ui/src/use-async-action";
 import { api } from "../client-api";
 import type { useAniListEditor } from "../hooks/use-anilist-editor";
+import type { AniListEntry, AniListMedia } from "../server/types";
 import { AniListCover } from "./cover";
 export function EpisodeHeader({
   entry,
-  dashboard,
   authenticated,
   model,
   available,
 }: {
   entry: AniListMedia | AniListEntry;
-  dashboard: DashboardState;
   authenticated: boolean;
   available: number | null;
   model: ReturnType<typeof useAniListEditor>;
 }) {
   const { editor, setEditor, loading: editorLoading } = model;
+  // The host opens AniList itself only for its own window; elsewhere the link opens here.
+  const hostNative = usePluginHost().session?.capabilities.hostNative === true;
   const openAnime = useMutation(api.anilist.open.post);
   const setFavourite = useMutation((enabled: boolean) =>
     api.anilist.entries({ mediaId: entry.mediaId }).favourite.put({ enabled })
@@ -106,7 +107,7 @@ export function EpisodeHeader({
                 )}
                 href={entry.siteUrl}
                 onClick={(event) => {
-                  if (dashboard.session.mode !== "desktop") {
+                  if (!hostNative) {
                     return;
                   }
                   event.preventDefault();

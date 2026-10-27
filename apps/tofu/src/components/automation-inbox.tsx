@@ -1,9 +1,3 @@
-import { sourceNames } from "@tofu/ui/automation-fields";
-import { Badge } from "@tofu/ui/badge";
-import { Button } from "@tofu/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@tofu/ui/empty";
-import { bytes, relative } from "@tofu/ui/format";
-import { useNow } from "@tofu/ui/use-now";
 import {
   AlertTriangleIcon,
   CheckIcon,
@@ -14,11 +8,22 @@ import {
 } from "lucide-react";
 import type {
   AutomationDecision,
-  AutomationRule,
   AutomationState,
-  Destination,
-  FeedRelease,
-} from "../types";
+} from "../../../../package/plugins/src/automation-model";
+import type { Destination } from "../../../../package/plugins/src/destination-model";
+import type { FeedRelease } from "../../../../package/plugins/src/discovery-model";
+import { sourceNames } from "../../../../package/ui/src/automation-fields";
+import { bytes, relative } from "../../../../package/ui/src/format";
+import { Badge } from "../../../../package/ui/src/ui/badge";
+import { Button } from "../../../../package/ui/src/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../../../../package/ui/src/ui/empty";
+import { useNow } from "../../../../package/ui/src/use-now";
 
 export type PendingStatus = Extract<AutomationDecision["status"], "review" | "waiting" | "error">;
 export const pendingStatuses: PendingStatus[] = ["review", "error", "waiting"];
@@ -70,15 +75,12 @@ const groups: {
   },
 ];
 
-function explain(decision: AutomationDecision, rule: AutomationRule | undefined, now: number) {
+function explain(decision: AutomationDecision, now: number) {
   if (decision.status === "waiting") {
     return `Not your first choice. Downloads ${relative(decision.deadline, now)} unless a better version appears.`;
   }
   if (decision.status === "error") {
     return decision.reason;
-  }
-  if (decision.probability !== null && rule?.automatic !== false) {
-    return `Jev is ${Math.round(decision.probability * 100)} % sure this release matches “${rule?.title ?? "the rule"}”.`;
   }
   return "This rule asks before downloading.";
 }
@@ -181,7 +183,7 @@ export function AutomationInbox({
                       {decision.supersedes ? <span>Upgrade of an existing download</span> : null}
                     </div>
                     <ReleaseLine release={decision.release} />
-                    <p className="inbox-item-reason">{explain(decision, rule, now)}</p>
+                    <p className="inbox-item-reason">{explain(decision, now)}</p>
                     <div className="inbox-item-actions">
                       <Button
                         disabled={busy || !rule?.enabled || !source?.enabled}

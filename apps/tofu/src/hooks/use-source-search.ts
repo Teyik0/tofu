@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import type { DiscoveryResult, FeedRelease } from "../../../../package/plugins/src/discovery-model";
+import type { SourcePluginId } from "../../../../package/plugins/src/plugin-model";
 import { request } from "../components/api";
 import { errorMessage } from "../lib/errors";
-import type { DiscoveryResult, SourcePluginId, SourceSearchState } from "../types";
 
 interface SearchSnapshot {
   key: string;
@@ -93,4 +94,12 @@ export function useSourceSearch(query: string, sourceIds: SourcePluginId[]) {
           }));
   }
   return { retry: () => setVersion((value) => value + 1), sources };
+}
+
+export interface SourceSearchState {
+  error: string | null;
+  loading: boolean;
+  releases: FeedRelease[];
+  sourceId: SourcePluginId;
+  warning: string | null;
 }

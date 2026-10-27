@@ -1,23 +1,28 @@
 import "@teyik0/furin/server-only";
-import type { SyncRuntimeOptions } from "@teyik0/furin/sync";
+import type { FurinSyncOptions } from "@teyik0/furin/sync";
 import { drizzleSyncAdapter } from "@teyik0/furin/sync/drizzle";
-import { db } from "./api/lib/database-plugin";
-import { resources } from "./api/lib/runtime";
-import { ObservedSyncNotifier } from "./api/lib/sync-notifier";
-import { engine } from "./api/modules/torrents/plugin";
+import { createContext } from "elysia";
+import { db } from "./api/lib/services-runtime";
+import { accessPlugin } from "./api/modules/access/plugin";
+import { callers } from "./api/modules/access/service";
 
-const notifier = new ObservedSyncNotifier(engine.setObserved.bind(engine));
+const { access } = createContext(accessPlugin).prototype;
+
 export const sync = {
   adapter: drizzleSyncAdapter({ db, namespace: "tofu" }),
-  notifier,
-  principal: () => "local",
-} satisfies SyncRuntimeOptions;
-
-const unsubscribe = engine.subscribeChanges(({ cursor }) => {
-  if (cursor !== undefined) {
-    void notifier.publish(cursor).catch(console.error);
-  }
-});
-resources.defer(() => {
-  unsubscribe();
-});
+  connection({ request }) {
+    const caller = callers.get(request);
+    if (!caller || caller.kind === "anonymous") {
+      return;
+    }
+    return access.callerReader(caller, request);
+  },
+  // Idempotency belongs to the authenticated device, never to its current grants.
+  principal({ request }) {
+    const caller = callers.get(request);
+    if (!caller) {
+      return "shared";
+    }
+    return caller.kind === "anonymous" ? `anonymous:${crypto.randomUUID()}` : caller.principal;
+  },
+} satisfies FurinSyncOptions;

@@ -1,26 +1,24 @@
 import { Form, getDeepError, useField, useForm } from "@formisch/react";
 import { useMutation, useQuery } from "@teyik0/furin/client";
-import type {
-  AniListState,
-  AutomationPreferences,
-  AutomationRule,
-  Destination,
-  PluginState,
-} from "@tofu/plugins/domain";
-import { ActionTooltip } from "@tofu/ui/action-tooltip";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { Badge } from "@tofu/ui/badge";
-import { Button, buttonVariants } from "@tofu/ui/button";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@tofu/ui/field";
-import { relative } from "@tofu/ui/format";
-import { Input } from "@tofu/ui/input";
+import { usePluginHost } from "@tofu/plugins/client";
 import { ExternalLinkIcon, PauseIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { pick } from "valibot";
-import { api, coreClient } from "../client-api";
+import type { AutomationPreferences, AutomationRule } from "../../../plugins/src/automation-model";
+import type { Destination } from "../../../plugins/src/destination-model";
+import type { PluginState } from "../../../plugins/src/plugin-model";
+import { ActionTooltip } from "../../../ui/src/action-tooltip";
+import { relative } from "../../../ui/src/format";
+import { Alert, AlertDescription } from "../../../ui/src/ui/alert";
+import { Badge } from "../../../ui/src/ui/badge";
+import { Button, buttonVariants } from "../../../ui/src/ui/button";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../../ui/src/ui/field";
+import { Input } from "../../../ui/src/ui/input";
+import { api } from "../client-api";
 import { useAuthorizationPolling } from "../hooks/use-authorization-polling";
 import { request } from "../request";
 import { aniListConfigurationSchema } from "../server/model";
+import type { AniListState } from "../server/types";
 import { aniListStatusLabel } from "./status";
 import {
   TrackingDestination,
@@ -44,11 +42,14 @@ function AniListConnection({
   busy: boolean;
   afterMutation?: () => Promise<void>;
 }) {
+  const { session } = usePluginHost();
+  const canAuthorize =
+    session?.capabilities.hostNative === true || session?.caller.deviceKind === "desktop";
   const connect = useMutation(api.anilist.connect.post);
   const openAuthorization = useMutation(api.anilist.open.post);
   const cancelAuthorization = useMutation(api.anilist.connect.delete);
   const configure = useMutation(api.anilist.put);
-  const enablePlugin = useMutation(coreClient.plugins({ id: "anilist" }).put);
+  const enablePlugin = useMutation(api.plugins({ id: "anilist" }).put);
   const loadList = useMutation(api.anilist.list.post);
   const accountForm = useForm({
     initialInput: { userName: state.userName },
@@ -71,12 +72,13 @@ function AniListConnection({
         </Badge>
       </div>
       <p className="automation-caption">
-        Sign in to AniList in your browser and authorize Tofu. Your account and lists will connect
-        automatically.
+        {canAuthorize
+          ? "Sign in to AniList in your browser and authorize Tofu. Your account and lists will connect automatically."
+          : "Connect AniList from this server's own Tofu desktop window or a paired Tofu desktop app. In this browser, you can use an existing connection or follow a public account name."}
       </p>
       <div className="automation-form-actions">
         <Button
-          disabled={busy || state.authorizationPending}
+          disabled={busy || state.authorizationPending || !canAuthorize}
           onClick={() =>
             action(async () => {
               setAuthorizationUrl(null);
@@ -87,9 +89,11 @@ function AniListConnection({
               const { url } = authorization;
               setAuthorizationUrl(url);
               await (afterMutation ?? reload)();
-              const result = await openAuthorization.mutateAsync({ url });
-              if (result && "url" in result) {
-                setAuthorizationUrl(result.url);
+              if (session?.capabilities.hostNative) {
+                const result = await openAuthorization.mutateAsync({ url });
+                if (result && "url" in result) {
+                  setAuthorizationUrl(result.url);
+                }
               }
             })
           }
@@ -398,7 +402,7 @@ type QueriedAniListPanelProps = Omit<AniListPanelProps, "state" | "reload" | "af
 
 // The automation modal can open on routes whose loaders do not include AniList.
 export const QueriedAniListPanel = ({ reloadPlugins, ...props }: QueriedAniListPanelProps) => {
-  const { data: live } = useQuery(api.anilist.get);
+  const { data: live } = useQuery(api.anilist.get.live());
   const [refreshed, setRefreshed] = useState<{
     source: typeof live;
     state: AniListState;

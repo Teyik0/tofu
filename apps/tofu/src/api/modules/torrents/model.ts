@@ -18,7 +18,7 @@ import {
   string,
   union,
 } from "valibot";
-import { updateDestinationSchema } from "../destinations/model";
+import { updateDestinationSchema } from "../../../../../../package/plugins/src/destination-model";
 
 export const trackersSchema = object({
   urls: pipe(array(pipe(string(), maxLength(2048))), maxLength(100)),
@@ -46,6 +46,12 @@ export const uploadTorrentSchema = object({
       )
     )
   ),
+});
+
+export const acceptOpenedTorrentSchema = object({
+  destinationId: string(),
+  paused: boolean(),
+  trackers: optional(trackersSchema.entries.urls),
 });
 
 export const removeTorrentSchema = object({ deleteFiles: boolean() });
@@ -85,6 +91,8 @@ export const addTorrentFormSchema = pipe(
   )
 );
 export const destinationFormSchema = object({
+  autoAddTorrentFiles: boolean(),
+  deleteTorrentFile: picklist(["inherit", "always", "never"]),
   destinationIcon: updateDestinationSchema.entries.icon.wrapped,
   moveFiles: boolean(),
   name: updateDestinationSchema.entries.name,
@@ -125,4 +133,9 @@ export const peerFormSchema = pipe(
     ["source"]
   )
 );
+export const openTorrentFormSchema = object({
+  destinationId: string(),
+  paused: boolean(),
+  trackers: string(),
+});
 export const removeTorrentFormSchema = object({ removeFiles: boolean() });

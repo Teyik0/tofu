@@ -1,8 +1,9 @@
+import { libraryState } from "@tofu/plugins/library-state";
 import type { DashboardState, Destination } from "@tofu/plugins/domain";
 import type { ThreadContext } from "@tofu/plugins";
 
 // Explicit developer fixtures: this harness has no torrent engine or live transfer statistics.
-export const thread: Destination = {
+export const thread: Destination = { autoAddTorrentFilesSince: null, deleteTorrentFileAfterAdd: null,
   id: "preview-thread", name: "Preview thread", icon: "folder", pinned: true,
   downloadPath: "./.tofu-dev/downloads",
 };
@@ -15,4 +16,4 @@ export const dashboard: DashboardState = {
     engine: "Developer fixture (no engine)", freeSpace: null, mode: "server", peers: 0,
     port: 0, received: 0, uploaded: 0, startedAt: 0 },
 };
-export const context: ThreadContext = { thread, dashboard, settings: dashboard.settings };
+export const context: ThreadContext = { thread, dashboard: libraryState(dashboard, null, { id: "preview-server", name: "Preview server" }), settings: dashboard.settings };

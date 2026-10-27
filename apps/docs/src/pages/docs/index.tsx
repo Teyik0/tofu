@@ -1,9 +1,8 @@
 import { defineRoute } from "@teyik0/furin";
 import { Callout, DocTitle } from "../../components/docs";
-import { route as docs } from "./_route";
 
-export const route = defineRoute()
-  .config({ layout: docs, mode: "ssr" })
+export const route = defineRoute("/docs")
+  .config({ mode: "ssr" })
   .head(() => ({ meta: [{ title: "Getting started — Tofu" }] }))
   .page(() => (
     <>

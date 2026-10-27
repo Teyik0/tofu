@@ -1,8 +1,10 @@
-import type { AniListEntry, AniListThreadProposal, Destination } from "@tofu/plugins/domain";
-import { Badge } from "@tofu/ui/badge";
-import { Field, FieldGroup, FieldLabel } from "@tofu/ui/field";
-import { Input } from "@tofu/ui/input";
-import { OptionSelect } from "@tofu/ui/option-select";
+import type { Destination } from "../../../plugins/src/destination-model";
+import { OptionSelect } from "../../../ui/src/option-select";
+import { Badge } from "../../../ui/src/ui/badge";
+import { Field, FieldGroup, FieldLabel } from "../../../ui/src/ui/field";
+import { Input } from "../../../ui/src/ui/input";
+import type { AniListThreadProposal } from "../server/model";
+import type { AniListEntry } from "../server/types";
 
 const newThread = "new-thread";
 

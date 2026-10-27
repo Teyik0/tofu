@@ -3,7 +3,7 @@
 export { createPluginApi } from "./api";
 export type { PluginAuth, PluginCredentials } from "./auth";
 export { type ApiKeyAuth, createApiKeyAuth, createCustomAuth } from "./auth-adapters";
-export { createCore, createJev } from "./core";
+export { createCore } from "./core";
 export { createCredentialStore } from "./credentials";
 export type { ErasedPluginDefinition, PluginInstallationOptions } from "./definition";
 export { isDefinedPlugin } from "./definition";

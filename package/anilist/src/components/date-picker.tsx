@@ -1,6 +1,3 @@
-import type { AniListDate } from "@tofu/plugins/domain";
-import { Button } from "@tofu/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@tofu/ui/popover";
 import {
   CalendarIcon,
   ChevronLeftIcon,
@@ -10,6 +7,9 @@ import {
   XIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { Button } from "../../../ui/src/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../ui/src/ui/popover";
+import type { AniListDate } from "../server/model";
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const monthName = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" });

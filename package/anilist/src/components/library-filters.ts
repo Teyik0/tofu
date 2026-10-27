@@ -1,12 +1,12 @@
+import type { AniListCatalogFilters, AniListCatalogSort } from "../server/catalog";
+import type { AniListCatalog } from "../server/service";
 import type {
-  AniListCatalog,
   AniListCatalogOptions,
-  AniListCatalogSort,
   AniListEntry,
   AniListMedia,
   AniListSeason,
   AniListState,
-} from "@tofu/plugins/domain";
+} from "../server/types";
 import {
   airingOptions,
   type BrowseFilters,
@@ -25,7 +25,7 @@ export const sortOptions = [
 ] satisfies { label: string; value: SortValue }[];
 type ProgressValue = "not-started" | "in-progress" | "caught-up";
 export interface Filters extends BrowseFilters {
-  formats: string[];
+  formats: NonNullable<AniListCatalogFilters["formats"]>;
   genres: string[];
   progress: ProgressValue | "any";
   season: AniListSeason | "any";
@@ -59,16 +59,17 @@ export const progressOptions = [
   { label: "In progress", value: "in-progress" },
   { label: "Caught up", value: "caught-up" },
 ] satisfies { label: string; value: Filters["progress"] }[];
-const formatLabels: Record<string, string> = {
-  MOVIE: "Movie",
-  MUSIC: "Music",
-  ONA: "ONA",
-  OVA: "OVA",
-  SPECIAL: "Special",
-  TV: "TV Show",
-  TV_SHORT: "TV Short",
-};
-export const formatLabel = (format: string) => formatLabels[format] ?? format.replaceAll("_", " ");
+const formatOptions = [
+  { label: "Movie", value: "MOVIE" },
+  { label: "Music", value: "MUSIC" },
+  { label: "ONA", value: "ONA" },
+  { label: "OVA", value: "OVA" },
+  { label: "Special", value: "SPECIAL" },
+  { label: "TV Show", value: "TV" },
+  { label: "TV Short", value: "TV_SHORT" },
+] satisfies { label: string; value: Filters["formats"][number] }[];
+export const formatLabel = (format: string) =>
+  formatOptions.find((option) => option.value === format)?.label ?? format.replaceAll("_", " ");
 function progressOf(entry: AniListEntry): ProgressValue {
   if (entry.progress === 0) {
     return "not-started";
@@ -90,7 +91,7 @@ export function useLibraryFilters(
   const update = (patch: Partial<Filters>) => setFilters((previous) => ({ ...previous, ...patch }));
 
   const statuses = new Set(state.visibleStatuses);
-  const formatsSelected = new Set(filters.formats);
+  const formatsSelected = new Set<string>(filters.formats);
   const listed = state.entries.filter((entry) => statuses.has(entry.status));
   const genres = [
     ...new Set([
@@ -101,7 +102,7 @@ export function useLibraryFilters(
   const years = Array.from({ length: new Date(now).getFullYear() + 2 - 1940 + 1 }, (_, index) =>
     String(new Date(now).getFullYear() + 2 - index)
   );
-  const formats = Object.keys(formatLabels);
+  const formats = formatOptions.map((option) => option.value);
   const query = search.toLocaleLowerCase("en-US");
   const libraryEntries = listed
     .filter(

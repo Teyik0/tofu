@@ -2,8 +2,8 @@ import { Elysia, NotFound, ParseError, ValidationError } from "elysia";
 import { UserError } from "./server";
 
 // Handle API error classes explicitly so Furin retains its page error responses.
-export const apiErrorsPlugin = new Elysia({ name: "tofu-api-errors" }).error(
-  "global",
+export const apiErrorsPlugin = new Elysia({ name: "tofu-api-errors" }).onError(
+  "local",
   ({ error, status }) => {
     const body = { error: error instanceof Error ? error.message : "Unexpected error" };
     if (error instanceof ValidationError) {

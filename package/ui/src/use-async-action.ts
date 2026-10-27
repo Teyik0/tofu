@@ -25,3 +25,5 @@ export function useAsyncAction(fallback: string) {
   const action = (task: () => Promise<unknown>) => void run(task);
   return { action, busy, error, run, setError };
 }
+
+export type AsyncAction = ReturnType<typeof useAsyncAction>["action"];

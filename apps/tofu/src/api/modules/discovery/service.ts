@@ -1,485 +1,337 @@
+// biome-ignore-all lint/performance/noBarrelFile: Preserve upstream host module paths for shared workspace implementations.
+import { Context, Effect, Layer, Result } from "effect";
+import { HttpClient, HttpClientResponse } from "effect/http";
+import { ElysiaStatus, problem } from "elysia";
+import parseTorrent from "parse-torrent";
 import {
-  classicDiscovery,
-  matchesClassicDiscovery,
-  parseDiscovery,
-} from "@tofu/plugins/discovery-query";
+  type AnimeMapping,
+  animeMappingSchema,
+} from "../../../../../../package/plugins/src/anime-mapping";
+import type {
+  DiscoveryResult,
+  DiscoverySearch,
+  FeedRelease,
+} from "../../../../../../package/plugins/src/discovery-model";
+import type { SourcePluginId } from "../../../../../../package/plugins/src/plugin-model";
+import { publicRelease } from "../../../../../../package/plugins/src/releases";
+import { automationReleases } from "../../../db/schema";
+import { Database } from "../../lib/db";
+import type { PluginsService } from "../plugins/service";
+import { Plugins } from "../plugins/service";
+import { TorrentClient } from "../torrents/layer";
+import type { EnginePort } from "../torrents/service";
+import { decodeRelease } from "./persistence";
 
-// biome-ignore lint/performance/noBarrelFile: These public helpers share the SDK implementation.
 export {
   classicDiscovery,
   matchesClassicDiscovery,
   parseDiscovery,
 } from "@tofu/plugins/discovery-query";
 
-import { HTTPError } from "elysia";
-import parseTorrent from "parse-torrent";
-import { automationReleases } from "../../../db/schema";
-import type {
-  DiscoveryResult,
-  DiscoverySearch,
-  EnginePort,
-  FeedRelease,
-  SourcePluginId,
-} from "../../../types";
-import type { TofuDatabase } from "../../lib/db";
-import { normalizeTitle } from "../../lib/title";
-import type { JevService } from "../jev/service";
-import { discoveryMatchQuestions, discoveryTitleQuestions, safeReleaseState } from "../jev/service";
-import { publicRelease } from "../plugins/releases";
-import type { PluginEndpoints, PluginsService } from "../plugins/service";
-import { collectSourceQueries, uniqueReleases } from "./sources";
-
-const feedExpression = /^(Source unavailable|Invalid RSS feed|RSS feed missing|Invalid JSON feed)/;
-
-const seasonSuffix =
-  /\s+(?:(?:season|saison)\s*\d+|\d+(?:st|nd|rd|th)\s+season)(?:\s+part\s*\d+)?$/i;
-const catalogQuery = `query($search: String!) {
-  Page(perPage: 20) {
-    media(search: $search, type: ANIME) {
-      id title { english romaji native } synonyms
-    }
-  }
-}`;
-
-interface AnimeTitle {
-  id: number;
-  synonyms: string[];
-  title: { english: string | null; romaji: string | null; native: string | null };
-}
-
-function titles(media: AnimeTitle) {
-  return [media.title.english, media.title.romaji, media.title.native].filter(
-    (title): title is string => typeof title === "string" && Boolean(title.trim())
-  );
-}
-
-function uniqueTitles(values: string[]) {
-  return [...new Map(values.map((title) => [normalizeTitle(title), title])).values()];
-}
-
-function compactTitle(value: string) {
-  return normalizeTitle(value).replaceAll(" ", "");
-}
-
-function bestTitle(requestedTitle: string, media: AnimeTitle[]) {
-  const requested = compactTitle(requestedTitle);
-  const ranked = media
-    .map((entry) => {
-      const matches = [...titles(entry), ...(entry.synonyms ?? [])]
-        .map(compactTitle)
-        .filter((title) => title.includes(requested));
-      return {
-        entry,
-        score: matches.length
-          ? Math.min(...matches.map((title) => title.length - requested.length))
-          : Number.POSITIVE_INFINITY,
-      };
-    })
-    .filter(({ score }) => Number.isFinite(score))
-    .sort((a, b) => a.score - b.score);
-  return ranked[0]?.entry;
-}
-
-function resolveTitles(search: DiscoverySearch, media: AnimeTitle[]) {
-  const enteredTitle = search.title;
-  const best = bestTitle(search.title, media);
-  if (!best) {
-    return;
-  }
-  // Expand the matching series, not similarly named spin-offs returned by AniList.
-  const base = titles(best).map((title) => title.replace(seasonSuffix, ""));
-  const baseKeys = new Set(base.map(normalizeTitle));
-  const family = media.filter((entry) =>
-    titles(entry).some((title) => baseKeys.has(normalizeTitle(title.replace(seasonSuffix, ""))))
-  );
-  const seasonal =
-    search.season === null
-      ? []
-      : family.filter((entry) =>
-          titles(entry).some((title) => parseDiscovery(title).season === search.season)
-        );
-  search.title = base[0] ?? search.title;
-  search.aliases = uniqueTitles([
-    ...base,
-    ...family.flatMap(titles),
-    ...(best.synonyms ?? []),
-    ...search.aliases,
-  ]);
-  search.resolved = true;
-  const canonical = uniqueTitles(base.slice(0, 2));
-  const episode = search.episode === null ? "" : String(search.episode).padStart(2, "0");
-  const marker =
-    search.season === null
-      ? episode
-      : `S${String(search.season).padStart(2, "0")}${episode ? `E${episode}` : ""}`;
-  search.queries = uniqueTitles([
-    enteredTitle,
-    ...canonical.map((title) => `${title}${marker ? ` ${marker}` : ""}`),
-    ...seasonal.flatMap((entry) =>
-      titles(entry)
-        .slice(0, 2)
-        .map((title) => `${title}${episode ? ` ${episode}` : ""}`)
-    ),
-    ...canonical,
-  ]).slice(0, 7);
-}
+import { classicDiscovery, matchesClassicDiscovery } from "@tofu/plugins/discovery-query";
 
 interface DiscoveryOptions {
-  endpoints: PluginEndpoints;
   engine: EnginePort;
-  jev: JevService;
   plugins: PluginsService;
 }
 
-export class DiscoveryService {
-  private readonly lifecycle: { closed: boolean } = { closed: false };
-  private readonly releases = new Map<string, FeedRelease>();
-  private readonly additions = new Map<string, Promise<{ id: string }>>();
-  private readonly db: TofuDatabase;
-  private readonly options: DiscoveryOptions;
-  constructor(db: TofuDatabase, options: DiscoveryOptions) {
-    this.db = db;
-    this.options = options;
-    for (const row of this.db.select().from(automationReleases).all()) {
-      const release = JSON.parse(row.value) as FeedRelease;
-      this.releases.set(`${release.sourceId}:${release.id}`, release);
+const make = Effect.gen(function* () {
+  const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+  const decodeMapping = HttpClientResponse.schemaBodyJson(animeMappingSchema);
+  const db = yield* Database;
+  const plugins = yield* Plugins;
+  const engine = yield* TorrentClient;
+  const options: DiscoveryOptions = { engine, plugins };
+  const serviceDb = db;
+  const serviceOptions = options;
+
+  const serviceLifecycle: { closed: boolean } = { closed: false };
+  const serviceReleases = new Map<string, FeedRelease>();
+  const serviceMappings = new Map<
+    number,
+    { expires: number; operation: Effect.Effect<AnimeMapping | null> }
+  >();
+  const serviceAnimeMapping = Effect.fn("Discovery.animeMapping")(function* (mediaId: number) {
+    const cached = serviceMappings.get(mediaId);
+    if (cached && cached.expires > Date.now()) {
+      return yield* cached.operation;
     }
+    const operation = yield* Effect.cached(
+      Effect.gen(function* () {
+        const fetched = yield* Effect.result(
+          Effect.gen(function* () {
+            const response = yield* http.get(`https://api.ani.zip/mappings?anilist_id=${mediaId}`);
+            if (response.status !== 200) {
+              return null;
+            }
+            const mapping = yield* decodeMapping(response);
+            return mapping.mappings.anilist_id === mediaId ? mapping : null;
+          }).pipe(Effect.scoped, Effect.timeout(5000))
+        );
+        const mapping = Result.isSuccess(fetched) ? fetched.success : null;
+        const entry = serviceMappings.get(mediaId);
+        if (entry) {
+          entry.expires = Date.now() + (mapping ? 3_600_000 : 60_000);
+        }
+        return mapping;
+      })
+    );
+    if (serviceMappings.size >= 100) {
+      serviceMappings.clear();
+    }
+    serviceMappings.set(mediaId, { expires: Date.now() + 5000, operation });
+    return yield* operation;
+  });
+  const serviceAdditions = new Map<string, ReturnType<typeof serviceDownloadRelease>>();
+  function serviceCachedReleases() {
+    return structuredClone([...serviceReleases.values()]);
   }
-  cachedReleases() {
-    return structuredClone([...this.releases.values()]);
-  }
-  private storeRelease(release: FeedRelease) {
+  function serviceStoreRelease(release: FeedRelease) {
     const value = JSON.stringify(release);
-    this.db
+    serviceDb
       .insert(automationReleases)
       .values({ id: `${release.sourceId}:${release.id}`, value })
       .onConflictDoUpdate({ set: { value }, target: automationReleases.id })
       .run();
   }
-  async search(query: string, sources: SourcePluginId[]): Promise<DiscoveryResult> {
+  const serviceSearch = Effect.fn("Discovery.search")(function* (
+    query: string,
+    sources: SourcePluginId[],
+    cachedSearch = false
+  ) {
     const result: DiscoveryResult = { errors: [], releases: [] };
-    await Promise.all(
-      [...new Set(sources)].map(async (sourceId) => {
-        try {
-          result.releases.push(...(await this.options.plugins.fetchSource(sourceId, query)));
-        } catch (cause) {
-          if (!this.options.plugins.plugin(sourceId).enabled || this.lifecycle.closed) {
+    yield* Effect.forEach(
+      [...new Set(sources)],
+      (sourceId) =>
+        Effect.gen(function* () {
+          const releases = yield* serviceOptions.plugins.fetchSource(sourceId, query, cachedSearch);
+          if (releases instanceof ElysiaStatus) {
+            if (!serviceOptions.plugins.plugin(sourceId).enabled || serviceLifecycle.closed) {
+              return;
+            }
+            const message = releases.response.detail;
+            result.errors.push({ message, sourceId });
+            serviceOptions.plugins.recordFailure(sourceId, message);
             return;
           }
-          const message =
-            cause instanceof Error && feedExpression.test(cause.message)
-              ? cause.message
-              : "Unable to connect to the source";
-          result.errors.push({ message, sourceId });
-          this.options.plugins.recordFailure(sourceId, message);
-        }
-      })
+          result.releases.push(...releases);
+        }),
+      { concurrency: "unbounded", discard: true }
     );
-    if (this.lifecycle.closed) {
+    if (serviceLifecycle.closed) {
       return { errors: [], releases: [] };
     }
     for (const release of result.releases) {
       const key = `${release.sourceId}:${release.id}`;
-      this.releases.set(key, release);
-      this.storeRelease(release);
+      serviceReleases.set(key, release);
+      serviceStoreRelease(release);
     }
     return result;
-  }
-  async discover(query: string, sources: SourcePluginId[] | undefined) {
-    const selected: SourcePluginId[] = sources ?? this.options.plugins.sourceIds();
-    const active = [...new Set(selected)].filter((id) => this.options.plugins.plugin(id).enabled);
-    const jev = this.options.plugins.plugin("jev");
-    if (!(jev?.enabled && jev.apiKey)) {
-      const search = classicDiscovery(query);
-      if (!(search.title && active.length) || this.lifecycle.closed) {
-        return { errors: [], releases: [], search };
-      }
-      const result = await this.search(query, active);
-      return {
-        ...result,
-        releases: result.releases
-          .filter(
-            (release) => release.sourceId !== "tsundere" || matchesClassicDiscovery(query, release)
-          )
-          .map((release) => publicRelease(release)),
-        search,
-      };
+  });
+  const serviceDiscover = Effect.fn("Discovery.discover")(function* (
+    query: string,
+    sources: SourcePluginId[] | undefined
+  ) {
+    const known = serviceOptions.plugins.sourceIds();
+    if (sources?.some((id) => !known.includes(id))) {
+      return problem(404, { detail: "Unknown plugin" });
     }
-    const search = parseDiscovery(query);
-    if (!(search.title && active.length) || this.lifecycle.closed) {
+    const selected: SourcePluginId[] = sources ?? known;
+    const active = [...new Set(selected)].filter((id) => serviceOptions.plugins.plugin(id).enabled);
+    const search = classicDiscovery(query);
+    if (!(search.title && active.length) || serviceLifecycle.closed) {
       return { errors: [], releases: [], search };
     }
-    const interpretation = discoveryTitleQuestions(search.title);
-    let semantic = true;
-    try {
-      const result = await this.options.jev.evaluate({ query }, interpretation.questions);
-      const answer = result?.answers.title;
-      const title = interpretation.titles[Number(answer?.choice)];
-      if (title && answer?.confidence !== undefined && answer.confidence >= 0.8) {
-        search.title = title;
-        search.aliases = [title];
-      }
-    } catch {
-      semantic = false;
-      search.warning = "Jev interpretation unavailable; searching with the entered title.";
-    }
-    await this.resolve(search, this.options.endpoints.anilist ?? "https://graphql.anilist.co");
-    if (!search.queries.length) {
-      search.queries = [search.title];
-    }
-    const result = await collectSourceQueries({
-      accept: (release) => discoveryCandidate(search, release),
-      active: (source) => !this.lifecycle.closed && this.options.plugins.plugin(source).enabled,
-      enough: () => Promise.resolve(false),
-      queries: (source) => (source === "tsundere" ? [search.title] : search.queries),
-      search: (variant, source) => this.search(variant, [source]),
-      sources: active,
-    });
-    const candidates = uniqueReleases(result.releases);
-    const ranked = semantic
-      ? await this.rank(query, search, candidates, (release) => matchesDiscovery(search, release))
-      : candidates.filter((release) => matchesDiscovery(search, release));
+    const result = yield* serviceSearch(query, active);
     return {
-      errors: result.errors,
-      releases: ranked
+      ...result,
+      releases: result.releases
         .filter(
-          (release) =>
-            !this.lifecycle.closed && this.options.plugins.plugin(release.sourceId).enabled
+          (release) => release.sourceId !== "tsundere" || matchesClassicDiscovery(query, release)
         )
         .map((release) => publicRelease(release)),
       search,
     };
-  }
-
-  async rank(
-    query: string,
-    search: DiscoverySearch,
-    releases: FeedRelease[],
-    locallyMatches: (release: FeedRelease) => boolean
-  ) {
-    const ranked: { probability: number; release: FeedRelease }[] = [];
-    for (let offset = 0; offset < releases.length; offset += 20) {
-      if (this.lifecycle.closed) {
-        return [];
-      }
-      const batch = releases.slice(offset, offset + 20);
-      try {
-        // biome-ignore lint/performance/noAwaitInLoops: bound model requests and respect the daily budget.
-        const result = await this.options.jev.evaluate(
-          {
-            query,
-            releases: batch.map(safeReleaseState),
-            search: {
-              aliases: search.aliases,
-              episode: search.episode,
-              season: search.season,
-              title: search.title,
-            },
-          },
-          discoveryMatchQuestions(batch)
-        );
-        if (!result) {
-          throw new Error("Jev disabled");
-        }
-        for (const [index, release] of batch.entries()) {
-          const probability = Math.min(
-            result.answers[`identity_${index}`]?.noul ?? 0,
-            result.answers[`requirements_${index}`]?.noul ?? 0
-          );
-          // A manual search can show plausible candidates; automated downloads retain their stricter threshold.
-          if (probability >= 0.5) {
-            ranked.push({ probability, release });
-          }
-        }
-      } catch {
-        search.warning = [
-          search.warning,
-          "Jev ranking unavailable; showing locally matched releases.",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        ranked.push(
-          ...releases
-            .slice(offset)
-            .filter(locallyMatches)
-            .map((release) => ({ probability: 0, release }))
-        );
-        break;
-      }
-    }
-    return ranked
-      .sort(
-        (a, b) =>
-          b.probability - a.probability || (b.release.seeders ?? -1) - (a.release.seeders ?? -1)
-      )
-      .map(({ release }) => release);
-  }
-  async addRelease(
+  });
+  const serviceAddRelease = Effect.fn("Discovery.addRelease")(function* (
     sourceId: SourcePluginId,
     id: string,
     destinationId: string,
     paused: boolean,
     allowed?: () => boolean
   ) {
-    const release = this.releases.get(`${sourceId}:${id}`);
+    const release = serviceReleases.get(`${sourceId}:${id}`);
     if (!release) {
-      throw new (HTTPError.id("NOT_FOUND", 404))("Search for this release before adding it");
+      return problem(404, { detail: "Search for this release before adding it" });
     }
     const key = release.infoHash ?? `${sourceId}:${id}`;
-    const pending = this.additions.get(key);
+    const pending = serviceAdditions.get(key);
     if (pending) {
-      return pending;
+      return yield* pending;
     }
-    const task = this.downloadRelease(release, destinationId, paused, allowed);
-    this.additions.set(key, task);
-    try {
-      return await task;
-    } finally {
-      this.additions.delete(key);
-    }
-  }
-  private async downloadRelease(
+    const task = yield* Effect.cached(
+      serviceDownloadRelease(release, destinationId, paused, allowed).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (serviceAdditions.get(key) === task) {
+              serviceAdditions.delete(key);
+            }
+          })
+        )
+      )
+    );
+    serviceAdditions.set(key, task);
+    return yield* task;
+  });
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Preserve the existing ordered validation and lifecycle decisions in this operation.
+  const serviceDownloadRelease = Effect.fn("Discovery.downloadRelease")(function* (
     release: FeedRelease,
     destinationId: string,
     paused: boolean,
     allowed: (() => boolean) | undefined
   ) {
-    if (!this.options.plugins.plugin(release.sourceId).enabled || this.lifecycle.closed) {
-      throw new (HTTPError.id("CONFLICT", 409))("Plugin disabled");
+    if (!serviceOptions.plugins.plugin(release.sourceId).enabled || serviceLifecycle.closed) {
+      return problem(409, { detail: "Plugin disabled" });
     }
     let input: string | Uint8Array = release.downloadUrl;
     if (!input.startsWith("magnet:")) {
-      input = await this.options.plugins.downloadFile(release);
+      const file = yield* serviceOptions.plugins.downloadFile(release);
+      if (file instanceof ElysiaStatus) {
+        return file;
+      }
+      input = file;
     }
-    const parsed = await parseTorrent(input);
+    const parsedTorrent = yield* Effect.result(
+      Effect.tryPromise({
+        catch: (cause) => cause,
+        try: () => parseTorrent(input),
+      })
+    );
+    if (Result.isFailure(parsedTorrent)) {
+      return problem(400, { detail: "Invalid torrent file" });
+    }
+    const parsed = parsedTorrent.success;
     if (parsed.infoHash && release.infoHash !== parsed.infoHash) {
       release.infoHash = parsed.infoHash;
-      this.storeRelease(release);
+      serviceStoreRelease(release);
     }
-    if (this.lifecycle.closed || !this.options.plugins.plugin(release.sourceId).enabled) {
-      throw new (HTTPError.id("CONFLICT", 409))("Plugin disabled");
+    if (serviceLifecycle.closed || !serviceOptions.plugins.plugin(release.sourceId).enabled) {
+      return problem(409, { detail: "Plugin disabled" });
     }
     if (allowed && !allowed()) {
-      throw new (HTTPError.id("CONFLICT", 409))("Automation changed or release ignored");
+      return problem(409, { detail: "Automation changed or release ignored" });
     }
-    const existing = this.options.engine
+    const existing = serviceOptions.engine
       .snapshot(null, false)
       .torrents.find((torrent) => torrent.id === parsed.infoHash);
     if (existing) {
       return { id: existing.id };
     }
-    return this.options.engine.add(input, { destinationId, paused });
-  }
-  private readonly cache = new Map<string, { expires: number; media: AnimeTitle[] }>();
-  private readonly requests = new Set<AbortController>();
-
-  private async resolve(search: DiscoverySearch, endpoint: string) {
-    try {
-      resolveTitles(search, await this.media(search.title, endpoint));
-    } catch {
-      search.warning = [
-        search.warning,
-        "Alternative titles unavailable; searching with the entered title.",
-      ]
-        .filter(Boolean)
-        .join(" ");
-    }
-  }
-
-  async titleAliases(title: string): Promise<string[]> {
-    try {
-      const best = bestTitle(
-        title,
-        await this.media(title, this.options.endpoints.anilist ?? "https://graphql.anilist.co")
-      );
-      if (best) {
-        const canonical = [best.title.romaji, best.title.english].filter(
-          (name): name is string => typeof name === "string" && Boolean(name.trim())
-        );
-        if (canonical.length) {
-          return uniqueTitles(canonical);
-        }
-      }
-    } catch {
-      // Keep the user's title usable during catalogue outages.
-    }
-    return [title];
-  }
-
-  private async media(title: string, endpoint: string): Promise<AnimeTitle[]> {
-    const key = normalizeTitle(title);
-    const cached = this.cache.get(key);
-    if (cached && cached.expires > Date.now()) {
-      return cached.media;
-    }
-    const controller = new AbortController();
-    this.requests.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(endpoint, {
-        body: JSON.stringify({ query: catalogQuery, variables: { search: title } }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error("Catalogue unavailable");
-      }
-      const result = (await response.json()) as {
-        data?: { Page?: { media?: AnimeTitle[] } };
-        errors?: unknown[];
-      };
-      const media = result.data?.Page?.media;
-      if (!Array.isArray(media) || result.errors?.length) {
-        throw new Error("Invalid catalogue");
-      }
-      if (this.cache.size >= 100) {
-        this.cache.clear();
-      }
-      this.cache.set(key, { expires: Date.now() + 3_600_000, media });
-      return media;
-    } finally {
-      clearTimeout(timeout);
-      this.requests.delete(controller);
-    }
-  }
-
-  async close() {
-    if (this.lifecycle.closed) {
+    return yield* Effect.promise(() =>
+      serviceOptions.engine.call("add", [input, { destinationId, paused }])
+    );
+  });
+  const serviceClose = Effect.fn("Discovery.close")(function* () {
+    if (serviceLifecycle.closed) {
       return;
     }
-    this.lifecycle.closed = true;
-    for (const request of this.requests) {
-      request.abort();
-    }
-    this.cache.clear();
-    await Promise.allSettled(this.additions.values());
+    serviceLifecycle.closed = true;
+    serviceMappings.clear();
+    yield* Effect.all([...serviceAdditions.values()].map(Effect.exit), {
+      concurrency: "unbounded",
+    });
+  });
+  for (const row of serviceDb.select().from(automationReleases).all()) {
+    const release = decodeRelease(row.value);
+    serviceReleases.set(`${release.sourceId}:${release.id}`, release);
   }
-}
+  yield* Effect.addFinalizer(() => serviceClose());
+  return {
+    addRelease: serviceAddRelease,
+    animeMapping: serviceAnimeMapping,
+    cachedReleases: serviceCachedReleases,
+    close: serviceClose,
+    discover: serviceDiscover,
+    search: serviceSearch,
+  };
+});
 
-export function matchesDiscovery(search: DiscoverySearch, release: FeedRelease) {
-  const work = normalizeTitle(release.workTitle);
-  const matches = search.aliases.some((title) =>
-    search.resolved
-      ? work === normalizeTitle(title)
-      : ` ${work} `.includes(` ${normalizeTitle(title)} `)
-  );
-  if (
-    !matches ||
-    (search.episode !== null && (release.pack || release.episode !== search.episode))
-  ) {
-    return false;
+export type DiscoveryService = Discovery["Service"];
+export class Discovery extends Context.Service<
+  Discovery,
+  {
+    readonly animeMapping: (mediaId: number) => Effect.Effect<AnimeMapping | null>;
+    readonly cachedReleases: () => FeedRelease[];
+    readonly search: (
+      query: string,
+      sources: SourcePluginId[],
+      cachedSearch?: boolean
+    ) => Effect.Effect<DiscoveryResult>;
+    readonly discover: (
+      query: string,
+      sources: SourcePluginId[] | undefined
+    ) => Effect.Effect<
+      | ReturnType<typeof problem<404, { readonly detail: "Unknown plugin" }>>
+      | {
+          releases: FeedRelease[];
+          search: DiscoverySearch;
+          errors: { sourceId: SourcePluginId; message: string }[];
+        }
+    >;
+    readonly addRelease: (
+      sourceId: SourcePluginId,
+      id: string,
+      destinationId: string,
+      paused: boolean,
+      allowed?: () => boolean
+    ) => Effect.Effect<
+      | ReturnType<
+          typeof problem<404, { readonly detail: "Search for this release before adding it" }>
+        >
+      | ReturnType<typeof problem<502, { readonly detail: "Unable to download the torrent file" }>>
+      | ReturnType<typeof problem<400, { readonly detail: "Torrent file too large" }>>
+      | ReturnType<
+          typeof problem<502, { readonly detail: `Torrent file unavailable (HTTP ${number})` }>
+        >
+      | ReturnType<typeof problem<400, { readonly detail: "Invalid torrent file" }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: `The torrent file is inaccessible (HTTP ${number})` }
+          >
+        >
+      | ReturnType<typeof problem<400, { readonly detail: "The torrent file is too large" }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Invalid magnet link or .torrent file (BitTorrent v1 required)" }
+          >
+        >
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "Trackers must use valid HTTP, HTTPS, UDP, or WebSocket URLs" }
+          >
+        >
+      | ReturnType<typeof problem<404, { readonly detail: "Tab not found" }>>
+      | ReturnType<
+          typeof problem<400, { readonly detail: "The download folder must be an absolute path" }>
+        >
+      | ReturnType<typeof problem<409, { readonly detail: string }>>
+      | ReturnType<
+          typeof problem<
+            400,
+            { readonly detail: "The torrent contains an unsafe or inaccessible file path" }
+          >
+        >
+      | ReturnType<
+          typeof problem<400, { readonly detail: "File path outside the download folder" }>
+        >
+      | { id: string }
+      | ReturnType<typeof problem<503, { readonly detail: "The worker is unavailable" }>>
+      | ReturnType<typeof problem<503, { detail: string }>>
+    >;
+    readonly close: () => Effect.Effect<void>;
   }
-  const season = release.season ?? parseDiscovery(release.workTitle).season;
-  return search.season === null || season === search.season;
-}
-
-/** Reject known conflicts before semantic ranking, while retaining unparsed evidence for Jev. */
-export function discoveryCandidate(search: DiscoverySearch, release: FeedRelease) {
-  const season = release.season ?? parseDiscovery(release.workTitle).season;
-  return !(
-    (search.episode !== null &&
-      (release.pack || (release.episode !== null && release.episode !== search.episode))) ||
-    (search.season !== null && season !== null && season !== search.season)
-  );
-}
+>()("tofu/discovery") {}
+export const discoveryLayer = Layer.effect(Discovery, make);

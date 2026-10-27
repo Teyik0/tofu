@@ -1,35 +1,33 @@
 import { useMutation, useQuery } from "@teyik0/furin/client";
 import { useRouter } from "@teyik0/furin/link";
-import { useAsyncAction } from "@tofu/ui/use-async-action";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
+import type {
+  AutomationDraft,
+  AutomationRule,
+} from "../../../../package/plugins/src/automation-model";
+import { interpretLocally } from "../../../../package/plugins/src/automation-rules";
+import type { SourcePluginId } from "../../../../package/plugins/src/plugin-model";
+import { normalizeTitle } from "../../../../package/plugins/src/title";
+import { useAsyncAction } from "../../../../package/ui/src/use-async-action";
+import type { LibraryTorrent, LiveState } from "../api/modules/dashboard/projection";
 import { useSourceSearch } from "../hooks/use-source-search";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
+import type { SearchReleaseGroup } from "../lib/global-search";
 import { groupSearchReleases, searchTorrents } from "../lib/global-search";
 import { isSupersededNavigation, useRefresh } from "../lib/navigation";
 import { playSoundCue } from "../lib/sound-cues";
-import {
-  recentSearchesAtom,
-  revealTorrentAtom,
-  searchDestinationAtom,
-  selectedTorrentAtom,
-} from "../state/workspace";
-import type {
-  DashboardState,
-  GlobalSearchScope,
-  SearchReleaseGroup,
-  SourcePluginId,
-  TorrentSummary,
-} from "../types";
+import { recentSearchesAtom, searchDestinationAtom } from "../state/workspace";
 
 export type SearchItem =
-  | { kind: "torrent"; torrent: TorrentSummary }
+  | { kind: "torrent"; torrent: LibraryTorrent }
   | { kind: "release"; group: SearchReleaseGroup };
 export interface GlobalSearchProps {
   activeDestination: string | null;
   close: () => void;
-  dashboard: DashboardState;
+  dashboard: LiveState;
+  initialQuery?: string;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -37,11 +35,10 @@ export function useGlobalSearch({
   dashboard,
   activeDestination,
   close,
-}: Pick<GlobalSearchProps, "dashboard" | "activeDestination" | "close">) {
+  initialQuery = "",
+}: Pick<GlobalSearchProps, "dashboard" | "activeDestination" | "close" | "initialQuery">) {
   const router = useRouter();
   const refresh = useRefresh();
-  const setSelectedTorrent = useSetAtom(selectedTorrentAtom);
-  const setRevealTorrent = useSetAtom(revealTorrentAtom);
   const [recent, setRecent] = useAtom(recentSearchesAtom);
   const [lastDestination, setLastDestination] = useAtom(searchDestinationAtom);
   const [destinationId, setDestinationId] = useState(
@@ -51,14 +48,14 @@ export function useGlobalSearch({
       dashboard.destinations[0]?.id ??
       ""
   );
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [scope, setScope] = useState<GlobalSearchScope>("all");
   const [review, setReview] = useState<SearchReleaseGroup | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [automationDraft, setAutomationDraft] = useState<AutomationDraft | null>(null);
+  const [automationRule, setAutomationRule] = useState<AutomationRule>();
   const { busy, error, setError, run } = useAsyncAction("Unable to download the release");
-  const { data: live } = useQuery(api.state.get, { query: { detail: "false" } });
-  const data = live && "torrents" in live ? live : dashboard;
-  const { data: automation, error: pluginError } = useQuery(api.automation.get);
+  const { data: automation, error: pluginError } = useQuery(api.automation.get.live());
   const add = useMutation(api.discover.add.post);
   const sourceIds =
     automation && "plugins" in automation
@@ -71,7 +68,10 @@ export function useGlobalSearch({
     () => groupSearchReleases(sources.flatMap((source) => source.releases)),
     [sources]
   );
-  const found = useMemo(() => searchTorrents(data.torrents, query), [data.torrents, query]);
+  const found = useMemo(
+    () => searchTorrents(dashboard.torrents, query),
+    [dashboard.torrents, query]
+  );
   const local = query.trim()
     ? found
     : found.filter((torrent) => !["paused", "error"].includes(torrent.status)).slice(0, 6);
@@ -80,12 +80,12 @@ export function useGlobalSearch({
   const releaseItems: SearchItem[] =
     scope === "torrents" ? [] : grouped.map((group) => ({ group, kind: "release" }));
   const items = [...localItems, ...releaseItems];
-  const destination = data.destinations.find((item) => item.id === destinationId);
+  const destination = dashboard.destinations.find((item) => item.id === destinationId);
   const currentReview = review ? (grouped.find((group) => group.key === review.key) ?? null) : null;
   const enabledSources = new Set(sourceIds);
   const release = currentReview?.releases.find((item) => enabledSources.has(item.sourceId));
   const existing = currentReview
-    ? data.torrents.find((torrent) => torrent.id.toLowerCase() === currentReview.key)
+    ? dashboard.torrents.find((torrent) => torrent.id.toLowerCase() === currentReview.key)
     : null;
   const loading = sources.some((source) => source.loading);
   const remember = () => {
@@ -99,18 +99,18 @@ export function useGlobalSearch({
     setReview(null);
     setNotice(null);
     setError(null);
+    setAutomationDraft(null);
   };
-  const openTorrent = async (torrent: TorrentSummary) => {
+  const openTorrent = async (torrent: LibraryTorrent) => {
     setError(null);
-    setSelectedTorrent(torrent.id);
     remember();
     try {
       await router.navigate({
-        params: { id: torrent.destinationId },
+        params: { serverId: dashboard.server.id, threadId: torrent.destinationId },
         resetScroll: false,
-        to: "/thread/:id",
+        search: { torrent: torrent.id },
+        to: "/thread/:serverId/:threadId",
       });
-      setRevealTorrent({ destinationId: torrent.destinationId, id: torrent.id });
       close();
     } catch (cause) {
       if (!isSupersededNavigation(cause)) {
@@ -124,6 +124,7 @@ export function useGlobalSearch({
     } else {
       remember();
       setReview(item.group);
+      setAutomationDraft(null);
       setNotice(null);
       setError(null);
     }
@@ -148,11 +149,46 @@ export function useGlobalSearch({
   };
 
   return {
+    automate: (selectedRelease = release) => {
+      if (!(selectedRelease && automation && "preferences" in automation)) {
+        return;
+      }
+      remember();
+      const existingRule = automation.automations.find(
+        (rule) =>
+          (!rule.ownerId || rule.ownerId === "tofu.manual") &&
+          rule.matchMode === "exact" &&
+          rule.destinationId === destinationId &&
+          rule.season === selectedRelease.season &&
+          normalizeTitle(rule.title) === normalizeTitle(selectedRelease.workTitle)
+      );
+      setAutomationRule(existingRule);
+      setAutomationDraft(
+        existingRule ?? {
+          ...interpretLocally(selectedRelease.workTitle, destinationId, automation.preferences),
+          afterEpisode:
+            selectedRelease.episode === null
+              ? 0
+              : Math.min(10_000, Math.floor(selectedRelease.episode)),
+          includeExisting: true,
+          query: selectedRelease.workTitle,
+          season: selectedRelease.season,
+          sources: [
+            selectedRelease.sourceId,
+            ...automation.preferences.sources.filter((id) => id !== selectedRelease.sourceId),
+          ],
+          title: selectedRelease.workTitle,
+        }
+      );
+      setNotice(null);
+    },
     automation,
+    automationDraft,
+    automationRule,
     busy,
     choose,
     currentReview,
-    data,
+    data: dashboard,
     destination,
     destinationId,
     download,
@@ -160,7 +196,6 @@ export function useGlobalSearch({
     existing,
     found,
     items,
-    live,
     loading,
     localItems,
     notice,
@@ -174,7 +209,9 @@ export function useGlobalSearch({
     review,
     router,
     scope,
+    setAutomationDraft,
     setDestinationId,
+    setNotice,
     setReview,
     setScope,
     sourceIds,
@@ -182,3 +219,5 @@ export function useGlobalSearch({
     updateQuery,
   };
 }
+
+export type GlobalSearchScope = "all" | "torrents" | "sources";

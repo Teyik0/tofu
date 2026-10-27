@@ -7,7 +7,7 @@ import { client } from "./api";
 
 function GreetingSettings({ threadId }: { threadId?: string }) {
   const [greeting, setGreeting] = useState("");
-  const query = useQuery(client.settings.get, { query: { threadId } });
+  const query = useQuery(client.settings.get.live({ query: { threadId } }));
   const save = useMutation(client.settings.patch);
   return (
     <form onSubmit={(event) => {
@@ -35,16 +35,16 @@ function ThreadGreeting({ thread, close }: ThreadActionContext & { close(): void
   </section>;
 }
 
-function createPage({ threadLayout }: PluginRouteContext) {
-  return defineRoute()
-    .config({ layout: threadLayout, mode: "ssr" })
+function createPage(_context: PluginRouteContext) {
+  return defineRoute("/__tofu_plugin")
+    .config({ mode: "ssr" })
     .loader(async ({ thread, dashboard, settings }) => {
       const [currentThread, currentDashboard, hostSettings] = await Promise.all([thread, dashboard, settings]);
       return {
         threadName: currentThread?.name ?? "All threads",
         threadId: currentThread?.id,
         threadCount: currentDashboard.destinations.length,
-        downloadPath: hostSettings.downloadPath,
+        downloadPath: hostSettings?.downloadPath ?? "Unavailable to this viewer",
       };
     })
     .head(({ threadName }) => ({ meta: [{ title: `{{id}} · ${threadName}` }] }))

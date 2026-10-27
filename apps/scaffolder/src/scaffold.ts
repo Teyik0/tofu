@@ -38,7 +38,7 @@ export async function scaffold(
   }
   const root = resolve(import.meta.dir, "../../..");
   const sdk = resolve(options.sdk ?? join(root, "package/plugins"));
-  const furin = resolve(options.furin ?? join(root, "vendor/furin-pr163-118d85f.tgz"));
+  const furin = resolve(options.furin ?? join(root, "vendor/furin-pr163-420af31.tgz"));
   const sdkManifest: unknown = await Bun.file(join(sdk, "package.json")).json();
   if (
     !sdkManifest ||
@@ -79,6 +79,7 @@ export async function scaffold(
   );
   const manifest = {
     dependencies: {
+      "@elysia/eden": workspace.catalog["@elysia/eden"],
       "@teyik0/furin": "file:./.tofu-vendor/furin.tgz",
       "@tofu/plugins": "file:./.tofu-sdk",
       elysia: workspace.catalog.elysia,
@@ -93,14 +94,17 @@ export async function scaffold(
     exports: { "./client": "./src/client/index.tsx", "./server": "./src/server/index.ts" },
     files: ["src", "dist/server", "README.md"],
     name: `tofu-plugin-${name}`,
-    overrides: { "@elysia/eden": workspace.catalog["@elysia/eden"] },
+    overrides: {
+      "@elysia/eden": workspace.catalog["@elysia/eden"],
+      "@teyik0/furin": "file:./.tofu-vendor/furin.tgz",
+    },
     private: true,
     scripts: {
       build:
         "bun build src/server/index.ts --target=bun --packages=external --outdir=dist/server && bun build src/client/index.tsx --target=browser --packages=external --outdir=dist/client && bun x --no-install furin build",
       dev: "bun --hot dev/server.ts",
       test: "bun test tests",
-      tscheck: "tsc --noEmit",
+      tscheck: "bun x --no-install furin typegen && tsc --noEmit",
     },
     tofuPlugin: {
       apiVersion: "0.0.0",

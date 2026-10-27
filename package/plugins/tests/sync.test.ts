@@ -15,23 +15,24 @@ test("plugins share the host sync options and publish query invalidations with i
   let principals = 0;
   let updates = 0;
   let disposed = 0;
+  const adapter = sqliteSyncAdapter({ database, namespace: "host" });
   const sync: FurinSyncOptions = {
-    adapter: sqliteSyncAdapter({ database, namespace: "host" }),
+    adapter,
     principal() {
       principals += 1;
       return "host-user";
     },
   };
   const runtime = createPluginRuntime({ sync });
-  const identity = { id: "example.settings", scope: {} };
   try {
     await runtime.installDefinition({
       definition: definePlugin({
         api(context) {
           expect(context.sync).toBe(sync);
           return createPluginApi(context)
-            .get("/settings", { sync: identity }, () => ({ updates }))
-            .patch("/settings", { sync: { invalidate: identity } }, () => {
+            .get("/settings", () => ({ updates }))
+            .patch("/settings", ({ invalidate }) => {
+              invalidate("/api/plugins/example/settings");
               updates += 1;
               return { updates };
             });
@@ -51,7 +52,9 @@ test("plugins share the host sync options and publish query invalidations with i
     await runtime.enable("example");
     const read = await runtime.handle(new Request("http://localhost/api/plugins/example/settings"));
     expect(read.status).toBe(200);
-    expect(JSON.parse(read.headers.get("x-furin-query") ?? "null").id).toBe("example.settings");
+    expect(JSON.parse(read.headers.get("x-furin-query") ?? "null").id).toBe(
+      "/api/plugins/example/settings"
+    );
     const mutate = () =>
       runtime.handle(
         new Request("http://localhost/api/plugins/example/settings", {
@@ -65,13 +68,13 @@ test("plugins share the host sync options and publish query invalidations with i
     }
     expect(changed.status).toBe(200);
     expect(await changed.json()).toEqual({ updates: 1 });
-    expect(changed.headers.get("x-furin-queries")).toContain("example.settings");
+    expect(changed.headers.get("x-furin-queries")).toContain("/api/plugins/example/settings");
     const replay = await mutate();
     expect(replay.status).toBe(200);
     expect(await replay.json()).toEqual({ updates: 1 });
     expect(updates).toBe(1);
     expect(principals).toBeGreaterThan(0);
-    expect(await sync.adapter.currentCursor()).not.toBe("0");
+    expect(await adapter.currentCursor()).not.toBe("0");
     await runtime.installDefinition({
       definition: definePlugin({
         api: (context) => createPluginApi(context).get("/ready", () => "ready"),

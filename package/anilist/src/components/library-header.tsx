@@ -1,57 +1,65 @@
 import { useMutation } from "@teyik0/furin/client";
+import { Link } from "@teyik0/furin/link";
 import { usePluginHost } from "@tofu/plugins/client";
-import type { AniListState } from "@tofu/plugins/domain";
-import { ActionTooltip } from "@tofu/ui/action-tooltip";
-import { Button } from "@tofu/ui/button";
+import { ChevronDownIcon, ListFilterIcon, UserRoundIcon } from "lucide-react";
+import { useState } from "react";
+import { ActionTooltip } from "../../../ui/src/action-tooltip";
+import { SidebarToggle } from "../../../ui/src/sidebar-toggle";
+import { Button } from "../../../ui/src/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuTrigger,
-} from "@tofu/ui/dropdown-menu";
-import { SidebarToggle } from "@tofu/ui/sidebar-toggle";
-import type { useAsyncAction } from "@tofu/ui/use-async-action";
-import { ChevronDownIcon, RefreshCwIcon, SettingsIcon } from "lucide-react";
+} from "../../../ui/src/ui/dropdown-menu";
+import type { useAsyncAction } from "../../../ui/src/use-async-action";
 import { api } from "../client-api";
-import type { useAniListCatalog } from "../hooks/use-anilist-catalog";
+import type { AniListState } from "../server/types";
 import { AniListIcon } from "./icon";
 import { aniListStatusLabel, aniListStatusLabels } from "./status";
 
-type CatalogModel = ReturnType<typeof useAniListCatalog>;
 type Actions = ReturnType<typeof useAsyncAction>;
 
-interface LibraryHeaderProps {
+interface AniListHeaderProps {
   actions: Actions;
-  browsing: boolean;
-  canLoad: boolean;
-  catalog: CatalogModel;
   openSettings: () => void;
+  path: string;
   state: AniListState;
 }
 
-export function LibraryHeader({
-  state,
-  browsing,
-  catalog,
-  actions,
-  canLoad,
-  openSettings,
-}: LibraryHeaderProps) {
+export function AniListHeader({ state, actions, openSettings, path }: AniListHeaderProps) {
   const { refresh } = usePluginHost();
-  const loadList = useMutation(api.anilist.list.post);
   const savePreferences = useMutation(api.anilist.preferences.put);
   const { busy, action } = actions;
   const statuses = new Set(state.visibleStatuses);
-  const loadingCatalog = catalog.loading;
-  const accountName = state.connectedUser || state.userName || null;
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
+  const avatar = state.avatarImage;
 
   return (
     <header className="library-topbar anilist-page-header">
+      <h1 className="sr-only">
+        {path === "/anilist" ? "AniList library" : "AniList notifications"}
+      </h1>
       <div className="library-title anilist-page-heading">
         <SidebarToggle className="mobile-sidebar-toggle" />
         <AniListIcon />
-        <h1>AniList</h1>
+        <nav aria-label="AniList pages" className="anilist-navigation">
+          <Link
+            aria-current={path === "/anilist" ? "page" : undefined}
+            className="anilist-navigation-link"
+            to="/anilist"
+          >
+            Library
+          </Link>
+          <Link
+            aria-current={path === "/anilist/notifications" ? "page" : undefined}
+            className="anilist-navigation-link"
+            to="/anilist/notifications"
+          >
+            Notifications
+          </Link>
+        </nav>
       </div>
       <div className="anilist-header-actions">
         <div className="anilist-list-selector">
@@ -62,17 +70,13 @@ export function LibraryHeader({
                   aria-label={`Lists ${state.visibleStatuses.map(aniListStatusLabel).join(", ") || "None"}`}
                   className="anilist-status-filter"
                   size="lg"
-                  variant="outline"
+                  variant="ghost"
                 >
-                  <span aria-hidden="true" className="anilist-status-filter-label">
-                    Lists
-                  </span>
+                  <ListFilterIcon aria-hidden="true" data-icon="inline-start" />
                   <span id="anilist-lists-value">
-                    {state
-                      ? state.visibleStatuses.length
-                        ? state.visibleStatuses.map(aniListStatusLabel).join(", ")
-                        : "None"
-                      : "Loading…"}
+                    {state.visibleStatuses.length
+                      ? state.visibleStatuses.map(aniListStatusLabel).join(", ")
+                      : "Browse catalog"}
                   </span>
                   <ChevronDownIcon data-icon="inline-end" />
                 </Button>
@@ -117,51 +121,28 @@ export function LibraryHeader({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <span aria-hidden="true" className="toolbar-divider" />
         <ActionTooltip>
           <Button
-            aria-label="Sync list"
-            disabled={browsing ? loadingCatalog : busy || !canLoad}
-            onClick={() =>
-              browsing
-                ? catalog.reload()
-                : action(async () => {
-                    await loadList.mutateAsync();
-                  })
-            }
+            aria-label="AniList account settings"
+            className="anilist-account-button"
+            onClick={openSettings}
             size="icon-lg"
-            variant="outline"
+            variant="ghost"
           >
-            <RefreshCwIcon className={busy ? "motion-safe:animate-spin" : undefined} />
+            {avatar && failedAvatar !== avatar ? (
+              // biome-ignore lint/a11y/noNoninteractiveElementInteractions: This handles a failed profile image request.
+              <img
+                alt=""
+                className="anilist-account-avatar"
+                height={30}
+                onError={() => setFailedAvatar(avatar)}
+                src={avatar}
+                width={30}
+              />
+            ) : (
+              <UserRoundIcon />
+            )}
           </Button>
-        </ActionTooltip>
-        {/* The account doubles as the settings entry point, like AniList's avatar menu. */}
-        <ActionTooltip>
-          {accountName ? (
-            <Button
-              aria-label={`AniList settings, ${accountName}`}
-              className="anilist-account-button"
-              onClick={() => openSettings()}
-              size="lg"
-              variant="outline"
-            >
-              <span aria-hidden="true" className="anilist-account-avatar">
-                {accountName.slice(0, 1).toUpperCase()}
-              </span>
-              <span className="anilist-account-name">{accountName}</span>
-              <SettingsIcon aria-hidden="true" data-icon="inline-end" />
-            </Button>
-          ) : (
-            <Button
-              aria-label="AniList settings"
-              className="anilist-account-button"
-              onClick={() => openSettings()}
-              size="icon-lg"
-              variant="outline"
-            >
-              <SettingsIcon />
-            </Button>
-          )}
         </ActionTooltip>
       </div>
     </header>

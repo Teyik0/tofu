@@ -65,6 +65,9 @@ query Viewer {
   Viewer {
     id
     name
+    avatar {
+      large
+    }
   }
 }
 
@@ -72,6 +75,9 @@ query User($name: String!) {
   User(name: $name) {
     id
     name
+    avatar {
+      large
+    }
   }
 }
 
@@ -274,5 +280,89 @@ mutation ToggleAnimeFavourite($mediaId: Int!) {
 mutation DeleteEntry($id: Int!) {
   DeleteMediaListEntry(id: $id) {
     deleted
+  }
+}
+
+fragment AniListNotificationMedia on Media {
+  id
+  type
+  title {
+    romaji
+    english
+    native
+    userPreferred
+  }
+  synonyms
+  siteUrl
+  coverImage {
+    large
+  }
+  bannerImage
+  episodes
+  format
+  genres
+  season
+  seasonYear
+}
+
+query Notifications($page: Int!, $types: [NotificationType!]!, $reset: Boolean!) {
+  Viewer {
+    id
+    unreadNotificationCount
+  }
+  Page(page: $page, perPage: 30) {
+    pageInfo {
+      currentPage
+      hasNextPage
+    }
+    notifications(type_in: $types, resetNotificationCount: $reset) {
+      __typename
+      ... on AiringNotification {
+        id
+        type
+        createdAt
+        episode
+        media {
+          ...AniListNotificationMedia
+        }
+      }
+      ... on MediaDataChangeNotification {
+        id
+        type
+        createdAt
+        context
+        reason
+        media {
+          ...AniListNotificationMedia
+        }
+      }
+      ... on MediaDeletionNotification {
+        id
+        type
+        createdAt
+        context
+        deletedMediaTitle
+        reason
+      }
+      ... on MediaMergeNotification {
+        id
+        type
+        createdAt
+        context
+        reason
+        media {
+          ...AniListNotificationMedia
+        }
+      }
+      ... on RelatedMediaAdditionNotification {
+        id
+        type
+        createdAt
+        context
+        media {
+          ...AniListNotificationMedia
+        }
+      }
+    }
   }
 }

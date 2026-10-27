@@ -1,18 +1,21 @@
 import { usePluginHost } from "@tofu/plugins/client";
-import type { AniListState, AutomationState, DashboardState } from "@tofu/plugins/domain";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
+import type { LiveState } from "@tofu/plugins/library-state";
+import { useState } from "react";
+import type { AutomationState } from "../../../plugins/src/automation-model";
+import { OptionSelect } from "../../../ui/src/option-select";
+import { Alert, AlertDescription } from "../../../ui/src/ui/alert";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@tofu/ui/dialog";
-import { Field, FieldLabel } from "@tofu/ui/field";
-import { OptionSelect } from "@tofu/ui/option-select";
-import { useAsyncAction } from "@tofu/ui/use-async-action";
-import { useState } from "react";
+} from "../../../ui/src/ui/dialog";
+import { Field, FieldLabel } from "../../../ui/src/ui/field";
+import { useAsyncAction } from "../../../ui/src/use-async-action";
+import type { AniListState } from "../server/types";
 import { AniListPanel } from "./panel";
+
 export function LibrarySettings({
   state,
   automationState,
@@ -21,7 +24,7 @@ export function LibrarySettings({
 }: {
   state: AniListState;
   automationState: AutomationState;
-  dashboard: DashboardState;
+  dashboard: LiveState;
   close: () => void;
 }) {
   const { refresh } = usePluginHost();
@@ -60,7 +63,7 @@ export function LibrarySettings({
                 disabled={busy}
                 id="anime-default-destination"
                 onValueChange={setTarget}
-                options={dashboard.destinations.map((destination) => ({
+                options={(dashboard.host?.destinations ?? []).map((destination) => ({
                   label: destination.name,
                   value: destination.id,
                 }))}
@@ -68,7 +71,7 @@ export function LibrarySettings({
               />
             </Field>
           }
-          destinations={dashboard.destinations}
+          destinations={dashboard.host?.destinations ?? []}
           key={target}
           plugin={plugin}
           preferences={automationState.preferences}

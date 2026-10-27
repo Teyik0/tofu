@@ -1,19 +1,20 @@
 import type { ComponentType } from "react";
-import type { DashboardState, Destination, Settings, TorrentSummary } from "./domain";
+import type { Settings } from "./domain";
+import type { LibraryState, LibraryTorrent } from "./library-state";
 import type { PluginRouteFactory } from "./routes";
 
 export interface ThreadLayoutContext {
-  dashboard: DashboardState;
-  settings: Settings;
-  thread: Destination | null;
+  dashboard: LibraryState;
+  settings: Settings | null;
+  thread: LibraryState["destinations"][number] | null;
 }
 
 export interface ThreadContext extends ThreadLayoutContext {
-  thread: Destination;
+  thread: LibraryState["destinations"][number];
 }
 
 export interface ThreadActionContext extends ThreadContext {
-  torrents: readonly TorrentSummary[];
+  torrents: readonly LibraryTorrent[];
 }
 
 export type ThreadAction = {

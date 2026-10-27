@@ -1,11 +1,14 @@
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
-import type { DashboardState } from "./domain";
+import type { LiveState } from "./library-state";
 
 export interface PluginHost {
-  dashboard: DashboardState;
-  playSound?: (cue: "added" | "removed") => void;
+  dashboard: LiveState;
+  notificationRevision: number;
+  openSearch: (value: boolean | { query: string; destinationId: string }) => void;
+  playSound: (cue: "added" | "removed") => void;
   refresh: () => Promise<void>;
+  session: { capabilities: { hostNative: boolean }; caller: { deviceKind?: string | null } } | null;
   toggleSidebar?: () => void;
 }
 

@@ -1,4 +1,4 @@
-import type { TorrentStatus } from "../types";
+import type { TorrentStatus } from "../../../../package/plugins/src/torrent-types";
 import { Icon, type IconName } from "./icon";
 
 const glyphs: { [Status in TorrentStatus]: IconName } = {

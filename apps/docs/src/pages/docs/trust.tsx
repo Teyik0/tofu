@@ -1,9 +1,8 @@
 import { defineRoute } from "@teyik0/furin";
 import { Callout, Code, DocTitle } from "../../components/docs";
-import { route as docs } from "./_route";
 
-export const route = defineRoute()
-  .config({ layout: docs, mode: "ssr" })
+export const route = defineRoute("/docs/trust")
+  .config({ mode: "ssr" })
   .head(() => ({ meta: [{ title: "Installation & trust — Tofu" }] }))
   .page(() => (
     <>

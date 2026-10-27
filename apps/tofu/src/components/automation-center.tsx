@@ -1,16 +1,4 @@
 import { useQuery } from "@teyik0/furin/client";
-import { AniListIcon } from "@tofu/anilist/components/icon";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { Badge } from "@tofu/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@tofu/ui/dialog";
-import { Skeleton } from "@tofu/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@tofu/ui/tabs";
 import {
   HistoryIcon,
   InboxIcon,
@@ -20,8 +8,20 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { AniListIcon } from "../../../../package/anilist/src/components/icon";
+import { Alert, AlertDescription } from "../../../../package/ui/src/ui/alert";
+import { Badge } from "../../../../package/ui/src/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../../../../package/ui/src/ui/dialog";
+import { Skeleton } from "../../../../package/ui/src/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "../../../../package/ui/src/ui/tabs";
+import type { LiveState } from "../api/modules/dashboard/projection";
 import { api } from "../lib/client";
-import type { AutomationSection, DashboardState } from "../types";
 import { AutomationDiscovery } from "./automation-discovery";
 import { isPending } from "./automation-inbox";
 import { AutomationRules } from "./automation-rules";
@@ -32,20 +32,18 @@ import {
   AutomationPreferencesSection,
 } from "./automation-sections";
 
-export type { AutomationSection } from "../types";
-
 export function AutomationCenter({
   dashboard,
   destinationId,
   section,
   close,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   destinationId: string;
   section: AutomationSection;
   close: () => void;
 }) {
-  const { data: live, error: loadingError } = useQuery(api.automation.get);
+  const { data: live, error: loadingError } = useQuery(api.automation.get.live());
   const state = live && "plugins" in live ? live : null;
   const [tab, setTab] = useState<AutomationSection>(() => section);
   const [target, setTarget] = useState(() => destinationId);
@@ -130,3 +128,11 @@ export function AutomationCenter({
     </Dialog>
   );
 }
+
+export type AutomationSection =
+  | "inbox"
+  | "rules"
+  | "anilist"
+  | "discover"
+  | "history"
+  | "preferences";

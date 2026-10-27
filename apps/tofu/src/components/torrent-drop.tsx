@@ -1,18 +1,25 @@
 import { useMutation } from "@teyik0/furin/client";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { Button } from "@tofu/ui/button";
+import { useRouter } from "@teyik0/furin/link";
 import { useSetAtom } from "jotai";
 import { DownloadIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { Alert, AlertDescription } from "../../../../package/ui/src/ui/alert";
+import { Button } from "../../../../package/ui/src/ui/button";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
-import { useRefresh } from "../lib/navigation";
+import { showTorrent, useRefresh } from "../lib/navigation";
 import { playSoundCue } from "../lib/sound-cues";
-import { modalAtom, selectedTorrentAtom } from "../state/workspace";
+import { modalAtom } from "../state/workspace";
 
-export function TorrentDrop({ activeDestination }: { activeDestination: string | null }) {
+export function TorrentDrop({
+  activeDestination,
+  serverId,
+}: {
+  activeDestination: string | null;
+  serverId: string;
+}) {
   const open = useSetAtom(modalAtom);
-  const setSelected = useSetAtom(selectedTorrentAtom);
+  const router = useRouter();
   const refresh = useRefresh();
   const upload = useMutation(api.torrents.file.post);
   const [dragging, setDragging] = useState(false);
@@ -24,6 +31,7 @@ export function TorrentDrop({ activeDestination }: { activeDestination: string |
       open({ files, type: "drop" });
       return;
     }
+    let added: string | undefined;
     try {
       for (const file of files) {
         // biome-ignore lint/performance/noAwaitInLoops: add in order and stop on the first failed file.
@@ -35,13 +43,13 @@ export function TorrentDrop({ activeDestination }: { activeDestination: string |
         if (!(result && "id" in result)) {
           throw new Error("Unable to add the torrent");
         }
-        setSelected(result.id);
+        added = result.id;
       }
       playSoundCue("added");
     } catch (cause) {
       setError(errorMessage(cause, "Unable to add the torrent"));
     } finally {
-      await refresh();
+      await (added ? showTorrent(router, serverId, activeDestination, added) : refresh());
     }
   });
   useEffect(() => {

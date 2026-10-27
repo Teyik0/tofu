@@ -1,4 +1,5 @@
-import type { TorrentStatus, TorrentStorageIssue, TorrentSummary } from "@tofu/plugins/domain";
+import type { LibraryTorrent } from "@tofu/plugins/library-state";
+import type { TorrentStatus, TorrentStorageIssue } from "../../plugins/src/torrent-types";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
 export function bytes(value: number | null) {
@@ -71,7 +72,7 @@ const storageLabels: { [Kind in TorrentStorageIssue["kind"]]: string } = {
   "storage-unavailable": "Storage unavailable",
 };
 
-export function torrentStatusLabel(torrent: Pick<TorrentSummary, "status" | "storageIssue">) {
+export function torrentStatusLabel(torrent: Pick<LibraryTorrent, "status" | "storageIssue">) {
   if (!torrent.storageIssue || torrent.status === "checking" || torrent.status === "moving") {
     return statusLabels[torrent.status];
   }

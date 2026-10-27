@@ -1,7 +1,7 @@
 import { getInput, isDirty, reset, setInput, useForm } from "@formisch/react";
 import { useEffect } from "react";
-import { preferences as preferencesSchema } from "../api/modules/automation/model";
-import type { AutomationPreferences } from "../types";
+import type { AutomationPreferences } from "../../../../package/plugins/src/automation-model";
+import { preferences as preferencesSchema } from "../../../../package/plugins/src/automation-model";
 
 export function usePreferencesForm(preferences: AutomationPreferences) {
   const form = useForm({ initialInput: preferences, schema: preferencesSchema });

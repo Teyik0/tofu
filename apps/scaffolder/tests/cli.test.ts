@@ -49,7 +49,7 @@ test("generated projects install, typecheck, build, and serve a native plugin pr
         "--sdk",
         join(root, "package/plugins"),
         "--furin",
-        join(root, "vendor/furin-pr163-118d85f.tgz"),
+        join(root, "vendor/furin-pr163-420af31.tgz"),
       ],
       undefined
     );
@@ -64,9 +64,6 @@ test("generated projects install, typecheck, build, and serve a native plugin pr
       // biome-ignore lint/performance/noAwaitInLoops: install, typecheck, build, and serve depend on each prior stage.
       const { stdout, stderr, code } = await runBun(args, project);
       expect({ code, output: stdout + stderr }).toEqual({ code: 0, output: expect.any(String) });
-      if (args[1] === "build") {
-        expect(stdout + stderr).toContain("Elysia AOT skipped because the app uses .mount()");
-      }
     }
     const artifact = await Bun.file(join(project, "dist/client/index.js")).text();
     expect(artifact).not.toContain("@tofu/plugins/server");

@@ -1,9 +1,12 @@
 import { furinInvalidate } from "@teyik0/furin";
 import { furinSync } from "@teyik0/furin/sync";
 import { draft } from "@tofu/plugins/automation-model";
-import type { AniListCatalogFilters } from "@tofu/plugins/domain";
-import { Elysia } from "elysia";
+import type { FeedRelease } from "@tofu/plugins/discovery-model";
+import { Cause, Effect, Queue, Stream } from "effect";
+import { Elysia, ElysiaStatus, problem, sse } from "elysia";
+import { createLogger } from "evlog";
 import { object, string } from "valibot";
+import type { AniListCatalogFilters } from "./catalog";
 import { catalogSchema } from "./catalog";
 import type { AniListApiDependencies } from "./dependencies";
 import {
@@ -15,84 +18,182 @@ import {
   episodeCompletionSchema,
   episodeParamsSchema,
   mediaParamsSchema,
+  notificationsSchema,
   selectionSchema,
   subscriptionSchema,
   threadPreviewSchema,
 } from "./model";
-import { createAniListOpeningApi } from "./opening";
+import type { AniListReleases } from "./releases";
 
 const invalidateLibrary = { path: "/anilist", type: "page" } as const;
-
 export function createAniListApi<const Prefix extends string>(
   dependencies: AniListApiDependencies,
   prefix: Prefix
 ) {
-  const routes = new Elysia({ name: "tofu-anilist-api", prefix })
-    .derive("global", () => ({ ...dependencies.application() }))
-    .use(furinSync(dependencies.sync))
+  const { sync } = dependencies;
+  const notificationMonitor = dependencies.application().anilist;
+  return new Elysia({ name: "tofu-anilist-api", prefix: `${prefix}/anilist` })
+    .derive("local", ({ request }) => {
+      const caller = dependencies.authorize(request);
+      if (caller instanceof ElysiaStatus) {
+        return caller;
+      }
+      return { ...dependencies.application(), caller };
+    })
+    .use(furinSync(sync))
     .use(furinInvalidate())
-    .guard({ sync: false })
-    .get("/anilist", { sync: { id: "tofu.anilist", scope: {} } }, ({ anilist, defer }) => {
+    .onStart(() => Effect.runPromise(notificationMonitor.startNotifications(sync)))
+    .get("/", {}, ({ anilist, defer }) => {
       if (anilist.needsRefresh()) {
-        defer(() => anilist.refresh().catch(() => undefined));
+        defer(async () => {
+          await Effect.runPromise(
+            anilist.refresh().pipe(
+              Effect.catchCause((cause) =>
+                Effect.sync(() => {
+                  if (Cause.hasInterruptsOnly(cause)) {
+                    return;
+                  }
+                  const log = createLogger({
+                    component: "anilist",
+                    error: Cause.squash(cause),
+                    operation: "refresh",
+                  });
+                  log.setLevel("error");
+                  log.emit();
+                })
+              )
+            )
+          );
+        });
       }
       return anilist.snapshot();
     })
-    .post("/anilist/catalog", { body: catalogSchema }, ({ anilist, body }) =>
-      anilist.catalog(body as AniListCatalogFilters)
+    .get("/notifications", { query: notificationsSchema }, ({ anilist, query }) =>
+      Effect.runPromise(anilist.notifications(query))
     )
-    .get("/anilist/catalog/options", ({ anilist }) => anilist.catalogOptions())
-    .get("/anilist/entries/:mediaId/editor", { params: mediaParamsSchema }, ({ anilist, params }) =>
-      anilist.editor(params.mediaId)
+    .get("/notifications/status", {}, ({ anilist }) => anilist.notificationStatus())
+    .post("/notifications/check", { idempotent: false }, ({ anilist }) =>
+      Effect.runPromise(anilist.checkNotifications(true))
+    )
+    .post("/notifications/read", {}, ({ anilist }) =>
+      Effect.runPromise(anilist.notifications({ category: "all", page: 1 }, true))
+    )
+    .post("/catalog", { body: catalogSchema }, ({ anilist, body }) =>
+      Effect.runPromise(anilist.catalog(body as AniListCatalogFilters))
+    )
+    .get("/catalog/options", ({ anilist }) => Effect.runPromise(anilist.catalogOptions()))
+    .get("/entries/:mediaId/editor", { params: mediaParamsSchema }, ({ anilist, params }) =>
+      Effect.runPromise(anilist.editor(params.mediaId))
     )
     .put(
-      "/anilist/entries/:mediaId/editor",
+      "/entries/:mediaId/editor",
       {
         body: aniListEntrySchema,
-        invalidate: invalidateLibrary,
+
         params: mediaParamsSchema,
       },
-      ({ anilist, params, body }) => anilist.saveEntry(params.mediaId, body)
+      ({ anilist, params, body, invalidate }) => {
+        invalidate(invalidateLibrary);
+        return Effect.runPromise(anilist.saveEntry(params.mediaId, body));
+      }
     )
     .put(
-      "/anilist/entries/:mediaId/favourite",
+      "/entries/:mediaId/favourite",
       {
         body: enabledSchema,
-        invalidate: invalidateLibrary,
+
         params: mediaParamsSchema,
       },
-      ({ anilist, params, body }) => anilist.favourite(params.mediaId, body.enabled)
+      ({ anilist, params, body, invalidate }) => {
+        invalidate(invalidateLibrary);
+        return Effect.runPromise(anilist.favourite(params.mediaId, body.enabled));
+      }
     )
     .delete(
-      "/anilist/entries/:mediaId/editor",
+      "/entries/:mediaId/editor",
       {
-        invalidate: invalidateLibrary,
         params: mediaParamsSchema,
       },
-      ({ anilist, params }) => anilist.deleteEntry(params.mediaId)
+      ({ anilist, params, invalidate }) => {
+        invalidate(invalidateLibrary);
+        return Effect.runPromise(anilist.deleteEntry(params.mediaId));
+      }
     )
     .post(
-      "/anilist/entries/:mediaId/releases",
+      "/entries/:mediaId/releases/stream",
       { params: mediaParamsSchema },
-      ({ anilist, params }) => anilist.releases(params.mediaId)
+      async function* ({ anilist, params, request, set }) {
+        set.headers["cache-control"] = "private, no-store";
+        const stream = Stream.callback<
+          | { type: "progress"; releases: FeedRelease[] }
+          | { type: "complete"; result: AniListReleases }
+          | { type: "error"; status: number; detail: string }
+        >((queue) =>
+          Effect.gen(function* () {
+            const result = yield* anilist.releases(params.mediaId, (releases) => {
+              Queue.offerUnsafe(queue, { releases, type: "progress" });
+            });
+            if (result instanceof ElysiaStatus) {
+              Queue.offerUnsafe(queue, {
+                detail: result.response.detail,
+                status: result.status,
+                type: "error",
+              });
+            } else {
+              Queue.offerUnsafe(queue, { result, type: "complete" });
+            }
+            Queue.endUnsafe(queue);
+          })
+        );
+        const iterator = Stream.toAsyncIterable(stream)[Symbol.asyncIterator]();
+        await using cleanup = new AsyncDisposableStack();
+        cleanup.defer(async () => {
+          await iterator.return?.();
+        });
+        for (;;) {
+          // biome-ignore lint/performance/noAwaitInLoops: Consume and forward each incremental search update in order.
+          const next = await Effect.runPromise(
+            Effect.tryPromise({ catch: (cause) => cause, try: () => iterator.next() }),
+            { signal: request.signal }
+          );
+          if (next.done) {
+            return;
+          }
+          yield sse({ data: next.value });
+        }
+      }
+    )
+    .post("/entries/:mediaId/releases", { params: mediaParamsSchema }, ({ anilist, params }) =>
+      Effect.runPromise(anilist.releases(params.mediaId))
     )
     .put(
-      "/anilist/entries/:mediaId/automation",
+      "/entries/:mediaId/automation",
       {
         body: draft,
         params: mediaParamsSchema,
-        sync: { invalidate: { path: "/", type: "layout" } },
       },
-      async ({ anilist, automation, releaseAutomation, params, body, mutation }) => {
+      async ({ anilist, automation, releaseAutomation, params, body, mutation, invalidate }) => {
+        invalidate({ path: "/", type: "layout" });
+
         const input = anilist.prepareAutomation(params.mediaId, body);
-        const prepared = await releaseAutomation.prepareRule(input.id, input.draft, {
-          key: input.key,
-          ownerId: "tofu.anilist",
-        });
+        if (input instanceof ElysiaStatus) {
+          return input;
+        }
+        const prepared = await Effect.runPromise(
+          releaseAutomation.prepareRule(input.id, input.draft, {
+            key: input.key,
+            ownerId: "tofu.anilist",
+          })
+        );
+        if (prepared instanceof ElysiaStatus) {
+          return prepared;
+        }
         const result = await mutation((tx) => {
-          const rule = automation.writeRule(tx, prepared);
-          anilist.writeAutomationLink(tx, input, rule.id);
-          return rule;
+          const rule = releaseAutomation.writeRule(tx, prepared);
+          if (rule instanceof ElysiaStatus) {
+            return rule;
+          }
+          return anilist.writeAutomationLink(tx, input, rule.id) ?? rule;
         });
         automation.refreshState();
         anilist.refreshState();
@@ -100,22 +201,27 @@ export function createAniListApi<const Prefix extends string>(
       }
     )
     .put(
-      "/anilist/entries/:mediaId/episodes/:episode",
+      "/entries/:mediaId/episodes/:episode",
       {
         body: episodeCompletionSchema,
-        invalidate: invalidateLibrary,
+
         params: episodeParamsSchema,
       },
-      ({ anilist, params, body }) =>
-        anilist.completeEpisode(params.mediaId, params.episode, body.completed)
+      ({ anilist, params, body, invalidate }) => {
+        invalidate(invalidateLibrary);
+        return Effect.runPromise(
+          anilist.completeEpisode(params.mediaId, params.episode, body.completed, body.accountId)
+        );
+      }
     )
     .put(
-      "/anilist/preferences",
+      "/preferences",
       {
         body: aniListPreferencesSchema,
-        sync: { invalidate: { path: "/", type: "layout" } },
       },
-      async ({ anilist, body, mutation }) => {
+      async ({ anilist, body, mutation, invalidate }) => {
+        invalidate({ path: "/", type: "layout" });
+
         const library = anilist;
         const result = await mutation((tx) => library.writePreferences(tx, body.visibleStatuses));
         library.refreshState();
@@ -123,20 +229,21 @@ export function createAniListApi<const Prefix extends string>(
       }
     )
     .post(
-      "/anilist/threads/preview",
+      "/threads/preview",
       {
         body: threadPreviewSchema,
       },
       ({ anilist, body }) => anilist.previewThreads(body.basePath, body.statuses)
     )
     .put(
-      "/anilist/entries/:mediaId",
+      "/entries/:mediaId",
       {
         body: enabledSchema,
         params: mediaParamsSchema,
-        sync: { invalidate: { path: "/", type: "layout" } },
       },
-      async ({ anilist, automation, params, body, mutation }) => {
+      async ({ anilist, automation, params, body, mutation, invalidate }) => {
+        invalidate({ path: "/", type: "layout" });
+
         const result = await mutation((tx) =>
           anilist.writeSelection(tx, [params.mediaId], body.enabled)
         );
@@ -146,12 +253,13 @@ export function createAniListApi<const Prefix extends string>(
       }
     )
     .put(
-      "/anilist/selection",
+      "/selection",
       {
         body: selectionSchema,
-        sync: { invalidate: { path: "/", type: "layout" } },
       },
-      async ({ anilist, automation, body, mutation }) => {
+      async ({ anilist, automation, body, mutation, invalidate }) => {
+        invalidate({ path: "/", type: "layout" });
+
         const result = await mutation((tx) =>
           anilist.writeSelection(tx, body.mediaIds, body.enabled)
         );
@@ -161,49 +269,96 @@ export function createAniListApi<const Prefix extends string>(
       }
     )
     .put(
-      "/anilist",
+      "/",
       {
         body: aniListConfigurationSchema,
-        invalidate: invalidateLibrary,
       },
-      ({ anilist, body }) => anilist.configure(body)
+      ({ anilist, body, invalidate }) => {
+        invalidate(invalidateLibrary);
+        return anilist.configure(body);
+      }
     )
-    .post("/anilist/connect", { invalidate: invalidateLibrary }, ({ anilist }) => anilist.connect())
+    .post("/connect", {}, ({ anilist, caller, invalidate }) => {
+      invalidate(invalidateLibrary);
+
+      if (caller.kind === "device" && caller.device.kind !== "desktop") {
+        return problem(409, {
+          detail:
+            "Start AniList authorization in a paired Tofu desktop app or the server's own desktop window",
+        });
+      }
+      return Effect.runPromise(
+        anilist.connect(caller.kind === "device" ? caller.device.id : undefined)
+      );
+    })
     .post(
-      "/anilist/callback",
-      { body: authorizationCallbackSchema, invalidate: invalidateLibrary },
-      ({ anilist, body }) => anilist.receiveAuthorizationUrl(body.url)
+      "/callback",
+      { body: authorizationCallbackSchema },
+      ({ anilist, body, caller, invalidate }) => {
+        invalidate(invalidateLibrary);
+        return Effect.runPromise(
+          anilist.receiveAuthorizationUrl(
+            body.url,
+            caller.kind === "device" ? caller.device.id : undefined
+          )
+        );
+      }
     )
-    .delete("/anilist/connect", { invalidate: invalidateLibrary }, ({ anilist }) =>
-      anilist.cancelAuthorization()
-    )
-    .post("/anilist/list", { invalidate: invalidateLibrary }, ({ anilist }) => anilist.list())
-    .post("/anilist/refresh", { invalidate: invalidateLibrary }, ({ anilist }) => anilist.refresh())
     .post(
-      "/anilist/subscriptions",
+      "/oauth/remote-callback",
+      { body: authorizationCallbackSchema },
+      ({ anilist, body, caller, invalidate }) => {
+        invalidate(invalidateLibrary);
+        return Effect.runPromise(
+          anilist.receiveAuthorizationUrl(
+            body.url,
+            caller.kind === "device" ? caller.device.id : undefined
+          )
+        );
+      }
+    )
+    .delete("/connect", {}, ({ anilist, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return anilist.cancelAuthorization();
+    })
+    .post("/list", {}, ({ anilist, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return Effect.runPromise(anilist.list());
+    })
+    .post("/refresh", {}, ({ anilist, invalidate }) => {
+      invalidate(invalidateLibrary);
+      return Effect.runPromise(anilist.refresh());
+    })
+    .post(
+      "/subscriptions",
       {
         body: subscriptionSchema,
-        sync: { invalidate: { path: "/", type: "layout" } },
       },
-      async ({ anilist, body, mutation }) => {
+      async ({ anilist, body, mutation, invalidate }) => {
+        invalidate({ path: "/", type: "layout" });
+
         const result = await mutation((tx) => anilist.writeSubscription(tx, body));
         anilist.refreshState();
         return result;
       }
     )
     .post(
-      "/anilist/subscriptions/:id/sync",
-      { invalidate: invalidateLibrary, params: object({ id: string() }) },
-      ({ anilist, params }) => anilist.sync(params.id)
+      "/subscriptions/:id/sync",
+      { params: object({ id: string() }) },
+      ({ anilist, params, invalidate }) => {
+        invalidate(invalidateLibrary);
+        return Effect.runPromise(anilist.sync(params.id));
+      }
     )
     .put(
-      "/anilist/subscriptions/:id",
+      "/subscriptions/:id",
       {
         body: enabledSchema,
         params: object({ id: string() }),
-        sync: { invalidate: { path: "/", type: "layout" } },
       },
-      async ({ anilist, automation, params, body, mutation }) => {
+      async ({ anilist, automation, params, body, mutation, invalidate }) => {
+        invalidate({ path: "/", type: "layout" });
+
         const result = await mutation((tx) => anilist.writeToggle(tx, params.id, body.enabled));
         automation.refreshState();
         anilist.refreshState();
@@ -211,33 +366,17 @@ export function createAniListApi<const Prefix extends string>(
       }
     )
     .delete(
-      "/anilist/subscriptions/:id",
-      {
-        params: object({ id: string() }),
-        sync: { invalidate: { path: "/", type: "layout" } },
-      },
-      async ({ anilist, automation, params, mutation }) => {
+      "/subscriptions/:id",
+      { params: object({ id: string() }) },
+      async ({ anilist, automation, params, mutation, invalidate }) => {
+        invalidate({ path: "/", type: "layout" });
+
         const result = await mutation((tx) => anilist.deleteSubscription(tx, params.id));
         automation.refreshState();
         anilist.refreshState();
         return result;
       }
     );
-
-  return new Elysia().use(routes).use(
-    createAniListOpeningApi(
-      {
-        isDesktop: () => dependencies.application().platform.kind === "desktop",
-        openExternal: (url) => {
-          const { platform } = dependencies.application();
-          return platform.kind === "desktop" && platform.openExternal(url);
-        },
-      },
-      prefix
-    )
-  );
 }
-
 export type { AniListApiDependencies } from "./dependencies";
-
 export type AniListApi = ReturnType<typeof createAniListApi<"/api">>;

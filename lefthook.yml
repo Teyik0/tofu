@@ -1,16 +1,20 @@
 pre-commit:
   jobs:
     - name: format-and-lint
-      run: bun run fix
+      run: bun run fix --staged
       stage_fixed: true
+
     - name: typescript
-      run: bun run tscheck
+      run: bun tscheck
+
 pre-push:
   jobs:
     - name: build
       run: bun run build
+
     - name: tests
       run: bun run test
+
 commit-msg:
   commands:
     conventional-commit:

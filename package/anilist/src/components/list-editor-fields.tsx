@@ -1,4 +1,6 @@
-import { Checkbox } from "@tofu/ui/checkbox";
+import { StarIcon } from "lucide-react";
+import { OptionSelect } from "../../../ui/src/option-select";
+import { Checkbox } from "../../../ui/src/ui/checkbox";
 import {
   Field,
   FieldDescription,
@@ -6,14 +8,17 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
-} from "@tofu/ui/field";
-import { Input } from "@tofu/ui/input";
-import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@tofu/ui/input-group";
-import { OptionSelect } from "@tofu/ui/option-select";
-import { Separator } from "@tofu/ui/separator";
-import { Textarea } from "@tofu/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@tofu/ui/toggle-group";
-import { StarIcon } from "lucide-react";
+} from "../../../ui/src/ui/field";
+import { Input } from "../../../ui/src/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "../../../ui/src/ui/input-group";
+import { Separator } from "../../../ui/src/ui/separator";
+import { Textarea } from "../../../ui/src/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "../../../ui/src/ui/toggle-group";
 import { AniListDatePicker } from "./date-picker";
 import { aniListStatusLabels } from "./status";
 import type { AniListListEditorProps, useAniListListEditor } from "./use-list-editor";

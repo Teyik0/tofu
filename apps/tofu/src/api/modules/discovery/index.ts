@@ -1,19 +1,25 @@
 import { furinSync } from "@teyik0/furin/sync";
+import { Effect } from "effect";
 import { Elysia } from "elysia";
+import {
+  addReleaseSchema,
+  discoverySchema,
+} from "../../../../../../package/plugins/src/discovery-model";
 import { sync } from "../../../sync";
-import { addReleaseSchema, discoverySchema } from "./model";
+import { accessPlugin } from "../access/plugin";
 import { discoveryServicePlugin } from "./plugin";
 
 export const discoveryPlugin = new Elysia({ name: "tofu-discovery-api" })
   .use(discoveryServicePlugin)
+  .use(accessPlugin)
   .use(furinSync(sync))
-  .guard({ sync: false })
+  .guard({ idempotent: false, management: true })
   .post(
     "/discover",
     {
       body: discoverySchema,
     },
-    ({ discovery, body }) => discovery.discover(body.query, body.sources)
+    ({ discovery, body }) => Effect.runPromise(discovery.discover(body.query, body.sources))
   )
   .post(
     "/discover/add",
@@ -21,5 +27,7 @@ export const discoveryPlugin = new Elysia({ name: "tofu-discovery-api" })
       body: addReleaseSchema,
     },
     ({ discovery, body }) =>
-      discovery.addRelease(body.sourceId, body.id, body.destinationId, body.paused)
+      Effect.runPromise(
+        discovery.addRelease(body.sourceId, body.id, body.destinationId, body.paused)
+      )
   );

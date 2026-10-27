@@ -1,8 +1,7 @@
 import { defineRoute } from "@teyik0/furin";
-import { route as root } from "../root";
 
-export const route = defineRoute()
-  .config({ layout: root, mode: "ssr" })
+export const route = defineRoute("/docs/_route")
+  .config({ mode: "ssr" })
   .layout(({ children }) => (
     <main className="docs-grid" id="main">
       <aside className="docs-sidebar">

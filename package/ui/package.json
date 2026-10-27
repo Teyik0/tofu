@@ -41,7 +41,8 @@
     "./toggle": "./src/ui/toggle.tsx",
     "./toggle-group": "./src/ui/toggle-group.tsx",
     "./use-async-action": "./src/use-async-action.ts",
-    "./errors": "./src/errors.ts"
+    "./errors": "./src/errors.ts",
+    "./compact-automation-fields": "./src/compact-automation-fields.tsx"
   },
   "scripts": {
     "build": "bun build ./src/ui/button.tsx --target=browser --packages=external --outdir=dist",

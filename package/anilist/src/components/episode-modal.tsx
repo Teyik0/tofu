@@ -1,16 +1,14 @@
 import { useField, useForm } from "@formisch/react";
-import type {
-  AniListEntry,
-  AniListMedia,
-  AutomationState,
-  DashboardState,
-} from "@tofu/plugins/domain";
-import { Dialog, DialogContent } from "@tofu/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "@tofu/ui/tabs";
+import type { LiveState } from "@tofu/plugins/library-state";
 import { BookOpenIcon, ListChecksIcon, ZapIcon } from "lucide-react";
 import { object, string } from "valibot";
+import type { AutomationState } from "../../../plugins/src/automation-model";
+import type { EpisodeSource } from "../../../plugins/src/availability";
+import { Dialog, DialogContent } from "../../../ui/src/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "../../../ui/src/ui/tabs";
 import { useAniListEditor } from "../hooks/use-anilist-editor";
 import { useAniListReleases } from "../hooks/use-anilist-releases";
+import type { AniListEntry, AniListMedia } from "../server/types";
 import { EpisodeHeader } from "./episode-header";
 import { EpisodeAutomationPanel, EpisodeDownloadsPanel, EpisodeListPanel } from "./episode-panels";
 
@@ -20,12 +18,16 @@ export function AniListEpisodeModal({
   entry,
   automation,
   close,
+  episode,
+  localSources,
 }: {
   authenticated: boolean;
-  dashboard: DashboardState;
+  dashboard: LiveState;
   entry: AniListMedia | AniListEntry;
   automation: AutomationState;
   close: () => void;
+  episode?: number;
+  localSources?: EpisodeSource[];
 }) {
   const listed = "progress" in entry;
   const rule = listed
@@ -50,13 +52,12 @@ export function AniListEpisodeModal({
       <DialogContent className="anime-modal">
         <EpisodeHeader
           authenticated={authenticated}
-          available={releases.result ? releases.available : null}
-          dashboard={dashboard}
+          available={releases.result || releases.available ? releases.available : null}
           entry={entry}
           model={editor}
         />
         <div className="anime-modal-body">
-          <Tabs defaultValue="list">
+          <Tabs defaultValue={episode === undefined ? "list" : "episodes"}>
             <TabsList variant="line">
               <TabsTrigger value="list">
                 <ListChecksIcon />
@@ -82,6 +83,8 @@ export function AniListEpisodeModal({
               dashboard={dashboard}
               destinationId={destination.input ?? "default"}
               entry={entry}
+              episode={episode}
+              localSources={localSources}
               model={releases}
               setDestinationId={destination.onChange}
             />

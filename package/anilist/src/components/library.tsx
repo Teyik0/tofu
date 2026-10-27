@@ -1,35 +1,27 @@
 import { usePluginHost } from "@tofu/plugins/client";
-import type {
-  AniListCatalogFilters,
-  AniListCatalogSort,
-  AniListMedia,
-  AniListState,
-  AutomationState,
-  DashboardState,
-} from "@tofu/plugins/domain";
-import { useAsyncAction } from "@tofu/ui/use-async-action";
-import { useNow } from "@tofu/ui/use-now";
 import { useState } from "react";
+import type { AutomationState } from "../../../plugins/src/automation-model";
+import { useAsyncAction } from "../../../ui/src/use-async-action";
+import { useNow } from "../../../ui/src/use-now";
 import { useAniListCatalog } from "../hooks/use-anilist-catalog";
-import { useAuthorizationPolling } from "../hooks/use-authorization-polling";
+import type { AniListCatalogFilters, AniListCatalogSort } from "../server/catalog";
+import type { AniListMedia, AniListState } from "../server/types";
 import { browseRequest, catalogSortOptions } from "./browse-filters";
 import { AniListEpisodeModal } from "./episode-modal";
 import { LibraryControls } from "./library-controls";
 import { noFilters, type SortValue, sortOptions, useLibraryFilters } from "./library-filters";
-import { LibraryHeader } from "./library-header";
 import { LibraryResults } from "./library-results";
-import { LibrarySettings } from "./library-settings";
 
-export const AniListLibrary = ({
-  dashboard,
-  initialAniList: state,
-  initialAutomation: automationState,
+export function AniListLibrary({
+  state,
+  automationState,
+  openSettings,
 }: {
-  dashboard: DashboardState;
-  initialAniList: AniListState;
-  initialAutomation: AutomationState;
-}) => {
-  const { refresh } = usePluginHost();
+  state: AniListState;
+  automationState: AutomationState;
+  openSettings: () => void;
+}) {
+  const { dashboard } = usePluginHost();
   const actions = useAsyncAction("Unable to update AniList");
   const [search, setSearch] = useState("");
   const [listSort, setListSort] = useState<SortValue>("title");
@@ -67,24 +59,12 @@ export const AniListLibrary = ({
     setFilters
   );
   const [selected, setSelected] = useState<AniListMedia | null>(null);
-  const [settings, setSettings] = useState(false);
-  const pollError = useAuthorizationPolling(state.authorizationPending && !settings, refresh);
   const selectedEntry = selected
     ? (state.entries.find((entry) => entry.mediaId === selected.mediaId) ?? selected)
     : null;
-  const plugin = automationState.plugins.find((item) => item.id === "anilist");
-  const canLoad = Boolean(plugin?.enabled && (plugin.hasApiKey || state.userName));
   const [view, setView] = useState<"cards" | "compact" | "list">("cards");
   return (
-    <main className="anilist-library">
-      <LibraryHeader
-        actions={actions}
-        browsing={browsing}
-        canLoad={canLoad}
-        catalog={catalog}
-        openSettings={() => setSettings(true)}
-        state={state}
-      />
+    <>
       <div className="anilist-page-body">
         <LibraryControls
           availableSorts={browsing ? catalogSortOptions : sortOptions}
@@ -105,8 +85,7 @@ export const AniListLibrary = ({
           entries={model.entries}
           now={now}
           openMedia={setSelected}
-          openSettings={() => setSettings(true)}
-          pollError={pollError}
+          openSettings={openSettings}
           state={state}
           view={view}
         />
@@ -121,14 +100,6 @@ export const AniListLibrary = ({
           key={selectedEntry.mediaId}
         />
       ) : null}
-      {settings ? (
-        <LibrarySettings
-          automationState={automationState}
-          close={() => setSettings(false)}
-          dashboard={dashboard}
-          state={state}
-        />
-      ) : null}
-    </main>
+    </>
   );
-};
+}

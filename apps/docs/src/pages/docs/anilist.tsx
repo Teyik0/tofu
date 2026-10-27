@@ -1,9 +1,8 @@
 import { defineRoute } from "@teyik0/furin";
 import { Callout, DocTitle } from "../../components/docs";
-import { route as docs } from "./_route";
 
-export const route = defineRoute()
-  .config({ layout: docs, mode: "ssr" })
+export const route = defineRoute("/docs/anilist")
+  .config({ mode: "ssr" })
   .head(() => ({ meta: [{ title: "AniList — Tofu" }] }))
   .page(() => (
     <>
@@ -49,7 +48,7 @@ export const route = defineRoute()
       <p>
         The package owns its service, GraphQL operations, persistent cache, and Drizzle table. The
         host injects typed <code>AniListOptions</code>: database-backed automation operations,
-        discovery, release scheduling and execution, engine access, and intelligence evaluation.
+        discovery, release scheduling and execution, engine access, and local episode availability.
         Core automation persists rules and decisions; <code>releaseAutomation</code> collects and
         executes releases. AniList state and rules share a database transaction. The package never
         imports the desktop app. Its client calls typed AniList and core Elysia APIs inside Tofu’s
@@ -58,9 +57,9 @@ export const route = defineRoute()
       <p>
         Shared DTOs come from <code>@tofu/plugins/domain</code>. The package also uses the SDK’s{" "}
         <code>/automation-rules</code>, <code>/title</code>, <code>/source-queries</code>,{" "}
-        <code>/releases</code>, <code>/discovery-query</code>, and <code>/jev-questions</code> entry
-        points for release matching, query interpretation, and typed intelligence contracts. This
-        keeps common domain logic independent of desktop startup and routing.
+        <code>/releases</code>, <code>/discovery-query</code>, and <code>/availability</code> entry
+        points for release matching, query interpretation, and episode availability. This keeps
+        common domain logic independent of desktop startup and routing.
       </p>
       <p>
         Its disposer suspends linked automations when the plugin’s scope ends. This makes the

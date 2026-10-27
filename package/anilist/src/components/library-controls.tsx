@@ -1,20 +1,3 @@
-import { ActionTooltip } from "@tofu/ui/action-tooltip";
-import { Button } from "@tofu/ui/button";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@tofu/ui/input-group";
-import { OptionSelect } from "@tofu/ui/option-select";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@tofu/ui/select";
 import {
   ArrowUpDownIcon,
   Grid3x3Icon,
@@ -26,6 +9,23 @@ import {
   XIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { ActionTooltip } from "../../../ui/src/action-tooltip";
+import { OptionSelect } from "../../../ui/src/option-select";
+import { Button } from "../../../ui/src/ui/button";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "../../../ui/src/ui/input-group";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../ui/src/ui/select";
 import type { useAniListCatalog } from "../hooks/use-anilist-catalog";
 import {
   BrowseAdvancedFilters,

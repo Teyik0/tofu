@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import {
-  createClient as furinClient,
   useMutation as furinMutation,
   useQuery as furinQuery,
+  furinSync as furinSyncPlugin,
 } from "@teyik0/furin/client";
-import { createClient, useMutation, useQuery } from "../src/client";
+import { furinSync, useMutation, useQuery } from "../src/client";
 
 test("plugin query hooks share the host Furin contexts through direct exports", () => {
-  expect(createClient).toBe(furinClient);
+  expect(furinSync).toBe(furinSyncPlugin);
   expect(useMutation).toBe(furinMutation);
   expect(useQuery).toBe(furinQuery);
 });

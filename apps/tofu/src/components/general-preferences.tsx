@@ -1,16 +1,16 @@
 import { Form, getDeepError, reset } from "@formisch/react";
 import { useMutation, useQuery } from "@teyik0/furin/client";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { PreferenceFields } from "@tofu/ui/automation-fields";
-import { Button } from "@tofu/ui/button";
-import { FieldSet } from "@tofu/ui/field";
 import { CheckIcon, LoaderCircleIcon } from "lucide-react";
 import { useState } from "react";
+import type { AutomationPreferences } from "../../../../package/plugins/src/automation-model";
+import { PreferenceFields } from "../../../../package/ui/src/automation-fields";
+import { Alert, AlertDescription } from "../../../../package/ui/src/ui/alert";
+import { Button } from "../../../../package/ui/src/ui/button";
+import { FieldSet } from "../../../../package/ui/src/ui/field";
 import { usePreferencesForm } from "../hooks/use-preferences-form";
 import { createAutomationMutations } from "../lib/automation-mutations";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
-import type { AutomationPreferences } from "../types";
 
 const mutations = createAutomationMutations(api);
 
@@ -19,7 +19,7 @@ export function GeneralPreferences({
 }: {
   initialPreferences: AutomationPreferences;
 }) {
-  const { data: live } = useQuery(api.automation.get);
+  const { data: live } = useQuery(api.automation.get.live());
   const savePreferences = useMutation(mutations.savePreferences);
   const [saved, setSaved] = useState(false);
   const preferences = live && "preferences" in live ? live.preferences : initialPreferences;

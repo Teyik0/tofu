@@ -60,7 +60,7 @@ export const draft = t.Object({
   includeExisting: t.Boolean(),
   intervalMinutes: t.Integer({ maximum: 1440, minimum: 1 }),
   languages: t.Array(language, { maxItems: 3 }),
-  matchMode: t.Union([t.Literal("exact"), t.Literal("pattern"), t.Literal("jev")]),
+  matchMode: t.Union([t.Literal("exact"), t.Literal("pattern")]),
   paused: t.Boolean(),
   priority: criteria,
   query: t.String({ maxLength: 2000, minLength: 1 }),

@@ -1,5 +1,5 @@
-import type { AniListListUpdate } from "@tofu/plugins/domain";
 import { errorMessage } from "@tofu/ui/errors";
+import type { AniListListUpdate } from "../server/model";
 
 export interface AniListSaveState {
   error: string | null;

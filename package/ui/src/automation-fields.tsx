@@ -1,15 +1,17 @@
+import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import type {
   AutomationCriterion,
   AutomationDraft,
   AutomationPreferences,
-  SourcePluginId,
-} from "@tofu/plugins/domain";
-import { ActionTooltip } from "@tofu/ui/action-tooltip";
-import { Button } from "@tofu/ui/button";
-import { Checkbox } from "@tofu/ui/checkbox";
-import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "@tofu/ui/field";
-import { Input } from "@tofu/ui/input";
-import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@tofu/ui/input-group";
+} from "../../plugins/src/automation-model";
+import type { SourcePluginId } from "../../plugins/src/plugin-model";
+import { ActionTooltip } from "./action-tooltip";
+import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "./ui/field";
+import { Input } from "./ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "./ui/input-group";
 import {
   Select,
   SelectContent,
@@ -17,9 +19,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@tofu/ui/select";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
-import type { ReactNode } from "react";
+} from "./ui/select";
 
 export const sourceNames: Record<SourcePluginId, string> = {
   c411: "C411",
@@ -464,7 +464,6 @@ export function RuleFields({
                 items={[
                   { label: "Exact title name", value: "exact" },
                   { label: "Release name pattern", value: "pattern" },
-                  { label: "Jev + exact fallback", value: "jev" },
                 ]}
                 onValueChange={(value) => set("matchMode", value as AutomationDraft["matchMode"])}
                 value={draft.matchMode}
@@ -476,7 +475,6 @@ export function RuleFields({
                   <SelectGroup>
                     <SelectItem value="exact">Exact title name</SelectItem>
                     <SelectItem value="pattern">Release name pattern</SelectItem>
-                    <SelectItem value="jev">Jev + exact fallback</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -489,7 +487,7 @@ export function RuleFields({
             <FieldLabel htmlFor="automation-season">Season</FieldLabel>
             <Input
               id="automation-season"
-              min="1"
+              min="0"
               onChange={(event) =>
                 set("season", event.target.value ? Number(event.target.value) : null)
               }
@@ -497,6 +495,9 @@ export function RuleFields({
               type="number"
               value={draft.season ?? ""}
             />
+            <FieldDescription>
+              Leave empty for all seasons. Season 0 follows specials.
+            </FieldDescription>
           </Field>
           <Toggle
             checked={draft.includeExisting}

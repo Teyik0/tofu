@@ -12,7 +12,7 @@ bun test
 bun run dev
 ```
 
-The default uses this checkout's `package/plugins` SDK and `vendor/furin-pr163-118d85f.tgz` preview. Use `--name plugin-id` for an ID different from the directory name, `--sdk /path/to/package/plugins` for another compatible local SDK, or `--furin /path/to/furin-preview.tgz` for a local Furin archive. The CLI refuses every existing destination and does not execute package scripts or install dependencies. `--help` prints the options.
+The default uses this checkout's `package/plugins` SDK and `vendor/furin-pr163-420af31.tgz` preview. Use `--name plugin-id` for an ID different from the directory name, `--sdk /path/to/package/plugins` for another compatible local SDK, or `--furin /path/to/furin-preview.tgz` for a local Furin archive. The CLI refuses every existing destination and does not execute package scripts or install dependencies. `--help` prints the options.
 
 The template uses one `definePlugin` definition and distinct server/client entries. Backend Elysia routes consume host capabilities through `.use(core)`; UI contributes a native Furin route factory injected with the actual thread layout, a thread action dialog, and typed persistent settings. Furin clients and hooks are direct SDK reexports. The controlled developer shell uses explicit empty fixtures, not a second engine. It compiles and serves the same page adapter shape that the Tofu host generates.
 

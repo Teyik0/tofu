@@ -1,13 +1,3 @@
-import { ActionTooltip } from "@tofu/ui/action-tooltip";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { sourceNames } from "@tofu/ui/automation-fields";
-import { Badge } from "@tofu/ui/badge";
-import { Button } from "@tofu/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@tofu/ui/empty";
-import { Field, FieldLabel } from "@tofu/ui/field";
-import { relative } from "@tofu/ui/format";
-import { OptionSelect } from "@tofu/ui/option-select";
-import { TabsContent } from "@tofu/ui/tabs";
 import {
   CheckIcon,
   InboxIcon,
@@ -19,17 +9,32 @@ import {
   type ZapIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { createAutomationMutations } from "../lib/automation-mutations";
-import { api } from "../lib/client";
 import type {
   AutomationDraft,
   AutomationRule,
-  AutomationSection,
   AutomationState,
-  DashboardState,
-  DiscoveryResult,
-  FeedRelease,
-} from "../types";
+} from "../../../../package/plugins/src/automation-model";
+import type { DiscoveryResult, FeedRelease } from "../../../../package/plugins/src/discovery-model";
+import { ActionTooltip } from "../../../../package/ui/src/action-tooltip";
+import { sourceNames } from "../../../../package/ui/src/automation-fields";
+import { relative } from "../../../../package/ui/src/format";
+import { OptionSelect } from "../../../../package/ui/src/option-select";
+import { Alert, AlertDescription } from "../../../../package/ui/src/ui/alert";
+import { Badge } from "../../../../package/ui/src/ui/badge";
+import { Button } from "../../../../package/ui/src/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../../../../package/ui/src/ui/empty";
+import { Field, FieldLabel } from "../../../../package/ui/src/ui/field";
+import { TabsContent } from "../../../../package/ui/src/ui/tabs";
+import type { LiveState } from "../api/modules/dashboard/projection";
+import { createAutomationMutations } from "../lib/automation-mutations";
+import { api } from "../lib/client";
+import type { AutomationSection } from "./automation-center";
 export const mutations = createAutomationMutations(api);
 const ruleStatuses: Record<AutomationRule["status"], string> = {
   active: "Active",
@@ -94,11 +99,13 @@ export function ruleDraft(rule: AutomationRule): AutomationDraft {
   return {
     afterEpisode: rule.afterEpisode,
     aliases: rule.aliases,
+    anilistId: rule.anilistId,
     automatic: rule.automatic,
     codecs: rule.codecs,
     deleteReplacedFiles: rule.deleteReplacedFiles,
     destinationId: rule.destinationId,
     enabled: rule.enabled,
+    episodeCount: rule.episodeCount,
     excludePacks: rule.excludePacks,
     includeExisting: rule.includeExisting,
     intervalMinutes: rule.intervalMinutes,
@@ -151,6 +158,7 @@ export function RuleCard({
         <li>{rule.resolutions.join(" → ") || "Any resolution"}</li>
         <li>{rule.sources.map((id) => sourceNames[id]).join(" → ")}</li>
         {rule.season === null ? null : <li>Season {rule.season}</li>}
+        <li>{rule.includeExisting ? "Includes existing releases" : "New releases only"}</li>
         <li>{rule.automatic ? "Downloads automatically" : "Asks before downloading"}</li>
         {rule.waitMinutes > 0 ? <li>Waits {rule.waitMinutes} min for better</li> : null}
       </ul>
@@ -212,7 +220,7 @@ export function RuleCard({
 }
 
 export interface AutomationPanelProps {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   onTarget: (value: string) => void;
   setTab: (value: AutomationSection) => void;
   state: AutomationState;
@@ -232,12 +240,12 @@ export function AutomationThread({
   disabled,
   onChange,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   target: string;
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
-  const destination = dashboard.destinations.find((item) => item.id === target);
+  const destination = (dashboard.host?.destinations ?? []).find((item) => item.id === target);
   return (
     <div className="automation-thread">
       <Field className="automation-target" orientation="horizontal">
@@ -246,7 +254,10 @@ export function AutomationThread({
           disabled={disabled}
           id="automation-destination"
           onValueChange={onChange}
-          options={dashboard.destinations.map((item) => ({ label: item.name, value: item.id }))}
+          options={(dashboard.host?.destinations ?? []).map((item) => ({
+            label: item.name,
+            value: item.id,
+          }))}
           value={target}
         />
       </Field>

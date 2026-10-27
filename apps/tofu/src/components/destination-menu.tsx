@@ -1,4 +1,7 @@
 import { useMutation } from "@teyik0/furin/client";
+import { PencilIcon, PinIcon, PinOffIcon, ShapesIcon, Trash2Icon } from "lucide-react";
+import type { ReactElement } from "react";
+import type { Destination } from "../../../../package/plugins/src/destination-model";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -6,16 +9,34 @@ import {
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuTrigger,
-} from "@tofu/ui/context-menu";
-import { useAsyncAction } from "@tofu/ui/use-async-action";
-import { PencilIcon, PinIcon, PinOffIcon, ShapesIcon, Trash2Icon } from "lucide-react";
-import type { ReactElement } from "react";
+} from "../../../../package/ui/src/ui/context-menu";
+import { useAsyncAction } from "../../../../package/ui/src/use-async-action";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
-import type { Destination } from "../types";
-import type { ModalKind } from "./modal";
+import type { ModalKind } from "../state/workspace";
 
+/** Thread actions for administrators; other viewers get the plain thread link. */
 export function DestinationMenu({
+  children,
+  destination,
+  open,
+  deletable,
+}: {
+  children: ReactElement;
+  destination: Destination | undefined;
+  open: (modal: ModalKind) => void;
+  deletable: boolean;
+}) {
+  return destination ? (
+    <DestinationContextMenu deletable={deletable} destination={destination} open={open}>
+      {children}
+    </DestinationContextMenu>
+  ) : (
+    children
+  );
+}
+
+function DestinationContextMenu({
   children,
   destination,
   open,

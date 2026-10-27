@@ -1,9 +1,8 @@
 import { defineRoute } from "@teyik0/furin";
 import { Swarm } from "../components/swarm";
-import { route as root } from "./root";
 
-export const route = defineRoute()
-  .config({ layout: root, mode: "ssr" })
+export const route = defineRoute("/")
+  .config({ mode: "ssr" })
   .head(() => ({ meta: [{ title: "Tofu — Your downloads, at ease." }] }))
   .page(() => (
     <main id="main">

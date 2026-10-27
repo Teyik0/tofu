@@ -1,9 +1,8 @@
 import { defineRoute } from "@teyik0/furin";
 import { Callout, Code, DocTitle } from "../../components/docs";
-import { route as docs } from "./_route";
 
-export const route = defineRoute()
-  .config({ layout: docs, mode: "ssr" })
+export const route = defineRoute("/docs/plugins")
+  .config({ mode: "ssr" })
   .head(() => ({ meta: [{ title: "Build a plugin — Tofu" }] }))
   .page(() => (
     <>
@@ -92,8 +91,8 @@ export function createPlugin(core: PluginCore) {
 import type { PluginRouteContext } from "@tofu/plugins/routes";
 
 function createPage({ threadLayout }: PluginRouteContext) {
-  return defineRoute()
-    .config({ layout: threadLayout, mode: "ssr" })
+  return defineRoute("/docs/plugins")
+    .config({ mode: "ssr" })
     .loader(async ({ thread, dashboard, settings }) => {
       const [currentThread, state, preferences] = await Promise.all([
         thread, dashboard, settings,

@@ -1,14 +1,14 @@
 import { useMutation } from "@teyik0/furin/client";
-import { QueriedAniListPanel } from "@tofu/anilist/components/panel";
-import { Badge } from "@tofu/ui/badge";
-import { Button } from "@tofu/ui/button";
-import { relative } from "@tofu/ui/format";
-import { useAsyncAction } from "@tofu/ui/use-async-action";
-import { useNow } from "@tofu/ui/use-now";
 import { HistoryIcon, RefreshCwIcon } from "lucide-react";
+import { QueriedAniListPanel } from "../../../../package/anilist/src/components/panel";
+import type { AutomationDecision } from "../../../../package/plugins/src/automation-model";
+import { relative } from "../../../../package/ui/src/format";
+import { Badge } from "../../../../package/ui/src/ui/badge";
+import { Button } from "../../../../package/ui/src/ui/button";
+import { useAsyncAction } from "../../../../package/ui/src/use-async-action";
+import { useNow } from "../../../../package/ui/src/use-now";
 import { api } from "../lib/client";
 import { useRefresh } from "../lib/navigation";
-import type { AutomationDecision } from "../types";
 import { AutomationInbox, isPending, ReleaseLine } from "./automation-inbox";
 import {
   type AutomationPanelProps,
@@ -47,7 +47,7 @@ export function AutomationInboxSection({ state, dashboard, setTab }: AutomationP
       <AutomationInbox
         approve={(decision) => decide(decision, "approve")}
         busy={busy}
-        destinations={dashboard.destinations}
+        destinations={dashboard.host?.destinations ?? []}
         ignore={(decision) => decide(decision, "ignore")}
         openRules={() => setTab("rules")}
         state={state}
@@ -81,7 +81,7 @@ export function AutomationAniListSection({
         action={action}
         automations={state.automations}
         busy={busy}
-        destinations={dashboard.destinations}
+        destinations={dashboard.host?.destinations ?? []}
         key={target}
         openPreferences={() => setTab("preferences")}
         plugin={state.plugins.find((plugin) => plugin.id === "anilist")}

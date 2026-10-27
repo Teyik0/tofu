@@ -1,11 +1,8 @@
-import type {
-  AniListCatalogFilters,
-  AniListCatalogOptions,
-  AniListCatalogSort,
-  AniListMedia,
-} from "@tofu/plugins/domain";
-import { Badge } from "@tofu/ui/badge";
-import { Button } from "@tofu/ui/button";
+import { ChevronDownIcon, XIcon } from "lucide-react";
+import { useState } from "react";
+import { OptionSelect, type SelectOption } from "../../../ui/src/option-select";
+import { Badge } from "../../../ui/src/ui/badge";
+import { Button } from "../../../ui/src/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -13,12 +10,11 @@ import {
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@tofu/ui/dropdown-menu";
-import { Field, FieldGroup, FieldLabel } from "@tofu/ui/field";
-import { Input } from "@tofu/ui/input";
-import { OptionSelect, type SelectOption } from "@tofu/ui/option-select";
-import { ChevronDownIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+} from "../../../ui/src/ui/dropdown-menu";
+import { Field, FieldGroup, FieldLabel } from "../../../ui/src/ui/field";
+import { Input } from "../../../ui/src/ui/input";
+import type { AniListCatalogFilters, AniListCatalogSort } from "../server/catalog";
+import type { AniListCatalogOptions, AniListMedia } from "../server/types";
 
 export const catalogSortOptions = [
   { label: "Title", value: "title" },

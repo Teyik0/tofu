@@ -1,38 +1,51 @@
-import { Await, useQuery } from "@teyik0/furin/client";
-import { ActionTooltip } from "@tofu/ui/action-tooltip";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { Button } from "@tofu/ui/button";
-import { speed } from "@tofu/ui/format";
-import { SidebarToggle } from "@tofu/ui/sidebar-toggle";
-import { Skeleton } from "@tofu/ui/skeleton";
-import { useSetAtom } from "jotai";
+import { useQuery } from "@teyik0/furin/client";
+import { useAtomValue } from "jotai";
 import { AlertCircleIcon, LayersIcon, PlusIcon, ZapIcon } from "lucide-react";
-import { Suspense, useMemo } from "react";
+import { ActionTooltip } from "../../../../package/ui/src/action-tooltip";
+import { speed } from "../../../../package/ui/src/format";
+import { SidebarToggle } from "../../../../package/ui/src/sidebar-toggle";
+import { Alert, AlertDescription } from "../../../../package/ui/src/ui/alert";
+import { Button } from "../../../../package/ui/src/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "../../../../package/ui/src/ui/empty";
+import { Skeleton } from "../../../../package/ui/src/ui/skeleton";
 import { version } from "../../package.json";
+import type { LibraryState, LibraryTorrentDetail } from "../api/modules/dashboard/projection";
 import { api } from "../lib/client";
-import { modalAtom } from "../state/workspace";
-import type { DashboardState, TorrentDetail } from "../types";
+import { dashboardAtom, sessionAtom } from "../state/workspace";
 import type { AutomationSection } from "./automation-center";
 import { DestinationIcon } from "./destination-icon";
 import { Detail } from "./detail";
 import { Icon } from "./icon";
 import { PluginThreadActions } from "./plugin-contributions";
-import { TorrentLibraryTable, TorrentLibraryToolbar } from "./torrent-library-views";
+import { TorrentLibraryList, TorrentLibraryToolbar } from "./torrent-library-views";
 import { useTorrentLibrary } from "./use-torrent-library";
 
 export function App({
-  dashboard: data,
+  dashboard,
   activeDestination,
-  initialDetail,
-  initialTorrentId,
+  detail,
+  requested,
 }: {
-  dashboard: DashboardState;
+  dashboard: LibraryState;
   activeDestination: string | null;
-  initialDetail: Promise<TorrentDetail | null>;
-  initialTorrentId: string | null;
+  /** Detail read by the page loader for its selection. */
+  detail: LibraryTorrentDetail | null;
+  /** Torrent requested by the `torrent` search param. */
+  requested: string | undefined;
 }) {
-  const model = useTorrentLibrary({ activeDestination, dashboard: data, initialDetail });
-  const { setModal, pending, error, setError, torrents, selectedId, destination, add, act } = model;
+  const data = useAtomValue(dashboardAtom) ?? { ...dashboard, detailHost: null, host: null };
+  const capabilities = useAtomValue(sessionAtom)?.capabilities;
+  const model = useTorrentLibrary({ activeDestination, dashboard: data, requested });
+  const { setModal, pending, error, setError, selectedId, destination, add, act } = model;
+  const folder = data.host?.destinations.find((item) => item.id === destination?.id)?.downloadPath;
+  // The live stream follows the same selection; the loader detail covers the time until it does.
+  const selectedDetail = [data.detail, detail].find((item) => item && item.id === selectedId);
+  const summary = data.torrents.find((torrent) => torrent.id === selectedId);
   return (
     <div className="main">
       <header className="library-topbar">
@@ -43,37 +56,41 @@ export function App({
           </span>
           <div className="library-heading">
             <h1>{destination?.name ?? "All torrents"}</h1>
-            <span className="topbar-path" title={destination?.downloadPath ?? "Every destination"}>
-              {destination?.downloadPath ?? "Every destination"}
+            <span className="topbar-path" title={folder ?? data.server.name}>
+              {folder ?? (destination ? `On ${data.server.name}` : "Every destination")}
             </span>
           </div>
         </div>
         <div className="library-actions">
-          {!!destination && (
+          {destination && capabilities?.administer ? (
             <PluginThreadActions
               context={{
                 dashboard: data,
-                settings: data.settings,
+                settings: data.host?.settings ?? null,
                 thread: destination,
                 torrents: data.torrents.filter(
                   (torrent) => torrent.destinationId === destination.id
                 ),
               }}
             />
-          )}
-          <AutomationsButton
-            open={(section) =>
-              setModal({
-                destinationId: activeDestination ?? "default",
-                section,
-                type: "automation",
-              })
-            }
-          />
-          <Button className="add-button" onClick={add}>
-            <PlusIcon data-icon="inline-start" />
-            Add a torrent
-          </Button>
+          ) : null}
+          {capabilities?.administer ? (
+            <AutomationsButton
+              open={(section) =>
+                setModal({
+                  destinationId: activeDestination ?? "default",
+                  section,
+                  type: "automation",
+                })
+              }
+            />
+          ) : null}
+          {capabilities?.manage ? (
+            <Button className="add-button" onClick={add}>
+              <PlusIcon data-icon="inline-start" />
+              Add a torrent
+            </Button>
+          ) : null}
         </div>
       </header>
       {error !== null && (
@@ -95,25 +112,42 @@ export function App({
           </AlertDescription>
         </Alert>
       )}
-      <section aria-label="Torrent list" className="library">
-        <TorrentLibraryToolbar model={model} />
-        <TorrentLibraryTable model={model} />
-      </section>
-      {selectedId && torrents.some((torrent) => torrent.id === selectedId) && (
-        <Suspense fallback={<DetailLoading />}>
-          <SelectedDetail
+      <div className="library-workspace">
+        <section aria-label="Torrent list" className="library">
+          <TorrentLibraryToolbar model={model} />
+          <TorrentLibraryList model={model} />
+        </section>
+        {selectedId === null ? (
+          <section aria-label="Torrent details" className="detail-pane">
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>No torrent selected</EmptyTitle>
+                <EmptyDescription>
+                  Select a torrent to inspect its files and transfer activity.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </section>
+        ) : selectedDetail && summary ? (
+          <Detail
             act={act}
             busy={pending.has(selectedId)}
             data={data}
-            id={selectedId}
-            initial={selectedId === initialTorrentId ? initialDetail : null}
+            open={setModal}
+            torrent={{ ...selectedDetail, ...summary }}
           />
-        </Suspense>
-      )}
+        ) : (
+          <DetailLoading />
+        )}
+      </div>
       <footer className="status-bar">
-        <span className="status-port">
-          Port <b>{data.session.port}</b>
-        </span>
+        {data.host ? (
+          <span className="status-port">
+            Port <b>{data.host.session.port}</b>
+          </span>
+        ) : (
+          <span className="status-port">{data.server.name}</span>
+        )}
         <span className="status-throughput">
           <span data-direction="down">
             <Icon name="download" size={12} />
@@ -125,8 +159,7 @@ export function App({
           </span>
         </span>
         <span className="status-version">
-          Tofu {version} <span>·</span>{" "}
-          {data.session.mode === "desktop" ? "Native app" : "Web workspace"}
+          Tofu {version} <span>·</span> {capabilities?.hostNative ? "Native app" : "Web workspace"}
         </span>
       </footer>
     </div>
@@ -135,7 +168,7 @@ export function App({
 
 /** Opens the automation Inbox directly when releases are waiting for a decision. */
 function AutomationsButton({ open }: { open: (section: AutomationSection) => void }) {
-  const { data } = useQuery(api.automation.get);
+  const { data } = useQuery(api.automation.get.live());
   const waiting =
     data && "decisions" in data
       ? data.decisions.filter(
@@ -174,58 +207,5 @@ function DetailLoading() {
       <Skeleton className="h-5 w-64" />
       <Skeleton className="h-32 w-full" />
     </section>
-  );
-}
-
-function SelectedDetail({
-  data,
-  id,
-  initial,
-  act,
-  busy,
-}: {
-  data: DashboardState;
-  id: string;
-  initial: Promise<TorrentDetail | null> | null;
-  act: (id: string, task: () => Promise<unknown>) => Promise<void>;
-  busy: boolean;
-}) {
-  const open = useSetAtom(modalAtom);
-  const { data: live, error } = useQuery(api.torrents({ id }).get);
-  const summary = data.torrents.find((item) => item.id === id);
-  const cached = live && "id" in live ? live : null;
-  const torrent = useMemo(
-    () => (cached && summary ? { ...cached, ...summary } : null),
-    [cached, summary]
-  );
-  if (error || (live && !("id" in live))) {
-    return (
-      <Alert className="connection-banner">
-        <AlertCircleIcon />
-        <AlertDescription>Unable to load details. Retrying on the next update.</AlertDescription>
-      </Alert>
-    );
-  }
-  if (torrent) {
-    return <Detail act={act} busy={busy} data={data} open={open} torrent={torrent} />;
-  }
-  return initial ? (
-    <Await resolve={initial}>
-      {(snapshot) =>
-        snapshot && summary ? (
-          <Detail
-            act={act}
-            busy={busy}
-            data={data}
-            open={open}
-            torrent={{ ...snapshot, ...summary }}
-          />
-        ) : (
-          <DetailLoading />
-        )
-      }
-    </Await>
-  ) : (
-    <DetailLoading />
   );
 }

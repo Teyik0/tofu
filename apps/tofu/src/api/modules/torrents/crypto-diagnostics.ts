@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { CryptoDiagnostics } from "../../../types";
+import { Effect, Result } from "effect";
 
 const msePrime =
   "ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a63a36210000000000090563";
@@ -29,19 +29,22 @@ function createInstrumentation(): ActiveDiagnostics {
       }
       counters.attempts += 1;
       const started = performance.now();
-      try {
-        return Reflect.apply(target, receiver, args);
-      } catch (error) {
+      const result = Effect.runSync(
+        Effect.result(
+          Effect.try({
+            catch: (error) => error,
+            try: () => Reflect.apply(target, receiver, args),
+          })
+        )
+      );
+      const elapsed = performance.now() - started;
+      counters.totalConstructorMilliseconds += elapsed;
+      counters.maxConstructorMilliseconds = Math.max(counters.maxConstructorMilliseconds, elapsed);
+      if (Result.isFailure(result)) {
         counters.failures += 1;
-        throw error;
-      } finally {
-        const elapsed = performance.now() - started;
-        counters.totalConstructorMilliseconds += elapsed;
-        counters.maxConstructorMilliseconds = Math.max(
-          counters.maxConstructorMilliseconds,
-          elapsed
-        );
+        throw result.failure;
       }
+      return result.success;
     },
   });
   crypto.createDiffieHellman = instrumented;
@@ -72,4 +75,11 @@ export function installCryptoDiagnostics() {
       return { ...installation.counters };
     },
   };
+}
+
+export interface CryptoDiagnostics {
+  attempts: number;
+  failures: number;
+  maxConstructorMilliseconds: number;
+  totalConstructorMilliseconds: number;
 }

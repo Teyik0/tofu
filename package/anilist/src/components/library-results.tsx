@@ -1,10 +1,16 @@
-import type { AniListEntry, AniListMedia, AniListState } from "@tofu/plugins/domain";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
-import { Button } from "@tofu/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@tofu/ui/empty";
-import { Skeleton } from "@tofu/ui/skeleton";
-import type { useAsyncAction } from "@tofu/ui/use-async-action";
+import { Alert, AlertDescription } from "../../../ui/src/ui/alert";
+import { Button } from "../../../ui/src/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../../../ui/src/ui/empty";
+import { Skeleton } from "../../../ui/src/ui/skeleton";
+import type { useAsyncAction } from "../../../ui/src/use-async-action";
 import type { useAniListCatalog } from "../hooks/use-anilist-catalog";
+import type { AniListEntry, AniListMedia, AniListState } from "../server/types";
 import { AniListIcon } from "./icon";
 import { AnimeCard, AnimeRow } from "./library-cards";
 
@@ -16,7 +22,6 @@ export function LibraryResults({
   catalog,
   entries,
   actions,
-  pollError,
   view,
   now,
   openMedia,
@@ -27,14 +32,12 @@ export function LibraryResults({
   catalog: CatalogModel;
   entries: (AniListMedia | AniListEntry)[];
   actions: Actions;
-  pollError: string | null;
   view: "cards" | "compact" | "list";
   now: number;
   openMedia: (entry: AniListMedia) => void;
   openSettings: () => void;
 }) {
-  const error = actions.error ?? pollError;
-  const { busy } = actions;
+  const { busy, error } = actions;
   const {
     error: currentCatalogError,
     loading: loadingCatalog,

@@ -1,0 +1,80 @@
+diff --git a/src/index.js b/src/index.js
+index 79633c892eb413784104ee9f5bb4a6d45b1a17fa..3d48777b7f74f9104e3da1ac1ad6a3b6842de17f 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -318,15 +318,26 @@ export class VLC extends Emitter {
+   async destroy() {
+     for (const t of this._timers) clearInterval(t);
+     this._timers.clear();
+-    await Promise.allSettled([...this._players.values()].map((p) => p.destroy()));
+-    // Stops the engine's timer; bounded, since a wedged worker is terminated anyway.
+-    await Promise.race([this._rpc('dispose').catch(() => {}), new Promise((r) => setTimeout(r, 500))]);
+-    this.worker.terminate();
+-    this._destroyed = true;
+-    // Nothing will answer now: settle whatever is still waiting.
+-    const err = new Error('VLC destroyed');
+-    for (const p of this._pending.values()) p.reject(err);
+-    this._pending.clear();
++    let deadline;
++    try {
++      // A stopped worker cannot answer player.stop() either. Bound the whole
++      // shutdown, including player destruction, before terminating the worker.
++      await Promise.race([
++        (async () => {
++          await Promise.allSettled([...this._players.values()].map((p) => p.destroy()));
++          await Promise.allSettled([this._rpc('dispose')]);
++        })(),
++        new Promise((resolve) => { deadline = setTimeout(resolve, 500); }),
++      ]);
++    } finally {
++      clearTimeout(deadline);
++      this.worker.terminate();
++      this._destroyed = true;
++      // Nothing will answer now: settle whatever is still waiting.
++      const err = new Error('VLC destroyed');
++      for (const p of this._pending.values()) p.reject(err);
++      this._pending.clear();
++    }
+   }
+
+   // --- internals ------------------------------------------------------------
+diff --git a/src/worker.js b/src/worker.js
+index bbbf2285837e51e478cb12d2ddd43de20cc69f8f..774a1a1354ec99fddbe613c63bf662f14ccf46d1 100644
+--- a/src/worker.js
++++ b/src/worker.js
+@@ -8,6 +8,8 @@ let engine = null;
+ let FS = null;
+ let mountSeq = 0;
+ const mounts = new Map(); // mrl -> mountpoint, released with the source
++// 1 MiB chunks of an http(s) source kept in memory.
++const LAZY_CACHE_CHUNKS = 64;
+ 
+ const post = (msg, transfer) => self.postMessage(msg, transfer ?? []);
+ 
+@@ -51,7 +53,25 @@ async function toMrl(src) {
+       let last = url.pathname.split('/').pop();
+       try { last = decodeURIComponent(last); } catch { /* malformed escape: keep it raw */ }
+       const name = safeName(last, 'stream');
+-      FS.createLazyFile(dir, name, src, true, false);
++      const lazy = FS.createLazyFile(dir, name, src, true, false).contents;
++      // Emscripten keeps every fetched chunk until the file is released, so watching a
++      // whole movie would hold the whole movie in memory. Forget the least recently read
++      // chunks instead; reading one again only costs another ranged request.
++      const setDataGetter = lazy.setDataGetter.bind(lazy);
++      lazy.setDataGetter = (getter) => {
++        const recent = [];
++        let last = -1;
++        setDataGetter((chunk) => {
++          if (chunk !== last) {
++            last = chunk;
++            const at = recent.indexOf(chunk);
++            if (at !== -1) recent.splice(at, 1);
++            recent.push(chunk);
++            if (recent.length > LAZY_CACHE_CHUNKS) delete lazy.chunks[recent.shift()];
++          }
++          return getter(chunk);
++        });
++      };
+       const mrl = `file://${dir}/${encodeURIComponent(name)}`;
+       mounts.set(mrl, { dir, kind: 'lazy', path: `${dir}/${name}` });
+       return mrl;

@@ -1,4 +1,4 @@
-import type { AniListStatus } from "@tofu/plugins/domain";
+import type { AniListStatus } from "../server/types";
 
 export const aniListStatusLabels: { value: AniListStatus; label: string }[] = [
   { label: "Watching", value: "CURRENT" },

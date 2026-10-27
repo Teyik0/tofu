@@ -1,8 +1,8 @@
 import { usePluginHost } from "@tofu/plugins/client";
-import type { AniListEditor } from "@tofu/plugins/domain";
 import { errorMessage } from "@tofu/ui/errors";
 import { useEffect, useState } from "react";
 import { request } from "../request";
+import type { AniListEditor } from "../server/editor";
 
 export function useAniListEditor(authenticated: boolean, mediaId: number) {
   const { refresh } = usePluginHost();

@@ -1,9 +1,8 @@
 import { defineRoute } from "@teyik0/furin";
 import { Callout, Code, DocTitle } from "../../components/docs";
-import { route as docs } from "./_route";
 
-export const route = defineRoute()
-  .config({ layout: docs, mode: "ssr" })
+export const route = defineRoute("/docs/plugin-api")
+  .config({ mode: "ssr" })
   .head(() => ({ meta: [{ title: "Plugin API — Tofu" }] }))
   .page(() => (
     <>
@@ -123,41 +122,45 @@ export const ui = {
         options, such as a migrated SQLite adapter, through{" "}
         <code>createPluginRuntime({"{ sync }"})</code>.
       </p>
-      <Code>{`const settingsQuery = { id: "my-plugin.settings", scope: {} };
-
+      <Code>{`
 api: (context: PluginContext<typeof settingsSchema>) => createPluginApi(context)
   .use(core)
   .get("/settings", {
     query: Type.Object({ threadId: Type.Optional(Type.String()) }),
-    sync: settingsQuery,
+
   }, ({ query }) => context.settings.get(query.threadId))
   .patch("/settings", {
     body: Type.Partial(settingsSchema),
     query: Type.Object({ threadId: Type.Optional(Type.String()) }),
-    sync: { invalidate: settingsQuery },
-  }, ({ body, query }) => context.settings.update(body, query.threadId));`}</Code>
+
+  }, async ({ body, query, invalidate }) => {
+    const result = await context.settings.update(body, query.threadId);
+    invalidate("/api/plugins/my-plugin/settings");
+    return result;
+  });`}</Code>
       <p>
-        Query IDs should include your plugin ID. Here <code>scope: {"{}"}</code> invalidates all
-        matching settings queries, including global and thread reads. Installing the adapter alone
-        does not declare query identities or mutation invalidations.
+        GET queries are identified by their URLs. Invalidate the settings endpoint after a change to
+        refresh both global and thread reads. Use the shared Furin Sync options supplied by the
+        host.
       </p>
       <p>
-        <code>createClient</code>, <code>useQuery</code>, and <code>useMutation</code> from{" "}
-        <code>@tofu/plugins/client</code> directly reexport Furin’s client implementation. Infer the
-        Elysia API type from your plugin definition with type-only imports.
+        <code>treaty</code>, <code>useQuery</code>, and <code>useMutation</code> from{" "}
+        <code>@tofu/plugins/client</code> directly reexport Eden and Furin’s shared client
+        implementations. Infer the Elysia API type from your plugin definition with type-only
+        imports.
       </p>
       <Code>{`import type { PluginAPI } from "@tofu/plugins";
-import { createClient, useMutation, useQuery } from "@tofu/plugins/client";
+import { treaty, furinSync, useMutation, useQuery } from "@tofu/plugins/client";
 import type { createPlugin } from "../server";
 
 const origin = typeof window === "undefined"
   ? "http://localhost" : window.location.origin;
-const client = createClient<PluginAPI<ReturnType<typeof createPlugin>>>(
+const client = treaty<PluginAPI<ReturnType<typeof createPlugin>>>(
   origin + "/api/plugins/my-plugin",
-);
+).use(furinSync);
 
 function GreetingSettings({ threadId }: { threadId?: string }) {
-  const query = useQuery(client.settings.get, { query: { threadId } });
+  const query = useQuery(client.settings.get.live({ query: { threadId } }));
   const save = useMutation(client.settings.patch);
   return <button disabled={save.isPending}
     onClick={() => save.mutate({ greeting: "Hello" }, { query: { threadId } })} type="button" >

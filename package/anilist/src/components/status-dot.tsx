@@ -1,4 +1,4 @@
-import type { AniListStatus } from "@tofu/plugins/domain";
+import type { AniListStatus } from "../server/types";
 import { aniListStatusLabel } from "./status";
 
 export function AniListStatusDot({ status }: { status: AniListStatus }) {

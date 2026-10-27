@@ -1,9 +1,8 @@
 import { defineRoute } from "@teyik0/furin";
 import { Callout, Code, DocTitle } from "../../components/docs";
-import { route as docs } from "./_route";
 
-export const route = defineRoute()
-  .config({ layout: docs, mode: "ssr" })
+export const route = defineRoute("/docs/development")
+  .config({ mode: "ssr" })
   .head(() => ({ meta: [{ title: "Development — Tofu" }] }))
   .page(() => (
     <>
@@ -103,9 +102,9 @@ bun run --filter @tofu/docs build`}</Code>
       </p>
       <p>
         Loaders read typed endpoints through <code>apps/tofu/src/lib/client.ts</code>. On the
-        server, <code>createClient(apiPlugin).api</code> dispatches directly to the application. In
-        the browser, the client uses the current origin with credentials and no-store caching.
-        Handle each Eden response’s <code>error</code> directly in the loader before returning its{" "}
+        server, <code>treaty(apiPlugin).api</code> dispatches directly to the application. In the
+        browser, the client uses the current origin with credentials and no-store caching. Handle
+        each Eden response’s <code>error</code> directly in the loader before returning its{" "}
         <code>data</code>.
       </p>
       <p>
@@ -121,8 +120,8 @@ bun run --filter @tofu/docs build`}</Code>
       </p>
       <Callout>
         <p>
-          The workspace pins Furin preview <code>118d85f</code> and Furin Electrobun preview{" "}
-          <code>a1c9c5d</code> in <code>vendor</code>. Use its checked-in archives and the root
+          The workspace pins Furin preview <code>420af31</code> and Furin Electrobun preview{" "}
+          <code>420af31</code> in <code>vendor</code>. Use its checked-in archives and the root
           dependency catalog. WebTorrent addons stay external to the native bundle; the tracker/wire
           bridge depends on WebTorrent 3.0.21.
         </p>
@@ -141,8 +140,9 @@ bun run test:native`}</Code>
       <p>
         Keep repository text in English. Shared domain contracts live in{" "}
         <code>package/plugins/src/domain.ts</code> and are reexported by{" "}
-        <code>apps/tofu/src/types.ts</code>. Development and release profiles use separate data
-        directories; restart the Bun process after changing profile or engine environment variables.
+        <code>package/plugins/src/domain.ts</code>. Development and release profiles use separate
+        data directories; restart the Bun process after changing profile or engine environment
+        variables.
       </p>
     </>
   ));

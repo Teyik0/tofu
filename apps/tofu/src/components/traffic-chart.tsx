@@ -1,8 +1,7 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
-
-import { speed } from "@tofu/ui/format";
 import { memo, useId } from "react";
-import type { SpeedSample } from "../types";
+import type { SpeedSample } from "../../../../package/plugins/src/torrent-types";
+import { speed } from "../../../../package/ui/src/format";
 export const TrafficChart = memo(function TrafficChartView({
   samples,
   small,

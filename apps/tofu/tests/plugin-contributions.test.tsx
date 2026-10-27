@@ -1,18 +1,15 @@
-import { afterAll, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ThreadActionContext } from "@tofu/plugins/client";
+import { libraryState } from "@tofu/plugins/library-state";
 import { createSettingsStore } from "@tofu/plugins/server";
 import { SidebarProvider } from "@tofu/ui/sidebar";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Type } from "typebox";
 import type { ExtensionState } from "../src/plugin-client";
-import { fixture } from "./helpers/torrent";
 
-// Register the real isolated API before loading UI modules that bind their server clients.
-const application = await fixture(1024, []);
-afterAll(() => application.close());
 const {
   PluginContributionsProvider,
   PluginSidebarPages,
@@ -158,6 +155,8 @@ const settings = {
   uploadLimit: 0,
 } as const;
 const thread = {
+  autoAddTorrentFilesSince: null,
+  deleteTorrentFileAfterAdd: null,
   downloadPath: "/tmp/tofu",
   icon: "folder",
   id: "default",
@@ -165,27 +164,31 @@ const thread = {
   pinned: false,
 } as const;
 const threadContext: ThreadActionContext = {
-  dashboard: {
-    destinations: [thread],
-    detail: null,
-    history: [],
-    session: {
-      active: 0,
-      dhtNodes: 0,
-      downloadSpeed: 0,
-      engine: "WebTorrent",
-      freeSpace: null,
-      mode: "server",
-      peers: 0,
-      port: 0,
-      received: 0,
-      startedAt: 0,
-      uploaded: 0,
-      uploadSpeed: 0,
+  dashboard: libraryState(
+    {
+      destinations: [thread],
+      detail: null,
+      history: [],
+      session: {
+        active: 0,
+        dhtNodes: 0,
+        downloadSpeed: 0,
+        engine: "WebTorrent",
+        freeSpace: null,
+        mode: "server",
+        peers: 0,
+        port: 0,
+        received: 0,
+        startedAt: 0,
+        uploaded: 0,
+        uploadSpeed: 0,
+      },
+      settings,
+      torrents: [],
     },
-    settings,
-    torrents: [],
-  },
+    null,
+    { id: "fixture-server", name: "Fixture" }
+  ),
   settings,
   thread,
   torrents: [],

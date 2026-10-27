@@ -1,22 +1,23 @@
-import type { SyncRuntimeOptions, TransactionalSyncAdapter } from "@teyik0/furin/sync";
+import type { FurinSyncOptions } from "@teyik0/furin/sync";
+import type { AnimeMapping } from "@tofu/plugins/anime-mapping";
 import type {
-  AniListClient,
   AutomationDecision,
   AutomationDraft,
   AutomationRule,
   AutomationState,
-  DashboardState,
-  Destination,
-  DestinationInput,
-  DiscoveryResult,
-  DiscoverySearch,
-  FeedRelease,
-  PluginState,
-  SourcePluginId,
-} from "@tofu/plugins/domain";
-import type { JevQuestions, JevResult } from "@tofu/plugins/jev-questions";
+} from "@tofu/plugins/automation-model";
+import type { AvailabilityQuery, EpisodeSource } from "@tofu/plugins/availability";
+import type { DiscoveryResult, FeedRelease } from "@tofu/plugins/discovery-model";
+import type { StoredPlugin } from "@tofu/plugins/plugin-model";
+import type {
+  CapabilityFailure,
+  TorrentCapabilityOptions,
+} from "@tofu/plugins/torrent-capabilities";
+import { Context, type Effect } from "effect";
+import type { problem } from "elysia";
+import type { AniListClient } from "./client";
 import type { AniListService } from "./service";
-import type { DatabaseConnection } from "./storage";
+import type { DatabaseConnection, DatabaseTransaction, TofuDatabase } from "./storage";
 
 export interface PreparedAutomationRule {
   baseline: AutomationDecision[];
@@ -28,62 +29,80 @@ export interface RuleOwnership {
   key: string;
   ownerId: string;
 }
-// These are injected plugin capabilities; the package never loads the desktop application.
+
+// The host supplies typed capabilities; this package never imports an application.
 export interface AniListOptions {
   automation: {
     snapshot: () => Omit<AutomationState, "plugins">;
     ruleSnapshot: (id: string) => AutomationRule | undefined;
-    enableRule: (id: string, enabled: boolean, connection?: DatabaseConnection) => unknown;
-    writeRule: (connection: DatabaseConnection, prepared: PreparedAutomationRule) => AutomationRule;
+    enableRule: (id: string, enabled: boolean, connection?: DatabaseConnection) => void;
     refreshState: () => void;
   };
   client?: AniListClient;
+  db: TofuDatabase;
   discovery: {
     cachedReleases: () => FeedRelease[];
-    search: (query: string, sources: SourcePluginId[]) => Promise<DiscoveryResult>;
-    rank: (
+    animeMapping: (mediaId: number) => Effect.Effect<AnimeMapping | null>;
+    search: (
       query: string,
-      search: DiscoverySearch,
-      candidates: FeedRelease[],
-      matches: (release: FeedRelease) => boolean
-    ) => Promise<FeedRelease[]>;
+      sources: string[],
+      cachedSearch?: boolean
+    ) => Effect.Effect<DiscoveryResult>;
   };
   endpoint: string;
-  engine: {
-    snapshot: (detail: string | null, full: boolean) => DashboardState;
-    saveDestination: (id: string | null, input: DestinationInput) => Promise<Destination>;
-  };
-  jev: { evaluate: (state: object, questions: JevQuestions) => Promise<JevResult | null> };
+  engine: TorrentCapabilityOptions;
+  episodeSources: (
+    queries: AvailabilityQuery[]
+  ) => Promise<{ key: string; sources: EpisodeSource[] }[] | CapabilityFailure>;
   now: () => number;
   plugins: {
-    plugin: (id: string) => PluginState & { apiKey: string; callsDay: string };
+    plugin: (id: string) => StoredPlugin;
     configure: (
       id: string,
-      configuration: { enabled: boolean; apiKey?: string; dailyLimit?: number }
-    ) => unknown;
+      input: { enabled: boolean; apiKey?: string; dailyLimit?: number }
+    ) => import("@tofu/plugins/plugin-model").PluginState[] | CapabilityFailure;
   };
   releaseAutomation: {
     prepareRule: (
       id: string | null,
       draft: AutomationDraft,
       ownership?: RuleOwnership
-    ) => Promise<PreparedAutomationRule>;
+    ) => Effect.Effect<PreparedAutomationRule | CapabilityFailure>;
+    writeRule: (
+      connection: DatabaseTransaction,
+      prepared: PreparedAutomationRule
+    ) => AutomationRule | CapabilityFailure;
     save: (
       id: string | null,
       draft: AutomationDraft,
       ownership?: RuleOwnership
-    ) => Promise<AutomationRule>;
-    run: (id: string) => Promise<AutomationState>;
+    ) => Effect.Effect<AutomationRule | CapabilityFailure>;
+    run: (id: string) => Effect.Effect<AutomationState | CapabilityFailure>;
   };
   tokenEndpoint: string;
 }
+
+export class AniListCapabilities extends Context.Service<AniListCapabilities, AniListOptions>()(
+  "tofu/anilist-capabilities"
+) {}
+
 export interface AniListApplication {
   anilist: AniListService;
   automation: AniListOptions["automation"];
+  caller:
+    | { kind: "owner" | "anonymous" }
+    | { kind: "device"; device: { id: string; kind: string } };
   platform: { kind: "server" } | { kind: "desktop"; openExternal: (url: string) => boolean };
   releaseAutomation: AniListOptions["releaseAutomation"];
 }
 export interface AniListApiDependencies {
-  application: () => AniListApplication;
-  sync: SyncRuntimeOptions<TransactionalSyncAdapter<DatabaseConnection, "sync">>;
+  application: () => Omit<AniListApplication, "caller">;
+  authorize: (
+    request: Request
+  ) =>
+    | { kind: "owner" }
+    | { kind: "device"; device: { id: string; kind: string } }
+    | ReturnType<typeof problem<401, { readonly detail: string }>>
+    | ReturnType<typeof problem<403, { readonly detail: string }>>;
+  sync: FurinSyncOptions;
 }

@@ -1,6 +1,52 @@
 # Project rules
 
 These rules apply throughout the repository, to both new files and changes to existing code.
+Always use ponytail skills when starting a feature.
+
+## Learning more about Effect
+
+This repository uses the Effect Typescript library.
+
+Before writing any Effect code, first read `apps/tofu/node_modules/effect/AGENTS.md`
+**completely**, and follow the links in the file when required.
+
+If you need to learn more about particular Effect apis and concepts that the
+guide doesn't cover, search through the source code in `apps/tofu/node_modules/effect/src`.
+
+## Application service pattern
+
+- Declare injectable application services as classes extending `Context.Service<Self, Contract>()("tofu/domain")`. Keep the contract inline and its operations readonly. The class identifies the service; its implementation is an object, not a mutable service class.
+- Construct implementations with a module-local `const make = Effect.gen(...)` and export a `Layer.effect(Service, make)` beside the service. Resolve service dependencies with `yield*` during construction; compose their layers in `src/api/lib/services-layer.ts`.
+- Use named `Effect.fn("Service.operation")` operations for asynchronous workflows. Compose Effects directly inside services; execute them at HTTP, CLI, worker, or native callback boundaries. Keep synchronous projections and transaction callbacks synchronous where their callers require it.
+- Infer downstream service types from `Service["Service"]` and result types from the operation. Keep explicit input schemas and contracts independent when deriving them from the service would create a recursive service definition.
+- Own resources and background work in the service's scope. Attach cleanup when acquiring resources and preserve operation reservations and shared in-flight work before the first asynchronous boundary.
+- Read mutable service state through operations. Do not expose mutable getters through Elysia decorators: composition can copy their current values instead of preserving the getters.
+- Native SDK objects, transport adapters, data objects, and local resource types may remain classes. Do not duplicate their APIs with parallel service interfaces.
+
+## Async syntax
+
+- Use `async` / `await` for all promise sequencing. Never use `.then()`.
+- Never use promise `.catch()` or `.finally()` chains.
+- Preserve concurrency explicitly: reserve operation queues before the first `await`, and use `await Promise.all(...)` or `await Promise.allSettled(...)` for independent work.
+
+## Effect in services; no JavaScript try/catch
+
+- Do not use JavaScript `try` / `catch` / `finally` blocks in backend services or their API adapters. Use Effect for service construction, scoped resource ownership, and failures at external I/O, native SDK, worker, or process boundaries.
+- Expected API failures remain typed `problem(...)` or `status(...)` results and must be propagated directly. Do not turn a returned API failure into a rejected promise or erase its inferred status/body type.
+- Keep Effect in the service layer. Elysia owns routes and HTTP composition; do not convert the server entry point or route declarations into Effect programs.
+- Use `Effect.try` / `Effect.tryPromise` at the concrete external boundary. Do not wrap an entire business workflow just to reproduce a removed catch, return a default, or hide a broken invariant. Background-task boundaries must report otherwise unobserved failures.
+- Register cleanup when acquiring a resource, using `Effect.acquireRelease` / scoped finalizers for service lifetimes and `using`, `await using`, or disposable stacks for local reservations and listeners.
+- Never move exception handling into a helper, factory, class, or proxy merely to hide it. Every failure conversion must have a concrete boundary that can be explained from its call site.
+
+## Returned API errors
+
+- Never throw errors to express API failures. Return Elysia's typed `problem(...)` or `status(...)` responses so Elysia and Eden can infer the failure status and body.
+- Apply this rule to route handlers and the services and processing functions they call. Propagate returned failures explicitly through every caller; never discard a failure and return a success response.
+- Preserve inferred return types and literal status codes. Do not widen failure results into `unknown`, `Response`, or a generic status type at the API boundary.
+- Worker transport must preserve returned failures and reconstruct Elysia status responses in the receiving process; do not turn returned API failures into rejected promises.
+- Unexpected runtime exceptions still require resource cleanup and diagnostics; thrown exceptions do not establish a typed API error contract.
+- This rule concerns producing API responses. Route loaders must still throw received Eden errors and use Furin's `notFound()` as required below.
+- Reference: https://elysiajs.com/essential/handler#status
 
 ## No function wrappers
 
@@ -96,27 +142,33 @@ interface TorrentEngineOptions {
 }
 ```
 
+## Furin and Electrobun dependency patches
+
+- Do not create, modify, or apply patches to Furin, Electrobun, or `@teyik0/furin-electrobun` without explicit user permission. This includes direct edits in `node_modules`, patch files, and patched vendored sources or package archives.
+- If a patch is absolutely necessary, explain why and describe the exact proposed changes, then request and wait for the user's explicit approval before making the patch.
+
 ## Isomorphic Eden client: mandatory and protected
 
 - Never modify `src/lib/client.ts` unless the user explicitly requests a change to that file. Architecture, startup, AOT, and desktop fixes do not authorize changing it.
-- The server branch must remain `createClient(apiPlugin).api`, with direct in-process Eden dispatch and no network request. `apiPlugin` is also the listening root; desktop network guards intentionally allow direct in-process dispatch.
-- The browser branch must use `createClient<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).api`.
+- The server branch must remain `treaty(apiPlugin).use(furinSync).api`, with direct in-process Eden dispatch and no network request. `apiPlugin` is also the listening root; desktop network guards intentionally allow direct in-process dispatch.
+- The browser branch must use `treaty<Api>(window.location.origin, { fetch: { cache: "no-store", credentials: "include" } }).use(furinSync).api`.
 - Never add a custom `fetcher`, manual `app.handle()` dispatch, an internal HTTP origin, request-scoped `AsyncLocalStorage`, or cookie/origin/header forwarding for this client.
 
 Required implementation:
 
 ```ts
 import { createIsomorphicFn } from "@teyik0/furin";
-import { createClient } from "@teyik0/furin/client";
-import { type Api, apiPlugin } from "./apps/tofu/src/api/index";
+import { treaty } from "@elysia/eden";
+import { furinSync } from "@teyik0/furin/client";
+import { type Api, apiPlugin } from "@/api";
 
 export const api = createIsomorphicFn()
-  .server(() => createClient(apiPlugin).api)
+  .server(() => treaty(apiPlugin).use(furinSync).api)
   .client(
     () =>
-      createClient<Api>(window.location.origin, {
+      treaty<Api>(window.location.origin, {
         fetch: { cache: "no-store", credentials: "include" },
-      }).api
+      }).use(furinSync).api
   )();
 ```
 
@@ -138,7 +190,9 @@ import { api } from "../lib/client";
 export const route = defineRootRoute()
   .config({ mode: "ssr" })
   .loader(async () => {
-    const { data, error } = await api.state.get({ query: { detail: "false" } });
+    const { data, error } = await api.state.get.live({
+      query: { detail: "false" },
+    });
     if (error) {
       throw error;
     }
@@ -149,7 +203,7 @@ export const route = defineRootRoute()
 For a resource that should render a 404 page:
 
 ```ts
-const { data, error } = await api.torrents({ id: params.id }).get();
+const { data, error } = await api.torrents({ id: params.id }).get.live();
 if (error) {
   if (error.status === 404) {
     notFound({ message: "This torrent does not exist" });
@@ -171,12 +225,24 @@ return { torrent: data };
 - Translate existing non-English project-authored content into English when editing it. Write all new content in English.
 - Preserve proper names, external API contracts, user-provided data, and third-party content as required for correctness. Do not translate machine-readable values whose meaning depends on their exact spelling.
 
+## Development verification
+
+- Use `.agents/skills/tofu-verify/SKILL.md` to verify code changes.
+- Run `bun fix && bun tscheck` before handing off code changes.
+- Behavior changes require focused integration verification.
+- Run the full build for changes affecting packaging, native integration, startup, or the build pipeline.
+- Report the commands actually run, their results, and unverified behavior.
+
 ## Integration tests
 
+- Tests verify product requirements and production behavior; they must not drive runtime architecture or unrelated code changes.
+- Never change runtime behavior, logging, configuration, startup, or public contracts solely to make a test pass. Fix incorrect test assumptions, setup, or fixtures in the test layer instead.
+- If a test exposes a genuine production defect outside the requested scope, report it and obtain explicit approval before changing runtime code. Do not disable or weaken assertions to hide the defect.
 - Keep only essential integration scenarios. Exercise API behavior through typed Eden endpoints with real application services; do not add function unit tests, component snapshots, or tests of framework internals.
 - Test torrent transfers and lifecycle behavior with real peers in temporary directories. Simulate external providers only at their HTTP or native SDK boundaries.
 - Put shared fixtures, resource cleanup, and assertion helpers in `tests/helpers/`. Keep endpoint calls visible in the tests rather than wrapping them in request helpers.
 - Keep AniList tests in `tests/anilist/` and omit redundant `anilist-` filename prefixes.
+- Keep test-only exports, configuration, branches, adapters, and dependency injection out of runtime code. Simulate external dependencies only at the existing HTTP or native SDK boundaries.
 
 ## Experimental workspace
 

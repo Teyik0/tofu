@@ -1,9 +1,9 @@
 import type { PreviewCard } from "@base-ui/react/preview-card";
-import type { AniListEntry, AniListMedia } from "@tofu/plugins/domain";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@tofu/ui/hover-card";
 import { ZapIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "../../../ui/src/ui/hover-card";
+import type { AniListEntry, AniListMedia } from "../server/types";
 import { AniListCover } from "./cover";
 import { formatLabel } from "./library-filters";
 import { aniListMediaColors } from "./media-colors";

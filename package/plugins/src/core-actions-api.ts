@@ -28,7 +28,7 @@ export function createCoreActionsApi(
   return new Elysia({ name: "tofu-core-actions", prefix: "/api" })
     .use(furinSync(sync))
     .use(furinInvalidate())
-    .guard({ sync: false })
+
     .post(
       "/discover/add",
       {
@@ -46,12 +46,12 @@ export function createCoreActionsApi(
       "/plugins/:id",
       {
         body: pluginConfigurationSchema,
-        invalidate: [
-          { path: "/", type: "layout" },
-          { path: "/plugins", type: "layout" },
-          { path: "/anilist", type: "page" },
-        ],
       },
-      ({ params, body }) => services().configure(params.id, body)
+      ({ params, body, invalidate }) => {
+        invalidate({ path: "/", type: "layout" });
+        invalidate({ path: "/plugins", type: "layout" });
+        invalidate({ path: "/anilist", type: "page" });
+        return services().configure(params.id, body);
+      }
     );
 }

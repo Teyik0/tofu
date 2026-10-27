@@ -1,8 +1,6 @@
-const catalogReleasePath = /^\/api\/anilist\/entries\/\d+\/releases$/;
-
 import { mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { type AniListApiDependencies, createAniListApi } from "@tofu/anilist/api";
+import type { AniListApiDependencies } from "@tofu/anilist/api";
 import type { PluginAuthDefinition } from "@tofu/plugins";
 import {
   createApiKeyAuth,
@@ -17,11 +15,13 @@ import {
   type PluginScope,
   UserError,
 } from "@tofu/plugins/server";
+import { Effect } from "effect";
 import { Type } from "typebox";
 import { Check } from "typebox/value";
 import { externalPlugins } from "../plugin-generated/server";
-import type { EnginePort } from "../types";
 import type { CoreApplication } from "./lib/extensions";
+import { anilistDependencies } from "./modules/anilist";
+import type { EnginePort } from "./modules/torrents/service";
 
 interface CoreDependencies {
   application: () => CoreApplication;
@@ -137,22 +137,6 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
   let runtime = createPluginRuntime({ sync: dependencies.sync });
   let definitions: ErasedPluginDefinition[] = [];
   const startupErrors = new Map<string, string>();
-  const anilistDependencies: AniListApiDependencies = {
-    application() {
-      const application = dependencies.application();
-      return {
-        anilist: application.anilist,
-        automation: application.automation,
-        platform:
-          application.platform.kind === "desktop"
-            ? { kind: "desktop", openExternal: application.platform.desktop.shell.openExternal }
-            : { kind: "server" },
-        releaseAutomation: application.releaseAutomation,
-      };
-    },
-    sync: dependencies.sync,
-  };
-  const administration = createAniListApi(anilistDependencies, "/api");
   let preferences: Preferences = {
     disabled: [],
     pages: [{ pageId: "library", pinned: true, pluginId: "anilist" }],
@@ -252,7 +236,7 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
       if (definition.id === "anilist") {
         const service = dependencies.application().anilist;
 
-        return service.connect();
+        return Effect.runPromise(service.connect());
       }
       const auth = runtime.auth(id);
       if (!auth) {
@@ -301,20 +285,6 @@ export function createPluginHost(dependencies: CoreDependencies, options?: Plugi
     },
     async handle(request: Request) {
       await initialize();
-      const path = new URL(request.url).pathname;
-      const administrative =
-        (path === "/api/anilist/catalog" && request.method === "POST") ||
-        (path === "/api/anilist/catalog/options" && request.method === "GET") ||
-        (catalogReleasePath.test(path) && request.method === "POST") ||
-        (path === "/api/anilist" && ["GET", "PUT"].includes(request.method)) ||
-        (path === "/api/anilist/connect" && ["POST", "DELETE"].includes(request.method)) ||
-        (path === "/api/anilist/open" && request.method === "POST") ||
-        (path === "/api/anilist/callback" && request.method === "POST") ||
-        (path === "/api/anilist/threads/preview" && request.method === "POST") ||
-        (path === "/api/anilist/preferences" && request.method === "PUT");
-      if (administrative) {
-        return administration.handle(request);
-      }
       return runtime.handle(request);
     },
     initialize,

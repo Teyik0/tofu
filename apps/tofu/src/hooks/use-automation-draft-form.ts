@@ -1,7 +1,7 @@
 import { getDeepError, useField, useForm, validate } from "@formisch/react";
 import { nullable, object } from "valibot";
-import { draft as draftSchema } from "../api/modules/automation/model";
-import type { AutomationDraft } from "../types";
+import type { AutomationDraft } from "../../../../package/plugins/src/automation-model";
+import { draft as draftSchema } from "../../../../package/plugins/src/automation-model";
 
 const schema = object({ draft: nullable(draftSchema) });
 

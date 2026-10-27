@@ -1,5 +1,3 @@
-import { FieldLabel, FieldLegend, FieldSet } from "@tofu/ui/field";
-import { RadioGroup, RadioGroupItem } from "@tofu/ui/radio-group";
 import {
   ArchiveIcon,
   BookOpenIcon,
@@ -15,7 +13,12 @@ import {
   TvIcon,
 } from "lucide-react";
 import { useId } from "react";
-import { type DestinationIconName, destinationIconNames } from "../types";
+import {
+  type DestinationIconName,
+  destinationIconNames,
+} from "../../../../package/plugins/src/destination-model";
+import { FieldLabel, FieldLegend, FieldSet } from "../../../../package/ui/src/ui/field";
+import { RadioGroup, RadioGroupItem } from "../../../../package/ui/src/ui/radio-group";
 
 const threadIcons = {
   archive: { icon: ArchiveIcon, label: "Archive" },

@@ -1,6 +1,7 @@
-import type { AniListDate, AniListEntry, AniListMedia } from "@tofu/plugins/domain";
-import { Badge } from "@tofu/ui/badge";
 import { FrownIcon, MehIcon, SmileIcon } from "lucide-react";
+import { Badge } from "../../../ui/src/ui/badge";
+import type { AniListDate } from "../server/model";
+import type { AniListEntry, AniListMedia } from "../server/types";
 import { aniListMediaColors } from "./media-colors";
 import { aniListStatusLabel } from "./status";
 

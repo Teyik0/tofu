@@ -1,8 +1,9 @@
 import { defineRoute } from "@teyik0/furin";
 import type { PluginRouteContext } from "@tofu/plugins/routes";
-import { api, coreClient } from "./client-api";
+import { useContext } from "react";
 import { AniListIcon } from "./components/icon";
 import { AniListLibrary } from "./components/library";
+import { aniListContext } from "./pages/_context";
 
 export const ui = {
   pages: [
@@ -12,24 +13,19 @@ export const ui = {
       id: "library",
       path: "/anilist",
       pinnable: true,
-      route({ threadLayout }: PluginRouteContext) {
-        return defineRoute()
-          .config({ layout: threadLayout, mode: "ssr" })
-          .loader(async () => {
-            const [
-              { data: initialAniList, error: anilistError },
-              { data: initialAutomation, error: automationError },
-            ] = await Promise.all([api.anilist.get(), coreClient.automation.get()]);
-            if (anilistError) {
-              throw anilistError;
-            }
-            if (automationError) {
-              throw automationError;
-            }
-            return { initialAniList, initialAutomation };
-          })
-          .head(() => ({ meta: [{ title: "AniList — Tofu" }] }))
-          .page(AniListLibrary);
+      route(_context: PluginRouteContext) {
+        return defineRoute("/__tofu_plugin")
+          .config({ mode: "ssr" })
+          .page(() => {
+            const context = useContext(aniListContext);
+            return context ? (
+              <AniListLibrary
+                automationState={context.automation}
+                openSettings={context.openSettings}
+                state={context.anilist}
+              />
+            ) : null;
+          });
       },
       title: "AniList",
     },

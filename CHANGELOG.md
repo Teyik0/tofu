@@ -6,17 +6,92 @@ Notable changes to Tofu are tracked here. Release tags follow the version in app
 
 ### Changed
 
-- Integrate the pushed 0.2.4 desktop refactors into the experimental Bun workspace, retaining the Worker engine, Drizzle migrations, native updater, global search and expanded AniList catalog.
-- Keep AniList in its own package with typed, injected database and core automation contracts. AniList and core writes share the host transaction without importing the desktop application.
-- Share the core API contracts, server transport, validation models and UI primitives through the plugin SDK, preserving native Furin loaders and synchronized mutations.
-- Update the scaffolder to package the SDK dependency graph for a clean installation.
+- Integrate Tofu 0.2.8 into the experimental workspace, retaining the plugin SDK, autonomous AniList package, documentation app, and scaffolder.
+- Compose the updated Effect service graph through injected AniList capabilities and shared SDK data contracts without importing the desktop from packages.
+- Migrate typed Eden clients to `treaty(...).use(furinSync)` and adapt generated plugin routes to Furin's file-based layout inference.
+- Preserve plugin pages, sidebar contributions, thread actions, scoped authentication, and settings in the split torrent workspace and remote-access model.
+- Remove the Jev/TypeSafe integration and migrate existing rules to local exact matching.
+- Update release resources, signing order, CI paths, native packaging, and generated-plugin verification for the workspace layout.
 
 ### Fixed
 
-- Reuse lifecycle hooks from the loaded desktop backend so the native host does not bundle Furin's compiler and require its development-only parser binding.
-- Dispose a reopened plugin runtime when reusing the same application, preserving cleanup ownership across enable cycles.
+- Keep AniList administration authorization local to its own API so linked-library callers retain their permissions.
+- Initialize required services and the plugin host before listening, and dispose plugin work before releasing the service graph.
+- Preserve plugin settings, credentials, and real downloads across disable, re-enable, and application restart.
 
-## [0.2.3]
+## [0.2.7] - 2026-10-19
+
+### Added
+
+- Audio and subtitle track menus, keyboard seeking, and seek feedback in the media player.
+- Live desktop update download progress in the sidebar and Updates panel.
+
+### Changed
+
+- Replace the torrent table with a compact list beside a persistent detail inspector on desktop, stacking the panels on smaller screens. Adapt file priorities, actions, and detail controls to the narrower inspector.
+- Show destination paths in All torrents and search by torrent name, destination name, or path.
+- Check desktop updates through the native update manifest when available, avoiding GitHub API rate limits.
+
+### Fixed
+
+- Open completed media with file caching for local playback.
+- Limit Windows CI integration tests to two concurrent processes and allow more time for watch-mode server startup.
+- Wait for completed disk writes and seeding verification in storage deletion and AniList download tests.
+
+## [0.2.6] - 2026-10-18
+
+### Added
+
+- In-app media playback with VLC compiled to WebAssembly, including seeking, volume, fullscreen, embedded subtitles, and a system-player fallback.
+- Stream incomplete torrent files through byte-range requests that wait for verified pieces without changing saved file priorities.
+- Persistent local JSONL diagnostics for startup, shutdown, API mutations and failures, background services, and torrent storage errors, with credential redaction and 5 MiB rotation retaining three backups.
+- An **Open logs folder** action in general desktop settings, and original filesystem error codes, stacks, and expected and observed directory identities in storage diagnostics.
+
+### Fixed
+
+- Bound media response sizes and the player's media cache to limit memory use during playback, and cancel pending streaming reads when transfers stop or become unavailable.
+- Limit Windows release tests to two concurrent processes and install publisher dependencies before running the release script.
+
+## [0.2.5] - 2026-10-13
+
+### Added
+
+- Torrent storage validation with **Repair download** and **Locate files** actions, preserving paused state and reporting missing, inaccessible, or replaced destinations without recreating them automatically.
+- Download settings for deleting successfully imported `.torrent` files and controlling seeding connections, plus peer connection diagnostics.
+- Source registration and automation integration APIs with persisted configuration, rule revisions, and retryable execution.
+
+### Changed
+
+- Compose database, torrent, automation, AniList, discovery, plugin, Jev, and update services through Elysia plugins, replacing the central application host with explicit dependency and lifecycle ownership.
+- Separate automation policy and persistence from release discovery and execution, and keep management endpoints separate from service plugins.
+- Reorganize AniList library controls, cards, episode panels, and list editing, with improved release matching.
+- Use Elysia typed problem responses for API failures and Furin's native workflow runner for desktop smoke checks.
+- Publish torrent telemetry only while a browser is subscribed, while retaining background persistence, storage checks, and state-change notifications.
+
+### Fixed
+
+- Drain torrent storage before bounded network shutdown so transfer state persists cleanly.
+- Dispose initialized resources after startup failures and route-type generation, and preload the native host for desktop builds.
+
+## [0.2.4] - 2026-10-11
+
+### Added
+
+- Global search with `Cmd+K` / `Ctrl+K` across torrents, destination threads, and enabled release sources, with release review and destination selection before downloading.
+- AniList list editing with queued autosave for status, progress, score formats, custom lists, advanced scores, dates, notes, repeat counts, and favorites.
+- Cover-derived AniList preview colors, list status indicators, unread airing counts, multiple-format catalog filters, and episode downloads without adding anime to a personal list.
+- Plugin credential validation and links to API key pages; C411 accepts either an API key or a Torznab URL.
+- Short synthesized sound cues when torrents are added or removed.
+
+### Changed
+
+- Default new automation rules to 1080p/720p, H.264/H.265, and VOSTFR/MULTI preferences.
+
+### Fixed
+
+- Match multi-part anime releases against episode offsets from library history, and recognize more parenthesized episode numbers and French subtitle patterns in feeds.
+
+## [0.2.3] - 2026-10-10
 
 ### Fixed
 
@@ -24,7 +99,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in app
 - Cover update handoff through the real Furin desktop host with a real peer transfer and verify downloaded bytes survive engine shutdown and reopening.
 - Bundle the native host's torrent parser so installed apps start without repository dependencies, and run native smoke tests from an isolated copy of the application.
 
-## [0.2.2]
+## [0.2.2] - 2026-10-10
 
 ### Added
 
@@ -67,7 +142,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in app
 - Temporarily skip blocked-request cancellation tests on Windows because Bun 1.4.3 can crash during their teardown; retain coverage on macOS and Linux.
 - Generate Furin route and asset declarations before type checking on clean checkouts, without starting the development server.
 
-## [0.2.1]
+## [0.2.1] - 2026-10-10
 
 ### Added
 
@@ -87,7 +162,7 @@ Notable changes to Tofu are tracked here. Release tags follow the version in app
 - Native AniList links open in the system browser without leaving the episode dialog.
 - Release publication validates native update metadata and archives for every supported target.
 
-## [0.2.0]
+## [0.2.0] - 2026-10-07
 
 ### Added
 
@@ -121,3 +196,14 @@ Notable changes to Tofu are tracked here. Release tags follow the version in app
 - macOS Apple Silicon release pipeline with optional Apple signing and notarization.
 - English interface and documentation, Base UI components, and Bun's native XML parser for feeds.
 - MIT license, contribution and security policies, repository templates and Git hooks.
+
+[Unreleased]: https://github.com/Teyik0/tofu/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/Teyik0/tofu/releases/tag/v0.2.7
+[0.2.6]: https://github.com/Teyik0/tofu/releases/tag/v0.2.6
+[0.2.5]: https://github.com/Teyik0/tofu/releases/tag/v0.2.5
+[0.2.4]: https://github.com/Teyik0/tofu/releases/tag/v0.2.4
+[0.2.3]: https://github.com/Teyik0/tofu/releases/tag/v0.2.3
+[0.2.2]: https://github.com/Teyik0/tofu/releases/tag/v0.2.2
+[0.2.1]: https://github.com/Teyik0/tofu/releases/tag/v0.2.1
+[0.2.0]: https://github.com/Teyik0/tofu/releases/tag/v0.2.0
+[0.1.0]: https://github.com/Teyik0/tofu/releases/tag/v0.1.0

@@ -1,8 +1,9 @@
-import type { FeedRelease, SearchReleaseGroup, TorrentSummary } from "../types";
+import type { FeedRelease } from "../../../../package/plugins/src/discovery-model";
+import type { LibraryTorrent } from "../api/modules/dashboard/projection";
 
 const queryWords = /\s+/;
 
-export function searchTorrents(torrents: TorrentSummary[], query: string) {
+export function searchTorrents(torrents: LibraryTorrent[], query: string) {
   const words = query.trim().toLocaleLowerCase("en-US").split(queryWords);
   return torrents
     .filter((torrent) => {
@@ -24,4 +25,9 @@ export function groupSearchReleases(releases: FeedRelease[]): SearchReleaseGroup
     }
   }
   return [...groups.values()];
+}
+
+export interface SearchReleaseGroup {
+  key: string;
+  releases: FeedRelease[];
 }

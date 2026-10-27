@@ -2,11 +2,8 @@ import type { EventEmitter } from "node:events";
 import type { Socket } from "node:net";
 import type WebTorrent from "webtorrent";
 import type { Torrent } from "webtorrent";
-import type {
-  ConnectionDiagnostics,
-  ConnectionPolicy,
-  SeedingConnectionMode,
-} from "../../../types";
+import type { SeedingConnectionMode } from "../../../../../../package/plugins/src/settings-model";
+import type { CryptoDiagnostics } from "./crypto-diagnostics";
 
 export const defaultConnectionPolicy: ConnectionPolicy = {
   attemptsPerSecond: 3,
@@ -453,4 +450,34 @@ function pendingHandshakes(torrent: RuntimeTorrent) {
     }
   }
   return pending;
+}
+
+export interface ConnectionPolicy {
+  attemptsPerSecond: number;
+  burst: number;
+  cooldownTtlMs: number;
+  maxConnections: number;
+  maxConnectionsPerTorrent: number;
+  maxCooldownEntries: number;
+  maxPending: number;
+  retryDelaysMs: readonly number[];
+  seedAttemptsPerSecond: number;
+  seedBurst: number;
+  seedIntervalMs: number;
+  stableConnectionMs: number;
+}
+
+export interface ConnectionDiagnostics {
+  connectedIncoming: number;
+  connectedOutgoing: number;
+  crypto: CryptoDiagnostics | null;
+  deferredByCapacity: number;
+  deferredByCooldown: number;
+  deferredByRate: number;
+  incomingHandshakes: number;
+  outgoingAttempts: number;
+  outgoingHandshakes: number;
+  outgoingRetries: number;
+  pendingOutgoing: number;
+  queuedOutgoing: number;
 }

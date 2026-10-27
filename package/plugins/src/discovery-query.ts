@@ -1,4 +1,4 @@
-import type { DiscoverySearch, FeedRelease } from "./domain";
+import type { DiscoverySearch, FeedRelease } from "./discovery-model";
 import { normalizeTitle } from "./title";
 
 const combinedEpisode = /\bs(\d{1,3})\s*e(\d{1,4})\b/gi;
@@ -7,7 +7,6 @@ const episodeNumber = /(?<![\p{L}\p{N}])(?:[eé]pisode|[eé]p|e)\s*(\d{1,4})\b/g
 const requestPrefix =
   /^(?:cherche(?:r)?|recherche(?:r)?|trouve(?:r)?|search|find)\s+(?:(?:les?\s+)?(?:[eé]pisodes?\s+)?(?:de\s+|d['’]))?/i;
 const spaces = /\s+/g;
-
 export function classicDiscovery(query: string): DiscoverySearch {
   return {
     aliases: [],

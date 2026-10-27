@@ -1,38 +1,18 @@
-import { readAniListClient } from "@tofu/anilist/server/client";
-import { AniListService } from "@tofu/anilist/server/service";
+import { Context } from "effect";
 import { Elysia } from "elysia";
-import { db, instance } from "../../lib/database-plugin";
-import { resources } from "../../lib/runtime";
-import { automation, automationPlugin } from "../automation/index";
-import { releaseAutomation, releaseAutomationPlugin } from "../automation/plugin";
-import { discovery } from "../discovery/plugin";
-import { jev } from "../jev/plugin";
-import { plugins } from "../plugins/plugin";
-import { engine } from "../torrents/plugin";
-
-const client = await readAniListClient(
-  instance.profile,
-  process.env.TOFU_ANILIST_CLIENT_ID,
-  process.execPath
-);
-export const anilist = new AniListService(db, {
-  automation,
-  client,
-  discovery,
-  endpoint: "https://graphql.anilist.co",
-  engine,
-  jev,
-  now: Date.now,
-  plugins,
-  releaseAutomation,
-  tokenEndpoint: "https://anilist.co/api/v2/oauth/token",
-});
+import { AniList } from "../../../../../../package/anilist/src/server/service";
+import { databasePlugin, services } from "../../lib/services-runtime";
+import { automationPlugin } from "../automation/index";
+import { releaseAutomationPlugin } from "../automation/plugin";
+import { discoveryServicePlugin } from "../discovery/plugin";
+import { pluginRegistryPlugin } from "../plugins/plugin";
+import { torrentServicePlugin } from "../torrents/plugin";
 
 export const anilistServicePlugin = new Elysia({ name: "tofu-anilist-service" })
+  .use(databasePlugin)
   .use(automationPlugin)
   .use(releaseAutomationPlugin)
-  .decorate("anilist", anilist);
-resources.defer(anilist.close.bind(anilist));
-anilistServicePlugin.setup(() => {
-  void anilist.start().catch(console.error);
-});
+  .use(discoveryServicePlugin)
+  .use(pluginRegistryPlugin)
+  .use(torrentServicePlugin)
+  .decorate("anilist", Context.get(services, AniList));

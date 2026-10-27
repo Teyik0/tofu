@@ -154,6 +154,8 @@ test("changed installed package files are rejected before their client code exec
 });
 
 const thread: Destination = {
+  autoAddTorrentFilesSince: null,
+  deleteTorrentFileAfterAdd: null,
   downloadPath: "/temporary/downloads",
   icon: "folder",
   id: "fixture",
@@ -267,7 +269,7 @@ test("a scaffolded plugin compiles in a native host and runs from a relocated de
     );
     await Bun.write(
       join(host, "src/fixture.ts"),
-      `import type { ThreadLayoutContext } from "@tofu/plugins";\nexport const context: ThreadLayoutContext = ${JSON.stringify({ dashboard, settings: dashboard.settings, thread })};\n`
+      `import { libraryState } from "@tofu/plugins/library-state";\nexport const context = { dashboard: libraryState(${JSON.stringify(dashboard)}, null, {id:"fixture",name:"Fixture"}), settings: ${JSON.stringify(dashboard.settings)}, thread: ${JSON.stringify(thread)} };\n`
     );
     await Bun.write(
       join(host, "src/pages/root.tsx"),
@@ -275,7 +277,7 @@ test("a scaffolded plugin compiles in a native host and runs from a relocated de
     );
     await Bun.write(
       join(host, "src/pages/(app)/_route.tsx"),
-      'import {defineRoute} from "@teyik0/furin"; import {route as root} from "../root"; import {context} from "../../fixture"; export const route = defineRoute().config({layout:root,mode:"ssr"}).loader(()=>({...context})).layout(({children})=><main><h1>Managed native host</h1>{children}</main>);'
+      'import {defineRoute} from "@teyik0/furin"; import {context} from "../../fixture"; export const route = defineRoute("/(app)/_route").config({mode:"ssr"}).loader(()=>({...context})).layout(({children})=><main><h1>Managed native host</h1>{children}</main>);'
     );
     await Bun.write(
       join(host, "src/server.ts"),

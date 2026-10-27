@@ -1,21 +1,48 @@
 import { furinSync } from "@teyik0/furin/sync";
-import { Elysia } from "elysia";
+import { Elysia, ElysiaStatus, problem } from "elysia";
+import {
+  settingsPatchSchema,
+  settingsSchema,
+} from "../../../../../../package/plugins/src/settings-model";
 import { sync } from "../../../sync";
+import { accessPlugin } from "../access/plugin";
 import { torrentServicePlugin } from "../torrents/plugin";
-import { settingsPatchSchema, settingsSchema } from "./model";
+import { changesOwnerSettings } from "./service";
 
 export const settingsPlugin = new Elysia({ name: "tofu-settings-api" })
   .use(torrentServicePlugin)
+  .use(accessPlugin)
   .use(furinSync(sync))
-  .guard({ sync: false })
-  .get("/settings", ({ torrents }) => torrents.settings)
+  .guard({ administration: true, idempotent: false })
+  .get("/settings", ({ torrents }) => torrents.settings())
   .put(
     "/settings",
-    {
-      body: settingsSchema,
-    },
-    ({ torrents, body }) => torrents.updateSettings(body)
+    { body: settingsSchema },
+    async ({ caller, torrents, torrentFolders, torrentFoldersRuntime, body }) => {
+      if (caller.kind !== "owner" && changesOwnerSettings(torrents.settings(), body)) {
+        return problem(403, { detail: "Change this on the server itself" });
+      }
+      const settings = await torrents.call("updateSettings", [body]);
+      if (settings instanceof ElysiaStatus) {
+        return settings;
+      }
+      // The default thread follows the download folder.
+      torrentFoldersRuntime.runSync(torrentFolders.sync);
+      return settings;
+    }
   )
-  .patch("/settings", { body: settingsPatchSchema }, ({ torrents, body }) =>
-    torrents.updateSettings(body)
+  .patch(
+    "/settings",
+    { body: settingsPatchSchema },
+    async ({ caller, torrents, torrentFolders, torrentFoldersRuntime, body }) => {
+      if (caller.kind !== "owner" && changesOwnerSettings(torrents.settings(), body)) {
+        return problem(403, { detail: "Change this on the server itself" });
+      }
+      const settings = await torrents.call("updateSettings", [body]);
+      if (settings instanceof ElysiaStatus) {
+        return settings;
+      }
+      torrentFoldersRuntime.runSync(torrentFolders.sync);
+      return settings;
+    }
   );

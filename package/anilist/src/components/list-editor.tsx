@@ -1,5 +1,5 @@
-import type { AniListEditor, AniListMedia } from "@tofu/plugins/domain";
-import { Alert, AlertDescription } from "@tofu/ui/alert";
+import { CheckIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
+import { Alert, AlertDescription } from "../../../ui/src/ui/alert";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -8,9 +8,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@tofu/ui/alert-dialog";
-import { Button } from "@tofu/ui/button";
-import { CheckIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
+} from "../../../ui/src/ui/alert-dialog";
+import { Button } from "../../../ui/src/ui/button";
+import type { AniListEditor } from "../server/editor";
+import type { AniListMedia } from "../server/types";
 import { AniListListAside, AniListListFields } from "./list-editor-fields";
 import { type Action, useAniListListEditor } from "./use-list-editor";
 

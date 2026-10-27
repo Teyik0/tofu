@@ -1,11 +1,16 @@
+import { apiErrorsPlugin } from "@tofu/plugins/api-errors";
 import { Elysia, t } from "elysia";
 import { pluginHost } from "./lib/extensions";
+import { accessPlugin } from "./modules/access/plugin";
 
 export const extensionsPlugin = new Elysia({
   name: "tofu-extensions-api",
   prefix: "/extensions",
 })
-  .beforeHandle(() => pluginHost.initialize())
+  .use(apiErrorsPlugin)
+  .use(accessPlugin)
+  .guard({ administration: true })
+  .onBeforeHandle(() => pluginHost.initialize())
   .get("", { query: t.Object({ threadId: t.Optional(t.String()) }) }, ({ query }) =>
     pluginHost.snapshot(query.threadId)
   )
@@ -38,3 +43,9 @@ export const extensionsPlugin = new Elysia({
       headers: { "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" },
     });
   });
+
+export const externalPluginRoutes = new Elysia({ name: "tofu-external-plugin-routes" })
+  .use(apiErrorsPlugin)
+  .use(accessPlugin)
+  .guard({ administration: true })
+  .all("/plugins/*", ({ request }) => pluginHost.handle(request));

@@ -1,4 +1,4 @@
-import type { AniListScoreFormat } from "@tofu/plugins/domain";
+import type { AniListScoreFormat } from "../server/types";
 
 export const aniListScoreScales: { [Format in AniListScoreFormat]: { max: number; step: number } } =
   {

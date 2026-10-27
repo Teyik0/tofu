@@ -1,22 +1,25 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: piece-map bins have fixed positions and no component state.
 import { useMutation } from "@teyik0/furin/client";
 import { useState } from "react";
+import type { FilePriority } from "../../../../package/plugins/src/torrent-types";
+import type { LibraryTorrentDetail, LiveState } from "../api/modules/dashboard/projection";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
-import type { DashboardState, FilePriority, TorrentDetail } from "../types";
+import type { ModalKind } from "../state/workspace";
 import { request } from "./api";
-import type { ModalKind } from "./modal";
 
 export interface DetailActionsProps {
   act: (id: string, task: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
-  data: DashboardState;
+  data: LiveState;
   open: (modal: ModalKind) => void;
-  torrent: TorrentDetail;
+  torrent: LibraryTorrentDetail;
 }
 
 export function useDetailActions({ torrent, data }: Pick<DetailActionsProps, "torrent" | "data">) {
   const endpoint = api.torrents({ id: torrent.id });
+  const pause = useMutation(endpoint.pause.post);
+  const resume = useMutation(endpoint.resume.post);
   const verify = useMutation(endpoint.verify.post);
   const repair = useMutation(endpoint.repair.post);
   const reveal = useMutation(endpoint.reveal.post);
@@ -58,7 +61,9 @@ export function useDetailActions({ torrent, data }: Pick<DetailActionsProps, "to
     downloadFile,
     fileError,
     latest,
+    pause,
     repair,
+    resume,
     reveal,
     savingFile,
     setPriority,

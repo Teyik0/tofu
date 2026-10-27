@@ -1,9 +1,10 @@
 import { useRouter } from "@teyik0/furin/link";
 import { useAtom } from "jotai";
-import { showDestination } from "../lib/navigation";
-import { modalAtom, selectedTorrentAtom } from "../state/workspace";
-import type { DashboardState, FormModalKind } from "../types";
+import type { LiveState } from "../api/modules/dashboard/projection";
+import { showDestination, showTorrent } from "../lib/navigation";
+import { modalAtom } from "../state/workspace";
 import { AutomationCenter } from "./automation-center";
+import type { FormModalKind } from "./modal";
 import { DeleteDestinationModal, Modal } from "./modal";
 
 function operationKey(modal: FormModalKind) {
@@ -23,21 +24,20 @@ export function WorkspaceDialogs({
   dashboard,
   activeDestination,
 }: {
-  dashboard: DashboardState;
+  dashboard: LiveState;
   activeDestination: string | null;
 }) {
   const router = useRouter();
   const [modal, open] = useAtom(modalAtom);
-  const [selected, setSelected] = useAtom(selectedTorrentAtom);
   const close = () => open(null);
   const done = async (id: string | null, destinationId: string | null) => {
     if (id) {
-      setSelected(id);
+      await showTorrent(router, dashboard.server.id, destinationId ?? activeDestination, id);
+    } else if (modal?.type === "remove" && modal.torrent.id === router.search.torrent) {
+      await showTorrent(router, dashboard.server.id, activeDestination, undefined);
+    } else {
+      await showDestination(router, dashboard.server.id, destinationId, activeDestination);
     }
-    if (modal?.type === "remove" && modal.torrent.id === selected) {
-      setSelected(null);
-    }
-    await showDestination(router, destinationId, activeDestination);
   };
 
   if (modal === null) {

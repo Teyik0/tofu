@@ -1,12 +1,13 @@
 import { useMutation } from "@teyik0/furin/client";
-import { useAtom, useSetAtom } from "jotai";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "@teyik0/furin/link";
+import { useSetAtom } from "jotai";
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
+import type { LibraryTorrent, LiveState } from "../api/modules/dashboard/projection";
 import { api } from "../lib/client";
 import { errorMessage } from "../lib/errors";
-import { useRefresh } from "../lib/navigation";
+import { selectedTorrentId, useRefresh } from "../lib/navigation";
 import { armSoundCues } from "../lib/sound-cues";
-import { modalAtom, revealTorrentAtom, selectedTorrentAtom } from "../state/workspace";
-import type { DashboardState, TorrentDetail, TorrentSummary } from "../types";
+import { modalAtom } from "../state/workspace";
 
 type Filter = "all" | "downloading" | "seeding" | "paused" | "error";
 export const filters: { id: Filter; label: string }[] = [
@@ -19,32 +20,23 @@ export const filters: { id: Filter; label: string }[] = [
 export const statusFilters = filters.filter(
   (item): item is { id: Exclude<Filter, "all">; label: string } => item.id !== "all"
 );
-const matches = (torrent: TorrentSummary, filter: Filter) =>
+const matches = (torrent: LibraryTorrent, filter: Filter) =>
   filter === "all" ||
   (filter === "downloading"
     ? ["downloading", "idle", "metadata", "checking"].includes(torrent.status)
     : torrent.status === filter);
-export interface TorrentLibraryProps {
-  activeDestination: string | null;
-  dashboard: DashboardState;
-  initialDetail: Promise<TorrentDetail | null>;
-  initialTorrentId: string | null;
-}
-
 export function useTorrentLibrary({
   dashboard: data,
   activeDestination,
-  initialDetail,
-}: Pick<TorrentLibraryProps, "dashboard" | "activeDestination" | "initialDetail">) {
-  useEffect(() => {
-    // Live details can replace this deferred snapshot before navigation cancels its stream.
-    // Await still receives the original promise and displays errors when the snapshot is used.
-    void initialDetail.catch(() => undefined);
-  }, [initialDetail]);
+  requested,
+}: {
+  activeDestination: string | null;
+  dashboard: LiveState;
+  requested: string | undefined;
+}) {
   useEffect(() => armSoundCues(window), []);
+  const router = useRouter();
   const setModal = useSetAtom(modalAtom);
-  const [selected, setSelected] = useAtom(selectedTorrentAtom);
-  const [reveal, setReveal] = useAtom(revealTorrentAtom);
   const refresh = useRefresh();
   const bulk = useMutation(api.bulk.post);
   const pause = useMutation((id: string) => api.torrents({ id }).pause.post());
@@ -55,14 +47,6 @@ export function useTorrentLibrary({
   const [sort, setSort] = useState<"added" | "name" | "progress">("added");
   const [pending, setPending] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (reveal && reveal.destinationId === activeDestination) {
-      setSearch("");
-      setFilter("all");
-      setSelected(reveal.id);
-      setReveal(null);
-    }
-  }, [reveal, activeDestination, setSelected, setReveal]);
   const scoped = useMemo(
     () =>
       data.torrents.filter(
@@ -86,25 +70,38 @@ export function useTorrentLibrary({
     }
     return totals;
   }, [scoped]);
-  const torrents = useMemo(
-    () =>
-      scoped
-        .filter(
-          (torrent) =>
-            matches(torrent, filter) &&
-            torrent.name.toLocaleLowerCase("en-US").includes(search.toLocaleLowerCase("en-US"))
-        )
-        .sort((a, b) =>
-          sort === "name"
-            ? a.name.localeCompare(b.name, "en-US")
-            : sort === "progress"
-              ? (b.progress ?? -1) - (a.progress ?? -1)
-              : b.addedAt - a.addedAt
-        ),
-    [scoped, filter, search, sort]
-  );
-  const currentId = scoped.find((torrent) => torrent.id === selected)?.id ?? scoped[0]?.id;
-  const selectedId = torrents.find((torrent) => torrent.id === currentId)?.id ?? torrents[0]?.id;
+  const torrents = useMemo(() => {
+    const query = search.toLocaleLowerCase("en-US");
+    const locations = new Map(data.destinations.map((item) => [item.id, item.name]));
+    return scoped
+      .filter(
+        (torrent) =>
+          matches(torrent, filter) &&
+          `${torrent.name} ${activeDestination === null ? (locations.get(torrent.destinationId) ?? "") : ""}`
+            .toLocaleLowerCase("en-US")
+            .includes(query)
+      )
+      .sort((a, b) =>
+        sort === "name"
+          ? a.name.localeCompare(b.name, "en-US")
+          : sort === "progress"
+            ? (b.progress ?? -1) - (a.progress ?? -1)
+            : b.addedAt - a.addedAt
+      );
+  }, [scoped, filter, search, sort, data.destinations, activeDestination]);
+  const selectedId = selectedTorrentId(data.torrents, activeDestination, requested);
+  const reveal = useEffectEvent((id: string) => {
+    // A torrent opened from search or added elsewhere stays visible despite the current filter.
+    if (!torrents.some((torrent) => torrent.id === id)) {
+      setSearch("");
+      setFilter("all");
+    }
+  });
+  useEffect(() => {
+    if (requested) {
+      reveal(requested);
+    }
+  }, [requested]);
   const destination = data.destinations.find((item) => item.id === activeDestination);
   const add = () => setModal({ destinationId: activeDestination ?? "default", type: "add" });
   const act = useCallback(
@@ -129,25 +126,27 @@ export function useTorrentLibrary({
 
   return {
     act,
+    activeDestination,
     add,
     bulk,
     counts,
     destination,
+    destinations: data.destinations,
     error,
     filter,
     pause,
     pending,
     repair,
     resume,
+    router,
     scoped,
     search,
-    selected,
     selectedId,
+    serverId: data.server.id,
     setError,
     setFilter,
     setModal,
     setSearch,
-    setSelected,
     setSort,
     sort,
     torrents,

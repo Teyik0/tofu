@@ -1,4 +1,5 @@
-import { createClient } from "@teyik0/furin/client";
+import { treaty } from "@elysia/eden";
+import { furinSync } from "@teyik0/furin/client";
 import type { createAutomationReadApi } from "./automation-read-api";
 
 /** A typed client for the host's public automation read endpoint. */
@@ -7,7 +8,7 @@ export function createCoreClient(origin: string, request?: Request) {
     request && new URL(request.url).origin === new URL(origin).origin
       ? request.headers.get("cookie")
       : null;
-  return createClient<ReturnType<typeof createAutomationReadApi>>(origin, {
+  return treaty<ReturnType<typeof createAutomationReadApi>>(origin, {
     headers: cookie ? { cookie } : undefined,
-  });
+  }).use(furinSync);
 }

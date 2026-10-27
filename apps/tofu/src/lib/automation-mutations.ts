@@ -3,7 +3,7 @@ import type {
   AutomationPreferences,
   AutomationRule,
   AutomationState,
-} from "../types";
+} from "../../../../package/plugins/src/automation-model";
 import type { api } from "./client";
 
 function ruleStatus(draft: AutomationDraft, state: AutomationState): AutomationRule["status"] {
@@ -24,7 +24,7 @@ export function createAutomationMutations(client: typeof api) {
       const createdAt = Date.now();
       return client.automations.post(draft, {
         optimistic(cache) {
-          cache.update(client.automation.get, (state) => {
+          cache.update(client.automation.get.live(), (state) => {
             if (!("automations" in state)) {
               return state;
             }
@@ -47,7 +47,7 @@ export function createAutomationMutations(client: typeof api) {
     deleteRule: (id: string) =>
       client.automations({ id }).delete(undefined, {
         optimistic(cache) {
-          cache.update(client.automation.get, (state) =>
+          cache.update(client.automation.get.live(), (state) =>
             "automations" in state
               ? { ...state, automations: state.automations.filter((rule) => rule.id !== id) }
               : state
@@ -57,7 +57,7 @@ export function createAutomationMutations(client: typeof api) {
     ignoreDecision: (id: string) =>
       client["automation-decisions"]({ id }).ignore.post(undefined, {
         optimistic(cache) {
-          cache.update(client.automation.get, (state) =>
+          cache.update(client.automation.get.live(), (state) =>
             "decisions" in state
               ? {
                   ...state,
@@ -74,7 +74,7 @@ export function createAutomationMutations(client: typeof api) {
     savePreferences: async (preferences: AutomationPreferences) =>
       await client.automation.preferences.put(preferences, {
         optimistic(cache) {
-          cache.update(client.automation.get, (state) =>
+          cache.update(client.automation.get.live(), (state) =>
             "preferences" in state ? { ...state, preferences } : state
           );
         },
@@ -82,7 +82,7 @@ export function createAutomationMutations(client: typeof api) {
     updateRule: (id: string, draft: AutomationDraft) =>
       client.automations({ id }).put(draft, {
         optimistic(cache) {
-          cache.update(client.automation.get, (state) =>
+          cache.update(client.automation.get.live(), (state) =>
             "automations" in state
               ? {
                   ...state,

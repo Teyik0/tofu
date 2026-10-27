@@ -4,36 +4,31 @@ Tofu uses Bun, React/Furin, Elysia, WebTorrent and Electrobun. Use Bun for devel
 
 ## Setup
 
-You need access to the private Teyik0/Tofu repository, Bun 1.4.3, and a Mac with Xcode command-line tools for native builds.
+You need access to the private Teyik0/Tofu repository, Bun 1.4.3 or newer, and a Mac with Xcode command-line tools for native builds.
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
+bun install --frozen-lockfile
 bun run setup
-bun run prepare
 bun run dev
 ```
 
-`prepare` installs Lefthook. Keep the Git hooks enabled. `bun run desktop` opens the built native app; `bun run build:desktop` rebuilds it. The Electrobun SDK is prepared through Hutch.
+`bun install` automatically runs `prepare` to install Lefthook. Keep the Git hooks enabled. `bun run dev` opens the native app for development; `bun run build` builds its compiled package. The Electrobun SDK is prepared through Hutch.
 
 ## Before requesting review
+
+`bun run codegen` generates the AniList SDK from the checked-in schema without contacting AniList. To refresh both the schema and SDK from the live API, run `TOFU_UPDATE_ANILIST_SCHEMA=1 bun run codegen` and review the schema diff. Normal development, builds, and tests use the local schema so provider outages do not block them.
 
 ```sh
 bun run tscheck
 bun run fix
 bun run test
 bun run build:desktop
-```
-
-For interface or native integration changes, also run:
-
-```sh
 bun run test:native
-bun run test:background
 ```
 
-Native tests require a graphical macOS session. Their injected workflow is explicitly enabled by `TOFU_SMOKE_SCRIPT`; never inject it by default. Transfer tests use real peers and temporary directories. Add tests through public APIs for changes to the engine or lifecycle, and verify a failing case before implementing the fix.
+Integration scenarios live under `apps/tofu/tests/` and package-local `tests/` directories. Tests start the real server in temporary directories and call its typed Eden endpoints directly. Transfer tests use real local peers; external providers are simulated at their HTTP boundary. Keep shared resource lifecycle and assertion helpers in `apps/tofu/tests/helpers/`, and verify a failing case before implementing a fix.
 
-For changes to development/release isolation, build both native channels with `bun run build:desktop` and `bun run build:release`, then run `bun run test:coexist`. The coexistence test opens both real bundles in temporary data directories and checks independent settings, transfers and shutdown. Development and release profiles have separate data directories; never point both running applications at the same directory.
+For changes to development/release isolation, build locally with `bun run build` and check settings, transfers, and shutdown. Stable release builds, signing, artifact preparation, and publication run exclusively through `.github/workflows/release.yml`, triggered by a version tag or manually with an existing tag.
 
 ## Changes and commits
 
@@ -41,10 +36,10 @@ For changes to development/release isolation, build both native channels with `b
 - Discuss substantial features in an issue before implementation. Explain the architecture and its alternative.
 - Describe bugs with a reproducible case, the expected behavior, and the affected version.
 - Use Conventional Commits, enforced by commitlint, and update [CHANGELOG.md](CHANGELOG.md) under Unreleased.
-- Keep shared types in `apps/tofu/src/types.ts`, avoid default function parameters, and retain unknown statistics as `null` in the API and `—` in the interface.
+- Keep shared data contracts in `package/plugins` and domain types beside their owning service, avoid default function parameters, and retain unknown statistics as `null` in the API and `—` in the interface.
 - Pause, resume, tracker changes, and folder changes must preserve downloaded data. File deletion requires an explicit user choice.
-- Changes to WebTorrent 3.0.21 require rerunning tracker, wire, transfer, and lifecycle tests.
+- Changes to WebTorrent 3.0.21 require rerunning the torrent, library, and lifecycle scenarios.
 - Do not commit tokens, certificates, user databases, or downloaded files. Keep logs and reproductions free of personal data.
 - AI-assisted contributions require human review and supervision. Do not copy unattributed code. Be respectful.
 
-The [release workflow](.github/workflows/release.yml) validates versions, builds installers, and applies optional Apple signing. Vulnerabilities should follow [SECURITY.md](SECURITY.md).
+The [release workflow](.github/workflows/release.yml) defines release steps and optional Apple signing secrets. Vulnerabilities should follow [SECURITY.md](SECURITY.md).

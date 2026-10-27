@@ -1,19 +1,22 @@
-type Action = (task: () => Promise<unknown>) => void;
-
 import { useMutation } from "@teyik0/furin/client";
+import type { LinkedAvailability } from "@tofu/plugins/availability";
 import { usePluginHost } from "@tofu/plugins/client";
-import type { AniListEntry, AniListMedia, DashboardState, FeedRelease } from "@tofu/plugins/domain";
-import { Badge } from "@tofu/ui/badge";
-import { Button } from "@tofu/ui/button";
-import { Checkbox } from "@tofu/ui/checkbox";
-import { Field, FieldLabel } from "@tofu/ui/field";
-import { bytes } from "@tofu/ui/format";
-import { OptionSelect } from "@tofu/ui/option-select";
-import { Skeleton } from "@tofu/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@tofu/ui/tooltip";
-import { DownloadIcon } from "lucide-react";
+import type { LiveState } from "@tofu/plugins/library-state";
+import { DownloadIcon, PlayIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
-import { api, coreClient } from "../client-api";
+import type { EpisodeSource } from "../../../plugins/src/availability";
+import type { FeedRelease } from "../../../plugins/src/discovery-model";
+import { bytes } from "../../../ui/src/format";
+import { OptionSelect } from "../../../ui/src/option-select";
+import { Badge } from "../../../ui/src/ui/badge";
+import { Button } from "../../../ui/src/ui/button";
+import { Checkbox } from "../../../ui/src/ui/checkbox";
+import { Field, FieldLabel } from "../../../ui/src/ui/field";
+import { Skeleton } from "../../../ui/src/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../../ui/src/ui/tooltip";
+import type { AsyncAction as Action } from "../../../ui/src/use-async-action";
+import { api } from "../client-api";
+import type { AniListEntry, AniListMedia } from "../server/types";
 
 type ReleaseStatus = "searching" | "ready" | "failed";
 
@@ -23,9 +26,11 @@ interface EpisodeRowProps {
   destinationId: string;
   entry: AniListMedia | AniListEntry;
   episode: number | null;
+  localSources?: EpisodeSource[];
   releaseStatus: ReleaseStatus;
   releases: FeedRelease[];
-  torrents: DashboardState["torrents"];
+  remote: LinkedAvailability;
+  torrents: LiveState["torrents"];
 }
 
 export function EpisodeRow({
@@ -37,9 +42,12 @@ export function EpisodeRow({
   busy,
   releaseStatus,
   action,
+  remote,
+  localSources,
 }: EpisodeRowProps) {
-  const { refresh, playSound } = usePluginHost();
-  const addRelease = useMutation(coreClient.discover.add.post);
+  const { refresh, playSound: playSoundCue } = usePluginHost();
+  const { openSearch } = usePluginHost();
+  const addRelease = useMutation(api.discover.add.post);
   const completeEpisode = useMutation((episodeNumber: number, isCompleted: boolean) =>
     api.anilist
       .entries({ mediaId: entry.mediaId })
@@ -52,7 +60,26 @@ export function EpisodeRow({
     releases.find((item) => `${item.sourceId}:${item.id}` === chosen) ??
     releases.find((item) => item.infoHash !== null && torrentIds.has(item.infoHash)) ??
     releases[0];
-  const torrent = torrents.find((item) => item.id === release?.infoHash);
+  const local = localSources?.find(
+    (source) => source.episode === episode && torrents.some((item) => item.id === source.torrentId)
+  );
+  const torrent = torrents.find((item) => item.id === (local?.torrentId ?? release?.infoHash));
+  const downloaded =
+    torrent &&
+    !torrent.storageIssue &&
+    torrent.status !== "error" &&
+    torrent.status !== "checking" &&
+    (local?.progress === 1 || torrent.progress === 1);
+  const remoteMatches = remote.flatMap((item) =>
+    item.sources
+      .filter((source) => source.episode === episode)
+      .map((source) => ({ ...source, connectionState: item.state, link: item.link }))
+  );
+  const sources = remoteMatches.filter(
+    (source) =>
+      source.connectionState === "available" &&
+      (source.status === "playable" || source.status === "downloading")
+  );
   const listed = "progress" in entry;
   const completed = listed && episode !== null && entry.completedEpisodes.includes(episode);
   const label =
@@ -64,11 +91,33 @@ export function EpisodeRow({
       </div>
       <div className="anime-episode-info">
         <strong>{label}</strong>
-        <EpisodeStatus
-          releaseCount={releases.length}
-          releaseStatus={releaseStatus}
-          torrent={torrent}
-        />
+        {sources.length ? (
+          <span>
+            Available on{" "}
+            {sources
+              .map((source) => source.link.name)
+              .filter((name, index, all) => all.indexOf(name) === index)
+              .join(", ")}
+          </span>
+        ) : null}
+        {remoteMatches.length > 0 && sources.length === 0 ? (
+          <span>
+            {remoteMatches
+              .map(
+                (source) =>
+                  `${source.link.name}: ${source.connectionState === "offline" ? "offline (last known file)" : source.status}`
+              )
+              .join(", ")}
+          </span>
+        ) : null}
+        {torrent || remoteMatches.length === 0 ? (
+          <EpisodeStatus
+            downloaded={Boolean(downloaded)}
+            releaseCount={releases.length}
+            releaseStatus={releaseStatus}
+            torrent={torrent}
+          />
+        ) : null}
         {release ? (
           <Tooltip>
             <TooltipTrigger className="anime-release-name" render={<span />} tabIndex={0}>
@@ -86,10 +135,31 @@ export function EpisodeRow({
           setChosen={setChosen}
         />
         <div className="anime-episode-actions">
+          {sources.map((source) => (
+            <Button
+              aria-label={`Watch ${source.fileName} on ${source.link.name}`}
+              key={`${source.link.id}:${source.torrentId}:${source.fileIndex}`}
+              onClick={() => {
+                const query = new URLSearchParams({
+                  episode: String(episode),
+                  file: String(source.fileIndex),
+                  link: source.link.id,
+                  media: String(entry.mediaId),
+                  torrent: source.torrentId,
+                });
+                window.location.assign(`/player/remote?${query}`);
+              }}
+              size="sm"
+              title={`${source.fileName} · ${source.resolution ?? "Unknown quality"} · ${source.match === "title" ? "Matched by title" : "Exact release"}`}
+              variant="secondary"
+            >
+              <PlayIcon data-icon="inline-start" />
+              Watch on {source.link.name}
+              {sources.length > 1 && source.resolution ? ` · ${source.resolution}` : ""}
+            </Button>
+          ))}
           {torrent ? (
-            <Badge variant="secondary">
-              {torrent.progress === 1 ? "Downloaded" : torrent.status}
-            </Badge>
+            <Badge variant="secondary">{downloaded ? "Downloaded" : torrent.status}</Badge>
           ) : release ? (
             <Button
               disabled={busy || !destinationId}
@@ -101,7 +171,7 @@ export function EpisodeRow({
                     paused: false,
                     sourceId: release.sourceId,
                   });
-                  playSound?.("added");
+                  playSoundCue("added");
                   await refresh();
                 })
               }
@@ -109,6 +179,22 @@ export function EpisodeRow({
             >
               <DownloadIcon data-icon="inline-start" />
               Download
+            </Button>
+          ) : null}
+          {!(release || torrent) && sources.length === 0 && releaseStatus !== "searching" ? (
+            <Button
+              aria-label={`Search manually for ${entry.title}, ${label.toLowerCase()}`}
+              onClick={() =>
+                openSearch({
+                  destinationId,
+                  query: `${entry.title}${episode === null ? "" : ` ${String(episode).padStart(2, "0")}`}`,
+                })
+              }
+              size="sm"
+              variant="outline"
+            >
+              <SearchIcon data-icon="inline-start" />
+              Search manually
             </Button>
           ) : null}
           {episode === null ? null : (
@@ -170,11 +256,13 @@ function EpisodeReleasePicker({
 }
 
 function EpisodeStatus({
+  downloaded,
   torrent,
   releaseCount,
   releaseStatus,
 }: {
-  torrent: DashboardState["torrents"][number] | undefined;
+  downloaded: boolean;
+  torrent: LiveState["torrents"][number] | undefined;
   releaseCount: number;
   releaseStatus: ReleaseStatus;
 }) {
@@ -184,7 +272,7 @@ function EpisodeStatus({
   let text = "No release found";
   if (torrent) {
     const progress = torrent.progress === null ? "—" : `${(torrent.progress * 100).toFixed(1)}%`;
-    text = torrent.progress === 1 ? "Downloaded" : `${torrent.status} · ${progress}`;
+    text = downloaded ? "Downloaded" : `${torrent.status} · ${progress}`;
   } else if (releaseCount) {
     text = `${releaseCount} release${releaseCount === 1 ? "" : "s"} available`;
   } else if (releaseStatus === "failed") {

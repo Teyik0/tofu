@@ -26,7 +26,16 @@
     "./source-queries": "./src/source-queries.ts",
     "./releases": "./src/releases.ts",
     "./discovery-query": "./src/discovery-query.ts",
-    "./jev-questions": "./src/jev-questions.ts"
+    "./discovery-model": "./src/discovery-model.ts",
+    "./torrent-types": "./src/torrent-types.ts",
+    "./settings-model": "./src/settings-model.ts",
+    "./anime-mapping": "./src/anime-mapping.ts",
+    "./feeds": "./src/feeds.ts",
+    "./availability": "./src/availability.ts",
+    "./torrent-capabilities": "./src/torrent-capabilities.ts",
+    "./automation-persistence": "./src/automation-persistence.ts",
+    "./discovery-persistence": "./src/discovery-persistence.ts",
+    "./library-state": "./src/library-state.ts"
   },
   "scripts": {
     "build": "bun build ./src/index.ts ./src/server.ts --target=bun --packages=external --outdir=dist && bun build ./src/client.ts --target=browser --packages=external --outdir=dist/client",
@@ -34,7 +43,9 @@
     "tscheck": "bun x tsc --noEmit"
   },
   "dependencies": {
+    "@elysia/eden": "catalog:",
     "@teyik0/furin": "catalog:",
+    "effect": "catalog:",
     "elysia": "catalog:",
     "evlog": "catalog:",
     "react": "catalog:",

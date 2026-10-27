@@ -1,122 +1,121 @@
-import { createClient } from "@teyik0/furin/client";
+import { treaty } from "@elysia/eden";
+import { furinSync } from "@teyik0/furin/client";
 import { bindAniListClients } from "@tofu/anilist/server-clients";
-import { extensionsPlugin } from "./extensions-api";
+import { extensionsPlugin, externalPluginRoutes } from "./extensions-api";
 import { pluginHost } from "./lib/extensions";
 import "@teyik0/furin/server-only";
+
 import { desktopApp } from "@teyik0/furin-electrobun/server";
+import { Context, Effect } from "effect";
 import { Elysia } from "elysia";
-import { currentInstanceConfig } from "./lib/instance";
-import { onReady, onShutdown } from "./lib/lifecycle";
-import { resources, runtime } from "./lib/runtime";
-import { desktopHooks, desktopRuntime } from "./modules/desktop/service";
+import { toMiddlewareOptions } from "evlog";
+import { evlog, useLogger } from "evlog/elysia";
+import { config } from "../../evlog.config";
+import { httpPolicyPlugin } from "./lib/http-policy";
+import { instance } from "./lib/instance";
+import { services, servicesRuntime } from "./lib/services-runtime";
+import { publicDocumentsPlugin } from "./modules/access/documents";
+import { accessRoutesPlugin } from "./modules/access/index";
+import { Access } from "./modules/access/layer";
+import { accessPlugin } from "./modules/access/plugin";
+import { anilistPlugin } from "./modules/anilist/index";
+import { anilistOpeningPlugin } from "./modules/anilist/opening";
+import { anilistServicePlugin } from "./modules/anilist/plugin";
+import { automationManagementPlugin } from "./modules/automation/management";
+import { releaseAutomationPlugin } from "./modules/automation/plugin";
+import { dashboardPlugin } from "./modules/dashboard/index";
+import { desktopPlugin } from "./modules/desktop/index";
+import { desktopNativeOpenPlugin } from "./modules/desktop/native-open";
+import { destinationsPlugin } from "./modules/destinations/index";
+import { storageRootsPlugin } from "./modules/destinations/storage";
+import { discoveryPlugin } from "./modules/discovery/index";
+import { discoveryServicePlugin } from "./modules/discovery/plugin";
+import { healthPlugin } from "./modules/health/index";
+import { libraryAvailabilityPlugin, linkedLibrariesPlugin } from "./modules/library-links/index";
+import { mediaLinksApiPlugin, mediaLinksPlugin } from "./modules/media-links/index";
+import { playbackPlugin } from "./modules/playback/index";
+import { playerPlugin } from "./modules/player/index";
+import { pluginsPlugin } from "./modules/plugins/index";
+import { pluginRegistryPlugin } from "./modules/plugins/plugin";
+import { settingsPlugin } from "./modules/settings/index";
+import { torrentPlugin } from "./modules/torrents/index";
+import { torrentServicePlugin, torrents } from "./modules/torrents/plugin";
+import { updatesPlugin } from "./modules/updates/index";
 
-const routeModules = [
-  import("./modules/anilist"),
-  import("./modules/automation/management"),
-  import("./modules/dashboard/index"),
-  import("./modules/desktop/index"),
-  import("./modules/destinations/index"),
-  import("./modules/discovery/index"),
-  import("./modules/health/index"),
-  import("./modules/jev/index"),
-  import("./modules/plugins/index"),
-  import("./modules/settings/index"),
-  import("./modules/torrents/index"),
-  import("./modules/torrents/plugin"),
-  import("./modules/updates/index"),
-  import("./lib/database-plugin"),
-  import("./modules/updates/plugin"),
-] as const;
+await Effect.runPromise(
+  Effect.tryPromise(() => pluginHost.initialize()).pipe(
+    Effect.onError(() =>
+      Effect.promise(async () => {
+        await using resources = new AsyncDisposableStack();
+        resources.defer(() => servicesRuntime.dispose());
+        resources.defer(() => pluginHost.close());
+      })
+    )
+  )
+);
 
-const [
-  { anilistPlugin },
-  { automationManagementPlugin },
-  { dashboardPlugin },
-  { desktopPlugin },
-  { destinationsPlugin },
-  { discoveryPlugin },
-  { healthPlugin },
-  { jevManagementPlugin },
-  { pluginsPlugin },
-  { settingsPlugin },
-  { torrentPlugin },
-  { engine, torrentServicePlugin },
-  { updatesPlugin },
-  { instance },
-  { updates },
-] = await Promise.all(routeModules).catch(async (error: unknown) => {
-  await Promise.allSettled(routeModules);
-  try {
-    await resources.disposeAsync();
-  } catch (cleanupError) {
-    // biome-ignore lint/style/useErrorCause: The cause is an AggregateError containing both failures.
-    throw new Error("Application startup and cleanup failed", {
-      cause: new AggregateError([error, cleanupError], "Startup and cleanup errors"),
-    });
-  }
-  throw error;
-});
+const { access } = Context.get(services, Access);
 
-export const apiPlugin = new Elysia({
-  name: "tofu-api",
-  serve: { maxRequestBodySize: 9 * 1024 * 1024 },
-})
+export const apiPlugin = new Elysia({ name: "tofu-api" })
   .use(
     desktopApp({
-      ...desktopHooks,
-      onReady,
-      onShutdown,
-      onStartup(context) {
-        context.signal.throwIfAborted();
-        if (context.runtime.kind === "desktop") {
-          const configured = currentInstanceConfig(context.runtime);
-          if (configured.dataDir !== instance.dataDir || configured.profile !== instance.profile) {
-            throw new Error(
-              "The native host and Tofu must use the same instance profile and data directory"
-            );
-          }
-        }
-        runtime.current = context.runtime;
-        desktopRuntime.engine = engine;
-        if (context.runtime.kind === "desktop" && instance.profile === "release") {
-          const { desktop } = context.runtime;
-          updates.attachNative(desktop.updates, (latest) => {
-            desktop.notifications.show({
-              body: `Open ${instance.name} to update to the new version.`,
-              title: `${instance.name} : Tofu ${latest} is available`,
-            });
-          });
-        }
-        context.signal.throwIfAborted();
-      },
-      restrictWebToLoopback: true,
+      admission: access.admit.bind(access),
+      background: () => torrents.settings().runInBackground === true,
+      window: { frame: { height: 940, width: 1400 }, renderer: "native", title: instance.name },
     })
   )
+  .use(evlog(toMiddlewareOptions(config)))
+  .use(anilistServicePlugin)
+  .use(releaseAutomationPlugin)
+  .use(discoveryServicePlugin)
+  .use(pluginRegistryPlugin)
+  .use(torrentServicePlugin)
+  .use(desktopNativeOpenPlugin)
+  .use(accessPlugin)
+  .use(publicDocumentsPlugin)
+  .use(mediaLinksPlugin)
+  .use(httpPolicyPlugin)
+  .onStop(async () => {
+    await using resources = new AsyncDisposableStack();
+    resources.defer(() => servicesRuntime.dispose());
+    resources.defer(() => pluginHost.close());
+  })
   .group("/api", (app) =>
     app
-      .use(torrentServicePlugin)
+      .derive(() => ({ log: useLogger() }))
+      .onBeforeHandle(({ log }) => {
+        log.set({
+          component: "api",
+          dataDir: instance.dataDir,
+          operation: "request",
+        });
+      })
+      .use(extensionsPlugin)
+      .use(externalPluginRoutes)
+      .use(accessRoutesPlugin)
+      .use(mediaLinksApiPlugin)
+      .use(libraryAvailabilityPlugin)
+      .use(linkedLibrariesPlugin)
+      .use(playbackPlugin)
       .use(healthPlugin)
       .use(settingsPlugin)
       .use(dashboardPlugin)
       .use(torrentPlugin)
       .use(destinationsPlugin)
+      .use(storageRootsPlugin)
       .use(anilistPlugin)
-      .use(extensionsPlugin)
+      .use(anilistOpeningPlugin)
       .use(automationManagementPlugin)
       .use(discoveryPlugin)
       .use(pluginsPlugin)
-      .use(jevManagementPlugin)
+      .use(playerPlugin)
       .use(desktopPlugin)
       .use(updatesPlugin)
-      .guard({ sync: false }, (routes) =>
-        routes.mount("/plugins", (request) => {
-          const url = new URL(request.url);
-          url.pathname = `/api/plugins${url.pathname === "/" ? "" : url.pathname}`;
-          return pluginHost.handle(new Request(url, request));
-        })
-      )
   );
 
 export type Api = typeof apiPlugin;
 
-bindAniListClients({ api: createClient(apiPlugin).api, coreClient: createClient(apiPlugin).api });
+bindAniListClients({
+  api: treaty(apiPlugin).use(furinSync).api,
+  coreClient: treaty(apiPlugin).use(furinSync).api,
+});

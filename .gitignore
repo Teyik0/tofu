@@ -19,6 +19,13 @@ furin-env.d.ts
 .env
 .env.*
 !.env.example
+/tofu-dev.sqlite
+/tofu-dev.sqlite-shm
+/tofu-dev.sqlite-wal
 *.p12
 *.p8
 *.keychain-db
+
+/apps/tofu/tofu-dev.sqlite
+/apps/tofu/tofu-dev.sqlite-shm
+/apps/tofu/tofu-dev.sqlite-wal

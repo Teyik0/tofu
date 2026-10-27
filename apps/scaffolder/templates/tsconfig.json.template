@@ -6,5 +6,5 @@
     "noEmit": true, "allowImportingTsExtensions": true, "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true, "noUnusedLocals": true, "noUnusedParameters": true
   },
-  "include": ["src", "dev", "tests"]
+  "include": ["src", "dev", "tests", "furin-env.d.ts"]
 }

@@ -1,6 +1,4 @@
-import { draft, listStatus, organization, preferences } from "@tofu/plugins/automation-model";
-import { updateDestinationSchema } from "@tofu/plugins/destination-model";
-import { integerInput, numericInput } from "@tofu/plugins/validation";
+import type { InferOutput } from "valibot";
 import {
   array,
   boolean,
@@ -13,6 +11,7 @@ import {
   minLength,
   minValue,
   nullable,
+  number,
   object,
   optional,
   partialCheck,
@@ -20,12 +19,23 @@ import {
   pipe,
   string,
 } from "valibot";
+import {
+  draft,
+  listStatus,
+  organization,
+  preferences,
+} from "../../../plugins/src/automation-model";
+import { updateDestinationSchema } from "../../../plugins/src/destination-model";
+import { integerInput, numericInput } from "../../../plugins/src/validation";
 
 export const mediaParamsSchema = object({
   mediaId: pipe(numericInput, integer(), minValue(1)),
 });
 
-export const episodeCompletionSchema = object({ completed: boolean() });
+export const episodeCompletionSchema = object({
+  accountId: optional(pipe(number(), integer(), minValue(1))),
+  completed: boolean(),
+});
 
 export const episodeParamsSchema = object({
   episode: pipe(numericInput, integer(), minValue(1), maxValue(10_000)),
@@ -153,3 +163,23 @@ export const aniListEntrySchema = pipe(
   }),
   check((body) => Object.keys(body).length > 0, "Choose a field to update")
 );
+
+export type AniListDate = InferOutput<typeof aniListDateSchema>;
+
+export type AniListListUpdate = InferOutput<typeof aniListEntrySchema>;
+
+export type AniListOrganization = InferOutput<typeof organization>;
+
+export type AniListThreadProposal = Extract<
+  AniListOrganization,
+  { mode: "per-anime" }
+>["overrides"][number];
+
+export const notificationCategories = ["all", "airing", "media"] as const;
+
+export const notificationsSchema = object({
+  category: optional(picklist(notificationCategories), "all"),
+  page: optional(pipe(numericInput, integer(), minValue(1), maxValue(166)), 1),
+});
+
+export type NotificationFilters = InferOutput<typeof notificationsSchema>;
