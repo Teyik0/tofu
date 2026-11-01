@@ -62,7 +62,7 @@
     "@graphql-codegen/schema-ast": "6.1.1",
     "@graphql-codegen/typescript-generic-sdk": "5.0.1",
     "@graphql-codegen/typescript-operations": "6.1.10",
-    "@types/bun": "1.4.3",
+    "@types/bun": "1.4.4",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@types/webtorrent": "3.0.0",
