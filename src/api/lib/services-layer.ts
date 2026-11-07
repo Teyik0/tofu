@@ -13,6 +13,7 @@ import { playbackLayer } from "../modules/playback/service";
 import { pluginsLayer } from "../modules/plugins/service";
 import { TorrentFolderEngine, torrentFoldersLayer } from "../modules/torrents/folders";
 import { TorrentClient, torrentClientLayer } from "../modules/torrents/layer";
+import { transmissionLayer } from "../modules/transmission/service";
 import { updatesLayer } from "../modules/updates/service";
 import { databaseLayer as rawDatabaseLayer } from "./db";
 import { instanceLayer } from "./instance-layer";
@@ -43,5 +44,6 @@ export const servicesLayer = Layer.mergeAll(
     Layer.provide(Layer.effect(TorrentFolderEngine, TorrentClient)),
     Layer.provideMerge(torrents)
   ),
-  stateJournalsLayer.pipe(Layer.provide(torrents))
+  stateJournalsLayer.pipe(Layer.provide(torrents)),
+  transmissionLayer.pipe(Layer.provideMerge(databaseLayer))
 ).pipe(Layer.provide(FetchHttpClient.layer));

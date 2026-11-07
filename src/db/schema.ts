@@ -193,6 +193,22 @@ export const linkedServers = sqliteTable("linked_servers", {
   state: text().$type<"active" | "revoked" | "identity-changed">().notNull(),
 });
 
+/**
+ * Transmission RPC daemons controlled from this server. Credentials are host integration secrets,
+ * like provider tokens: stored only in this data directory.
+ */
+export const transmissionServers = sqliteTable("transmission_servers", {
+  createdAt: integer().notNull(),
+  enabled: integer({ mode: "boolean" }).notNull().default(true),
+  id: text().primaryKey(),
+  name: text().notNull(),
+  origin: text().notNull(),
+  password: text(),
+  rpcPath: text().notNull().default("/transmission/rpc"),
+  updatedAt: integer().notNull(),
+  username: text(),
+});
+
 /** Durable receipts for torrent worker side effects, reconciled at startup. */
 export const operationReceipts = sqliteTable("operation_receipts", {
   completedAt: integer(),
@@ -226,4 +242,5 @@ export const schema = {
   torrentConfig,
   torrentDestinations,
   torrentRecords,
+  transmissionServers,
 };
