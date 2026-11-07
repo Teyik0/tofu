@@ -17,7 +17,7 @@ import {
 } from "valibot";
 
 const httpOrigin = /^https?:\/\/[^\s/]+(?:\/[^\s]*)?$/;
-const absolutePath = /^\//;
+const absolutePath = /^\/(?![/\\])/;
 
 export const transmissionServerSchema = object({
   enabled: optional(boolean()),
@@ -36,10 +36,6 @@ export const transmissionServerSchema = object({
     check((value) => absolutePath.test(value), "The RPC path must start with /")
   ),
   username: optional(nullable(pipe(string(), maxLength(512)))),
-});
-
-export const transmissionTorrentIdsSchema = object({
-  ids: pipe(array(pipe(number(), integer(), minValue(0))), minLength(1), maxLength(500)),
 });
 
 export const transmissionActionSchema = object({
@@ -125,7 +121,7 @@ export interface TransmissionTorrent {
   queuePosition: number;
   rateDownload: number;
   rateUpload: number;
-  ratio: number | null;
+  ratio: number | "infinite" | null;
   sizeWhenDone: number;
   state: TransmissionTorrentState;
   status: number;

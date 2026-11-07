@@ -116,6 +116,20 @@ function torrent(id: number, status: number) {
   };
 }
 
+function applyFileSelection(item: Record<string, unknown>, wanted: number[], unwanted: number[]) {
+  const stats = item.fileStats as { wanted: boolean }[];
+  for (const index of wanted) {
+    if (stats[index]) {
+      stats[index].wanted = true;
+    }
+  }
+  for (const index of unwanted) {
+    if (stats[index]) {
+      stats[index].wanted = false;
+    }
+  }
+}
+
 function selectedIds(args: Record<string, unknown>) {
   return Array.isArray(args.ids) ? (args.ids as number[]) : [];
 }
@@ -129,9 +143,12 @@ export function transmissionServer(options?: FixtureOptions): TransmissionFixtur
   const sessionId = crypto.randomUUID();
   let nextId = 2;
   const expected =
-    options?.username === undefined
+    options?.username === undefined && options?.password === undefined
       ? null
-      : `Basic ${Buffer.from(`${options.username}:${options.password ?? ""}`, "utf8").toString("base64")}`;
+      : `Basic ${Buffer.from(
+          `${options?.username ?? ""}:${options?.password ?? ""}`,
+          "utf8"
+        ).toString("base64")}`;
 
   function setStatus(args: Record<string, unknown>, status: number) {
     const ids = selectedIds(args);
@@ -189,8 +206,16 @@ export function transmissionServer(options?: FixtureOptions): TransmissionFixtur
     "torrent-reannounce": () => ({}),
     "torrent-remove": remove,
     "torrent-set": (args) => {
-      files.wanted.push(args["files-wanted"] as number[]);
-      files.unwanted.push(args["files-unwanted"] as number[]);
+      const wanted = (args["files-wanted"] as number[] | undefined) ?? [];
+      const unwanted = (args["files-unwanted"] as number[] | undefined) ?? [];
+      files.wanted.push(wanted);
+      files.unwanted.push(unwanted);
+      const ids = selectedIds(args);
+      for (const item of torrents) {
+        if (ids.includes(item.id as number)) {
+          applyFileSelection(item, wanted, unwanted);
+        }
+      }
       return {};
     },
     "torrent-start": (args) => setStatus(args, 4),

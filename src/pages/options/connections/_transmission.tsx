@@ -262,83 +262,93 @@ function ServerDialog({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="transmission-name">Name</FieldLabel>
-            <Input
-              id="transmission-name"
-              onChange={(event) => setName(event.target.value)}
-              value={name}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="transmission-origin">Origin</FieldLabel>
-            <Input
-              id="transmission-origin"
-              onChange={(event) => setOrigin(event.target.value)}
-              placeholder="http://192.0.2.10:9091"
-              value={origin}
-            />
-            <FieldDescription>Scheme, host and port, without the RPC path.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="transmission-rpc-path">RPC path</FieldLabel>
-            <Input
-              id="transmission-rpc-path"
-              onChange={(event) => setRpcPath(event.target.value)}
-              placeholder="/transmission/rpc"
-              value={rpcPath}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="transmission-username">Username (optional)</FieldLabel>
-            <Input
-              autoComplete="username"
-              id="transmission-username"
-              onChange={(event) => setUsername(event.target.value)}
-              value={username}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="transmission-password">Password (optional)</FieldLabel>
-            <Input
-              autoComplete="current-password"
-              disabled={clearPassword}
-              id="transmission-password"
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder={server?.hasPassword ? "Leave blank to keep the stored password" : ""}
-              type="password"
-              value={password}
-            />
-          </Field>
-          {server?.hasPassword ? (
-            <Field orientation="horizontal">
-              <Switch
-                checked={clearPassword}
-                onCheckedChange={(value) => {
-                  setClearPassword(value);
-                  if (value) {
-                    setPassword("");
-                  }
-                }}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="transmission-name">Name</FieldLabel>
+              <Input
+                id="transmission-name"
+                onChange={(event) => setName(event.target.value)}
+                value={name}
               />
-              <FieldLabel>Clear the stored password</FieldLabel>
             </Field>
-          ) : null}
-          <Field orientation="horizontal">
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
-            <FieldLabel>Enabled</FieldLabel>
-          </Field>
-        </FieldGroup>
-        <DialogFooter>
-          <Button disabled={busy} onClick={close} type="button" variant="ghost">
-            Cancel
-          </Button>
-          <Button disabled={busy} onClick={() => void submit()} type="button">
-            {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : null}
-            {busy ? "Saving…" : "Save server"}
-          </Button>
-        </DialogFooter>
+            <Field>
+              <FieldLabel htmlFor="transmission-origin">Origin</FieldLabel>
+              <Input
+                id="transmission-origin"
+                onChange={(event) => setOrigin(event.target.value)}
+                placeholder="http://192.0.2.10:9091"
+                value={origin}
+              />
+              <FieldDescription>Scheme, host and port, without the RPC path.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="transmission-rpc-path">RPC path</FieldLabel>
+              <Input
+                id="transmission-rpc-path"
+                onChange={(event) => setRpcPath(event.target.value)}
+                placeholder="/transmission/rpc"
+                value={rpcPath}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="transmission-username">Username (optional)</FieldLabel>
+              <Input
+                autoComplete="username"
+                id="transmission-username"
+                onChange={(event) => setUsername(event.target.value)}
+                value={username}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="transmission-password">Password (optional)</FieldLabel>
+              <Input
+                autoComplete="current-password"
+                disabled={clearPassword}
+                id="transmission-password"
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={server?.hasPassword ? "Leave blank to keep the stored password" : ""}
+                type="password"
+                value={password}
+              />
+            </Field>
+            {server?.hasPassword ? (
+              <Field orientation="horizontal">
+                <Switch
+                  checked={clearPassword}
+                  id="transmission-clear-password"
+                  onCheckedChange={(value) => {
+                    setClearPassword(value);
+                    if (value) {
+                      setPassword("");
+                    }
+                  }}
+                />
+                <FieldLabel htmlFor="transmission-clear-password">
+                  Clear the stored password
+                </FieldLabel>
+              </Field>
+            ) : null}
+            <Field orientation="horizontal">
+              <Switch checked={enabled} id="transmission-enabled" onCheckedChange={setEnabled} />
+              <FieldLabel htmlFor="transmission-enabled">Enabled</FieldLabel>
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button disabled={busy} onClick={close} type="button" variant="ghost">
+              Cancel
+            </Button>
+            <Button disabled={busy} type="submit">
+              {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : null}
+              {busy ? "Saving…" : "Save server"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

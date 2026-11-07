@@ -17,7 +17,7 @@ Built with **Bun · React · Furin · Electrobun · WebTorrent**, using **shadcn
 - **Search everywhere** — press `Cmd+K` (or `Ctrl+K`) to find torrents across all threads, search enabled sources, and review releases before downloading into a chosen thread.
 - **Stay in control** — pause, resume, set file priorities, manage trackers, and verify downloads.
 - **Follow new releases** — search Nyaa, Tsundere-Raws, and C411; automate downloads with optional AniList integration.
-- **Drive a Transmission daemon** — connect a `transmission-daemon` RPC endpoint and manage its torrents from the dedicated Transmission page: add, pause, resume, remove, choose files, and set speed limits.
+- **Drive a Transmission daemon** — connect a `transmission-daemon` RPC endpoint (configured by administrators) and manage its torrents from the dedicated Transmission page: add, pause, resume, remove, choose files, request more peers, and inspect files, trackers and peers. Session-wide limits stay restricted to administrators.
 - **Pick up where you left off** — downloads and settings survive restarts; background mode keeps transfers running.
 
 Files stay on disk unless you explicitly choose to delete them. Unavailable stats appear as `—`.

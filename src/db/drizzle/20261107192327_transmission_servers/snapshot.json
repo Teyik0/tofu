@@ -1260,7 +1260,7 @@
       "table": "transmission_servers",
       "name": "id",
       "type": "text",
-      "notNull": false,
+      "notNull": true,
       "autoincrement": false,
       "default": null,
       "generated": null,

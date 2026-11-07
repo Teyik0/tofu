@@ -82,6 +82,22 @@ test("a Transmission server is configured, read, and controlled through RPC", as
   );
   expect(transmission.files.wanted).toEqual([[0]]);
   expect(transmission.files.unwanted).toEqual([[1]]);
+  const afterSelection = success(
+    await client.transmission.servers({ id: created.id }).torrents({ torrentId: "1" }).get()
+  );
+  expect(afterSelection.files.map((file) => file.wanted)).toEqual([true, false]);
+
+  const missing = await client.transmission
+    .servers({ id: created.id })
+    .torrents({ torrentId: "999" })
+    .files.put({ wanted: [0] });
+  expect(missing.error?.status).toBe(404);
+
+  const invalidId = await client.transmission
+    .servers({ id: created.id })
+    .torrents({ torrentId: "0x1" })
+    .get();
+  expect(invalidId.error?.status).toBe(400);
 
   const detail = success(
     await client.transmission.servers({ id: created.id }).torrents({ torrentId: "1" }).get()
@@ -121,6 +137,14 @@ test("Transmission credentials reach the daemon and rejections surface as 401", 
   await using app = await application();
   const { client } = await app.start();
 
+  const withoutUsername = await client.transmission.servers.post({
+    name: "Remote daemon",
+    origin: transmission.url,
+    password: "secret",
+    rpcPath: "/transmission/rpc",
+  });
+  expect(withoutUsername.error?.status).toBe(400);
+
   const created = success(
     await client.transmission.servers.post({
       name: "Remote daemon",
@@ -130,6 +154,8 @@ test("Transmission credentials reach the daemon and rejections surface as 401", 
       username: "tofu",
     })
   );
+  expect(created.hasPassword).toBe(true);
+  expect("password" in created).toBe(false);
   const denied = await client.transmission.servers({ id: created.id }).state.get();
   expect(denied.error?.status).toBe(401);
 

@@ -1,7 +1,7 @@
 CREATE TABLE `transmission_servers` (
 	`createdAt` integer NOT NULL,
 	`enabled` integer DEFAULT true NOT NULL,
-	`id` text PRIMARY KEY,
+	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`origin` text NOT NULL,
 	`password` text,

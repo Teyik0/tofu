@@ -32,11 +32,13 @@ import { errorMessage } from "../../lib/errors";
 
 export function AddTorrentDialog({
   close,
+  owner,
   refresh,
   serverId,
   session,
 }: {
   close: () => void;
+  owner: boolean;
   refresh: () => Promise<void>;
   serverId: string;
   session: TransmissionSession;
@@ -91,15 +93,19 @@ export function AddTorrentDialog({
               value={source}
             />
           </Field>
-          <Field>
-            <FieldLabel htmlFor="transmission-download-dir">Download folder (optional)</FieldLabel>
-            <Input
-              id="transmission-download-dir"
-              onChange={(event) => setDownloadDir(event.target.value)}
-              placeholder={session.downloadDir}
-              value={downloadDir}
-            />
-          </Field>
+          {owner ? (
+            <Field>
+              <FieldLabel htmlFor="transmission-download-dir">
+                Download folder (optional)
+              </FieldLabel>
+              <Input
+                id="transmission-download-dir"
+                onChange={(event) => setDownloadDir(event.target.value)}
+                placeholder={session.downloadDir}
+                value={downloadDir}
+              />
+            </Field>
+          ) : null}
           <Field orientation="horizontal">
             <Checkbox
               checked={paused}
@@ -124,8 +130,17 @@ export function AddTorrentDialog({
 }
 
 function numberValue(value: string, integer: boolean) {
-  const parsed = integer ? Number.parseInt(value, 10) : Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  if (value.trim() === "") {
+    return;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return;
+  }
+  if (integer && !Number.isInteger(parsed)) {
+    return;
+  }
+  return parsed;
 }
 
 export function LimitsDialog({
@@ -168,11 +183,15 @@ export function LimitsDialog({
       (downloadLimited && down === undefined) ||
       (uploadLimited && up === undefined) ||
       peers === undefined ||
+      peers < 1 ||
       perTorrent === undefined ||
+      perTorrent < 1 ||
       (seedRatioLimited && ratio === undefined) ||
       (idleSeedingLimitEnabled && idle === undefined)
     ) {
-      setError("Enter whole numbers; speed limits use kilobytes per second and idle minutes.");
+      setError(
+        "Enter whole numbers; peer limits start at 1, speeds use kilobytes per second and idle uses minutes."
+      );
       return;
     }
     setBusy(true);
@@ -353,11 +372,13 @@ export function LimitsDialog({
 }
 
 export function RemoveTorrentDialog({
+  canDeleteFiles,
   close,
   refresh,
   serverId,
   torrent,
 }: {
+  canDeleteFiles: boolean;
   close: () => void;
   refresh: () => Promise<void>;
   serverId: string;
@@ -370,7 +391,7 @@ export function RemoveTorrentDialog({
     setBusy(true);
     setError(null);
     const { error: failure } = await api.transmission.servers({ id: serverId }).torrents.delete({
-      deleteLocalData,
+      deleteLocalData: canDeleteFiles && deleteLocalData,
       ids: [torrent.id],
     });
     setBusy(false);
@@ -396,16 +417,18 @@ export function RemoveTorrentDialog({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        <Field orientation="horizontal">
-          <Checkbox
-            checked={deleteLocalData}
-            id="transmission-delete-data"
-            onCheckedChange={(value) => setDeleteLocalData(value === true)}
-          />
-          <FieldLabel htmlFor="transmission-delete-data">
-            Also delete the downloaded files on the Transmission host
-          </FieldLabel>
-        </Field>
+        {canDeleteFiles ? (
+          <Field orientation="horizontal">
+            <Checkbox
+              checked={deleteLocalData}
+              id="transmission-delete-data"
+              onCheckedChange={(value) => setDeleteLocalData(value === true)}
+            />
+            <FieldLabel htmlFor="transmission-delete-data">
+              Also delete the downloaded files on the Transmission host
+            </FieldLabel>
+          </Field>
+        ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
           <Button disabled={busy} onClick={() => void remove()} type="button" variant="destructive">

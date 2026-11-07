@@ -200,7 +200,7 @@ export const linkedServers = sqliteTable("linked_servers", {
 export const transmissionServers = sqliteTable("transmission_servers", {
   createdAt: integer().notNull(),
   enabled: integer({ mode: "boolean" }).notNull().default(true),
-  id: text().primaryKey(),
+  id: text().primaryKey().notNull(),
   name: text().notNull(),
   origin: text().notNull(),
   password: text(),

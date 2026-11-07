@@ -8,9 +8,9 @@ export interface TransmissionEndpoint {
 
 /** A failed RPC exchange, already mapped to the HTTP status returned to Tofu clients. */
 export class TransmissionRpcError extends Error {
-  readonly status: 401 | 502;
+  readonly status: 401 | 403 | 409 | 502;
 
-  constructor(status: 401 | 502, message: string) {
+  constructor(status: 401 | 403 | 409 | 502, message: string) {
     super(message);
     this.name = "TransmissionRpcError";
     this.status = status;
@@ -33,16 +33,22 @@ function authorization(endpoint: TransmissionEndpoint) {
   return `Basic ${Buffer.from(credentials, "utf8").toString("base64")}`;
 }
 
-function resultMessage(result: string | undefined) {
+function resultFailure(result: string | undefined) {
   if (result === "duplicate torrent") {
-    return "This torrent is already in Transmission";
+    return new TransmissionRpcError(409, "This torrent is already in Transmission");
   }
-  return result ?? "Transmission rejected the request";
+  return new TransmissionRpcError(502, result ?? "Transmission rejected the request");
 }
 
 function rejection(response: Response) {
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     return new TransmissionRpcError(401, "Transmission rejected these credentials");
+  }
+  if (response.status === 403) {
+    return new TransmissionRpcError(
+      403,
+      "Transmission refused this request; check its RPC whitelist"
+    );
   }
   if (!response.ok) {
     return new TransmissionRpcError(502, `Transmission answered HTTP ${response.status}`);
@@ -68,7 +74,7 @@ async function attempt<Arguments>(
     headers["x-transmission-session-id"] = session;
   }
   // Transmission answers the challenge with 409 and an HTML body; the id is in the headers.
-  const response = await fetch(new URL(endpoint.rpcPath, endpoint.origin).href, {
+  const response = await fetch(`${endpoint.origin}${endpoint.rpcPath}`, {
     body: JSON.stringify({ arguments: parameters ?? {}, method }),
     headers,
     method: "POST",
@@ -88,7 +94,7 @@ async function attempt<Arguments>(
   }
   const payload = (await response.json()) as { arguments?: Arguments; result?: string };
   if (payload.result !== "success") {
-    throw new TransmissionRpcError(502, resultMessage(payload.result));
+    throw resultFailure(payload.result);
   }
   return (payload.arguments ?? {}) as Arguments;
 }

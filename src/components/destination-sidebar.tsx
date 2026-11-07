@@ -260,7 +260,7 @@ export const DestinationSidebar = memo(
                   </ActionTooltip>
                 </SidebarMenuItem>
               ) : null}
-              {capabilities?.administer ? (
+              {capabilities?.manage ? (
                 <SidebarMenuItem>
                   <ActionTooltip>
                     <Link

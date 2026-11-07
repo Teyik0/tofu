@@ -16,12 +16,12 @@ export const route = defineRoute("/transmission")
         </main>
       );
     }
-    if (!session.capabilities.administer) {
+    if (!session.capabilities.manage) {
       return (
         <main className="p-6">
           <AccessRequired
-            description={`Transmission RPC servers are configured by the administrators of ${session.server.name}.`}
-            title="Administration access required"
+            description={`Transmission torrents on ${session.server.name} are managed by its managers.`}
+            title="Management access required"
           />
         </main>
       );

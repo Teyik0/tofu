@@ -1,4 +1,5 @@
 import { Link } from "@teyik0/furin/link";
+import { useAtomValue } from "jotai";
 import {
   ArrowDownToLineIcon,
   InfoIcon,
@@ -11,7 +12,7 @@ import {
   Trash2Icon,
   UploadIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { stateLabels } from "../../api/modules/transmission/mapping";
 import type {
   TransmissionServer,
@@ -28,6 +29,7 @@ import { Progress } from "../../components/ui/progress";
 import { Skeleton } from "../../components/ui/skeleton";
 import { api } from "../../lib/client";
 import { errorMessage } from "../../lib/errors";
+import { sessionAtom } from "../../state/workspace";
 import { TorrentDetailDialog } from "./_detail";
 import { AddTorrentDialog, LimitsDialog, RemoveTorrentDialog } from "./_dialogs";
 
@@ -40,50 +42,75 @@ type Dialog =
   | { kind: "detail"; torrent: TransmissionTorrent }
   | null;
 
+const ACTION_BATCH = 500;
+
+function actionBatches(ids: number[]) {
+  const batches: number[][] = [];
+  for (let index = 0; index < ids.length; index += ACTION_BATCH) {
+    batches.push(ids.slice(index, index + ACTION_BATCH));
+  }
+  return batches;
+}
+
 function useTransmissionWorkspace() {
+  const session = useAtomValue(sessionAtom);
   const [servers, setServers] = useState<TransmissionServer[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [state, setState] = useState<TransmissionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const request = useRef(0);
 
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
+  const loadServers = useCallback(async () => {
+    try {
       const { data, error: failure } = await api.transmission.servers.get();
-      if (!active) {
-        return;
-      }
       if (failure) {
         setError(errorMessage(failure, "Unable to read the Transmission servers"));
         return;
       }
+      setError(null);
       setServers(data);
       setSelected((current) => current ?? data[0]?.id ?? null);
-    };
-    void load();
-    return () => {
-      active = false;
-    };
+    } catch {
+      setError("The server could not be reached. Check the connection and try again.");
+    }
   }, []);
+
+  useEffect(() => {
+    void loadServers();
+  }, [loadServers]);
 
   const read = useCallback(async () => {
     if (!selected) {
       return;
     }
-    const { data, error: failure } = await api.transmission.servers({ id: selected }).state.get();
-    if (failure) {
-      setError(errorMessage(failure, "Unable to read this Transmission server"));
-      return;
+    const generation = request.current + 1;
+    request.current = generation;
+    try {
+      const { data, error: failure } = await api.transmission.servers({ id: selected }).state.get();
+      // A response that started before a server switch must not overwrite the new state.
+      if (generation !== request.current) {
+        return;
+      }
+      if (failure) {
+        setError(errorMessage(failure, "Unable to read this Transmission server"));
+        return;
+      }
+      setError(null);
+      setState(data);
+    } catch {
+      if (generation === request.current) {
+        setError("The server could not be reached. Check the connection and try again.");
+      }
     }
-    setError(null);
-    setState(data);
   }, [selected]);
 
   useEffect(() => {
+    // Invalidate in-flight reads and drop the previous server snapshot immediately.
+    request.current += 1;
+    setState(null);
     if (!selected) {
-      setState(null);
       return;
     }
     void read();
@@ -96,24 +123,37 @@ function useTransmissionWorkspace() {
       return;
     }
     setBusy(true);
-    const { error: failure } = await api.transmission.servers({ id: selected }).action.post({
-      action,
-      ids,
-    });
-    setBusy(false);
-    if (failure) {
-      setError(errorMessage(failure, "Unable to control these torrents"));
-      return;
+    try {
+      const results = await Promise.all(
+        actionBatches(ids).map((batch) =>
+          api.transmission.servers({ id: selected }).action.post({ action, ids: batch })
+        )
+      );
+      const failure = results.find((result) => result.error !== null)?.error;
+      if (failure) {
+        setError(errorMessage(failure, "Unable to control these torrents"));
+        return;
+      }
+      await read();
+    } catch {
+      setError("The server could not be reached. Check the connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    await read();
   };
 
   return {
     act,
     busy,
+    capabilities: {
+      administer: session?.capabilities.administer === true,
+      deleteFiles: session?.capabilities.deleteFiles === true,
+      owner: session?.capabilities.owner === true,
+    },
     dialog,
     error,
     read,
+    reload: loadServers,
     selected,
     servers,
     setDialog,
@@ -127,6 +167,9 @@ type Workspace = ReturnType<typeof useTransmissionWorkspace>;
 export function TransmissionWorkspace() {
   const workspace = useTransmissionWorkspace();
   if (workspace.servers === null) {
+    if (workspace.error !== null) {
+      return <WorkspaceFailure message={workspace.error} reload={workspace.reload} />;
+    }
     return <WorkspaceLoading />;
   }
   if (workspace.servers.length === 0) {
@@ -159,6 +202,21 @@ export function TransmissionWorkspace() {
         />
       </section>
       <WorkspaceDialogs workspace={workspace} />
+    </main>
+  );
+}
+
+function WorkspaceFailure({ message, reload }: { message: string; reload: () => Promise<void> }) {
+  return (
+    <main className="flex h-full flex-col gap-4 p-6">
+      <Alert variant="destructive">
+        <AlertDescription>{message}</AlertDescription>
+      </Alert>
+      <div>
+        <Button onClick={() => void reload()} type="button" variant="outline">
+          Try again
+        </Button>
+      </div>
     </main>
   );
 }
@@ -221,16 +279,18 @@ function WorkspaceHeader({ workspace }: { workspace: Workspace }) {
             value={workspace.selected}
           />
         ) : null}
-        <Button
-          disabled={workspace.busy || !state}
-          onClick={() => workspace.setDialog({ kind: "limits" })}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          <SlidersHorizontalIcon data-icon="inline-start" />
-          Limits
-        </Button>
+        {workspace.capabilities.administer ? (
+          <Button
+            disabled={workspace.busy || !state}
+            onClick={() => workspace.setDialog({ kind: "limits" })}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <SlidersHorizontalIcon data-icon="inline-start" />
+            Limits
+          </Button>
+        ) : null}
         <Button
           disabled={workspace.busy || !state}
           onClick={() => workspace.setDialog({ kind: "add" })}
@@ -389,6 +449,13 @@ function TorrentList({
   );
 }
 
+function ratioLabel(ratio: number | "infinite" | null) {
+  if (ratio === null) {
+    return "—";
+  }
+  return ratio === "infinite" ? "∞" : ratio.toFixed(2);
+}
+
 function TorrentRow({
   busy,
   torrent,
@@ -405,6 +472,7 @@ function TorrentRow({
   onRemove: () => void;
 }) {
   const stopped = torrent.state === "stopped";
+  const label = torrent.name || `Torrent ${torrent.id}`;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-start justify-between gap-4">
@@ -414,8 +482,7 @@ function TorrentRow({
             {stateLabels[torrent.state]} · {percent(torrent.progress)} ·{" "}
             {bytes(torrent.sizeWhenDone)} · {speed(torrent.rateDownload)} down ·{" "}
             {speed(torrent.rateUpload)} up · {torrent.peersConnected} peers · ETA{" "}
-            {duration(torrent.eta)} · ratio{" "}
-            {torrent.ratio === null ? "—" : torrent.ratio.toFixed(2)}
+            {duration(torrent.eta)} · ratio {ratioLabel(torrent.ratio)}
           </p>
           {torrent.errorString ? (
             <p className="text-destructive text-xs">{torrent.errorString}</p>
@@ -423,7 +490,7 @@ function TorrentRow({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Button
-            aria-label={stopped ? `Resume ${torrent.name}` : `Pause ${torrent.name}`}
+            aria-label={stopped ? `Resume ${label}` : `Pause ${label}`}
             disabled={busy}
             onClick={stopped ? onStart : onStop}
             size="icon-sm"
@@ -433,7 +500,7 @@ function TorrentRow({
             {stopped ? <PlayIcon className="size-3.5" /> : <PauseIcon className="size-3.5" />}
           </Button>
           <Button
-            aria-label={`Details for ${torrent.name}`}
+            aria-label={`Details for ${label}`}
             disabled={busy}
             onClick={onDetails}
             size="icon-sm"
@@ -443,7 +510,7 @@ function TorrentRow({
             <InfoIcon className="size-3.5" />
           </Button>
           <Button
-            aria-label={`Remove ${torrent.name}`}
+            aria-label={`Remove ${label}`}
             disabled={busy}
             onClick={onRemove}
             size="icon-sm"
@@ -454,10 +521,7 @@ function TorrentRow({
           </Button>
         </div>
       </div>
-      <Progress
-        aria-label={`${torrent.name} progress`}
-        value={Math.round(torrent.progress * 100)}
-      />
+      <Progress aria-label={`${label} progress`} value={Math.round(torrent.progress * 100)} />
     </div>
   );
 }
@@ -471,6 +535,7 @@ function WorkspaceDialogs({ workspace }: { workspace: Workspace }) {
     return (
       <AddTorrentDialog
         close={() => workspace.setDialog(null)}
+        owner={workspace.capabilities.owner}
         refresh={workspace.read}
         serverId={state.server.id}
         session={state.session}
@@ -499,6 +564,7 @@ function WorkspaceDialogs({ workspace }: { workspace: Workspace }) {
   }
   return (
     <RemoveTorrentDialog
+      canDeleteFiles={workspace.capabilities.deleteFiles}
       close={() => workspace.setDialog(null)}
       refresh={workspace.read}
       serverId={state.server.id}

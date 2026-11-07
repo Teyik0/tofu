@@ -53,8 +53,6 @@ export const TORRENT_DETAIL_FIELDS = [
   "trackers",
   "trackerStats",
   "peers",
-  "wanted",
-  "priorities",
   "secondsDownloading",
   "secondsSeeding",
   "seedRatioMode",
@@ -146,7 +144,6 @@ export interface RawTorrent {
   percentDone?: number;
   pieceCount?: number;
   pieceSize?: number;
-  priorities?: number[];
   queuePosition?: number;
   rateDownload?: number;
   rateUpload?: number;
@@ -165,7 +162,6 @@ export interface RawTorrent {
   uploadLimit?: number;
   uploadLimited?: boolean;
   uploadRatio?: number;
-  wanted?: number[];
 }
 
 export interface RawSession {
@@ -240,7 +236,7 @@ export function mapTorrent(raw: RawTorrent): TransmissionTorrent {
     queuePosition: zero(raw.queuePosition),
     rateDownload: zero(raw.rateDownload),
     rateUpload: zero(raw.rateUpload),
-    ratio: positive(raw.uploadRatio),
+    ratio: ratioValue(raw.uploadRatio),
     sizeWhenDone: zero(raw.sizeWhenDone),
     state: states[status] ?? "isolated",
     status,
@@ -288,6 +284,14 @@ function blank(value: string | undefined) {
 
 /** Transmission uses negative sentinels for "not available"; the API reports null instead. */
 function positive(value: number | undefined) {
+  return value === undefined || value < 0 ? null : value;
+}
+
+/** -2 means "no downloads, so the ratio is infinite"; -1 means "not available yet". */
+function ratioValue(value: number | undefined) {
+  if (value === -2) {
+    return "infinite" as const;
+  }
   return value === undefined || value < 0 ? null : value;
 }
 

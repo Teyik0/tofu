@@ -11,9 +11,14 @@ import {
 } from "./model";
 import { transmissionServicePlugin } from "./plugin";
 
+const DECIMAL_ID = /^\d+$/;
+
 function torrentId(value: string) {
+  if (!DECIMAL_ID.test(value)) {
+    return null;
+  }
   const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 /**
@@ -23,7 +28,7 @@ function torrentId(value: string) {
 export const transmissionPlugin = new Elysia({ name: "tofu-transmission-api" })
   .use(transmissionServicePlugin)
   .use(accessPlugin)
-  .get("/transmission/servers", { administration: true }, ({ transmission }) =>
+  .get("/transmission/servers", { management: true }, ({ transmission }) =>
     Effect.runPromise(transmission.servers())
   )
   .post(

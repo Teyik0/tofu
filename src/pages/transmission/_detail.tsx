@@ -192,11 +192,12 @@ function bandwidthLabel(priority: number) {
 }
 
 function modeLabel(mode: number, limit: string) {
+  // Transmission enum: 0 = session setting, 1 = custom single limit, 2 = unlimited.
   if (mode === 1) {
-    return "Unlimited";
+    return limit;
   }
   if (mode === 2) {
-    return limit;
+    return "Unlimited";
   }
   return "Session setting";
 }

@@ -38,7 +38,9 @@ const TRAILING_SLASHES = /\/+$/;
 type Row = typeof transmissionServers.$inferSelect;
 
 type TransmissionFailure =
+  | ReturnType<typeof problem<400, { readonly detail: string }>>
   | ReturnType<typeof problem<401, { readonly detail: string }>>
+  | ReturnType<typeof problem<403, { readonly detail: string }>>
   | ReturnType<typeof problem<404, { readonly detail: string }>>
   | ReturnType<typeof problem<409, { readonly detail: string }>>
   | ReturnType<typeof problem<502, { readonly detail: string }>>
@@ -84,9 +86,16 @@ function deadline(signal: AbortSignal) {
 
 function failure(cause: unknown): TransmissionFailure {
   if (cause instanceof TransmissionRpcError) {
-    return cause.status === 401
-      ? problem(401, { detail: cause.message })
-      : problem(502, { detail: cause.message });
+    if (cause.status === 401) {
+      return problem(401, { detail: cause.message });
+    }
+    if (cause.status === 403) {
+      return problem(403, { detail: cause.message });
+    }
+    if (cause.status === 409) {
+      return problem(409, { detail: cause.message });
+    }
+    return problem(502, { detail: cause.message });
   }
   if (cause instanceof Error && (cause.name === "TimeoutError" || cause.name === "AbortError")) {
     return problem(504, { detail: "Transmission did not answer in time" });
@@ -198,6 +207,9 @@ const make = Effect.gen(function* () {
       username:
         input.username === undefined ? (existing?.username ?? null) : input.username || null,
     };
+    if (row.username === null && row.password !== null) {
+      return problem(400, { detail: "Transmission credentials need a username" });
+    }
     yield* Effect.sync(() => {
       if (existing) {
         db.update(transmissionServers).set(row).where(eq(transmissionServers.id, row.id)).run();
@@ -419,7 +431,10 @@ const make = Effect.gen(function* () {
             scoped
           );
           const [torrent] = payload.torrents ?? [];
-          const indexes = (torrent?.files ?? []).map((_, index) => index);
+          if (!torrent) {
+            return null;
+          }
+          const indexes = (torrent.files ?? []).map((_, index) => index);
           const wanted = new Set(input.wanted);
           const wantedIndices = indexes.filter((index) => wanted.has(index));
           const unwantedIndices = indexes.filter((index) => !wanted.has(index));
@@ -438,6 +453,9 @@ const make = Effect.gen(function* () {
     );
     if (Result.isFailure(result)) {
       return failure(result.failure);
+    }
+    if (result.success === null) {
+      return problem(404, { detail: "This torrent does not exist in Transmission" });
     }
     return { ok: true } as const;
   });
