@@ -190,7 +190,7 @@ export function LimitsDialog({
       (idleSeedingLimitEnabled && idle === undefined)
     ) {
       setError(
-        "Enter whole numbers; peer limits start at 1, speeds use kilobytes per second and idle uses minutes."
+        "Enter valid numbers: peer limits start at 1, speeds use kilobytes per second, idle uses minutes, and the share ratio may be decimal."
       );
       return;
     }

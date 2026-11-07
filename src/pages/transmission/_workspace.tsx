@@ -131,6 +131,8 @@ function useTransmissionWorkspace() {
       );
       const failure = results.find((result) => result.error !== null)?.error;
       if (failure) {
+        // Successful batches already applied; refresh before reporting the partial failure.
+        await read();
         setError(errorMessage(failure, "Unable to control these torrents"));
         return;
       }

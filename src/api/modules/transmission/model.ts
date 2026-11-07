@@ -26,7 +26,11 @@ export const transmissionServerSchema = object({
     string(),
     minLength(1),
     maxLength(2048),
-    check((value) => httpOrigin.test(value), "Use an http or https origin")
+    check((value) => httpOrigin.test(value), "Use an http or https origin"),
+    check((value) => {
+      const url = new URL(value);
+      return url.username === "" && url.password === "";
+    }, "Keep credentials out of the origin; use the username and password fields")
   ),
   password: optional(nullable(pipe(string(), maxLength(512)))),
   rpcPath: pipe(
