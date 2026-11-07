@@ -4,6 +4,10 @@ Notable changes to Tofu are tracked here. Release tags follow the version in pac
 
 ## [Unreleased]
 
+### Added
+
+- Control transmission-daemon torrents over RPC from a dedicated Transmission page: list, add magnet links and torrent URLs, pause, resume, remove, choose files, request more peers, and adjust session speed, peer, share-ratio and idle-seeding limits. A detail panel shows files, trackers, peers, magnet links, dates and per-torrent limits. RPC servers and optional credentials are configured in Settings → Connections.
+
 ### Changed
 
 - Remove the Jev/TypeSafe plugin and its settings, remote evaluations, and cache; migrate existing rules to local exact matching.

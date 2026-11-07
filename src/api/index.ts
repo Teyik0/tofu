@@ -32,6 +32,7 @@ import { pluginRegistryPlugin } from "./modules/plugins/plugin";
 import { settingsPlugin } from "./modules/settings";
 import { torrentPlugin } from "./modules/torrents";
 import { torrentServicePlugin } from "./modules/torrents/plugin";
+import { transmissionPlugin } from "./modules/transmission";
 import { updatesPlugin } from "./modules/updates";
 
 export const apiPlugin = new Elysia({ name: "tofu-api" })
@@ -66,6 +67,7 @@ export const apiPlugin = new Elysia({ name: "tofu-api" })
       .use(settingsPlugin)
       .use(dashboardPlugin)
       .use(torrentPlugin)
+      .use(transmissionPlugin)
       .use(destinationsPlugin)
       .use(storageRootsPlugin)
       .use(anilistPlugin)
