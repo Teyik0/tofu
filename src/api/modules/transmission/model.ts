@@ -27,7 +27,12 @@ export const transmissionServerSchema = object({
     minLength(1),
     maxLength(2048),
     check((value) => httpOrigin.test(value), "Use an http or https origin"),
+    check((value) => URL.canParse(value), "Use a valid origin"),
     check((value) => {
+      // valibot runs every check in the pipe, so malformed values must not be parsed here.
+      if (!URL.canParse(value)) {
+        return true;
+      }
       const url = new URL(value);
       return url.username === "" && url.password === "";
     }, "Keep credentials out of the origin; use the username and password fields")

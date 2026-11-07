@@ -145,6 +145,20 @@ test("Transmission credentials reach the daemon and rejections surface as 401", 
   });
   expect(withoutUsername.error?.status).toBe(400);
 
+  const malformed = await client.transmission.servers.post({
+    name: "Remote daemon",
+    origin: "https://example.com:bad",
+    rpcPath: "/transmission/rpc",
+  });
+  expect(malformed.error?.status).toBe(422);
+
+  const withCredentials = await client.transmission.servers.post({
+    name: "Remote daemon",
+    origin: "https://user:secret@example.com",
+    rpcPath: "/transmission/rpc",
+  });
+  expect(withCredentials.error?.status).toBe(422);
+
   const created = success(
     await client.transmission.servers.post({
       name: "Remote daemon",
