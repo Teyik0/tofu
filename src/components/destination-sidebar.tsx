@@ -1,6 +1,14 @@
 import { Link, useRouter } from "@teyik0/furin/link";
 import { useAtomValue, useSetAtom } from "jotai";
-import { FolderIcon, PencilIcon, PlugIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
+import {
+  ArrowDownToLineIcon,
+  FolderIcon,
+  PencilIcon,
+  PlugIcon,
+  PlusIcon,
+  SettingsIcon,
+  Trash2Icon,
+} from "lucide-react";
 import {
   type MouseEvent,
   memo,
@@ -153,7 +161,7 @@ export const DestinationSidebar = memo(
     active: string | null;
     remoteThread: ThreadSelection | null;
   }) {
-    const router = useRouter();
+    const { currentPattern, navigate } = useRouter();
     const open = useSetAtom(modalAtom);
     const capabilities = useAtomValue(sessionAtom)?.capabilities;
     const aniListBackPath = useAtomValue(anilistBackPathAtom);
@@ -203,7 +211,7 @@ export const DestinationSidebar = memo(
       remoteThread === null ? data?.host?.destinations.find((item) => item.id === id) : undefined;
     const [navigationError, openPlugins] = useActionState<string | null, void>(async () => {
       try {
-        await router.navigate({ to: "/plugins" });
+        await navigate({ to: "/plugins" });
         return null;
       } catch (cause) {
         if (isSupersededNavigation(cause)) {
@@ -248,6 +256,22 @@ export const DestinationSidebar = memo(
                       {aniListHasUpdates ? (
                         <span aria-hidden="true" className="anilist-notification-dot" />
                       ) : null}
+                    </Link>
+                  </ActionTooltip>
+                </SidebarMenuItem>
+              ) : null}
+              {capabilities?.administer ? (
+                <SidebarMenuItem>
+                  <ActionTooltip>
+                    <Link
+                      aria-current={currentPattern === "/transmission" ? "page" : undefined}
+                      aria-label="Transmission"
+                      className="sidebar-shortcut sidebar-app-shortcut"
+                      data-sidebar="menu-button"
+                      resetScroll={false}
+                      to="/transmission"
+                    >
+                      <ArrowDownToLineIcon />
                     </Link>
                   </ActionTooltip>
                 </SidebarMenuItem>
@@ -403,7 +427,7 @@ export const DestinationSidebar = memo(
                 <Button
                   aria-label="Settings"
                   disabled={!data}
-                  onClick={() => void router.navigate({ to: "/options" })}
+                  onClick={() => void navigate({ to: "/options" })}
                   size="icon"
                   type="button"
                   variant="ghost"

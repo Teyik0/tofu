@@ -13,6 +13,7 @@ import { LinkedLibraries } from "./_linked-libraries";
 import { NetworkAccess } from "./_network-access";
 import { OwnConnection } from "./_own-connection";
 import { ServerAddresses } from "./_server-addresses";
+import { TransmissionServers } from "./_transmission";
 
 export type ConnectionsState = NonNullable<Awaited<ReturnType<typeof api.connections.get>>["data"]>;
 
@@ -74,6 +75,7 @@ export const route = defineRoute("/options/connections")
         <AuthorizedDevices session={session} state={state} />
         {session.capabilities.hostNative ? <DesktopServers /> : null}
         <LinkedLibraries />
+        <TransmissionServers />
         <p className="connections-footnote">
           Devices need both a working connection and an invitation. Turning off remote access keeps
           your local files and downloads.
